@@ -102,7 +102,7 @@ export default function Sidebar() {
             <span className="font-display font-semibold text-sm" style={{ color: "#D4A843" }}>
               {user?.name
                 ?.split(" ")
-                .map((n) => n[0])
+                .map((n: string) => n[0])
                 .join("")
                 .toUpperCase() || "U"}
             </span>

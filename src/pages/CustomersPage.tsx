@@ -193,7 +193,7 @@ export default function CustomersPage() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <div className="text-xs text-[#8A8B8C] line-through">R {Number(sp.stockItem?.unitPrice).toFixed(2)}</div>
+                            <div className="text-xs text-[#8A8B8C] line-through">R {Number(sp.stockItem?.wholesalePrice).toFixed(2)}</div>
                             <div className="text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(sp.specialPrice).toFixed(2)}</div>
                           </div>
                           <button onClick={() => { if (confirm("Remove special price?")) deleteSpecialPrice.mutate({ id: sp.id }); }} className="p-1 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
@@ -259,7 +259,7 @@ export default function CustomersPage() {
                 <label className="label-text block mb-1.5">Product *</label>
                 <select value={specialPriceData.stockItemId} onChange={(e) => setSpecialPriceData({ ...specialPriceData, stockItemId: parseInt(e.target.value) })} className="input-field" required>
                   <option value={0}>Select product...</option>
-                  {(stockItems || []).map((s) => <option key={s.id} value={s.id}>{s.productName} (Standard: R {Number(s.unitPrice).toFixed(2)})</option>)}
+                  {(stockItems || []).map((s) => <option key={s.id} value={s.id}>{s.productName} (Wholesale: R {Number(s.wholesalePrice).toFixed(2)})</option>)}
                 </select>
               </div>
               <div>

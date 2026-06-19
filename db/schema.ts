@@ -21,10 +21,7 @@ export const users = mysqlTable("users", {
   avatar: text("avatar"),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt")
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date()),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
   lastSignInAt: timestamp("lastSignInAt").defaultNow().notNull(),
 });
 
@@ -34,9 +31,7 @@ export type InsertUser = typeof users.$inferInsert;
 // ─── Sales Rep Profiles ─────────────────────────────────
 export const salesRepProfiles = mysqlTable("sales_rep_profiles", {
   id: serial("id").primaryKey(),
-  userId: bigint("userId", { mode: "number", unsigned: true })
-    .notNull()
-    .unique(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull().unique(),
   phone: varchar("phone", { length: 50 }),
   region: varchar("region", { length: 100 }),
   vehicleReg: varchar("vehicleReg", { length: 50 }),
@@ -45,20 +40,25 @@ export const salesRepProfiles = mysqlTable("sales_rep_profiles", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
-export type SalesRepProfile = typeof salesRepProfiles.$inferSelect;
-
-// ─── Stock Items ────────────────────────────────────────
+// ─── Stock Items (4-tier pricing) ───────────────────────
 export const stockItems = mysqlTable("stock_items", {
   id: serial("id").primaryKey(),
   productCode: varchar("productCode", { length: 50 }).notNull(),
   productName: varchar("productName", { length: 255 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(),
+  strands: varchar("strands", { length: 50 }),
+  size: varchar("size", { length: 20 }),
+  grade: varchar("grade", { length: 10 }),
+  color: varchar("color", { length: 50 }),
+  species: varchar("species", { length: 20 }),
+  origin: varchar("origin", { length: 20 }),
   quantity: int("quantity").notNull().default(0),
-  unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  corporatePrice: decimal("corporatePrice", { precision: 10, scale: 2 }).notNull(),
+  bulkPrice: decimal("bulkPrice", { precision: 10, scale: 2 }).notNull(),
+  wholesalePrice: decimal("wholesalePrice", { precision: 10, scale: 2 }).notNull(),
+  retailPrice: decimal("retailPrice", { precision: 10, scale: 2 }).notNull(),
   description: text("description"),
-  status: mysqlEnum("status", ["in_stock", "low_stock", "out_of_stock"])
-    .default("in_stock")
-    .notNull(),
+  status: mysqlEnum("status", ["in_stock", "low_stock", "out_of_stock"]).default("in_stock").notNull(),
   uploadedBy: bigint("uploadedBy", { mode: "number", unsigned: true }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
@@ -79,9 +79,7 @@ export const customers = mysqlTable("customers", {
   city: varchar("city", { length: 100 }),
   province: varchar("province", { length: 100 }),
   postalCode: varchar("postalCode", { length: 20 }),
-  paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"])
-    .default("cod")
-    .notNull(),
+  paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"]).default("cod").notNull(),
   vatNumber: varchar("vatNumber", { length: 50 }),
   notes: text("notes"),
   isActive: mysqlEnum("isActive", ["active", "inactive"]).default("active").notNull(),
@@ -95,21 +93,12 @@ export type Customer = typeof customers.$inferSelect;
 // ─── Orders ─────────────────────────────────────────────
 export const orders = mysqlTable("orders", {
   id: serial("id").primaryKey(),
-  orderNumber: varchar("orderNumber", { length: 50 }).notNull().unique(),
+  orderNumber: varchar("orderNumber", { length: 50 }).notNull(),
   customerId: bigint("customerId", { mode: "number", unsigned: true }).notNull(),
   salesRepId: bigint("salesRepId", { mode: "number", unsigned: true }).notNull(),
-  status: mysqlEnum("status", [
-    "pending",
-    "picking",
-    "ready",
-    "delivered",
-    "cancelled",
-  ])
-    .default("pending")
-    .notNull(),
-  paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"])
-    .default("cod")
-    .notNull(),
+  status: mysqlEnum("status", ["pending", "picking", "ready", "delivered", "cancelled"]).default("pending").notNull(),
+  paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"]).default("cod").notNull(),
+  priceTier: mysqlEnum("priceTier", ["corporate", "bulk", "wholesale", "retail"]).default("wholesale").notNull(),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(),
   vatAmount: decimal("vatAmount", { precision: 12, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
@@ -139,15 +128,11 @@ export type OrderItem = typeof orderItems.$inferSelect;
 // ─── Invoices ───────────────────────────────────────────
 export const invoices = mysqlTable("invoices", {
   id: serial("id").primaryKey(),
-  invoiceNumber: varchar("invoiceNumber", { length: 50 }).notNull().unique(),
+  invoiceNumber: varchar("invoiceNumber", { length: 50 }).notNull(),
   orderId: bigint("orderId", { mode: "number", unsigned: true }),
   customerId: bigint("customerId", { mode: "number", unsigned: true }).notNull(),
-  status: mysqlEnum("status", ["draft", "sent", "paid", "overdue", "partially_paid", "cancelled"])
-    .default("draft")
-    .notNull(),
-  paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"])
-    .default("cod")
-    .notNull(),
+  status: mysqlEnum("status", ["draft", "sent", "paid", "overdue", "partially_paid", "cancelled"]).default("draft").notNull(),
+  paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"]).default("cod").notNull(),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(),
   vatAmount: decimal("vatAmount", { precision: 12, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
@@ -193,9 +178,7 @@ export const appointments = mysqlTable("appointments", {
   location: varchar("location", { length: 255 }),
   latitude: decimal("latitude", { precision: 10, scale: 8 }),
   longitude: decimal("longitude", { precision: 11, scale: 8 }),
-  status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"])
-    .default("scheduled")
-    .notNull(),
+  status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled").notNull(),
   reminder: mysqlEnum("reminder", ["none", "15_min", "30_min", "1_hour"]).default("none"),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

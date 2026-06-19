@@ -1,29 +1,40 @@
 import { getDb } from "../api/queries/connection";
 import { stockItems, customers } from "./schema";
+import productsData from "./products-data.json";
 
 async function seed() {
   const db = getDb();
-  console.log("Seeding database...");
+  console.log("Seeding database with Supreme Global Foods product catalog...");
 
-  // Seed stock items - Supreme Global Foods products
-  const stockData = [
-    { productCode: "SC20-BRN", productName: "Sheep Casings 20 Mega Long Value Brown 2 Metre", category: "Sheep Casings", quantity: 150, unitPrice: "145.00", description: "Premium brown sheep casings, 20mm diameter, 2 metre length" },
-    { productCode: "SC28-WHT", productName: "Sheep Casings 28 Mega Long Value White 2 Metre", category: "Sheep Casings", quantity: 120, unitPrice: "280.00", description: "Premium white sheep casings, 28mm diameter, 2 metre length" },
-    { productCode: "HC-ULT-BRN", productName: "Hog Casings Ultra Long Value Brown 3 Metre", category: "Hog Casings", quantity: 80, unitPrice: "330.00", description: "Ultra long hog casings, brown, 3 metre length" },
-    { productCode: "HC-SUP-BLK", productName: "Hog Casings Super Long Value Black 2 Metre", category: "Hog Casings", quantity: 95, unitPrice: "310.00", description: "Super long hog casings, black, 2 metre length" },
-    { productCode: "HC-SUP-YLW", productName: "Hog Casings Super Long Value Yellow 2 Metre", category: "Hog Casings", quantity: 200, unitPrice: "250.00", description: "Super long hog casings, yellow, 2 metre length - Best Seller" },
-    { productCode: "SC24-WHT", productName: "Sheep Casings 24 Long Value White 2 Metre", category: "Sheep Casings", quantity: 45, unitPrice: "195.00", description: "Sheep casings 24mm, white, 2 metre length" },
-    { productCode: "HC-LONG-SET", productName: "Hog Casings Long Value Set Mixed Colours", category: "Hog Casings", quantity: 60, unitPrice: "450.00", description: "Mixed colour set of premium hog casings" },
-    { productCode: "SC22-BRN", productName: "Sheep Casings 22 Long Value Brown 2 Metre", category: "Sheep Casings", quantity: 12, unitPrice: "165.00", description: "Sheep casings 22mm, brown, 2 metre length" },
-    { productCode: "HC-ECONO", productName: "Hog Casings Economy Pack 2 Metre", category: "Hog Casings", quantity: 0, unitPrice: "180.00", description: "Economy pack hog casings, 2 metre length" },
-    { productCode: "SC26-WHT", productName: "Sheep Casings 26 Mega Long Value White 2 Metre", category: "Sheep Casings", quantity: 18, unitPrice: "220.00", description: "Sheep casings 26mm, white, 2 metre length" },
-  ];
+  // Clear existing stock
+  await db.delete(stockItems);
+  console.log("Cleared existing stock items");
 
-  for (const item of stockData) {
-    const qty = item.quantity;
+  // Seed all products from the price list
+  let count = 0;
+  for (const product of productsData) {
+    const qty = product.quantity;
     const status = qty === 0 ? "out_of_stock" : qty < 20 ? "low_stock" : "in_stock";
-    await db.insert(stockItems).values({ ...item, status: status as "in_stock" | "low_stock" | "out_of_stock" });
+    await db.insert(stockItems).values({
+      productCode: product.productCode,
+      productName: product.productName,
+      category: product.category,
+      strands: product.strands || null,
+      size: product.size || null,
+      grade: product.grade || null,
+      color: product.color || null,
+      species: product.species || null,
+      origin: product.origin || null,
+      quantity: product.quantity,
+      corporatePrice: product.corporatePrice.toFixed(2),
+      bulkPrice: product.bulkPrice.toFixed(2),
+      wholesalePrice: product.wholesalePrice.toFixed(2),
+      retailPrice: product.retailPrice.toFixed(2),
+      status: status as "in_stock" | "low_stock" | "out_of_stock",
+    });
+    count++;
   }
+  console.log(`Seeded ${count} products`);
 
   // Seed customers
   const customerData = [
@@ -38,8 +49,8 @@ async function seed() {
   for (const cust of customerData) {
     await db.insert(customers).values(cust);
   }
-
-  console.log("Seeded successfully!");
+  console.log(`Seeded ${customerData.length} customers`);
+  console.log("Done!");
 }
 
 seed().catch(console.error);

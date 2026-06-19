@@ -13,6 +13,14 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      headers() {
+        // Send demo user in header for demo mode
+        const demoUserStr = localStorage.getItem("demo_user");
+        if (demoUserStr) {
+          return { "x-demo-user": demoUserStr };
+        }
+        return {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

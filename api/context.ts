@@ -15,7 +15,23 @@ export async function createContext(
   try {
     ctx.user = await authenticateRequest(opts.req.headers);
   } catch {
-    // Authentication is optional here
+    // OAuth authentication failed - try demo mode
   }
+
+  // Fallback: check for demo user in header
+  if (!ctx.user) {
+    const demoUserHeader = opts.req.headers.get("x-demo-user");
+    if (demoUserHeader) {
+      try {
+        const demoUser = JSON.parse(demoUserHeader) as User;
+        if (demoUser.id && demoUser.role) {
+          ctx.user = demoUser;
+        }
+      } catch {
+        // Invalid demo user header
+      }
+    }
+  }
+
   return ctx;
 }

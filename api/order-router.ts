@@ -4,6 +4,16 @@ import { getDb } from "./queries/connection";
 import { orders, orderItems, customers, users, stockItems, customerSpecialPrices } from "@db/schema";
 import { eq, desc, and } from "drizzle-orm";
 
+function getPriceByTier(item: typeof stockItems.$inferSelect, tier: string): number {
+  switch (tier) {
+    case "corporate": return Number(item.corporatePrice);
+    case "bulk": return Number(item.bulkPrice);
+    case "wholesale": return Number(item.wholesalePrice);
+    case "retail": return Number(item.retailPrice);
+    default: return Number(item.wholesalePrice);
+  }
+}
+
 export const orderRouter = createRouter({
   list: authedQuery.query(async () => {
     const db = getDb();
@@ -18,25 +28,6 @@ export const orderRouter = createRouter({
     return result;
   }),
 
-  listByStatus: authedQuery
-    .input(z.object({ status: z.string() }).optional())
-    .query(async ({ input }) => {
-      const db = getDb();
-      let query;
-      if (input?.status && input.status !== "all") {
-        query = await db.select().from(orders).where(eq(orders.status, input.status as "pending" | "picking" | "ready" | "delivered" | "cancelled")).orderBy(desc(orders.createdAt));
-      } else {
-        query = await db.select().from(orders).orderBy(desc(orders.createdAt));
-      }
-      const result = [];
-      for (const order of query) {
-        const customer = await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1);
-        const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
-        result.push({ ...order, customer: customer[0] || null, items });
-      }
-      return result;
-    }),
-
   getById: authedQuery
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -50,21 +41,25 @@ export const orderRouter = createRouter({
     }),
 
   create: authedQuery
-    .input(
-      z.object({
-        customerId: z.number(),
-        paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]),
-        deliveryAddress: z.string().optional(),
-        notes: z.string().optional(),
-        items: z.array(z.object({ stockItemId: z.number(), quantity: z.number().int().min(1), unitPrice: z.number().optional() })),
-      })
-    )
+    .input(z.object({
+      customerId: z.number(),
+      paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]),
+      priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).optional(),
+      deliveryAddress: z.string().optional(),
+      notes: z.string().optional(),
+      items: z.array(z.object({
+        stockItemId: z.number(),
+        quantity: z.number().int().min(1),
+        unitPrice: z.number().optional(),
+      })),
+    }))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
       const randomStr = Math.floor(1000 + Math.random() * 9000);
       const orderNumber = `ORD-${dateStr}-${randomStr}`;
+      const tier = input.priceTier || "wholesale";
 
       let subtotal = 0;
       const orderItemsData = [];
@@ -74,23 +69,24 @@ export const orderRouter = createRouter({
         if (stock.length === 0) throw new Error(`Stock item ${item.stockItemId} not found`);
         const stockItem = stock[0];
 
-        // Check for special price
-        let unitPrice = Number(stockItem.unitPrice);
+        // Determine price: custom > special price > tier price
+        let unitPrice: number;
         if (item.unitPrice && item.unitPrice > 0) {
-          unitPrice = item.unitPrice;
+          unitPrice = item.unitPrice; // Custom price entered by sales rep
         } else {
+          // Check for customer special price first
           const specialPrice = await db
             .select()
             .from(customerSpecialPrices)
-            .where(
-              and(
-                eq(customerSpecialPrices.customerId, input.customerId),
-                eq(customerSpecialPrices.stockItemId, item.stockItemId)
-              )
-            )
+            .where(and(
+              eq(customerSpecialPrices.customerId, input.customerId),
+              eq(customerSpecialPrices.stockItemId, item.stockItemId)
+            ))
             .limit(1);
           if (specialPrice.length > 0) {
             unitPrice = Number(specialPrice[0].specialPrice);
+          } else {
+            unitPrice = getPriceByTier(stockItem, tier);
           }
         }
 
@@ -117,6 +113,7 @@ export const orderRouter = createRouter({
         salesRepId: ctx.user.id,
         status: "pending",
         paymentTerms: input.paymentTerms,
+        priceTier: tier,
         subtotal: subtotal.toFixed(2),
         vatAmount: vatAmount.toFixed(2),
         total: total.toFixed(2),

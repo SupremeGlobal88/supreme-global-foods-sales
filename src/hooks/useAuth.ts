@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { LOGIN_PATH } from "@/const";
 
+const DEMO_USER_KEY = "demo_user";
+
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
@@ -13,12 +15,11 @@ export function useAuth(options?: UseAuthOptions) {
     options ?? {};
 
   const navigate = useNavigate();
-
   const utils = trpc.useUtils();
 
   const {
-    data: user,
-    isLoading,
+    data: oauthUser,
+    isLoading: oauthLoading,
     error,
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
@@ -26,14 +27,28 @@ export function useAuth(options?: UseAuthOptions) {
     retry: false,
   });
 
+  // Check for demo user in localStorage (fallback for testing)
+  const demoUserStr = typeof window !== "undefined" ? localStorage.getItem(DEMO_USER_KEY) : null;
+  const demoUser = demoUserStr ? JSON.parse(demoUserStr) : null;
+
+  // Use OAuth user if available, otherwise use demo user
+  const user = oauthUser ?? demoUser;
+  const isLoading = oauthLoading;
+
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: async () => {
+      // Also clear demo user
+      localStorage.removeItem(DEMO_USER_KEY);
       await utils.invalidate();
       navigate(redirectPath);
     },
   });
 
-  const logout = useCallback(() => logoutMutation.mutate(), [logoutMutation]);
+  const logout = useCallback(() => {
+    // Always clear demo user on logout
+    localStorage.removeItem(DEMO_USER_KEY);
+    logoutMutation.mutate();
+  }, [logoutMutation]);
 
   useEffect(() => {
     if (redirectOnUnauthenticated && !isLoading && !user) {

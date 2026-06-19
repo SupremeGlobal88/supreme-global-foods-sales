@@ -257,9 +257,19 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label-text block mb-1.5">Customer *</label>
-                  <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value), items: [] })} className="input-field" required>
+                  <select value={formData.customerId} onChange={(e) => {
+                    const cid = parseInt(e.target.value);
+                    const customer = (customers || []).find((c) => c.id === cid);
+                    setFormData({
+                      ...formData,
+                      customerId: cid,
+                      priceTier: (customer?.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale",
+                      paymentTerms: (customer?.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "cod",
+                      items: [],
+                    });
+                  }} className="input-field" required>
                     <option value={0}>Select customer...</option>
-                    {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name} ({c.priceTier})</option>)}
                   </select>
                 </div>
                 <div>

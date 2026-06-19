@@ -13,7 +13,15 @@ import {
   Upload,
   FileText,
   Tag,
+  DollarSign,
 } from "lucide-react";
+
+const PRICE_TIER_COLORS: Record<string, string> = {
+  corporate: "#D4A843",
+  bulk: "#6366F1",
+  wholesale: "#4ADE80",
+  retail: "#F59E0B",
+};
 
 export default function CustomersPage() {
   const utils = trpc.useUtils();
@@ -28,6 +36,7 @@ export default function CustomersPage() {
   const [formData, setFormData] = useState({
     customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "",
     physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
+    priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
     vatNumber: "", notes: "",
   });
 
@@ -58,11 +67,11 @@ export default function CustomersPage() {
   });
 
   function resetForm() {
-    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", vatNumber: "", notes: "" });
+    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", vatNumber: "", notes: "" });
   }
 
   function handleEdit(cust: NonNullable<typeof customers>[0]) {
-    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", vatNumber: cust.vatNumber || "", notes: cust.notes || "" });
+    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", vatNumber: cust.vatNumber || "", notes: cust.notes || "" });
     setEditingId(cust.id); setShowForm(true);
   }
 
@@ -144,7 +153,10 @@ export default function CustomersPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-display font-medium text-white text-sm truncate">{cust.name}</h3>
                     <p className="text-xs text-[#8A8B8C] font-body truncate">{cust.businessName || "No business name"}</p>
-                    <div className="flex items-center gap-3 mt-2"><span className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" /> {cust.city || "N/A"}</span></div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" /> {cust.city || "N/A"}</span>
+                      <span className="text-xs font-mono-data" style={{ color: PRICE_TIER_COLORS[cust.priceTier] || "#8A8B8C" }}>{cust.priceTier?.toUpperCase() || "WHOLESALE"}</span>
+                    </div>
                   </div>
                   <span className="status-badge text-xs flex-shrink-0 ml-2" style={{ backgroundColor: cust.paymentTerms === "cod" ? "rgba(245, 158, 11, 0.12)" : cust.paymentTerms === "30_days" ? "rgba(99, 102, 241, 0.12)" : "rgba(74, 222, 128, 0.12)", color: cust.paymentTerms === "cod" ? "#F59E0B" : cust.paymentTerms === "30_days" ? "#6366F1" : "#4ADE80" }}>{cust.paymentTerms.replace("_", " ").toUpperCase()}</span>
                 </div>
@@ -169,6 +181,7 @@ export default function CustomersPage() {
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><FileText className="w-3 h-3" /> Customer Code</div><div className="text-white text-sm font-body font-mono-data">{selected.customerCode}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><Mail className="w-3 h-3" /> Email</div><div className="text-white text-sm font-body">{selected.email || "N/A"}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><MapPin className="w-3 h-3" /> Address</div><div className="text-white text-sm font-body">{selected.physicalAddress || "N/A"}<br />{selected.city}, {selected.province} {selected.postalCode}</div></div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><DollarSign className="w-3 h-3" /> Price Tier</div><div className="text-sm font-body font-semibold" style={{ color: PRICE_TIER_COLORS[selected.priceTier] || "#E8E8E9" }}>{selected.priceTier?.toUpperCase() || "WHOLESALE"}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><Tag className="w-3 h-3" /> Payment Terms</div><div className="text-white text-sm font-body">{selected.paymentTerms.replace("_", " ").toUpperCase()}</div></div>
                 </div>
                 {selected.notes && <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="text-[#8A8B8C] text-xs mb-1">Notes</div><div className="text-white text-sm font-body">{selected.notes}</div></div>}
@@ -218,11 +231,21 @@ export default function CustomersPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="label-text block mb-1.5">Customer Code *</label><input type="text" value={formData.customerCode} onChange={(e) => setFormData({ ...formData, customerCode: e.target.value })} className="input-field" required /></div>
-                <div><label className="label-text block mb-1.5">Payment Terms</label><select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field"><option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option></select></div>
+                <div><label className="label-text block mb-1.5">Price Tier</label><select value={formData.priceTier} onChange={(e) => setFormData({ ...formData, priceTier: e.target.value as "corporate" | "bulk" | "wholesale" | "retail" })} className="input-field"><option value="corporate">Corporate</option><option value="bulk">Bulk</option><option value="wholesale">Wholesale</option><option value="retail">Retail</option></select></div>
               </div>
               <div><label className="label-text block mb-1.5">Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field" required /></div>
-              <div className="grid grid-cols-2 gap-4"><div><label className="label-text block mb-1.5">Business Name</label><input type="text" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field" /></div></div>
-              <div className="grid grid-cols-2 gap-4"><div><label className="label-text block mb-1.5">Phone</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Email</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field" /></div></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="label-text block mb-1.5">Business Name</label><input type="text" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} className="input-field" /></div>
+                <div><label className="label-text block mb-1.5">Payment Terms</label><select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field"><option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option></select></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field" /></div>
+                <div><label className="label-text block mb-1.5">Phone</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="input-field" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="label-text block mb-1.5">Email</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field" /></div>
+                <div></div>
+              </div>
               <div><label className="label-text block mb-1.5">Physical Address</label><textarea value={formData.physicalAddress} onChange={(e) => setFormData({ ...formData, physicalAddress: e.target.value })} className="input-field" rows={2} /></div>
               <div className="grid grid-cols-3 gap-4"><div><label className="label-text block mb-1.5">City</label><input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Province</label><input type="text" value={formData.province} onChange={(e) => setFormData({ ...formData, province: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Postal Code</label><input type="text" value={formData.postalCode} onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })} className="input-field" /></div></div>
               <div><label className="label-text block mb-1.5">VAT Number</label><input type="text" value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field" /></div>

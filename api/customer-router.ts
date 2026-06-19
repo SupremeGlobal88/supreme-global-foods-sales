@@ -55,6 +55,7 @@ export const customerRouter = createRouter({
         province: z.string().optional(),
         postalCode: z.string().optional(),
         paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]).default("cod"),
+        priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).default("wholesale"),
         vatNumber: z.string().optional(),
         notes: z.string().optional(),
       })
@@ -83,6 +84,7 @@ export const customerRouter = createRouter({
         province: z.string().optional(),
         postalCode: z.string().optional(),
         paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]).optional(),
+        priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).optional(),
         vatNumber: z.string().optional(),
         notes: z.string().optional(),
         isActive: z.enum(["active", "inactive"]).optional(),

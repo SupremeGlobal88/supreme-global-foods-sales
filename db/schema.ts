@@ -80,6 +80,7 @@ export const customers = mysqlTable("customers", {
   province: varchar("province", { length: 100 }),
   postalCode: varchar("postalCode", { length: 20 }),
   paymentTerms: mysqlEnum("paymentTerms", ["cod", "7_days", "14_days", "30_days"]).default("cod").notNull(),
+  priceTier: mysqlEnum("priceTier", ["corporate", "bulk", "wholesale", "retail"]).default("wholesale").notNull(),
   vatNumber: varchar("vatNumber", { length: 50 }),
   notes: text("notes"),
   isActive: mysqlEnum("isActive", ["active", "inactive"]).default("active").notNull(),

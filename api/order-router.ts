@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { createRouter, authedQuery, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { orders, orderItems, customers, users, stockItems } from "@db/schema";
-import { eq, desc } from "drizzle-orm";
+import { orders, orderItems, customers, users, stockItems, customerSpecialPrices } from "@db/schema";
+import { eq, desc, and } from "drizzle-orm";
 
 export const orderRouter = createRouter({
   list: authedQuery.query(async () => {
@@ -56,7 +56,7 @@ export const orderRouter = createRouter({
         paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]),
         deliveryAddress: z.string().optional(),
         notes: z.string().optional(),
-        items: z.array(z.object({ stockItemId: z.number(), quantity: z.number().int().min(1) })),
+        items: z.array(z.object({ stockItemId: z.number(), quantity: z.number().int().min(1), unitPrice: z.number().optional() })),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -73,7 +73,28 @@ export const orderRouter = createRouter({
         const stock = await db.select().from(stockItems).where(eq(stockItems.id, item.stockItemId)).limit(1);
         if (stock.length === 0) throw new Error(`Stock item ${item.stockItemId} not found`);
         const stockItem = stock[0];
-        const lineTotal = Number(stockItem.unitPrice) * item.quantity;
+
+        // Check for special price
+        let unitPrice = Number(stockItem.unitPrice);
+        if (item.unitPrice && item.unitPrice > 0) {
+          unitPrice = item.unitPrice;
+        } else {
+          const specialPrice = await db
+            .select()
+            .from(customerSpecialPrices)
+            .where(
+              and(
+                eq(customerSpecialPrices.customerId, input.customerId),
+                eq(customerSpecialPrices.stockItemId, item.stockItemId)
+              )
+            )
+            .limit(1);
+          if (specialPrice.length > 0) {
+            unitPrice = Number(specialPrice[0].specialPrice);
+          }
+        }
+
+        const lineTotal = unitPrice * item.quantity;
         subtotal += lineTotal;
         orderItemsData.push({
           orderId: 0,
@@ -81,7 +102,7 @@ export const orderRouter = createRouter({
           productCode: stockItem.productCode,
           productName: stockItem.productName,
           quantity: item.quantity,
-          unitPrice: stockItem.unitPrice,
+          unitPrice: unitPrice.toFixed(2),
           lineTotal: lineTotal.toFixed(2),
         });
       }

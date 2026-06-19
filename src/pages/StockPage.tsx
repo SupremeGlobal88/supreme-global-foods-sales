@@ -109,21 +109,24 @@ export default function StockPage() {
       const text = event.target?.result as string;
       const lines = text.split("\n").filter((l) => l.trim());
       const items = [];
+      // Support format: ProductCode, ProductName, Category, Quantity, UnitPrice, Description
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",");
-        if (cols.length >= 5) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+        if (cols.length >= 5 && cols[0] && cols[1]) {
           items.push({
-            productCode: cols[0].trim(),
-            productName: cols[1].trim(),
-            category: cols[2].trim(),
-            quantity: parseInt(cols[3].trim()) || 0,
-            unitPrice: parseFloat(cols[4].trim()) || 0,
-            description: cols[5]?.trim() || "",
+            productCode: cols[0],
+            productName: cols[1],
+            category: cols[2] || "General",
+            quantity: parseInt(cols[3]) || 0,
+            unitPrice: parseFloat(cols[4]) || 0,
+            description: cols[5] || "",
           });
         }
       }
       if (items.length > 0) {
         bulkUpload.mutate(items);
+      } else {
+        alert("No valid products found in CSV. Please check the format.");
       }
     };
     reader.readAsText(file);

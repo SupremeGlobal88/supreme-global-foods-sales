@@ -6,6 +6,7 @@ import { orderRouter } from "./order-router";
 import { invoiceRouter } from "./invoice-router";
 import { appointmentRouter } from "./appointment-router";
 import { checkInRouter } from "./checkin-router";
+import { specialPriceRouter } from "./specialPrice-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -18,6 +19,7 @@ export const appRouter = createRouter({
   invoice: invoiceRouter,
   appointment: appointmentRouter,
   checkIn: checkInRouter,
+  specialPrice: specialPriceRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Truck,
   Ban,
+  Tag,
 } from "lucide-react";
 
 const statusTabs = [
@@ -36,13 +37,18 @@ export default function OrdersPage() {
     paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     deliveryAddress: "",
     notes: "",
-    items: [] as { stockItemId: number; quantity: number }[],
+    items: [] as { stockItemId: number; quantity: number; unitPrice?: number }[],
   });
 
   const { data: orders } = trpc.order.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: stats } = trpc.order.getStats.useQuery();
+
+  const { data: customerSpecialPrices } = trpc.specialPrice.listByCustomer.useQuery(
+    { customerId: formData.customerId },
+    { enabled: formData.customerId > 0 }
+  );
 
   const updateStatus = trpc.order.updateStatus.useMutation({
     onSuccess: () => { utils.order.list.invalidate(); utils.order.getStats.invalidate(); },
@@ -54,6 +60,15 @@ export default function OrdersPage() {
 
   function resetForm() {
     setFormData({ customerId: 0, paymentTerms: "cod", deliveryAddress: "", notes: "", items: [] });
+  }
+
+  function getItemPrice(stockItemId: number): number {
+    const item = formData.items.find((i) => i.stockItemId === stockItemId);
+    if (item?.unitPrice && item.unitPrice > 0) return item.unitPrice;
+    const sp = (customerSpecialPrices || []).find((sp) => sp.stockItemId === stockItemId);
+    if (sp) return Number(sp.specialPrice);
+    const stock = (stockItems || []).find((s) => s.id === stockItemId);
+    return stock ? Number(stock.unitPrice) : 0;
   }
 
   function handleAddItem() {
@@ -74,7 +89,17 @@ export default function OrdersPage() {
     e.preventDefault();
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
     if (validItems.length === 0) return;
-    createOrder.mutate({ customerId: formData.customerId, paymentTerms: formData.paymentTerms, deliveryAddress: formData.deliveryAddress, notes: formData.notes, items: validItems });
+    createOrder.mutate({
+      customerId: formData.customerId,
+      paymentTerms: formData.paymentTerms,
+      deliveryAddress: formData.deliveryAddress,
+      notes: formData.notes,
+      items: validItems.map((item) => ({
+        stockItemId: item.stockItemId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined,
+      })),
+    });
   }
 
   function printPickingSlip(order: NonNullable<typeof orders>[0]) {
@@ -94,6 +119,7 @@ export default function OrdersPage() {
         th { background: #f5f5f5; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; }
         td { padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
         .total { text-align: right; margin-top: 20px; font-size: 18px; font-weight: bold; }
+        .special-badge { background: #D4A843; color: white; padding: 2px 8px; border-radius: 10px; font-size: 10px; }
         @media print { body { padding: 20px; } }
       </style></head><body>
       <div class="header">
@@ -148,9 +174,7 @@ export default function OrdersPage() {
 
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((tab) => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === tab.key ? "#D4A843" : "#18191A", color: activeTab === tab.key ? "#0A0A0B" : "#8A8B8C", border: activeTab === tab.key ? "none" : "1px solid #2A2B2C" }}>
-            {tab.label}
-          </button>
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === tab.key ? "#D4A843" : "#18191A", color: activeTab === tab.key ? "#0A0A0B" : "#8A8B8C", border: activeTab === tab.key ? "none" : "1px solid #2A2B2C" }}>{tab.label}</button>
         ))}
       </div>
 
@@ -225,9 +249,10 @@ export default function OrdersPage() {
         </div>
       </div>
 
+      {/* New Order Dialog */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
+          <div className="card-surface p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-display font-semibold text-white text-xl">New Order</h2>
               <button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
@@ -236,7 +261,7 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label-text block mb-1.5">Customer *</label>
-                  <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
+                  <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value), items: [] })} className="input-field" required>
                     <option value={0}>Select customer...</option>
                     {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -244,35 +269,54 @@ export default function OrdersPage() {
                 <div>
                   <label className="label-text block mb-1.5">Payment Terms</label>
                   <select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field">
-                    <option value="cod">COD</option>
-                    <option value="7_days">7 Days</option>
-                    <option value="14_days">14 Days</option>
-                    <option value="30_days">30 Days</option>
+                    <option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option>
                   </select>
                 </div>
               </div>
+
+              {formData.customerId > 0 && (customerSpecialPrices || []).length > 0 && (
+                <div className="p-3 rounded-lg flex items-center gap-2" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.15)" }}>
+                  <Tag className="w-4 h-4 text-[#D4A843]" />
+                  <span className="text-sm text-[#D4A843] font-body">This customer has {(customerSpecialPrices || []).length} special price(s) that will be applied automatically</span>
+                </div>
+              )}
+
               <div>
                 <label className="label-text block mb-1.5">Items</label>
-                {formData.items.map((item, index) => (
-                  <div key={index} className="flex gap-3 mb-2">
-                    <select value={item.stockItemId} onChange={(e) => handleUpdateItem(index, "stockItemId", parseInt(e.target.value))} className="input-field flex-1">
-                      <option value={0}>Select product...</option>
-                      {(stockItems || []).map((s) => <option key={s.id} value={s.id}>{s.productName} (R {Number(s.unitPrice).toFixed(2)})</option>)}
-                    </select>
-                    <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-24" min={1} />
-                    <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
-                  </div>
-                ))}
+                {formData.items.map((item, index) => {
+                  const effectivePrice = getItemPrice(item.stockItemId);
+                  const stockItem = (stockItems || []).find((s) => s.id === item.stockItemId);
+                  const hasSpecialPrice = item.stockItemId > 0 && effectivePrice < Number(stockItem?.unitPrice || 0);
+                  return (
+                    <div key={index} className="flex gap-3 mb-2 items-end">
+                      <select value={item.stockItemId} onChange={(e) => handleUpdateItem(index, "stockItemId", parseInt(e.target.value))} className="input-field flex-1">
+                        <option value={0}>Select product...</option>
+                        {(stockItems || []).map((s) => <option key={s.id} value={s.id}>{s.productName} (Std: R {Number(s.unitPrice).toFixed(2)})</option>)}
+                      </select>
+                      <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} />
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.unitPrice || effectivePrice || ""}
+                          onChange={(e) => handleUpdateItem(index, "unitPrice", parseFloat(e.target.value) || 0)}
+                          className="input-field w-28"
+                          placeholder="Price"
+                          min={0}
+                        />
+                        {hasSpecialPrice && !item.unitPrice && (
+                          <span className="absolute -top-2 -right-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: "#D4A843", color: "#0A0A0B" }}>SP</span>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
+                    </div>
+                  );
+                })}
                 <button type="button" onClick={handleAddItem} className="btn-secondary text-xs mt-2"><Plus className="w-3 h-3" /> Add Item</button>
               </div>
-              <div>
-                <label className="label-text block mb-1.5">Delivery Address</label>
-                <textarea value={formData.deliveryAddress} onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })} className="input-field" rows={2} />
-              </div>
-              <div>
-                <label className="label-text block mb-1.5">Notes</label>
-                <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={2} />
-              </div>
+
+              <div><label className="label-text block mb-1.5">Delivery Address</label><textarea value={formData.deliveryAddress} onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })} className="input-field" rows={2} /></div>
+              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={2} /></div>
               <button type="submit" className="btn-primary w-full justify-center">Place Order</button>
             </form>
           </div>

@@ -69,7 +69,7 @@ export type StockItem = typeof stockItems.$inferSelect;
 // ─── Customers ──────────────────────────────────────────
 export const customers = mysqlTable("customers", {
   id: serial("id").primaryKey(),
-  customerCode: varchar("customerCode", { length: 50 }).notNull().unique(),
+  customerCode: varchar("customerCode", { length: 50 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   businessName: varchar("businessName", { length: 255 }),
   contactPerson: varchar("contactPerson", { length: 255 }),
@@ -220,3 +220,16 @@ export const checkIns = mysqlTable("check_ins", {
 });
 
 export type CheckIn = typeof checkIns.$inferSelect;
+
+// ─── Customer Special Prices ────────────────────────────
+export const customerSpecialPrices = mysqlTable("customer_special_prices", {
+  id: serial("id").primaryKey(),
+  customerId: bigint("customerId", { mode: "number", unsigned: true }).notNull(),
+  stockItemId: bigint("stockItemId", { mode: "number", unsigned: true }).notNull(),
+  specialPrice: decimal("specialPrice", { precision: 10, scale: 2 }).notNull(),
+  createdBy: bigint("createdBy", { mode: "number", unsigned: true }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+export type CustomerSpecialPrice = typeof customerSpecialPrices.$inferSelect;

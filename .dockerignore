@@ -1,5 +1,13 @@
 node_modules
-dist
+npm-debug.log
+.env
 .git
-*.swp
-*.log
+.cache
+dist
+*.md
+*.test.ts
+*.test.tsx
+vitest.config.ts
+.eslintrc
+.prettierrc
+.editorconfig

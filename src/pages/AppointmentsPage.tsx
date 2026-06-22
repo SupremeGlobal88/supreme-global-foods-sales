@@ -109,8 +109,9 @@ export default function AppointmentsPage() {
             {apptStats?.total || 0} appointments &middot; {apptStats?.today || 0} today &middot; {checkinStats?.total || 0} check-ins total
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <button onClick={handleGetLocation} className="btn-secondary"><Navigation className="w-4 h-4" /> {geoLocation ? "Location Ready" : "Get Location"}</button>
+          <button onClick={() => { setManualMode(true); setGeoError("Tap 'Apply' after entering the customer's GPS coordinates from Google Maps or your phone."); }} className="btn-secondary" style={{ borderColor: "#8A8B8C", color: "#8A8B8C" }}><Edit3 className="w-4 h-4" /> Enter Manually</button>
           <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
         </div>
       </div>
@@ -148,11 +149,9 @@ export default function AppointmentsPage() {
 
       {/* Manual GPS Entry Fallback */}
       {geoError && (
-        <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
-          <p className="text-sm text-[#EF4444] font-body">{geoError}</p>
-          {!manualMode ? (
-            <button onClick={() => setManualMode(true)} className="btn-secondary text-xs"><Edit3 className="w-3 h-3" /> Enter Coordinates Manually</button>
-          ) : (
+        <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: geoError.includes("Tap 'Apply'") ? "rgba(212, 168, 67, 0.08)" : "rgba(239, 68, 68, 0.08)", border: `1px solid ${geoError.includes("Tap 'Apply'") ? "rgba(212, 168, 67, 0.2)" : "rgba(239, 68, 68, 0.2)"}` }}>
+          <p className="text-sm font-body" style={{ color: geoError.includes("Tap 'Apply'") ? "#D4A843" : "#EF4444" }}>{geoError}</p>
+          {manualMode && (
             <div className="flex flex-col sm:flex-row gap-3 items-end">
               <div className="flex-1">
                 <label className="label-text block mb-1 text-xs">Latitude</label>

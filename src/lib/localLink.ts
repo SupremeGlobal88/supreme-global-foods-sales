@@ -33,6 +33,7 @@ export function createLocalLink() {
               case "order.list": result = dataService.order.list(); break;
               case "order.getById": result = dataService.order.getById(input); break;
               case "order.create": result = dataService.order.create(input); break;
+              case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); break; }
               case "order.updateStatus": result = dataService.order.updateStatus(input); break;
               case "order.getStats": result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
@@ -44,8 +45,10 @@ export function createLocalLink() {
               case "appointment.list": result = dataService.appointment.list(); break;
               case "appointment.create": result = dataService.appointment.create(input); break;
               case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); break;
-              case "checkin.list": result = dataService.checkin.list(); break;
-              case "checkin.create": result = dataService.checkin.create(input); break;
+              case "appointment.getStats": result = dataService.appointment.getStats(); break;
+              case "checkIn.list": result = dataService.checkin.list(); break;
+              case "checkIn.create": result = dataService.checkin.create(input); break;
+              case "checkIn.getStats": result = dataService.checkin.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;

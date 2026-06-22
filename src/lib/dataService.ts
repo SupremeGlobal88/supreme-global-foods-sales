@@ -193,8 +193,16 @@ export const dataService = {
   },
 
   order: {
-    list: () => orders,
-    getById: (id: number) => orders.find((o) => o.id === id) || null,
+    list: () => orders.map((o) => {
+      const customer = customers.find((c) => c.id === o.customerId);
+      return { ...o, customer: customer || null };
+    }),
+    getById: (id: number) => {
+      const order = orders.find((o) => o.id === id);
+      if (!order) return null;
+      const customer = customers.find((c) => c.id === order.customerId);
+      return { ...order, customer: customer || null };
+    },
     create: (data: any) => {
       const isSample = data.orderType === "sample";
       const orderNumber = `${isSample ? "SMP" : "ORD"}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(orders.filter((o) => (isSample ? o.orderType === "sample" : o.orderType !== "sample")).length + 1).padStart(4, "0")}`;
@@ -281,12 +289,50 @@ export const dataService = {
 
       return newOrder;
     },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = orders.findIndex((o) => o.id === id);
+      if (idx >= 0) {
+        const oldOrder = orders[idx];
+        // RESTORE old stock first
+        for (const item of (oldOrder.items || [])) {
+          const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
+          if (prodIdx >= 0) {
+            const newQty = (products[prodIdx].quantity || 0) + item.quantity;
+            products[prodIdx].quantity = newQty;
+            products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+          }
+        }
+        // Apply new items with fresh calculations
+        const isSample = data.orderType === "sample";
+        const items = (data.items || []).map((item: any) => {
+          const product = products.find((p) => p.id === item.stockItemId);
+          const unitPrice = isSample ? 0 : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
+          return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice };
+        });
+        const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
+        const vatAmount = isSample ? 0 : subtotal * 0.15;
+        const total = isSample ? 0 : subtotal + vatAmount;
+        // DEDUCT new stock
+        for (const item of items) {
+          const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
+          if (prodIdx >= 0) {
+            const newQty = Math.max(0, (products[prodIdx].quantity || 0) - item.quantity);
+            products[prodIdx].quantity = newQty;
+            products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+          }
+        }
+        orders[idx] = { ...oldOrder, ...data, items, subtotal, vatAmount, total, totalAmount: total, updatedAt: new Date().toISOString() };
+        saveItem("sgf_products", products);
+        saveItem("sgf_orders", orders);
+        return orders[idx];
+      }
+      return null;
+    },
     updateStatus: ({ id, status }: { id: number; status: string }) => {
       const idx = orders.findIndex((o) => o.id === id);
       if (idx >= 0) {
         const oldStatus = orders[idx].status;
         orders[idx].status = status;
-
         // RESTORE STOCK when order is delivered or cancelled
         if ((status === "delivered" || status === "cancelled") && oldStatus !== "delivered" && oldStatus !== "cancelled") {
           for (const item of (orders[idx].items || [])) {
@@ -299,7 +345,6 @@ export const dataService = {
           }
           saveItem("sgf_products", products);
         }
-
         saveItem("sgf_orders", orders);
         return orders[idx];
       }
@@ -343,9 +388,17 @@ export const dataService = {
   },
 
   appointment: {
-    list: () => appointments,
+    list: () => appointments.map((a) => ({
+      ...a,
+      customer: customers.find((c) => c.id === a.customerId) || null,
+    })),
     create: (data: any) => {
-      const newItem = { ...data, id: Date.now(), status: "scheduled", createdAt: new Date().toISOString() };
+      const newItem = { ...data, id: Date.now(), status: "scheduled", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      // Auto-populate salesRepName from customer if not provided
+      if (!newItem.salesRepName && newItem.customerId) {
+        const cust = customers.find((c) => c.id === newItem.customerId);
+        if (cust?.salesRepName) newItem.salesRepName = cust.salesRepName;
+      }
       appointments.push(newItem);
       saveItem("sgf_appointments", appointments);
       return newItem;
@@ -355,16 +408,38 @@ export const dataService = {
       if (idx >= 0) { appointments[idx].status = status; saveItem("sgf_appointments", appointments); return appointments[idx]; }
       return null;
     },
+    getStats: () => ({
+      total: appointments.length,
+      today: appointments.filter((a) => new Date(a.appointmentDate).toDateString() === new Date().toDateString()).length,
+      completed: appointments.filter((a) => a.status === "completed").length,
+      inProgress: appointments.filter((a) => a.status === "in_progress").length,
+    }),
   },
 
   checkin: {
-    list: () => checkins,
+    list: () => checkins.map((ci) => ({
+      ...ci,
+      customer: customers.find((c) => c.id === ci.customerId) || null,
+    })),
     create: (data: any) => {
-      const newItem = { ...data, id: Date.now(), createdAt: new Date().toISOString() };
+      const newItem = { ...data, id: Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      // Auto-populate salesRepName from customer if not provided
+      if (!newItem.salesRepName && newItem.customerId) {
+        const cust = customers.find((c) => c.id === newItem.customerId);
+        if (cust?.salesRepName) newItem.salesRepName = cust.salesRepName;
+      }
+      // If notes contains location info, also store it as location
+      if (newItem.notes && !newItem.location) {
+        newItem.location = newItem.notes;
+      }
       checkins.push(newItem);
       saveItem("sgf_checkins", checkins);
       return newItem;
     },
+    getStats: () => ({
+      total: checkins.length,
+      today: checkins.filter((ci) => new Date(ci.createdAt).toDateString() === new Date().toDateString()).length,
+    }),
   },
 
   specialPrice: {
@@ -425,11 +500,15 @@ export const dataService = {
       // Show ALL pending follow-ups (sales rep needs to action them)
       return followUps
         .filter((fu) => fu.status === "pending")
-        .map((fu) => ({
-          ...fu,
-          customer: customers.find((c) => c.id === fu.customerId) || null,
-          order: orders.find((o) => o.id === fu.orderId) || null,
-        }));
+        .map((fu) => {
+          const order = orders.find((o) => o.id === fu.orderId);
+          const customer = customers.find((c) => c.id === fu.customerId);
+          return {
+            ...fu,
+            customer: customer || null,
+            order: order ? { ...order, customer: customer || null } : null,
+          };
+        });
     },
     update: ({ id, status, reason, expectedOrderDate }: { id: number; status: string; reason?: string; expectedOrderDate?: string }) => {
       const idx = followUps.findIndex((fu) => fu.id === id);

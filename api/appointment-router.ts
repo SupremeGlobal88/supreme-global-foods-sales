@@ -124,4 +124,18 @@ export const appointmentRouter = createRouter({
       : and(eq(appointments.salesRepId, userId), gte(appointments.appointmentDate, today));
     return db.select().from(appointments).where(cond).orderBy(appointments.appointmentDate, appointments.startTime).limit(10);
   }),
+
+  getStats: authedQuery.query(async ({ ctx }) => {
+    const db = getDb();
+    const allAppts = ctx.user.role === "admin"
+      ? await db.select().from(appointments)
+      : await db.select().from(appointments).where(eq(appointments.salesRepId, ctx.user.id));
+    const today = new Date().toDateString();
+    return {
+      total: allAppts.length,
+      today: allAppts.filter((a) => new Date(a.appointmentDate).toDateString() === today).length,
+      completed: allAppts.filter((a) => a.status === "completed").length,
+      inProgress: allAppts.filter((a) => a.status === "in_progress").length,
+    };
+  }),
 });

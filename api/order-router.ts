@@ -132,8 +132,26 @@ export const orderRouter = createRouter({
       return { id: orderId, orderNumber, total: total.toFixed(2) };
     }),
 
+  update: authedQuery
+    .input(z.object({
+      id: z.number(),
+      customerId: z.number().optional(),
+      orderType: z.enum(["regular", "sample"]).optional(),
+      paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]).optional(),
+      priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).optional(),
+      deliveryAddress: z.string().optional(),
+      notes: z.string().optional(),
+      items: z.array(z.object({ stockItemId: z.number(), quantity: z.number(), unitPrice: z.number().optional() })).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      const db = getDb();
+      await db.update(orders).set(data).where(eq(orders.id, id));
+      return { success: true };
+    }),
+
   updateStatus: adminQuery
-    .input(z.object({ id: z.number(), status: z.enum(["pending", "picking", "ready", "delivered", "cancelled"]) }))
+    .input(z.object({ id: z.number(), status: z.enum(["pending", "picking", "ready", "delivered", "cancelled", "sample_delivered"]) }))
     .mutation(async ({ input }) => {
       const db = getDb();
       await db.update(orders).set({ status: input.status }).where(eq(orders.id, input.id));

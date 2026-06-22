@@ -1,277 +1,287 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import {
-  Calendar,
-  Plus,
-  X,
-  MapPin,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Play,
-  Navigation,
-  LocateFixed,
+  Plus, X, MapPin, Clock, CheckCircle, Calendar,
+  Navigation, User, Filter, Radio,
 } from "lucide-react";
 
 export default function AppointmentsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [view, setView] = useState<"calendar" | "checkins">("calendar");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [checkInLoading, setCheckInLoading] = useState(false);
-  const [checkInResult, setCheckInResult] = useState<{
-    latitude: number;
-    longitude: number;
-    address?: string;
-    accuracy?: number;
-  } | null>(null);
+  const [formData, setFormData] = useState({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 16), startTime: "09:00", location: "" });
+  const [geoLocation, setGeoLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoError, setGeoError] = useState("");
+  const [filterRep, setFilterRep] = useState<string>("all");
 
   const { data: appointments } = trpc.appointment.list.useQuery();
-  const { data: checkIns } = trpc.checkIn.list.useQuery();
+  const { data: checkins } = trpc.checkIn.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
+  const { data: apptStats } = trpc.appointment.getStats.useQuery();
+  const { data: checkinStats } = trpc.checkIn.getStats.useQuery();
 
   const createAppointment = trpc.appointment.create.useMutation({
-    onSuccess: () => { utils.appointment.list.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: () => { utils.appointment.list.invalidate(); utils.appointment.getStats.invalidate(); setShowForm(false); setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10), startTime: "09:00", location: "" }); },
   });
-  const updateAppointment = trpc.appointment.update.useMutation({
-    onSuccess: () => { utils.appointment.list.invalidate(); setShowForm(false); setEditingId(null); },
-  });
-  const createCheckIn = trpc.checkIn.create.useMutation({
-    onSuccess: () => { utils.checkIn.list.invalidate(); setCheckInResult(null); },
+  const createCheckin = trpc.checkIn.create.useMutation({
+    onSuccess: () => { utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate(); setGeoLocation(null); },
   });
 
-  const [formData, setFormData] = useState({
-    customerId: 0,
-    customerName: "",
-    title: "",
-    description: "",
-    appointmentDate: selectedDate,
-    startTime: "09:00",
-    endTime: "10:00",
-    location: "",
-    latitude: 0,
-    longitude: 0,
-    reminder: "none" as "none" | "15_min" | "30_min" | "1_hour",
-    notes: "",
-  });
+  // Filter: admin sees all, sales rep sees own. Filter dropdown further narrows.
+  const myAppointments = isAdmin
+    ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
+    : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
 
-  function resetForm() {
-    setFormData({
-      customerId: 0, customerName: "", title: "", description: "",
-      appointmentDate: selectedDate, startTime: "09:00", endTime: "10:00",
-      location: "", latitude: 0, longitude: 0, reminder: "none", notes: "",
-    });
-  }
+  const myCheckins = isAdmin
+    ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
+    : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
 
-  function handleCheckIn() {
-    setCheckInLoading(true);
+  function handleGetLocation() {
+    setGeoError("");
+    if (!navigator.geolocation) { setGeoError("Geolocation not supported"); return; }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCheckInLoading(false);
-        setCheckInResult({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        });
-      },
-      (error) => {
-        setCheckInLoading(false);
-        console.error("Geolocation error:", error);
-        alert("Could not get location. Please enable location services.");
-      },
+      (pos) => { setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+      (err) => { setGeoError(err.message || "Unable to get location"); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }
 
-  function confirmCheckIn() {
-    if (!checkInResult) return;
-    createCheckIn.mutate({
-      latitude: checkInResult.latitude,
-      longitude: checkInResult.longitude,
-      accuracy: checkInResult.accuracy,
-      address: checkInResult.address,
+  function handleCheckin(customerId: number) {
+    if (!geoLocation) { handleGetLocation(); return; }
+    const customer = (customers || []).find((c) => c.id === customerId);
+    createCheckin.mutate({
+      customerId,
+      latitude: geoLocation.lat,
+      longitude: geoLocation.lng,
+      notes: customer?.physicalAddress || "",
+      salesRepName: myRepName,
     });
   }
 
-  function getStatusColor(status: string) {
-    switch (status) {
-      case "completed": return "#4ADE80";
-      case "in_progress": return "#6366F1";
-      case "cancelled": return "#EF4444";
-      default: return "#D4A843";
-    }
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (formData.customerId === 0) { alert("Select a customer"); return; }
+    createAppointment.mutate({ ...formData, salesRepName: myRepName });
   }
 
-  const todaysAppointments = (appointments || []).filter((a) => {
-    const d = new Date(a.appointmentDate);
-    const today = new Date(selectedDate);
-    return d.toDateString() === today.toDateString();
-  });
-
-  const todaysCheckIns = (checkIns || []).filter((ci) => {
-    const d = new Date(ci.checkInTime);
-    const today = new Date();
-    return d.toDateString() === today.toDateString();
-  });
+  // Group appointments by status
+  const upcoming = myAppointments.filter((a: any) => a.status === "scheduled");
+  const inProgress = myAppointments.filter((a: any) => a.status === "in_progress");
+  const completed = myAppointments.filter((a: any) => a.status === "completed");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>
-            Appointments & Check-In
-          </h1>
+          <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Appointments</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">
-            {(appointments || []).length} appointments &middot; {(checkIns || []).length} check-ins
+            {apptStats?.total || 0} appointments &middot; {apptStats?.today || 0} today &middot; {checkinStats?.total || 0} check-ins total
           </p>
         </div>
         <div className="flex gap-3">
-          <div className="flex p-1 rounded-full" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
-            <button onClick={() => setView("calendar")} className="px-4 py-2 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: view === "calendar" ? "#D4A843" : "transparent", color: view === "calendar" ? "#0A0A0B" : "#8A8B8C" }}>Calendar</button>
-            <button onClick={() => setView("checkins")} className="px-4 py-2 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: view === "checkins" ? "#D4A843" : "transparent", color: view === "checkins" ? "#0A0A0B" : "#8A8B8C" }}>Check-Ins</button>
-          </div>
-          <button onClick={() => { setShowForm(true); resetForm(); setEditingId(null); }} className="btn-primary"><Plus className="w-4 h-4" /> New Appointment</button>
+          <button onClick={handleGetLocation} className="btn-secondary"><Navigation className="w-4 h-4" /> {geoLocation ? "Location Ready" : "Get Location"}</button>
+          <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
         </div>
       </div>
 
-      {view === "calendar" && (
-        <>
-          <div className="card-surface p-4 flex items-center gap-4">
-            <Calendar className="w-5 h-5 text-[#D4A843]" />
-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="input-field w-auto" />
-            <button onClick={() => setSelectedDate(new Date().toISOString().slice(0, 10))} className="btn-secondary text-xs">Today</button>
-          </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="card-surface p-4"><div className="label-text mb-1">TOTAL APPOINTMENTS</div><div className="stat-number">{apptStats?.total || 0}</div></div>
+        <div className="card-surface p-4"><div className="label-text mb-1">TODAY</div><div className="stat-number" style={{ color: "#D4A843" }}>{apptStats?.today || 0}</div></div>
+        <div className="card-surface p-4"><div className="label-text mb-1">IN PROGRESS</div><div className="stat-number" style={{ color: "#6366F1" }}>{apptStats?.inProgress || 0}</div></div>
+        <div className="card-surface p-4"><div className="label-text mb-1">CHECK-INS TODAY</div><div className="stat-number" style={{ color: "#4ADE80" }}>{checkinStats?.today || 0}</div></div>
+      </div>
 
-          <div className="card-surface p-6">
-            <h3 className="font-display font-semibold text-white mb-4 flex items-center gap-2">
-              <LocateFixed className="w-5 h-5 text-[#D4A843]" /> Geo Check-In
-            </h3>
-            {!checkInResult ? (
-              <button onClick={handleCheckIn} disabled={checkInLoading} className="btn-primary w-full justify-center py-4" style={{ animation: checkInLoading ? "none" : "pulse-gold 2s infinite" }}>
-                {checkInLoading ? <><div className="w-5 h-5 border-2 border-[#0A0A0B] border-t-transparent rounded-full animate-spin mr-2" /> Getting location...</> : <><Navigation className="w-5 h-5 mr-2" /> Check In at Current Location</>}
-              </button>
-            ) : (
-              <div className="p-4 rounded-lg" style={{ backgroundColor: "rgba(74, 222, 128, 0.08)", border: "1px solid rgba(74, 222, 128, 0.2)" }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <MapPin className="w-5 h-5 text-[#4ADE80]" />
-                  <span className="text-white font-body">Location captured successfully</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-                  <div className="p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}><div className="label-text">Latitude</div><div className="text-white font-mono-data">{checkInResult.latitude.toFixed(6)}</div></div>
-                  <div className="p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}><div className="label-text">Longitude</div><div className="text-white font-mono-data">{checkInResult.longitude.toFixed(6)}</div></div>
-                  {checkInResult.accuracy && <div className="p-2 rounded col-span-2" style={{ backgroundColor: "#0A0A0B" }}><div className="label-text">Accuracy</div><div className="text-white font-mono-data">{Math.round(checkInResult.accuracy)} meters</div></div>}
-                </div>
-                <div className="flex gap-3">
-                  <button onClick={confirmCheckIn} className="btn-primary flex-1 justify-center"><CheckCircle className="w-4 h-4" /> Confirm Check-In</button>
-                  <button onClick={() => setCheckInResult(null)} className="btn-secondary"><X className="w-4 h-4" /> Cancel</button>
-                </div>
-              </div>
-            )}
+      {/* Sales Rep Filter — Admin Only */}
+      {isAdmin && (
+        <div className="card-surface p-4">
+          <div className="flex items-center gap-3">
+            <Filter className="w-4 h-4 text-[#8A8B8C]" />
+            <label className="label-text">Filter by Sales Rep:</label>
+            <select value={filterRep} onChange={(e) => setFilterRep(e.target.value)} className="input-field w-auto">
+              <option value="all">All Sales Reps</option>
+              {(salesReps || []).map((rep: string) => <option key={rep} value={rep}>{rep}</option>)}
+            </select>
           </div>
-
-          <div>
-            <h3 className="font-display font-semibold text-white mb-4">
-              Appointments for {new Date(selectedDate).toLocaleDateString("en-ZA", { weekday: "long", day: "numeric", month: "long" })}
-            </h3>
-            {todaysAppointments.length === 0 ? (
-              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />No appointments for this date</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {todaysAppointments.map((appt) => (
-                  <div key={appt.id} className="card-surface p-5" style={{ borderLeft: `3px solid ${getStatusColor(appt.status)}` }}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-display font-medium text-white">{appt.title}</h4>
-                        <p className="text-sm text-[#8A8B8C] font-body">{appt.customerName || "No customer"}</p>
-                      </div>
-                      <span className="status-badge text-xs" style={{ backgroundColor: `${getStatusColor(appt.status)}20`, color: getStatusColor(appt.status) }}>{appt.status}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-[#8A8B8C] mb-3">
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {appt.startTime}{appt.endTime ? ` - ${appt.endTime}` : ""}</span>
-                      {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {appt.location}</span>}
-                    </div>
-                    {appt.description && <p className="text-sm text-[#8A8B8C] font-body mb-3">{appt.description}</p>}
-                    <div className="flex gap-2">
-                      {appt.status === "scheduled" && <button onClick={() => updateAppointment.mutate({ id: appt.id, status: "in_progress" })} className="btn-primary text-xs"><Play className="w-3 h-3" /> Start</button>}
-                      {appt.status === "in_progress" && <button onClick={() => updateAppointment.mutate({ id: appt.id, status: "completed" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Complete</button>}
-                      {appt.status !== "cancelled" && <button onClick={() => updateAppointment.mutate({ id: appt.id, status: "cancelled" })} className="btn-secondary text-xs hover:text-[#EF4444]"><XCircle className="w-3 h-3" /> Cancel</button>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {view === "checkins" && (
-        <div>
-          <h3 className="font-display font-semibold text-white mb-4">Today's Check-Ins</h3>
-          {todaysCheckIns.length === 0 ? (
-            <div className="card-surface p-8 text-center text-[#8A8B8C] font-body"><MapPin className="w-12 h-12 mx-auto mb-3 opacity-30" />No check-ins today</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {todaysCheckIns.map((ci) => (
-                <div key={ci.id} className="card-surface p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)" }}>
-                      <CheckCircle className="w-5 h-5 text-[#4ADE80]" />
-                    </div>
-                    <div>
-                      <h4 className="font-display font-medium text-white text-sm">{ci.customerName || "Check-In"}</h4>
-                      <p className="text-xs text-[#8A8B8C] font-body">{new Date(ci.checkInTime).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}><div className="label-text">Lat</div><div className="text-white font-mono-data">{Number(ci.latitude).toFixed(5)}</div></div>
-                    <div className="p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}><div className="label-text">Lng</div><div className="text-white font-mono-data">{Number(ci.longitude).toFixed(5)}</div></div>
-                  </div>
-                  {ci.accuracy && <div className="text-xs text-[#8A8B8C]">Accuracy: {Math.round(ci.accuracy)}m</div>}
-                  {ci.address && <div className="text-xs text-[#8A8B8C] mt-1">{ci.address}</div>}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
+      {/* Geo Status */}
+      {geoLocation && (
+        <div className="p-3 rounded-lg flex items-center gap-2" style={{ backgroundColor: "rgba(74, 222, 128, 0.08)", border: "1px solid rgba(74, 222, 128, 0.2)" }}>
+          <Radio className="w-4 h-4 text-[#4ADE80] animate-pulse" />
+          <span className="text-sm text-[#4ADE80] font-body">GPS Active: {geoLocation.lat.toFixed(6)}, {geoLocation.lng.toFixed(6)}</span>
+          <a href={`https://www.google.com/maps?q=${geoLocation.lat},${geoLocation.lng}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] ml-2 underline">View on Map</a>
+        </div>
+      )}
+      {geoError && <div className="p-3 rounded-lg text-sm text-[#EF4444]" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)" }}>{geoError}</div>}
+
+      {/* Check-ins Section */}
+      <div>
+        <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-[#4ADE80]" /> Geo Check-ins</h2>
+        {myCheckins.length === 0 ? (
+          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No check-ins yet. Click "Get Location" then check in at a customer.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {myCheckins.map((ci: any) => (
+              <div key={ci.id} className="card-surface p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <User className="w-4 h-4 text-[#D4A843]" />
+                      <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
+                    </div>
+                    <div className="text-sm text-[#E8E8E9] font-body mb-1">{ci.customer?.name || "Unknown Customer"}</div>
+                    {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-[#8A8B8C]">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
+                    <div className="text-xs text-[#8A8B8C] font-mono-data">{new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                </div>
+                {ci.latitude && ci.longitude && (
+                  <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
+                      <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Appointments Section */}
+      <div>
+        <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><Calendar className="w-5 h-5 text-[#D4A843]" /> Scheduled Appointments</h2>
+
+        {/* In Progress */}
+        {inProgress.length > 0 && (
+          <div className="mb-4">
+            <h3 className="label-text mb-2" style={{ color: "#6366F1" }}>IN PROGRESS</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {inProgress.map((appt: any) => (
+                <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #6366F1" }}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <User className="w-3 h-3 text-[#D4A843]" />
+                        <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                      </div>
+                      <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                    </div>
+                    <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                    {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                  </div>
+                  {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => { if (geoLocation) handleCheckin(appt.customerId); else handleGetLocation(); }} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
+                    <button onClick={() => {/* complete */}} className="btn-secondary text-xs"><CheckCircle className="w-3 h-3" /> Complete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming */}
+        {upcoming.length > 0 && (
+          <div className="mb-4">
+            <h3 className="label-text mb-2" style={{ color: "#F59E0B" }}>UPCOMING</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {upcoming.map((appt: any) => (
+                <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <User className="w-3 h-3 text-[#D4A843]" />
+                        <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                      </div>
+                      <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                    </div>
+                    <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                    {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                  </div>
+                  {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => { if (geoLocation) handleCheckin(appt.customerId); else handleGetLocation(); }} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
+                    <button onClick={() => {/* mark in progress */}} className="btn-secondary text-xs"><Radio className="w-3 h-3" /> Start</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Completed */}
+        {completed.length > 0 && (
+          <div>
+            <h3 className="label-text mb-2" style={{ color: "#4ADE80" }}>COMPLETED</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {completed.map((appt: any) => (
+                <div key={appt.id} className="card-surface p-4 opacity-60" style={{ borderLeft: "3px solid #4ADE80" }}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <User className="w-3 h-3 text-[#D4A843]" />
+                        <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                      </div>
+                      <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                    </div>
+                    <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Completed</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                    {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {myAppointments.length === 0 && (
+          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No appointments scheduled.</div>
+        )}
+      </div>
+
+      {/* Schedule Form */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-8 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-white text-xl">{editingId ? "Edit" : "New"} Appointment</h2>
-              <button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
-            </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const data = { ...formData, customerId: formData.customerId || undefined };
-              if (editingId) { updateAppointment.mutate({ id: editingId, ...data }); }
-              else { createAppointment.mutate(data); }
-            }} className="space-y-4">
+          <div className="card-surface p-8 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-6"><h2 className="font-display font-semibold text-white text-xl">Schedule Appointment</h2><button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button></div>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="label-text block mb-1.5">Customer</label>
-                <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field">
-                  <option value={0}>Select customer (optional)...</option>
+                <label className="label-text block mb-1.5">Customer *</label>
+                <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
+                  <option value={0}>Select customer...</option>
                   {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required /></div>
-              <div><label className="label-text block mb-1.5">Description</label><textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="input-field" rows={2} /></div>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="label-text block mb-1.5">Date</label><input type="date" value={formData.appointmentDate} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })} className="input-field" required /></div>
-                <div><label className="label-text block mb-1.5">Start</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
-                <div><label className="label-text block mb-1.5">End</label><input type="time" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} className="input-field" /></div>
+              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + 'T' + formData.startTime })} className="input-field" required /></div>
+                <div><label className="label-text block mb-1.5">Start Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
               </div>
-              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g., 123 Main St, Germiston" /></div>
-              <div><label className="label-text block mb-1.5">Reminder</label>
-                <select value={formData.reminder} onChange={(e) => setFormData({ ...formData, reminder: e.target.value as "none" | "15_min" | "30_min" | "1_hour" })} className="input-field">
-                  <option value="none">None</option><option value="15_min">15 minutes before</option><option value="30_min">30 minutes before</option><option value="1_hour">1 hour before</option>
-                </select>
-              </div>
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={2} /></div>
-              <button type="submit" className="btn-primary w-full justify-center">{editingId ? "Update" : "Save"} Appointment</button>
+              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
+              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} /></div>
+              <button type="submit" className="btn-primary w-full justify-center">Schedule</button>
             </form>
           </div>
         </div>

@@ -56,4 +56,16 @@ export const checkInRouter = createRouter({
       : await db.select().from(checkIns).where(eq(checkIns.salesRepId, userId)).orderBy(desc(checkIns.checkInTime));
     return allCheckIns.filter((ci) => new Date(ci.checkInTime) >= today);
   }),
+
+  getStats: authedQuery.query(async ({ ctx }) => {
+    const db = getDb();
+    const allCheckIns = ctx.user.role === "admin"
+      ? await db.select().from(checkIns)
+      : await db.select().from(checkIns).where(eq(checkIns.salesRepId, ctx.user.id));
+    const today = new Date().toDateString();
+    return {
+      total: allCheckIns.length,
+      today: allCheckIns.filter((ci) => new Date(ci.checkInTime).toDateString() === today).length,
+    };
+  }),
 });

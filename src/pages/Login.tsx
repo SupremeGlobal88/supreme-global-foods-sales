@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { Globe, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Globe, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 import gsap from "gsap";
+
+const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,6 +13,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<"sales" | "admin">("sales");
+  const [selectedRep, setSelectedRep] = useState(SALES_REPS[0]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -58,7 +61,7 @@ export default function Login() {
     try {
       localStorage.setItem("demo_user", JSON.stringify({
         id: 1,
-        name: role === "admin" ? "Admin User" : "Sales Rep",
+        name: role === "admin" ? "Admin User" : selectedRep,
         email: email || "user@supreme.co.za",
         role: role === "admin" ? "admin" : "user",
       }));
@@ -102,6 +105,25 @@ export default function Login() {
               style={{ backgroundColor: role === "admin" ? "#D4A843" : "transparent", color: role === "admin" ? "#0A0A0B" : "#8A8B8C" }}
             >Admin</button>
           </div>
+
+          {/* Sales Rep Selector */}
+          {role === "sales" && (
+            <div className="mb-4">
+              <label className="label-text block mb-1.5">Select Your Name</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
+                <select
+                  value={selectedRep}
+                  onChange={(e) => setSelectedRep(e.target.value)}
+                  className="input-field pl-11"
+                >
+                  {SALES_REPS.map((rep) => (
+                    <option key={rep} value={rep}>{rep}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#EF4444" }}>

@@ -3,10 +3,10 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
-  Navigation, User, Filter, Radio, ExternalLink,
+  Navigation, User, Filter, Radio, ExternalLink, LogIn,
 } from "lucide-react";
 
-type CheckInTarget = { customerId: number; address: string } | null;
+type MapTarget = { customerId: number; address: string } | null;
 
 export default function AppointmentsPage() {
   const { user } = useAuth();
@@ -14,12 +14,24 @@ export default function AppointmentsPage() {
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
+  // Schedule form
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 16), startTime: "09:00", location: "" });
-  const [geoLocation, setGeoLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [scheduleMode, setScheduleMode] = useState<"existing" | "new">("existing");
+  const [formData, setFormData] = useState({
+    customerId: 0, title: "", notes: "",
+    appointmentDate: new Date().toISOString().slice(0, 16),
+    startTime: "09:00", location: "",
+  });
+  const [newCustomer, setNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "" });
+
+  // Check-in flow
+  const [showCheckinForm, setShowCheckinForm] = useState(false);
+  const [checkinCustomerId, setCheckinCustomerId] = useState(0);
+  const [checkinNotes, setCheckinNotes] = useState("");
+  const [mapTarget, setMapTarget] = useState<MapTarget>(null);
   const [geoError, setGeoError] = useState("");
+
   const [filterRep, setFilterRep] = useState<string>("all");
-  const [mapTarget, setMapTarget] = useState<CheckInTarget>(null);
 
   const { data: appointments } = trpc.appointment.list.useQuery();
   const { data: checkins } = trpc.checkIn.list.useQuery();
@@ -29,13 +41,21 @@ export default function AppointmentsPage() {
   const { data: checkinStats } = trpc.checkIn.getStats.useQuery();
 
   const createAppointment = trpc.appointment.create.useMutation({
-    onSuccess: () => { utils.appointment.list.invalidate(); utils.appointment.getStats.invalidate(); setShowForm(false); setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10), startTime: "09:00", location: "" }); },
+    onSuccess: () => {
+      utils.appointment.list.invalidate(); utils.appointment.getStats.invalidate();
+      setShowForm(false);
+      setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10), startTime: "09:00", location: "" });
+      setNewCustomer({ name: "", contactPerson: "", phone: "", address: "" });
+    },
   });
   const createCheckin = trpc.checkIn.create.useMutation({
-    onSuccess: () => { utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate(); setGeoLocation(null); setMapTarget(null); setGeoError(""); },
+    onSuccess: () => {
+      utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate();
+      setMapTarget(null); setGeoError(""); setShowCheckinForm(false); setCheckinCustomerId(0); setCheckinNotes("");
+    },
   });
 
-  // Filter: admin sees all, sales rep sees own. Filter dropdown further narrows.
+  // Filter: admin sees all, sales rep sees own
   const myAppointments = isAdmin
     ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
     : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
@@ -44,49 +64,53 @@ export default function AppointmentsPage() {
     ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
     : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
 
-  function handleGetLocation() {
-    setGeoError("");
+  // ===================== CHECK-IN FLOW =====================
+
+  function openCheckinForm() {
+    setShowCheckinForm(true);
+    setCheckinCustomerId(0);
+    setCheckinNotes("");
     setMapTarget(null);
-    if (!navigator.geolocation) {
-      setGeoError("GPS not available on this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError(""); },
-      (err) => { setGeoError(err.message || "Unable to get location"); },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+    setGeoError("");
   }
 
-  function initiateCheckin(customerId: number) {
-    const customer = (customers || []).find((c) => c.id === customerId);
+  function submitCheckinForm() {
+    if (checkinCustomerId === 0) { alert("Select a customer"); return; }
+    const customer = (customers || []).find((c) => c.id === checkinCustomerId);
     if (!customer) return;
-    // Try GPS first
+
+    // Try GPS
     setGeoError("");
     setMapTarget(null);
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          // GPS success — check in immediately with coords
-          setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          // GPS success
           createCheckin.mutate({
-            customerId,
+            customerId: checkinCustomerId,
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            notes: customer.physicalAddress || "",
+            notes: checkinNotes || customer.physicalAddress || "",
             salesRepName: myRepName,
           });
         },
         () => {
-          // GPS failed — show Google Maps of customer address for confirmation
-          setGeoLocation(null);
-          setMapTarget({ customerId, address: customer.physicalAddress || customer.name });
+          // GPS failed — show map
+          setGeoError("GPS unavailable — confirm location on map");
+          setMapTarget({
+            customerId: checkinCustomerId,
+            address: customer.physicalAddress || customer.name,
+          });
         },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      // No GPS at all — show map directly
-      setMapTarget({ customerId, address: customer.physicalAddress || customer.name });
+      setGeoError("GPS not available — confirm location on map");
+      setMapTarget({
+        customerId: checkinCustomerId,
+        address: customer.physicalAddress || customer.name,
+      });
     }
   }
 
@@ -95,41 +119,58 @@ export default function AppointmentsPage() {
     const customer = (customers || []).find((c) => c.id === mapTarget.customerId);
     createCheckin.mutate({
       customerId: mapTarget.customerId,
-      notes: customer?.physicalAddress || mapTarget.address,
+      notes: checkinNotes || customer?.physicalAddress || mapTarget.address,
       salesRepName: myRepName,
     });
   }
 
-  function handleCheckinWithGPS(customerId: number) {
-    if (!geoLocation) { handleGetLocation(); return; }
-    const customer = (customers || []).find((c) => c.id === customerId);
-    createCheckin.mutate({
-      customerId,
-      latitude: geoLocation.lat,
-      longitude: geoLocation.lng,
-      notes: customer?.physicalAddress || "",
-      salesRepName: myRepName,
-    });
-  }
+  // ===================== SCHEDULE APPOINTMENT =====================
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleScheduleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (formData.customerId === 0) { alert("Select a customer"); return; }
-    createAppointment.mutate({ ...formData, salesRepName: myRepName });
+
+    if (scheduleMode === "existing") {
+      if (formData.customerId === 0) { alert("Select a customer"); return; }
+      createAppointment.mutate({ ...formData, salesRepName: myRepName });
+    } else {
+      // New customer mode
+      if (!newCustomer.name.trim()) { alert("Enter customer name"); return; }
+      // Create appointment with typed-in customer details stored in notes
+      const detailLines = [
+        newCustomer.name && `Customer: ${newCustomer.name}`,
+        newCustomer.contactPerson && `Contact: ${newCustomer.contactPerson}`,
+        newCustomer.phone && `Phone: ${newCustomer.phone}`,
+        newCustomer.address && `Address: ${newCustomer.address}`,
+        formData.location && `Location: ${formData.location}`,
+        formData.notes && `Notes: ${formData.notes}`,
+      ].filter(Boolean).join("\n");
+
+      createAppointment.mutate({
+        ...formData,
+        customerId: 0,
+        title: formData.title || `Visit: ${newCustomer.name}`,
+        notes: detailLines,
+        salesRepName: myRepName,
+      });
+    }
   }
 
-  // Group appointments by status
+  // ===================== APPOINTMENT STATUS GROUPS =====================
+
   const upcoming = myAppointments.filter((a: any) => a.status === "scheduled");
   const inProgress = myAppointments.filter((a: any) => a.status === "in_progress");
   const completed = myAppointments.filter((a: any) => a.status === "completed");
 
-  // Build Google Maps embed URL for customer address
+  // ===================== GOOGLE MAPS URLS =====================
+
   const mapEmbedUrl = mapTarget
     ? `https://maps.google.com/maps?q=${encodeURIComponent(mapTarget.address)}&z=15&ie=UTF8&iwloc=&output=embed`
     : "";
   const mapLinkUrl = mapTarget
     ? `https://www.google.com/maps?q=${encodeURIComponent(mapTarget.address)}`
     : "";
+
+  // ===================== RENDER =====================
 
   return (
     <div className="space-y-6">
@@ -142,7 +183,9 @@ export default function AppointmentsPage() {
           </p>
         </div>
         <div className="flex gap-3 flex-wrap">
-          <button onClick={handleGetLocation} className="btn-secondary"><Navigation className="w-4 h-4" /> {geoLocation ? "GPS Ready" : "Get Location"}</button>
+          <button onClick={openCheckinForm} className="btn-primary" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}>
+            <LogIn className="w-4 h-4" /> Check In at Location
+          </button>
           <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
         </div>
       </div>
@@ -169,43 +212,56 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* GPS Active Banner */}
-      {geoLocation && (
-        <div className="p-3 rounded-lg flex items-center gap-2" style={{ backgroundColor: "rgba(74, 222, 128, 0.08)", border: "1px solid rgba(74, 222, 128, 0.2)" }}>
-          <Radio className="w-4 h-4 text-[#4ADE80] animate-pulse" />
-          <span className="text-sm text-[#4ADE80] font-body">GPS Active: {geoLocation.lat.toFixed(6)}, {geoLocation.lng.toFixed(6)}</span>
-          <a href={`https://www.google.com/maps?q=${geoLocation.lat},${geoLocation.lng}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] ml-2 underline">View on Map</a>
-        </div>
-      )}
+      {/* Check-in Form Modal */}
+      {showCheckinForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><LogIn className="w-5 h-5 text-[#4ADE80]" /> Check In</h2>
+              <button onClick={() => { setShowCheckinForm(false); setMapTarget(null); setGeoError(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
 
-      {/* Google Maps Check-In Confirmation */}
-      {mapTarget && (
-        <div className="card-surface p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-display font-medium text-white text-sm">Confirm Check-In Location</h3>
-              <p className="text-xs text-[#8A8B8C] font-body">GPS unavailable. Confirm you are at this location on the map below.</p>
-            </div>
-            <button onClick={() => setMapTarget(null)} className="text-xs text-[#8A8B8C] hover:text-white cursor-pointer"><X className="w-4 h-4" /></button>
-          </div>
-          <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #222324" }}>
-            <iframe
-              src={mapEmbedUrl}
-              width="100%"
-              height="300"
-              style={{ border: 0, filter: "grayscale(0.3)" }}
-              allowFullScreen
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              title="Customer Location"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <a href={mapLinkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Open in Google Maps</a>
-            <div className="flex gap-2">
-              <button onClick={() => setMapTarget(null)} className="btn-secondary text-xs">Cancel</button>
-              <button onClick={confirmMapCheckin} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Confirm Check-In</button>
-            </div>
+            {!mapTarget ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="label-text block mb-1.5">Customer *</label>
+                  <select value={checkinCustomerId} onChange={(e) => setCheckinCustomerId(parseInt(e.target.value))} className="input-field" required>
+                    <option value={0}>Select customer...</option>
+                    {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Notes (optional)</label>
+                  <textarea value={checkinNotes} onChange={(e) => setCheckinNotes(e.target.value)} className="input-field" rows={2} placeholder="What did you discuss?" />
+                </div>
+                {geoError && <p className="text-xs text-[#EF4444]">{geoError}</p>}
+                <button onClick={submitCheckinForm} className="btn-primary w-full justify-center"><Navigation className="w-4 h-4" /> Check In Now</button>
+                <p className="text-xs text-[#8A8B8C] font-body text-center">GPS will be captured automatically. If unavailable, you'll confirm on Google Maps.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-[#D4A843] font-body">GPS unavailable — confirm your location on the map below.</p>
+                <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #222324" }}>
+                  <iframe
+                    src={mapEmbedUrl}
+                    width="100%"
+                    height="280"
+                    style={{ border: 0, filter: "grayscale(0.3)" }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    title="Customer Location"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <a href={mapLinkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Open in Google Maps</a>
+                  <div className="flex gap-2">
+                    <button onClick={() => setMapTarget(null)} className="btn-secondary text-xs">Back</button>
+                    <button onClick={confirmMapCheckin} className="btn-primary text-xs" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}><CheckCircle className="w-3 h-3" /> Confirm</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -214,7 +270,7 @@ export default function AppointmentsPage() {
       <div>
         <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-[#4ADE80]" /> Geo Check-ins</h2>
         {myCheckins.length === 0 ? (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No check-ins yet. Tap "Check In" on an appointment below.</div>
+          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No check-ins yet. Tap "Check In at Location" above to record your first visit.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {myCheckins.map((ci: any) => (
@@ -243,11 +299,12 @@ export default function AppointmentsPage() {
                 ) : ci.location ? (
                   <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-[#8A8B8C] font-body">Location verified via customer address</span>
+                      <span className="text-xs text-[#8A8B8C] font-body">Location: {ci.location}</span>
                       <a href={`https://www.google.com/maps?q=${encodeURIComponent(ci.location)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
                     </div>
                   </div>
                 ) : null}
+                {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
               </div>
             ))}
           </div>
@@ -272,7 +329,7 @@ export default function AppointmentsPage() {
                         <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
                       </div>
                       <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
                     </div>
                     <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
                   </div>
@@ -281,10 +338,6 @@ export default function AppointmentsPage() {
                     {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
                   </div>
                   {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => initiateCheckin(appt.customerId)} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
-                    <button onClick={() => {/* complete */}} className="btn-secondary text-xs"><CheckCircle className="w-3 h-3" /> Complete</button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -305,7 +358,7 @@ export default function AppointmentsPage() {
                         <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
                       </div>
                       <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
                     </div>
                     <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
                   </div>
@@ -314,10 +367,6 @@ export default function AppointmentsPage() {
                     {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
                   </div>
                   {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => initiateCheckin(appt.customerId)} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
-                    <button onClick={() => {/* mark in progress */}} className="btn-secondary text-xs"><Radio className="w-3 h-3" /> Start</button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -338,7 +387,7 @@ export default function AppointmentsPage() {
                         <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
                       </div>
                       <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
                     </div>
                     <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Completed</span>
                   </div>
@@ -353,31 +402,77 @@ export default function AppointmentsPage() {
         )}
 
         {myAppointments.length === 0 && (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No appointments scheduled.</div>
+          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No appointments scheduled. Tap "Schedule" to create one.</div>
         )}
       </div>
 
-      {/* Schedule Form */}
+      {/* Schedule Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-8 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
-            <div className="flex items-center justify-between mb-6"><h2 className="font-display font-semibold text-white text-xl">Schedule Appointment</h2><button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button></div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="label-text block mb-1.5">Customer *</label>
-                <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
-                  <option value={0}>Select customer...</option>
-                  {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo" /></div>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg">Schedule Appointment</h2>
+              <button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+
+            {/* Toggle: Existing vs New Customer */}
+            <div className="flex p-1 rounded-full mb-5" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
+              <button
+                onClick={() => setScheduleMode("existing")}
+                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer"
+                style={{ backgroundColor: scheduleMode === "existing" ? "#D4A843" : "transparent", color: scheduleMode === "existing" ? "#0A0A0B" : "#8A8B8C" }}
+              >Select Existing Customer</button>
+              <button
+                onClick={() => setScheduleMode("new")}
+                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer"
+                style={{ backgroundColor: scheduleMode === "new" ? "#D4A843" : "transparent", color: scheduleMode === "new" ? "#0A0A0B" : "#8A8B8C" }}
+              >Enter New Customer</button>
+            </div>
+
+            <form onSubmit={handleScheduleSubmit} className="space-y-4">
+              {scheduleMode === "existing" ? (
+                <div>
+                  <label className="label-text block mb-1.5">Customer *</label>
+                  <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
+                    <option value={0}>Select customer...</option>
+                    {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="label-text block mb-1.5">Customer Name *</label>
+                    <input type="text" value={newCustomer.name} onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })} className="input-field" required placeholder="e.g. Joe's Butchery" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-text block mb-1.5">Contact Person</label>
+                      <input type="text" value={newCustomer.contactPerson} onChange={(e) => setNewCustomer({ ...newCustomer, contactPerson: e.target.value })} className="input-field" placeholder="e.g. John Smith" />
+                    </div>
+                    <div>
+                      <label className="label-text block mb-1.5">Phone</label>
+                      <input type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} className="input-field" placeholder="e.g. 011 123 4567" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label-text block mb-1.5">Address</label>
+                    <input type="text" value={newCustomer.address} onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })} className="input-field" placeholder="e.g. 123 Main St, Germiston" />
+                  </div>
+                </div>
+              )}
+
+              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / First visit" /></div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + 'T' + formData.startTime })} className="input-field" required /></div>
                 <div><label className="label-text block mb-1.5">Start Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
               </div>
+
               <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} /></div>
-              <button type="submit" className="btn-primary w-full justify-center">Schedule</button>
+
+              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
+
+              <button type="submit" className="btn-primary w-full justify-center">Schedule Appointment</button>
             </form>
           </div>
         </div>

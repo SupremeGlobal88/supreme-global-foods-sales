@@ -48,6 +48,7 @@ export function createLocalLink() {
               case "appointment.getStats": result = dataService.appointment.getStats(); break;
               case "checkIn.list": result = dataService.checkin.list(); break;
               case "checkIn.create": result = dataService.checkin.create(input); break;
+              case "checkIn.checkout": result = dataService.checkin.checkout(input); break;
               case "checkIn.getStats": result = dataService.checkin.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;

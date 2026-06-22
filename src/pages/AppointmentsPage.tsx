@@ -3,7 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
-  Navigation, User, Filter, Radio, ExternalLink, LogIn,
+  Navigation, User, Filter, ExternalLink, LogIn, LogOut,
 } from "lucide-react";
 
 type MapTarget = { customerId: number; address: string } | null;
@@ -31,6 +31,11 @@ export default function AppointmentsPage() {
   const [mapTarget, setMapTarget] = useState<MapTarget>(null);
   const [geoError, setGeoError] = useState("");
 
+  // Check-out flow
+  const [showCheckoutForm, setShowCheckoutForm] = useState(false);
+  const [checkoutCheckinId, setCheckoutCheckinId] = useState(0);
+  const [checkoutNotes, setCheckoutNotes] = useState("");
+
   const [filterRep, setFilterRep] = useState<string>("all");
 
   const { data: appointments } = trpc.appointment.list.useQuery();
@@ -52,6 +57,12 @@ export default function AppointmentsPage() {
     onSuccess: () => {
       utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate();
       setMapTarget(null); setGeoError(""); setShowCheckinForm(false); setCheckinCustomerId(0); setCheckinNotes("");
+    },
+  });
+  const checkoutMutation = trpc.checkIn.checkout.useMutation({
+    onSuccess: () => {
+      utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate();
+      setShowCheckoutForm(false); setCheckoutCheckinId(0); setCheckoutNotes("");
     },
   });
 
@@ -79,14 +90,12 @@ export default function AppointmentsPage() {
     const customer = (customers || []).find((c) => c.id === checkinCustomerId);
     if (!customer) return;
 
-    // Try GPS
     setGeoError("");
     setMapTarget(null);
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          // GPS success
           createCheckin.mutate({
             customerId: checkinCustomerId,
             latitude: pos.coords.latitude,
@@ -96,7 +105,6 @@ export default function AppointmentsPage() {
           });
         },
         () => {
-          // GPS failed — show map
           setGeoError("GPS unavailable — confirm location on map");
           setMapTarget({
             customerId: checkinCustomerId,
@@ -124,6 +132,19 @@ export default function AppointmentsPage() {
     });
   }
 
+  // ===================== CHECK-OUT FLOW =====================
+
+  function openCheckoutForm(checkinId: number) {
+    setShowCheckoutForm(true);
+    setCheckoutCheckinId(checkinId);
+    setCheckoutNotes("");
+  }
+
+  function submitCheckout() {
+    if (checkoutCheckinId === 0) return;
+    checkoutMutation.mutate({ id: checkoutCheckinId, notes: checkoutNotes });
+  }
+
   // ===================== SCHEDULE APPOINTMENT =====================
 
   function handleScheduleSubmit(e: React.FormEvent) {
@@ -133,9 +154,7 @@ export default function AppointmentsPage() {
       if (formData.customerId === 0) { alert("Select a customer"); return; }
       createAppointment.mutate({ ...formData, salesRepName: myRepName });
     } else {
-      // New customer mode
       if (!newCustomer.name.trim()) { alert("Enter customer name"); return; }
-      // Create appointment with typed-in customer details stored in notes
       const detailLines = [
         newCustomer.name && `Customer: ${newCustomer.name}`,
         newCustomer.contactPerson && `Contact: ${newCustomer.contactPerson}`,
@@ -161,6 +180,10 @@ export default function AppointmentsPage() {
   const inProgress = myAppointments.filter((a: any) => a.status === "in_progress");
   const completed = myAppointments.filter((a: any) => a.status === "completed");
 
+  // Check-in groups
+  const activeCheckins = myCheckins.filter((ci: any) => ci.status === "checked_in");
+  const completedCheckins = myCheckins.filter((ci: any) => ci.status === "checked_out");
+
   // ===================== GOOGLE MAPS URLS =====================
 
   const mapEmbedUrl = mapTarget
@@ -179,7 +202,7 @@ export default function AppointmentsPage() {
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Appointments</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">
-            {apptStats?.total || 0} appointments &middot; {apptStats?.today || 0} today &middot; {checkinStats?.total || 0} check-ins total
+            {apptStats?.total || 0} appointments &middot; {checkinStats?.checkedIn || 0} currently checked in &middot; {checkinStats?.total || 0} total visits
           </p>
         </div>
         <div className="flex gap-3 flex-wrap">
@@ -194,8 +217,8 @@ export default function AppointmentsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="card-surface p-4"><div className="label-text mb-1">TOTAL APPOINTMENTS</div><div className="stat-number">{apptStats?.total || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">TODAY</div><div className="stat-number" style={{ color: "#D4A843" }}>{apptStats?.today || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">IN PROGRESS</div><div className="stat-number" style={{ color: "#6366F1" }}>{apptStats?.inProgress || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">CHECK-INS TODAY</div><div className="stat-number" style={{ color: "#4ADE80" }}>{checkinStats?.today || 0}</div></div>
+        <div className="card-surface p-4"><div className="label-text mb-1">CHECKED IN NOW</div><div className="stat-number" style={{ color: "#4ADE80" }}>{checkinStats?.checkedIn || 0}</div></div>
+        <div className="card-surface p-4"><div className="label-text mb-1">COMPLETED VISITS</div><div className="stat-number" style={{ color: "#6366F1" }}>{checkinStats?.checkedOut || 0}</div></div>
       </div>
 
       {/* Sales Rep Filter — Admin Only */}
@@ -266,15 +289,33 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Check-ins Section */}
-      <div>
-        <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-[#4ADE80]" /> Geo Check-ins</h2>
-        {myCheckins.length === 0 ? (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No check-ins yet. Tap "Check In at Location" above to record your first visit.</div>
-        ) : (
+      {/* Check-Out Form Modal */}
+      {showCheckoutForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><LogOut className="w-5 h-5 text-[#EF4444]" /> Check Out</h2>
+              <button onClick={() => setShowCheckoutForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-sm text-[#8A8B8C] font-body">End your visit and record any notes about the appointment.</p>
+              <div>
+                <label className="label-text block mb-1.5">Visit Notes</label>
+                <textarea value={checkoutNotes} onChange={(e) => setCheckoutNotes(e.target.value)} className="input-field" rows={3} placeholder="e.g. Took sample order, discussed pricing, follow-up in 2 weeks..." />
+              </div>
+              <button onClick={submitCheckout} className="btn-primary w-full justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}><LogOut className="w-4 h-4" /> Check Out Now</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Visits — Checked In */}
+      {activeCheckins.length > 0 && (
+        <div>
+          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><LogIn className="w-5 h-5 text-[#4ADE80]" /> Active Visits — Checked In</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myCheckins.map((ci: any) => (
-              <div key={ci.id} className="card-surface p-4">
+            {activeCheckins.map((ci: any) => (
+              <div key={ci.id} className="card-surface p-4" style={{ borderLeft: "3px solid #4ADE80" }}>
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -285,26 +326,77 @@ export default function AppointmentsPage() {
                     {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-[#8A8B8C]">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
+                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span>
+                    <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
                     <div className="text-xs text-[#8A8B8C] font-mono-data">{new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</div>
                   </div>
                 </div>
-                {ci.latitude && ci.longitude ? (
-                  <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
-                      <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
-                    </div>
+                {ci.latitude && ci.longitude && (
+                  <div className="mt-3 p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
+                    <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
+                    <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
                   </div>
-                ) : ci.location ? (
-                  <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[#8A8B8C] font-body">Location: {ci.location}</span>
-                      <a href={`https://www.google.com/maps?q=${encodeURIComponent(ci.location)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
-                    </div>
-                  </div>
-                ) : null}
+                )}
                 {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
+                <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary w-full mt-3 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
+                  <LogOut className="w-4 h-4" /> Check Out
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Completed Visits — Checked Out */}
+      <div>
+        <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-[#6366F1]" /> Completed Visits</h2>
+        {completedCheckins.length === 0 ? (
+          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No completed visits yet. Check in at a customer, then check out when done.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {completedCheckins.map((ci: any) => (
+              <div key={ci.id} className="card-surface p-4 opacity-70">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <User className="w-4 h-4 text-[#D4A843]" />
+                      <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
+                    </div>
+                    <div className="text-sm text-[#E8E8E9] font-body mb-1">{ci.customer?.name || "Unknown Customer"}</div>
+                    {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
+                  </div>
+                  <div className="text-right">
+                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Done</span>
+                    <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
+                  </div>
+                </div>
+                {/* Duration */}
+                {ci.durationMinutes !== undefined && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Clock className="w-3 h-3 text-[#D4A843]" />
+                    <span className="text-xs text-[#D4A843] font-body font-medium">
+                      {ci.durationMinutes < 60
+                        ? `${ci.durationMinutes} min`
+                        : `${Math.floor(ci.durationMinutes / 60)}h ${ci.durationMinutes % 60}m`}
+                    </span>
+                    <span className="text-xs text-[#8A8B8C]">
+                      ({new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} - {new Date(ci.checkedOutAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })})
+                    </span>
+                  </div>
+                )}
+                {ci.latitude && ci.longitude && (
+                  <div className="mt-2 p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
+                    <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
+                    <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
+                  </div>
+                )}
+                {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">Check-in: {ci.notes}</p>}
+                {ci.checkoutNotes && (
+                  <div className="mt-2 p-2 rounded-lg" style={{ backgroundColor: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
+                    <p className="text-xs text-[#EF4444] font-body font-medium mb-0.5">Check-out notes:</p>
+                    <p className="text-xs text-[#E8E8E9] font-body">{ci.checkoutNotes}</p>
+                  </div>
+                )}
               </div>
             ))}
           </div>

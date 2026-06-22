@@ -422,7 +422,7 @@ export const dataService = {
       customer: customers.find((c) => c.id === ci.customerId) || null,
     })),
     create: (data: any) => {
-      const newItem = { ...data, id: Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const newItem = { ...data, id: Date.now(), status: "checked_in", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       // Auto-populate salesRepName from customer if not provided
       if (!newItem.salesRepName && newItem.customerId) {
         const cust = customers.find((c) => c.id === newItem.customerId);
@@ -436,9 +436,27 @@ export const dataService = {
       saveItem("sgf_checkins", checkins);
       return newItem;
     },
+    checkout: ({ id, notes }: { id: number; notes?: string }) => {
+      const idx = checkins.findIndex((ci) => ci.id === id);
+      if (idx >= 0) {
+        checkins[idx].status = "checked_out";
+        checkins[idx].checkedOutAt = new Date().toISOString();
+        if (notes) checkins[idx].checkoutNotes = notes;
+        checkins[idx].updatedAt = new Date().toISOString();
+        // Calculate duration in minutes
+        const checkInTime = new Date(checkins[idx].createdAt).getTime();
+        const checkOutTime = new Date(checkins[idx].checkedOutAt).getTime();
+        checkins[idx].durationMinutes = Math.round((checkOutTime - checkInTime) / 60000);
+        saveItem("sgf_checkins", checkins);
+        return checkins[idx];
+      }
+      return null;
+    },
     getStats: () => ({
       total: checkins.length,
       today: checkins.filter((ci) => new Date(ci.createdAt).toDateString() === new Date().toDateString()).length,
+      checkedIn: checkins.filter((ci) => ci.status === "checked_in").length,
+      checkedOut: checkins.filter((ci) => ci.status === "checked_out").length,
     }),
   },
 

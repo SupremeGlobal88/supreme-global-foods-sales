@@ -43,6 +43,7 @@ export const orderRouter = createRouter({
   create: authedQuery
     .input(z.object({
       customerId: z.number(),
+      orderType: z.enum(["regular", "sample"]).optional(),
       paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]),
       priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).optional(),
       deliveryAddress: z.string().optional(),

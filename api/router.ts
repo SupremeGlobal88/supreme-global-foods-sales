@@ -7,6 +7,9 @@ import { invoiceRouter } from "./invoice-router";
 import { appointmentRouter } from "./appointment-router";
 import { checkInRouter } from "./checkin-router";
 import { specialPriceRouter } from "./specialPrice-router";
+import { auditRouter } from "./audit-router";
+import { followUpRouter } from "./followUp-router";
+import { sampleReportRouter } from "./sampleReport-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -20,6 +23,9 @@ export const appRouter = createRouter({
   appointment: appointmentRouter,
   checkIn: checkInRouter,
   specialPrice: specialPriceRouter,
+  audit: auditRouter,
+  followUp: followUpRouter,
+  sampleReport: sampleReportRouter,
 });
 
 export type AppRouter = typeof appRouter;

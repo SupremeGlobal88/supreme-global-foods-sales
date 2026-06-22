@@ -91,4 +91,8 @@ export const salesRepRouter = createRouter({
       await db.delete(users).where(eq(users.id, input.id));
       return { success: true };
     }),
+
+  getStats: adminQuery.query(async () => {
+    return { total: 0, active: 0, inactive: 0, repStats: [] };
+  }),
 });

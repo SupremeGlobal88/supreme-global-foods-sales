@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
+  TrendingUp,
+  UserCheck,
 } from "lucide-react";
 import {
   XAxis,
@@ -102,8 +104,10 @@ export default function Dashboard() {
   const { data: stockStats } = trpc.stock.getStats.useQuery();
   const { data: invoiceStats } = trpc.invoice.getStats.useQuery();
   const { data: recentOrders } = trpc.order.list.useQuery();
+  const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
 
   const chartRef = useRef<HTMLDivElement>(null);
+  const perfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -112,14 +116,27 @@ export default function Dashboard() {
       opacity: 0,
       duration: 0.6,
       ease: "power3.out",
-      scrollTrigger: {
-        trigger: chartRef.current,
-        start: "top 85%",
-      },
+      scrollTrigger: { trigger: chartRef.current, start: "top 85%" },
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!perfRef.current) return;
+    gsap.from(perfRef.current, {
+      y: 24,
+      opacity: 0,
+      duration: 0.6,
+      ease: "power3.out",
+      delay: 0.2,
+      scrollTrigger: { trigger: perfRef.current, start: "top 85%" },
     });
   }, []);
 
   const isAdmin = user?.role === "admin";
+
+  // Sales rep's own stats
+  const myRepName = user?.name || "";
+  const myStats = ((salesRepStats as any)?.repStats || []).find((r: Record<string, any>) => r.name === myRepName);
 
   return (
     <div className="space-y-8">
@@ -129,72 +146,118 @@ export default function Dashboard() {
             Dashboard
           </h1>
           <p className="text-[#8A8B8C] font-body mt-1" style={{ fontSize: "0.85rem" }}>
-            {isAdmin ? "Admin Overview" : "Sales Rep Overview"} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
+            {isAdmin ? "Admin Overview" : `Sales Rep: ${myRepName}`} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="TOTAL REVENUE" value={formatCurrency(invoiceStats?.totalValue || 0)} change={12.5} icon={DollarSign} accent="#D4A843" delay={0} />
+      {/* Stat Cards - Admin sees revenue, sales reps don't */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? "xl:grid-cols-4" : "xl:grid-cols-3"} gap-4`}>
+        {isAdmin && (
+          <StatCard label="TOTAL REVENUE" value={formatCurrency(invoiceStats?.totalValue || 0)} change={12.5} icon={DollarSign} accent="#D4A843" delay={0} />
+        )}
+        {!isAdmin && myStats && (
+          <StatCard label="MY SALES" value={formatCurrency(myStats.totalSales || 0)} change={8.2} icon={TrendingUp} accent="#D4A843" delay={0} />
+        )}
+        {!isAdmin && !myStats && (
+          <StatCard label="MY SALES" value="R 0.00" change={0} icon={TrendingUp} accent="#D4A843" delay={0} />
+        )}
         <StatCard label="TOTAL ORDERS" value={(orderStats?.total || 0).toString()} change={8.2} icon={ShoppingCart} accent="#4ADE80" delay={0.08} />
         <StatCard label="CUSTOMERS" value={(customerStats?.total || 0).toString()} change={5.1} icon={Users} accent="#6366F1" delay={0.16} />
         <StatCard label="LOW STOCK ITEMS" value={(stockStats?.lowStock || 0).toString()} change={-2.4} icon={AlertTriangle} accent="#F59E0B" delay={0.24} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div ref={chartRef} className="card-surface p-6 xl:col-span-2">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-display font-semibold text-white text-lg">Revenue Overview</h2>
-            <div className="flex gap-1 p-1 rounded-full" style={{ backgroundColor: "#0A0A0B" }}>
-              {["7D", "30D", "90D"].map((range) => (
-                <button key={range} className="px-3 py-1 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: range === "30D" ? "#D4A843" : "transparent", color: range === "30D" ? "#0A0A0B" : "#8A8B8C" }}>
-                  {range}
-                </button>
-              ))}
+      {/* Revenue Chart - Admin only */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div ref={chartRef} className="card-surface p-6 xl:col-span-2">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display font-semibold text-white text-lg">Revenue Overview</h2>
+              <div className="flex gap-1 p-1 rounded-full" style={{ backgroundColor: "#0A0A0B" }}>
+                {["7D", "30D", "90D"].map((range) => (
+                  <button key={range} className="px-3 py-1 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: range === "30D" ? "#D4A843" : "transparent", color: range === "30D" ? "#0A0A0B" : "#8A8B8C" }}>
+                    {range}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueData}>
+                  <defs>
+                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#D4A843" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#D4A843" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222324" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: "#8A8B8C", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={{ stroke: "#222324" }} tickLine={false} />
+                  <YAxis tick={{ fill: "#8A8B8C", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `R ${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={{ backgroundColor: "#18191A", border: "1px solid #222324", borderRadius: 8, color: "#FFFFFF", fontFamily: "Inter", fontSize: 13 }} formatter={(value: number) => [formatCurrency(value), ""]} />
+                  <Area type="monotone" dataKey="revenue" stroke="#D4A843" strokeWidth={2} fill="url(#revenueGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData}>
-                <defs>
-                  <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#D4A843" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#D4A843" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222324" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: "#8A8B8C", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={{ stroke: "#222324" }} tickLine={false} />
-                <YAxis tick={{ fill: "#8A8B8C", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `R ${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={{ backgroundColor: "#18191A", border: "1px solid #222324", borderRadius: 8, color: "#FFFFFF", fontFamily: "Inter", fontSize: 13 }} formatter={(value: number) => [formatCurrency(value), ""]} />
-                <Area type="monotone" dataKey="revenue" stroke="#D4A843" strokeWidth={2} fill="url(#revenueGradient)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        <div className="card-surface p-6">
-          <h2 className="font-display font-semibold text-white text-lg mb-4">Recent Orders</h2>
-          <div className="space-y-3">
-            {(recentOrders || []).slice(0, 5).map((order) => (
-              <div key={order.id} className="flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-[#131415]">
-                <div className="flex-1 min-w-0">
-                  <div className="font-mono-data text-xs text-[#D4A843]">{order.orderNumber}</div>
-                  <div className="text-sm text-[#E8E8E9] truncate font-body">{order.customer?.name || "Unknown"}</div>
+          <div className="card-surface p-6">
+            <h2 className="font-display font-semibold text-white text-lg mb-4">Recent Orders</h2>
+            <div className="space-y-3">
+              {(recentOrders || []).slice(0, 5).map((order) => (
+                <div key={order.id} className="flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-[#131415]">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono-data text-xs text-[#D4A843]">{order.orderNumber}</div>
+                    <div className="text-sm text-[#E8E8E9] truncate font-body">{order.customer?.name || "Unknown"}</div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="text-sm text-white font-display font-semibold">R {Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                    <span className="status-badge text-xs mt-1" style={{ backgroundColor: order.status === "delivered" ? "rgba(74, 222, 128, 0.12)" : order.status === "pending" ? "rgba(245, 158, 11, 0.12)" : "rgba(99, 102, 241, 0.12)", color: order.status === "delivered" ? "#4ADE80" : order.status === "pending" ? "#F59E0B" : "#6366F1" }}>
+                      {order.status}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right ml-4">
-                  <div className="text-sm text-white font-display font-semibold">R {Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-                  <span className="status-badge text-xs mt-1" style={{ backgroundColor: order.status === "delivered" ? "rgba(74, 222, 128, 0.12)" : order.status === "pending" ? "rgba(245, 158, 11, 0.12)" : "rgba(99, 102, 241, 0.12)", color: order.status === "delivered" ? "#4ADE80" : order.status === "pending" ? "#F59E0B" : "#6366F1" }}>
-                    {order.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {(!recentOrders || recentOrders.length === 0) && (
-              <div className="text-center py-8 text-[#8A8B8C] font-body text-sm">No orders yet</div>
-            )}
+              ))}
+              {(!recentOrders || recentOrders.length === 0) && (
+                <div className="text-center py-8 text-[#8A8B8C] font-body text-sm">No orders yet</div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Sales Rep Performance - Admin only */}
+      {isAdmin && (
+        <div ref={perfRef} className="card-surface p-6">
+          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Performance</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid #222324" }}>
+                  <th className="text-left p-3 label-text">Sales Rep</th>
+                  <th className="text-right p-3 label-text">Customers</th>
+                  <th className="text-right p-3 label-text">Orders</th>
+                  <th className="text-right p-3 label-text">Total Sales</th>
+                  <th className="text-left p-3 label-text">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => (
+                  <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
+                    <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
+                    <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{rep.customerCount}</td>
+                    <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{rep.orderCount}</td>
+                    <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(rep.totalSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                    <td className="p-3"><span className="status-badge" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span></td>
+                  </tr>
+                ))}
+                {(!salesRepStats?.repStats || salesRepStats.repStats.length === 0) && (
+                  <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">No sales rep data available</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card-surface p-6">

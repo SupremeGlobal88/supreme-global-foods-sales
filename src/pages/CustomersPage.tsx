@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Search,
   Plus,
@@ -14,6 +15,8 @@ import {
   FileText,
   Tag,
   DollarSign,
+  ShieldAlert,
+  History,
 } from "lucide-react";
 
 const PRICE_TIER_COLORS: Record<string, string> = {
@@ -24,25 +27,33 @@ const PRICE_TIER_COLORS: Record<string, string> = {
 };
 
 export default function CustomersPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const myRepName = user?.name || "";
   const utils = trpc.useUtils();
+
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [showSpecialPriceForm, setShowSpecialPriceForm] = useState(false);
+  const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [specialPriceData, setSpecialPriceData] = useState({ stockItemId: 0, specialPrice: 0 });
+  const [vatError, setVatError] = useState("");
 
   const [formData, setFormData] = useState({
     customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "",
     physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
-    vatNumber: "", notes: "",
+    salesRepName: "", vatNumber: "", notes: "",
   });
 
   const { data: customers } = trpc.customer.search.useQuery({ query: search || " " });
   const { data: stats } = trpc.customer.getStats.useQuery();
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
+  const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
+  const { data: auditDeletions } = trpc.audit.getCustomerDeletions.useQuery(undefined, { enabled: showAuditTrail });
 
   const selected = (customers || []).find((c) => c.id === selectedCustomer);
   const { data: specialPrices } = trpc.specialPrice.listByCustomer.useQuery(
@@ -67,24 +78,48 @@ export default function CustomersPage() {
   });
 
   function resetForm() {
-    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", vatNumber: "", notes: "" });
+    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", notes: "" });
+    setVatError("");
   }
 
   function handleEdit(cust: NonNullable<typeof customers>[0]) {
-    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", vatNumber: cust.vatNumber || "", notes: cust.notes || "" });
+    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", notes: cust.notes || "" });
     setEditingId(cust.id); setShowForm(true);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (editingId) { updateCustomer.mutate({ id: editingId, ...formData }); }
-    else { createCustomer.mutate(formData); }
+    // VAT validation: 10 digits only, optional
+    if (formData.vatNumber && !/^\d{10}$/.test(formData.vatNumber)) {
+      setVatError("VAT number must be exactly 10 digits");
+      return;
+    }
+    setVatError("");
+    if (editingId) {
+      updateCustomer.mutate({ id: editingId, ...formData });
+    } else {
+      // Auto-generate customer code for new customers
+      const dataToSend = { ...formData };
+      if (!dataToSend.customerCode || dataToSend.customerCode.trim() === "") {
+        dataToSend.customerCode = "AUTO"; // Will be replaced by backend
+      }
+      createCustomer.mutate(dataToSend);
+    }
+  }
+
+  function handleVatChange(value: string) {
+    // Only allow digits, max 10
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
+    setFormData({ ...formData, vatNumber: digitsOnly });
+    if (digitsOnly.length === 10 || digitsOnly.length === 0) {
+      setVatError("");
+    }
   }
 
   function handleExport() {
     if (!customers) return;
-    const headers = ["Customer Code", "Name", "Business Name", "Contact Person", "Phone", "Email", "Address", "City", "Province", "Payment Terms", "VAT Number"];
-    const rows = customers.map((c) => [c.customerCode, c.name, c.businessName || "", c.contactPerson || "", c.phone || "", c.email || "", c.physicalAddress || "", c.city || "", c.province || "", c.paymentTerms, c.vatNumber || ""]);
+    const headers = ["Customer Code", "Name", "Business Name", "Contact Person", "Phone", "Email", "Address", "City", "Province", "Payment Terms", "Price Tier", "Sales Rep", "VAT Number"];
+    const rows = customers.map((c) => [c.customerCode, c.name, c.businessName || "", c.contactPerson || "", c.phone || "", c.email || "", c.physicalAddress || "", c.city || "", c.province || "", c.paymentTerms, c.priceTier || "wholesale", c.salesRepName || "", c.vatNumber || ""]);
     const csv = [headers.join(","), ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -110,7 +145,9 @@ export default function CustomersPage() {
             email: cols[5] || undefined, physicalAddress: cols[6] || undefined,
             city: cols[7] || undefined, province: cols[8] || undefined,
             postalCode: cols[9] || undefined, paymentTerms: (cols[10] as "cod" | "7_days" | "14_days" | "30_days") || "cod",
-            vatNumber: cols[11] || undefined, notes: cols[12] || undefined,
+            priceTier: (cols[11] as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale",
+            salesRepName: cols[12] || myRepName,
+            vatNumber: cols[13] || undefined, notes: cols[14] || undefined,
           });
         }
       }
@@ -126,9 +163,10 @@ export default function CustomersPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Customers</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} customers &middot; {stats?.active || 0} active</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => setShowImport(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Import CSV</button>
-          <button onClick={handleExport} className="btn-secondary"><Download className="w-4 h-4" /> Export</button>
+        <div className="flex gap-3 flex-wrap">
+          {isAdmin && <button onClick={() => setShowAuditTrail(true)} className="btn-secondary"><History className="w-4 h-4" /> Audit Trail</button>}
+          {isAdmin && <button onClick={() => setShowImport(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Import CSV</button>}
+          {isAdmin && <button onClick={handleExport} className="btn-secondary"><Download className="w-4 h-4" /> Export</button>}
           <button onClick={() => { setShowForm(true); resetForm(); setEditingId(null); }} className="btn-primary"><Plus className="w-4 h-4" /> Add Customer</button>
         </div>
       </div>
@@ -153,9 +191,10 @@ export default function CustomersPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-display font-medium text-white text-sm truncate">{cust.name}</h3>
                     <p className="text-xs text-[#8A8B8C] font-body truncate">{cust.businessName || "No business name"}</p>
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
                       <span className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" /> {cust.city || "N/A"}</span>
                       <span className="text-xs font-mono-data" style={{ color: PRICE_TIER_COLORS[cust.priceTier] || "#8A8B8C" }}>{cust.priceTier?.toUpperCase() || "WHOLESALE"}</span>
+                      {cust.salesRepName && <span className="text-xs" style={{ color: "#6366F1" }}>Rep: {cust.salesRepName}</span>}
                     </div>
                   </div>
                   <span className="status-badge text-xs flex-shrink-0 ml-2" style={{ backgroundColor: cust.paymentTerms === "cod" ? "rgba(245, 158, 11, 0.12)" : cust.paymentTerms === "30_days" ? "rgba(99, 102, 241, 0.12)" : "rgba(74, 222, 128, 0.12)", color: cust.paymentTerms === "cod" ? "#F59E0B" : cust.paymentTerms === "30_days" ? "#6366F1" : "#4ADE80" }}>{cust.paymentTerms.replace("_", " ").toUpperCase()}</span>
@@ -173,8 +212,8 @@ export default function CustomersPage() {
                 <div className="flex items-start justify-between mb-6">
                   <div><h2 className="font-display font-semibold text-white text-xl">{selected.name}</h2><p className="text-[#8A8B8C] font-body text-sm">{selected.businessName}</p></div>
                   <div className="flex gap-2">
-                    <button onClick={() => handleEdit(selected)} className="btn-secondary text-xs"><Pencil className="w-3 h-3" /> Edit</button>
-                    <button onClick={() => { if (confirm("Delete this customer?")) deleteCustomer.mutate({ id: selected.id }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Trash2 className="w-3 h-3" /></button>
+                    {isAdmin && <button onClick={() => handleEdit(selected)} className="btn-secondary text-xs"><Pencil className="w-3 h-3" /> Edit</button>}
+                    {isAdmin && <button onClick={() => { if (confirm("Delete this customer?")) deleteCustomer.mutate({ id: selected.id }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Trash2 className="w-3 h-3" /></button>}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -183,6 +222,7 @@ export default function CustomersPage() {
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><MapPin className="w-3 h-3" /> Address</div><div className="text-white text-sm font-body">{selected.physicalAddress || "N/A"}<br />{selected.city}, {selected.province} {selected.postalCode}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><DollarSign className="w-3 h-3" /> Price Tier</div><div className="text-sm font-body font-semibold" style={{ color: PRICE_TIER_COLORS[selected.priceTier] || "#E8E8E9" }}>{selected.priceTier?.toUpperCase() || "WHOLESALE"}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><Tag className="w-3 h-3" /> Payment Terms</div><div className="text-white text-sm font-body">{selected.paymentTerms.replace("_", " ").toUpperCase()}</div></div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><UserIcon className="w-3 h-3" /> Sales Rep</div><div className="text-white text-sm font-body">{selected.salesRepName || "Unassigned"}</div></div>
                 </div>
                 {selected.notes && <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="text-[#8A8B8C] text-xs mb-1">Notes</div><div className="text-white text-sm font-body">{selected.notes}</div></div>}
                 {selected.vatNumber && <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)" }}><div className="text-[#D4A843] text-xs mb-1">VAT Number</div><div className="text-white text-sm font-body">{selected.vatNumber}</div></div>}
@@ -227,31 +267,80 @@ export default function CustomersPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-8 max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
-            <div className="flex items-center justify-between mb-6"><h2 className="font-display font-semibold text-white text-xl">{editingId ? "Edit" : "Add"} Customer</h2><button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button></div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="label-text block mb-1.5">Customer Code *</label><input type="text" value={formData.customerCode} onChange={(e) => setFormData({ ...formData, customerCode: e.target.value })} className="input-field" required /></div>
-                <div><label className="label-text block mb-1.5">Price Tier</label><select value={formData.priceTier} onChange={(e) => setFormData({ ...formData, priceTier: e.target.value as "corporate" | "bulk" | "wholesale" | "retail" })} className="input-field"><option value="corporate">Corporate</option><option value="bulk">Bulk</option><option value="wholesale">Wholesale</option><option value="retail">Retail</option></select></div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display font-semibold text-white text-xl">{editingId ? (isAdmin ? "Edit Customer" : "View Customer (Admin Only)") : "Add Customer"}</h2>
+              <button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            {editingId && !isAdmin ? (
+              <div className="text-center py-8">
+                <ShieldAlert className="w-12 h-12 mx-auto mb-3" style={{ color: "#F59E0B" }} />
+                <p className="text-[#E8E8E9] font-body">Only administrators can edit or delete customers.</p>
+                <p className="text-[#8A8B8C] font-body text-sm mt-2">Please contact your admin to make changes.</p>
               </div>
-              <div><label className="label-text block mb-1.5">Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field" required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="label-text block mb-1.5">Business Name</label><input type="text" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} className="input-field" /></div>
-                <div><label className="label-text block mb-1.5">Payment Terms</label><select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field"><option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option></select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field" /></div>
-                <div><label className="label-text block mb-1.5">Phone</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="input-field" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="label-text block mb-1.5">Email</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field" /></div>
-                <div></div>
-              </div>
-              <div><label className="label-text block mb-1.5">Physical Address</label><textarea value={formData.physicalAddress} onChange={(e) => setFormData({ ...formData, physicalAddress: e.target.value })} className="input-field" rows={2} /></div>
-              <div className="grid grid-cols-3 gap-4"><div><label className="label-text block mb-1.5">City</label><input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Province</label><input type="text" value={formData.province} onChange={(e) => setFormData({ ...formData, province: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Postal Code</label><input type="text" value={formData.postalCode} onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })} className="input-field" /></div></div>
-              <div><label className="label-text block mb-1.5">VAT Number</label><input type="text" value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field" /></div>
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} /></div>
-              <button type="submit" className="btn-primary w-full justify-center">{editingId ? "Update" : "Add"} Customer</button>
-            </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label-text block mb-1.5">Customer Code {editingId ? "" : "(Auto)"}</label>
+                    <input type="text" value={formData.customerCode} onChange={(e) => setFormData({ ...formData, customerCode: e.target.value })} className="input-field" required={!!editingId} placeholder={editingId ? "" : "Auto-generated"} readOnly={!editingId} style={{ backgroundColor: editingId ? undefined : "#0A0A0B" }} />
+                  </div>
+                  <div>
+                    <label className="label-text block mb-1.5">Sales Rep *</label>
+                    <select value={formData.salesRepName} onChange={(e) => setFormData({ ...formData, salesRepName: e.target.value })} className="input-field" required>
+                      <option value="">Select rep...</option>
+                      {(salesReps || []).map((rep: string) => <option key={rep} value={rep}>{rep}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="label-text block mb-1.5">Price Tier</label><select value={formData.priceTier} onChange={(e) => setFormData({ ...formData, priceTier: e.target.value as "corporate" | "bulk" | "wholesale" | "retail" })} className="input-field"><option value="corporate">Corporate</option><option value="bulk">Bulk</option><option value="wholesale">Wholesale</option><option value="retail">Retail</option></select></div>
+                  <div><label className="label-text block mb-1.5">Payment Terms</label><select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field"><option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option></select></div>
+                </div>
+                <div><label className="label-text block mb-1.5">Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field" required /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="label-text block mb-1.5">Business Name</label><input type="text" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} className="input-field" /></div>
+                  <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="label-text block mb-1.5">Phone</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="input-field" /></div>
+                  <div><label className="label-text block mb-1.5">Email</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field" /></div>
+                </div>
+                <div><label className="label-text block mb-1.5">Physical Address</label><textarea value={formData.physicalAddress} onChange={(e) => setFormData({ ...formData, physicalAddress: e.target.value })} className="input-field" rows={2} /></div>
+                <div className="grid grid-cols-3 gap-4"><div><label className="label-text block mb-1.5">City</label><input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Province</label><input type="text" value={formData.province} onChange={(e) => setFormData({ ...formData, province: e.target.value })} className="input-field" /></div><div><label className="label-text block mb-1.5">Postal Code</label><input type="text" value={formData.postalCode} onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })} className="input-field" /></div></div>
+                <div>
+                  <label className="label-text block mb-1.5">VAT Number <span className="text-[#8A8B8C] font-normal">(10 digits, optional)</span></label>
+                  <input type="text" value={formData.vatNumber} onChange={(e) => handleVatChange(e.target.value)} className={`input-field ${vatError ? "border-red-500" : ""}`} maxLength={10} placeholder="0123456789" />
+                  {vatError && <p className="text-[#EF4444] text-xs mt-1">{vatError}</p>}
+                </div>
+                <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} /></div>
+                <button type="submit" className="btn-primary w-full justify-center">{editingId ? "Update" : "Add"} Customer</button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Audit Trail Dialog */}
+      {showAuditTrail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display font-semibold text-white text-xl flex items-center gap-2"><History className="w-5 h-5 text-[#D4A843]" /> Customer Audit Trail</h2>
+              <button onClick={() => setShowAuditTrail(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <div className="space-y-3">
+              {(auditDeletions || []).length === 0 && <div className="text-center py-8 text-[#8A8B8C] font-body">No audit records found</div>}
+              {(auditDeletions || []).map((entry: any) => (
+                <div key={entry.id} className="p-4 rounded-lg" style={{ backgroundColor: "#0A0A0B", borderLeft: "3px solid #EF4444" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono-data text-[#EF4444]">{entry.action}</span>
+                    <span className="text-xs text-[#8A8B8C]">{new Date(entry.createdAt).toLocaleString("en-ZA")}</span>
+                  </div>
+                  <p className="text-sm text-[#E8E8E9] font-body mt-1">{entry.details}</p>
+                  <p className="text-xs text-[#8A8B8C] mt-1">By: {entry.userName}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -264,7 +353,7 @@ export default function CustomersPage() {
             <div className="border-2 border-dashed rounded-xl p-8 text-center mb-6" style={{ borderColor: "#D4A843", backgroundColor: "rgba(212, 168, 67, 0.05)" }}>
               <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: "#D4A843" }} />
               <p className="text-[#E8E8E9] font-body text-sm mb-2">Drop CSV file here or click to browse</p>
-              <p className="text-[#8A8B8C] text-xs font-body mb-4">Format: CustomerCode, Name, BusinessName, ContactPerson, Phone, Email, Address, City, Province, PostalCode, PaymentTerms, VATNumber, Notes</p>
+              <p className="text-[#8A8B8C] text-xs font-body mb-4">Format: CustomerCode, Name, BusinessName, ContactPerson, Phone, Email, Address, City, Province, PostalCode, PaymentTerms, PriceTier, SalesRep, VATNumber, Notes</p>
               <input type="file" accept=".csv" onChange={handleCustomerImport} className="hidden" id="customer-csv-import" />
               <label htmlFor="customer-csv-import" className="btn-primary inline-flex cursor-pointer">Browse Files</label>
             </div>
@@ -295,5 +384,14 @@ export default function CustomersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Inline icon component for user/sales rep
+function UserIcon(props: any) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+    </svg>
   );
 }

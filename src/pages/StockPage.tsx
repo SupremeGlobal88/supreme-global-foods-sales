@@ -103,7 +103,10 @@ export default function StockPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Stock on Hand</h1>
-          <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.totalProducts || 0} products &middot; {stats?.totalRetailValue ? `R ${stats.totalRetailValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}` : "R 0.00"} retail value</p>
+          <p className="text-[#8A8B8C] font-body text-sm mt-1">
+            {stats?.totalProducts || 0} products
+            {isAdmin && stats?.totalRetailValue ? ` \u00B7 R ${stats.totalRetailValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })} retail value` : ""}
+          </p>
         </div>
         {isAdmin && (
           <div className="flex gap-3">
@@ -113,9 +116,9 @@ export default function StockPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${isAdmin ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4`}>
         <div className="card-surface p-4"><div className="label-text mb-1">TOTAL PRODUCTS</div><div className="stat-number">{stats?.totalProducts || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">RETAIL VALUE</div><div className="stat-number" style={{ fontSize: "1.3rem" }}>R {(stats?.totalRetailValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div></div>
+        {isAdmin && <div className="card-surface p-4"><div className="label-text mb-1">RETAIL VALUE</div><div className="stat-number" style={{ fontSize: "1.3rem" }}>R {(stats?.totalRetailValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div></div>}
         <div className="card-surface p-4"><div className="label-text mb-1">LOW STOCK</div><div className="stat-number" style={{ color: "#F59E0B" }}>{stats?.lowStock || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">OUT OF STOCK</div><div className="stat-number" style={{ color: "#EF4444" }}>{stats?.outOfStock || 0}</div></div>
       </div>
@@ -136,7 +139,7 @@ export default function StockPage() {
                 <th className="text-right p-3 label-text">Corp</th>
                 <th className="text-right p-3 label-text">Bulk</th>
                 <th className="text-right p-3 label-text">Wholesale</th>
-                <th className="text-right p-3 label-text">Retail</th>
+                {isAdmin && <th className="text-right p-3 label-text">Retail</th>}
                 <th className="text-left p-3 label-text">Status</th>
                 {isAdmin && <th className="text-right p-3 label-text">Actions</th>}
               </tr>
@@ -158,7 +161,7 @@ export default function StockPage() {
                   <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.corporatePrice).toFixed(2)}</td>
                   <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.bulkPrice).toFixed(2)}</td>
                   <td className="p-3 text-right text-sm font-display" style={{ color: "#D4A843" }}>R {Number(item.wholesalePrice).toFixed(2)}</td>
-                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.retailPrice).toFixed(2)}</td>
+                  {isAdmin && <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.retailPrice).toFixed(2)}</td>}
                   <td className="p-3">
                     <span className="status-badge" style={{
                       backgroundColor: item.status === "in_stock" ? "rgba(74, 222, 128, 0.12)" : item.status === "low_stock" ? "rgba(245, 158, 11, 0.12)" : "rgba(239, 68, 68, 0.12)",
@@ -175,7 +178,7 @@ export default function StockPage() {
                   )}
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={isAdmin ? 9 : 8} className="p-8 text-center text-[#8A8B8C] font-body"><Package className="w-12 h-12 mx-auto mb-3 opacity-30" />No products found</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={isAdmin ? 9 : 7} className="p-8 text-center text-[#8A8B8C] font-body"><Package className="w-12 h-12 mx-auto mb-3 opacity-30" />No products found</td></tr>}
             </tbody>
           </table>
         </div>

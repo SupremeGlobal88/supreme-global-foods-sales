@@ -11,6 +11,8 @@ import InvoicesPage from "./pages/InvoicesPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
 import SalesRepsPage from "./pages/SalesRepsPage";
 import SettingsPage from "./pages/SettingsPage";
+import FollowUpsPage from "./pages/FollowUpsPage";
+import SampleReportsPage from "./pages/SampleReportsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -45,6 +47,8 @@ export default function App() {
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="appointments" element={<AppointmentsPage />} />
         <Route path="sales-reps" element={<SalesRepsPage />} />
+        <Route path="follow-ups" element={<FollowUpsPage />} />
+        <Route path="sample-reports" element={<SampleReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<NotFound />} />

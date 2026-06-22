@@ -14,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Globe,
+  Bell,
+  FlaskConical,
 } from "lucide-react";
 
 const navItems = [
@@ -24,6 +26,8 @@ const navItems = [
   { path: "/invoices", label: "Invoices", icon: FileText },
   { path: "/appointments", label: "Appointments", icon: Calendar },
   { path: "/sales-reps", label: "Sales Reps", icon: UserCog },
+  { path: "/follow-ups", label: "Follow-ups", icon: Bell },
+  { path: "/sample-reports", label: "Sample Reports", icon: FlaskConical },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
 

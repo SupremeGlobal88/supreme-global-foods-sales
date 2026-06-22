@@ -56,6 +56,7 @@ export const customerRouter = createRouter({
         postalCode: z.string().optional(),
         paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]).default("cod"),
         priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).default("wholesale"),
+        salesRepName: z.string().optional(),
         vatNumber: z.string().optional(),
         notes: z.string().optional(),
       })
@@ -85,6 +86,7 @@ export const customerRouter = createRouter({
         postalCode: z.string().optional(),
         paymentTerms: z.enum(["cod", "7_days", "14_days", "30_days"]).optional(),
         priceTier: z.enum(["corporate", "bulk", "wholesale", "retail"]).optional(),
+        salesRepName: z.string().optional(),
         vatNumber: z.string().optional(),
         notes: z.string().optional(),
         isActive: z.enum(["active", "inactive"]).optional(),
@@ -105,6 +107,10 @@ export const customerRouter = createRouter({
       await db.delete(customers).where(eq(customers.id, input.id));
       return { success: true };
     }),
+
+  getSalesReps: adminQuery.query(async () => {
+    return ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
+  }),
 
   getStats: adminQuery.query(async () => {
     const db = getDb();

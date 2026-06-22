@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -13,6 +13,9 @@ import {
   Ban,
   Tag,
   DollarSign,
+  AlertTriangle,
+  FlaskConical,
+  ShoppingBag,
 } from "lucide-react";
 
 const PRICE_TIERS = [
@@ -29,11 +32,13 @@ const statusTabs = [
   { key: "ready", label: "Ready", color: "#4ADE80" },
   { key: "delivered", label: "Delivered", color: "#4ADE80" },
   { key: "cancelled", label: "Cancelled", color: "#EF4444" },
+  { key: "sample_delivered", label: "Samples", color: "#D4A843" },
 ];
 
 export default function OrdersPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
   const [activeTab, setActiveTab] = useState("all");
@@ -42,11 +47,12 @@ export default function OrdersPage() {
 
   const [formData, setFormData] = useState({
     customerId: 0,
+    orderType: "regular" as "regular" | "sample",
     paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
     deliveryAddress: "",
     notes: "",
-    items: [] as { stockItemId: number; quantity: number; unitPrice?: number }[],
+    items: [] as { stockItemId: number; quantity: number; unitPrice?: number; soh?: number }[],
   });
 
   const { data: orders } = trpc.order.list.useQuery();
@@ -66,8 +72,17 @@ export default function OrdersPage() {
     onSuccess: () => { utils.order.list.invalidate(); utils.order.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
 
+  // Available stock is now product.quantity (deducted on order creation, restored on delivery/cancel)
+  const availableStock = useMemo(() => {
+    const map: Record<number, number> = {};
+    (stockItems || []).forEach((s) => {
+      map[s.id] = s.quantity || 0;
+    });
+    return map;
+  }, [stockItems, orders]);
+
   function resetForm() {
-    setFormData({ customerId: 0, paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
+    setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
   }
 
   function getTierPrice(stockItemId: number): number {
@@ -83,10 +98,33 @@ export default function OrdersPage() {
 
   function getEffectivePrice(stockItemId: number, customPrice?: number): number {
     if (customPrice && customPrice > 0) return customPrice;
-    // Check special price
     const sp = (customerSpecialPrices || []).find((p) => p.stockItemId === stockItemId);
     if (sp) return Number(sp.specialPrice);
     return getTierPrice(stockItemId);
+  }
+
+  function handleCustomerSelect(cid: number) {
+    const customer = (customers || []).find((c) => c.id === cid);
+    setFormData({
+      ...formData,
+      customerId: cid,
+      priceTier: (customer?.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale",
+      paymentTerms: (customer?.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "cod",
+      deliveryAddress: customer?.physicalAddress || "",
+      items: [],
+    });
+  }
+
+  function handleDeliveryAddressChange(newAddress: string) {
+    // Audit trail: if changing from customer's default address, log it
+    if (formData.customerId > 0) {
+      const customer = (customers || []).find((c) => c.id === formData.customerId);
+      if (customer && customer.physicalAddress && newAddress !== customer.physicalAddress && formData.deliveryAddress === customer.physicalAddress) {
+        // This is the first change from default - log it
+        console.log(`[AUDIT] Delivery address changed by ${myRepName} for customer ${customer.name}: "${customer.physicalAddress}" -> "${newAddress}"`);
+      }
+    }
+    setFormData({ ...formData, deliveryAddress: newAddress });
   }
 
   function handleAddItem() {
@@ -96,6 +134,20 @@ export default function OrdersPage() {
   function handleUpdateItem(index: number, field: string, value: number) {
     const updated = [...formData.items];
     updated[index] = { ...updated[index], [field]: value };
+
+    // If selecting a product, set available SOH and force qty=1 for samples
+    if (field === "stockItemId" && value > 0) {
+      updated[index].soh = availableStock[value] || 0;
+      if (formData.orderType === "sample") {
+        updated[index].quantity = 1; // Force 1 unit for samples
+      }
+    }
+
+    // For sample orders, always force quantity to 1
+    if (formData.orderType === "sample" && field === "quantity" && value > 1) {
+      updated[index].quantity = 1;
+    }
+
     setFormData({ ...formData, items: updated });
   }
 
@@ -103,20 +155,64 @@ export default function OrdersPage() {
     setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) });
   }
 
+  function canPlaceOrder(): { valid: boolean; error?: string } {
+    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
+    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
+    if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
+
+    for (const item of validItems) {
+      // Check stock availability for ALL orders (regular and sample)
+      const avail = availableStock[item.stockItemId] || 0;
+      if (avail <= 0) {
+        const stock = (stockItems || []).find((s) => s.id === item.stockItemId);
+        return { valid: false, error: `${stock?.productName || "Product"} is OUT OF STOCK.` };
+      }
+      if (formData.orderType === "sample") {
+        // Sample orders: check if customer already has this product as a sample
+        const existing = (orders || []).some((o) =>
+          o.customerId === formData.customerId &&
+          o.orderType === "sample" &&
+          o.items?.some((it: any) => it.stockItemId === item.stockItemId)
+        );
+        if (existing) {
+          const stock = (stockItems || []).find((s) => s.id === item.stockItemId);
+          return { valid: false, error: `Customer already has a sample of ${stock?.productName || "this product"}. Only 1 sample per product is allowed.` };
+        }
+        // Samples: quantity must be 1
+        if (item.quantity > 1) {
+          return { valid: false, error: "Sample orders are limited to 1 unit per product" };
+        }
+      } else {
+        // Regular orders: check sufficient stock
+        if (item.quantity > avail) {
+          const stock = (stockItems || []).find((s) => s.id === item.stockItemId);
+          return { valid: false, error: `Insufficient stock for ${stock?.productName || "product"}. Available: ${avail}, Requested: ${item.quantity}` };
+        }
+      }
+    }
+
+    return { valid: true };
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const check = canPlaceOrder();
+    if (!check.valid) {
+      alert(check.error);
+      return;
+    }
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
-    if (validItems.length === 0 || formData.customerId === 0) return;
     createOrder.mutate({
       customerId: formData.customerId,
+      orderType: formData.orderType,
       paymentTerms: formData.paymentTerms,
       priceTier: formData.priceTier,
       deliveryAddress: formData.deliveryAddress,
       notes: formData.notes,
       items: validItems.map((item) => ({
         stockItemId: item.stockItemId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined,
+        quantity: formData.orderType === "sample" ? 1 : item.quantity,
+        unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined),
       })),
     });
   }
@@ -133,13 +229,14 @@ export default function OrdersPage() {
       <table><thead><tr><th>Product Code</th><th>Product Name</th><th>Qty</th><th>Unit Price</th><th>Line Total</th></tr></thead><tbody>
       ${order.items?.map((item) => `<tr><td>${item.productCode}</td><td>${item.productName}</td><td>${item.quantity}</td><td>R ${Number(item.unitPrice).toFixed(2)}</td><td>R ${Number(item.lineTotal).toFixed(2)}</td></tr>`).join("") || ""}
       </tbody></table>
-      <div class="total">Total: R ${Number(order.total).toFixed(2)}</div>
+      <div class="total" style="color:${order.orderType === "sample" ? "#D4A843" : "#000"}">${order.orderType === "sample" ? "SAMPLE ORDER — No Charge (R 0.00)" : `Total: R ${Number(order.total).toFixed(2)}`}</div>
       </body></html>`);
     printWindow.document.close();
     printWindow.print();
   }
 
   const filteredOrders = (orders || []).filter((o) => activeTab === "all" || o.status === activeTab);
+  const orderCheck = canPlaceOrder();
 
   return (
     <div className="space-y-6">
@@ -187,16 +284,27 @@ export default function OrdersPage() {
               {(filteredOrders || []).map((order) => (
                 <>
                   <tr key={order.id} className="transition-colors hover:bg-[#131415] cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
-                    <td className="p-4 font-mono-data text-xs text-[#D4A843]">{order.orderNumber}</td>
+                    <td className="p-4 font-mono-data text-xs text-[#D4A843]">
+                      {order.orderNumber}
+                      {order.orderType === "sample" && (
+                        <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>
+                      )}
+                    </td>
                     <td className="p-4 text-sm text-[#E8E8E9] font-body">{order.customer?.name || "N/A"}</td>
                     <td className="p-4">
-                      <span className="status-badge text-xs" style={{ backgroundColor: `${PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80"}20`, color: PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80" }}>
-                        {order.priceTier?.toUpperCase() || "WHOLESALE"}
-                      </span>
+                      {order.orderType === "sample" ? (
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>
+                      ) : (
+                        <span className="status-badge text-xs" style={{ backgroundColor: `${PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80"}20`, color: PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80" }}>
+                          {order.priceTier?.toUpperCase() || "WHOLESALE"}
+                        </span>
+                      )}
                     </td>
                     <td className="p-4 text-sm text-[#8A8B8C] font-body">{new Date(order.createdAt).toLocaleDateString("en-ZA")}</td>
                     <td className="p-4 text-right text-sm text-white font-display">{order.items?.length || 0}</td>
-                    <td className="p-4 text-right font-display font-semibold text-white">R {Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                    <td className="p-4 text-right font-display font-semibold" style={{ color: order.orderType === "sample" ? "#D4A843" : "#FFFFFF" }}>
+                      {order.orderType === "sample" ? "R 0.00 (SAMPLE)" : `R ${Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`}
+                    </td>
                     <td className="p-4">
                       <span className="status-badge" style={{ backgroundColor: order.status === "delivered" ? "rgba(74,222,128,0.12)" : order.status === "pending" ? "rgba(245,158,11,0.12)" : order.status === "cancelled" ? "rgba(239,68,68,0.12)" : "rgba(99,102,241,0.12)", color: order.status === "delivered" ? "#4ADE80" : order.status === "pending" ? "#F59E0B" : order.status === "cancelled" ? "#EF4444" : "#6366F1" }}>{order.status}</span>
                     </td>
@@ -221,7 +329,7 @@ export default function OrdersPage() {
                         <table className="w-full mb-4">
                           <thead><tr style={{ borderBottom: "1px solid #222324" }}><th className="text-left p-2 label-text">Product</th><th className="text-right p-2 label-text">Qty</th><th className="text-right p-2 label-text">Unit Price</th><th className="text-right p-2 label-text">Line Total</th></tr></thead>
                           <tbody>
-                            {order.items?.map((item) => (
+                            {order.items?.map((item: any) => (
                               <tr key={item.id} style={{ borderBottom: "1px solid #18191A" }}>
                                 <td className="p-2 text-sm text-[#E8E8E9]">{item.productName}</td>
                                 <td className="p-2 text-right text-sm text-white">{item.quantity}</td>
@@ -232,9 +340,15 @@ export default function OrdersPage() {
                           </tbody>
                         </table>
                         <div className="flex justify-end gap-6 text-sm">
-                          <div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div>
-                          <div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div>
-                          <div className="font-display font-semibold text-[#D4A843]">Total: R {Number(order.total).toFixed(2)}</div>
+                          {order.orderType === "sample" ? (
+                            <div className="font-display font-semibold text-[#D4A843] text-lg"><FlaskConical className="w-5 h-5 inline mr-2" />SAMPLE ORDER — No Charge (R 0.00)</div>
+                          ) : (
+                            <>
+                              <div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div>
+                              <div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div>
+                              <div className="font-display font-semibold text-[#D4A843]">Total: R {Number(order.total).toFixed(2)}</div>
+                            </>
+                          )}
                         </div>
                         {order.deliveryAddress && <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: "#18191A" }}><div className="label-text mb-1">Delivery Address</div><div className="text-sm text-[#E8E8E9]">{order.deliveryAddress}</div></div>}
                         {order.notes && <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: "#18191A" }}><div className="label-text mb-1">Notes</div><div className="text-sm text-[#E8E8E9]">{order.notes}</div></div>}
@@ -257,17 +371,7 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label-text block mb-1.5">Customer *</label>
-                  <select value={formData.customerId} onChange={(e) => {
-                    const cid = parseInt(e.target.value);
-                    const customer = (customers || []).find((c) => c.id === cid);
-                    setFormData({
-                      ...formData,
-                      customerId: cid,
-                      priceTier: (customer?.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale",
-                      paymentTerms: (customer?.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "cod",
-                      items: [],
-                    });
-                  }} className="input-field" required>
+                  <select value={formData.customerId} onChange={(e) => handleCustomerSelect(parseInt(e.target.value))} className="input-field" required>
                     <option value={0}>Select customer...</option>
                     {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name} ({c.priceTier})</option>)}
                   </select>
@@ -280,83 +384,106 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Price Tier Selection */}
+              {/* Order Type Selection */}
               <div>
-                <label className="label-text block mb-2">Pricing Tier *</label>
-                <div className="grid grid-cols-4 gap-3">
-                  {PRICE_TIERS.map((tier) => (
-                    <button
-                      key={tier.key}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, priceTier: tier.key as "corporate" | "bulk" | "wholesale" | "retail" })}
-                      className="p-3 rounded-xl text-center transition-all cursor-pointer"
-                      style={{
-                        backgroundColor: formData.priceTier === tier.key ? `${tier.color}20` : "#0A0A0B",
-                        border: formData.priceTier === tier.key ? `2px solid ${tier.color}` : "2px solid #222324",
-                      }}
-                    >
-                      <DollarSign className="w-5 h-5 mx-auto mb-1" style={{ color: tier.color }} />
-                      <div className="text-sm font-display font-semibold" style={{ color: formData.priceTier === tier.key ? tier.color : "#8A8B8C" }}>{tier.label}</div>
-                    </button>
-                  ))}
+                <label className="label-text block mb-2">Order Type *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setFormData({ ...formData, orderType: "regular" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "regular" ? "rgba(74, 222, 128, 0.08)" : "#0A0A0B", border: formData.orderType === "regular" ? "2px solid #4ADE80" : "2px solid #222324" }}>
+                    <ShoppingBag className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }} />
+                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular Order</div>
+                    <div className="text-xs text-[#8A8B8C] mt-1">Customer is charged</div>
+                  </button>
+                  <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
+                    <FlaskConical className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }} />
+                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample Order</div>
+                    <div className="text-xs text-[#8A8B8C] mt-1">Customer is NOT charged</div>
+                  </button>
                 </div>
+                {formData.orderType === "sample" && (
+                  <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.05)", color: "#D4A843" }}>
+                    Sample orders: 1 unit per product max. Customer will not be charged. A follow-up reminder will be created after 4 days.
+                  </div>
+                )}
               </div>
+
+              {/* Price Tier Selection */}
+              {formData.orderType === "regular" && (
+                <div>
+                  <label className="label-text block mb-2">Pricing Tier *</label>
+                  <div className="grid grid-cols-4 gap-3">
+                    {PRICE_TIERS.map((tier) => (
+                      <button key={tier.key} type="button" onClick={() => setFormData({ ...formData, priceTier: tier.key as "corporate" | "bulk" | "wholesale" | "retail" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.priceTier === tier.key ? `${tier.color}20` : "#0A0A0B", border: formData.priceTier === tier.key ? `2px solid ${tier.color}` : "2px solid #222324" }}>
+                        <DollarSign className="w-5 h-5 mx-auto mb-1" style={{ color: tier.color }} />
+                        <div className="text-sm font-display font-semibold" style={{ color: formData.priceTier === tier.key ? tier.color : "#8A8B8C" }}>{tier.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {formData.customerId > 0 && (customerSpecialPrices || []).length > 0 && (
                 <div className="p-3 rounded-lg flex items-center gap-2" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.15)" }}>
                   <Tag className="w-4 h-4 text-[#D4A843]" />
-                  <span className="text-sm text-[#D4A843] font-body">{(customerSpecialPrices || []).length} special price(s) active for this customer — these override the tier price</span>
+                  <span className="text-sm text-[#D4A843] font-body">{(customerSpecialPrices || []).length} special price(s) active for this customer</span>
                 </div>
               )}
 
-              {/* Order Items */}
+              {/* Order Items with SOH */}
               <div>
                 <label className="label-text block mb-2">Order Items</label>
                 <div className="space-y-3">
                   {formData.items.map((item, index) => {
                     const effectivePrice = getEffectivePrice(item.stockItemId, item.unitPrice);
-                    const _stockItem = (stockItems || []).find((s) => s.id === item.stockItemId); void _stockItem;
-                    const hasSpecial = item.stockItemId > 0 && !!((customerSpecialPrices || []).find((sp) => sp.stockItemId === item.stockItemId));
+                    const hasSpecial = item.stockItemId > 0 && !!((customerSpecialPrices || []).find((sp: any) => sp.stockItemId === item.stockItemId));
                     const isCustom = item.unitPrice && item.unitPrice > 0;
                     const tierPrice = getTierPrice(item.stockItemId);
+                    const availSOH = availableStock[item.stockItemId] || 0;
+                    const isOutOfStock = item.stockItemId > 0 && availSOH <= 0;
+                    const insufficientStock = item.stockItemId > 0 && item.quantity > availSOH;
+
                     return (
-                      <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
+                      <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: isOutOfStock || insufficientStock ? "1px solid #EF4444" : "1px solid #222324" }}>
                         <div className="flex gap-3 mb-2">
                           <select value={item.stockItemId} onChange={(e) => handleUpdateItem(index, "stockItemId", parseInt(e.target.value))} className="input-field flex-1">
                             <option value={0}>Select product...</option>
-                            {(stockItems || []).map((s) => <option key={s.id} value={s.id}>{s.productName} ({s.species} {s.size} {s.color})</option>)}
+                            {(stockItems || []).map((s) => {
+                              const avail = availableStock[s.id] || 0;
+                              return <option key={s.id} value={s.id} disabled={avail <= 0}>{s.productName} — AVAIL: {avail} {avail <= 0 ? "(OUT)" : ""}</option>;
+                            })}
                           </select>
-                          <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} />
+                          {formData.orderType === "sample" ? (
+                            <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>1</div>
+                          ) : (
+                            <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} />
+                          )}
                           <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
                         </div>
                         {item.stockItemId > 0 && (
-                          <div className="flex items-center gap-4 flex-wrap">
-                            {/* Price info */}
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className="text-[#8A8B8C]">{formData.priceTier}:</span>
-                              <span className="font-display" style={{ color: PRICE_TIERS.find((t) => t.key === formData.priceTier)?.color }}>R {tierPrice.toFixed(2)}</span>
+                          <div className="space-y-2">
+                            {/* SOH indicator */}
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-[#8A8B8C]">Available Stock:</span>
+                              <span className={`text-sm font-display font-semibold ${isOutOfStock ? "text-[#EF4444]" : insufficientStock ? "text-[#F59E0B]" : "text-[#4ADE80]"}`}>
+                                {availSOH} units
+                                {isOutOfStock && <span className="ml-2 text-[#EF4444]"><AlertTriangle className="w-3 h-3 inline" /> OUT OF STOCK</span>}
+                                {insufficientStock && <span className="ml-2 text-[#F59E0B]"><AlertTriangle className="w-3 h-3 inline" /> INSUFFICIENT</span>}
+                              </span>
                             </div>
-                            {hasSpecial && !isCustom && (
-                              <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><Tag className="w-3 h-3" /> Special: R {effectivePrice.toFixed(2)}</span>
-                            )}
-                            {/* Custom price override */}
-                            <div className="flex items-center gap-2 ml-auto">
-                              <span className="text-xs text-[#8A8B8C]">Custom Price (R):</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={item.unitPrice || ""}
-                                onChange={(e) => handleUpdateItem(index, "unitPrice", parseFloat(e.target.value) || 0)}
-                                className="input-field w-28 text-sm"
-                                placeholder={`${effectivePrice.toFixed(2)}`}
-                                min={0}
-                              />
-                              {isCustom && (
-                                <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Custom</span>
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-[#8A8B8C]">{formData.priceTier}:</span>
+                                <span className="font-display" style={{ color: PRICE_TIERS.find((t) => t.key === formData.priceTier)?.color }}>R {tierPrice.toFixed(2)}</span>
+                              </div>
+                              {hasSpecial && !isCustom && (
+                                <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><Tag className="w-3 h-3" /> Special: R {effectivePrice.toFixed(2)}</span>
                               )}
+                              <div className="flex items-center gap-2 ml-auto">
+                                <span className="text-xs text-[#8A8B8C]">Custom Price (R):</span>
+                                <input type="number" step="0.01" value={item.unitPrice || ""} onChange={(e) => handleUpdateItem(index, "unitPrice", parseFloat(e.target.value) || 0)} className="input-field w-28 text-sm" placeholder={`${effectivePrice.toFixed(2)}`} min={0} />
+                                {isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Custom</span>}
+                              </div>
+                              <div className="font-display font-semibold text-sm text-white">= R {(effectivePrice * item.quantity).toFixed(2)}</div>
                             </div>
-                            {/* Line total */}
-                            <div className="font-display font-semibold text-sm text-white">= R {(effectivePrice * item.quantity).toFixed(2)}</div>
                           </div>
                         )}
                       </div>
@@ -366,9 +493,26 @@ export default function OrdersPage() {
                 <button type="button" onClick={handleAddItem} className="btn-secondary text-xs mt-3"><Plus className="w-3 h-3" /> Add Item</button>
               </div>
 
-              <div><label className="label-text block mb-1.5">Delivery Address</label><textarea value={formData.deliveryAddress} onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })} className="input-field" rows={2} /></div>
+              {/* Delivery Address with auto-fill */}
+              <div>
+                <label className="label-text block mb-1.5">Delivery Address {formData.customerId > 0 && <span className="text-[#8A8B8C] font-normal">(auto-filled from customer)</span>}</label>
+                <textarea
+                  value={formData.deliveryAddress}
+                  onChange={(e) => handleDeliveryAddressChange(e.target.value)}
+                  className="input-field"
+                  rows={2}
+                />
+              </div>
               <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={2} /></div>
-              <button type="submit" className="btn-primary w-full justify-center">Place Order</button>
+
+              {/* Validation message */}
+              {!orderCheck.valid && formData.items.length > 0 && (
+                <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444" }}>
+                  <AlertTriangle className="w-4 h-4 inline mr-2" />{orderCheck.error}
+                </div>
+              )}
+
+              <button type="submit" className="btn-primary w-full justify-center" disabled={!orderCheck.valid}>Place Order</button>
             </form>
           </div>
         </div>

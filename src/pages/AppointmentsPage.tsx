@@ -3,7 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
-  Navigation, User, Filter, Radio,
+  Navigation, User, Filter, Radio, Edit3,
 } from "lucide-react";
 
 export default function AppointmentsPage() {
@@ -17,6 +17,9 @@ export default function AppointmentsPage() {
   const [geoLocation, setGeoLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [geoError, setGeoError] = useState("");
   const [filterRep, setFilterRep] = useState<string>("all");
+  const [manualMode, setManualMode] = useState(false);
+  const [manualLat, setManualLat] = useState("");
+  const [manualLng, setManualLng] = useState("");
 
   const { data: appointments } = trpc.appointment.list.useQuery();
   const { data: checkins } = trpc.checkIn.list.useQuery();
@@ -43,12 +46,35 @@ export default function AppointmentsPage() {
 
   function handleGetLocation() {
     setGeoError("");
-    if (!navigator.geolocation) { setGeoError("Geolocation not supported"); return; }
+    setManualMode(false);
+    if (!navigator.geolocation) {
+      setGeoError("GPS not supported by this browser. Tap 'Enter Manually' to type coordinates.");
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
-      (err) => { setGeoError(err.message || "Unable to get location"); },
+      (pos) => { setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError(""); },
+      (err) => {
+        if (err.code === 1) {
+          setGeoError("Location permission denied. On your phone, allow location access when prompted, or tap 'Enter Manually'.");
+        } else if (err.message?.includes("permissions policy")) {
+          setGeoError("GPS blocked by browser policy. This only happens in preview mode — it will work on your phone. For now, tap 'Enter Manually'.");
+        } else {
+          setGeoError("Unable to get GPS location. Tap 'Enter Manually' to type coordinates.");
+        }
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+  }
+
+  function applyManualLocation() {
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setGeoError("Invalid coordinates. Latitude: -90 to 90, Longitude: -180 to 180.");
+      return;
+    }
+    setGeoLocation({ lat, lng });
+    setGeoError("");
   }
 
   function handleCheckin(customerId: number) {
@@ -119,7 +145,31 @@ export default function AppointmentsPage() {
           <a href={`https://www.google.com/maps?q=${geoLocation.lat},${geoLocation.lng}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] ml-2 underline">View on Map</a>
         </div>
       )}
-      {geoError && <div className="p-3 rounded-lg text-sm text-[#EF4444]" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)" }}>{geoError}</div>}
+
+      {/* Manual GPS Entry Fallback */}
+      {geoError && (
+        <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+          <p className="text-sm text-[#EF4444] font-body">{geoError}</p>
+          {!manualMode ? (
+            <button onClick={() => setManualMode(true)} className="btn-secondary text-xs"><Edit3 className="w-3 h-3" /> Enter Coordinates Manually</button>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+              <div className="flex-1">
+                <label className="label-text block mb-1 text-xs">Latitude</label>
+                <input type="number" step="any" value={manualLat} onChange={(e) => setManualLat(e.target.value)} placeholder="e.g. -26.2041" className="input-field text-sm" />
+              </div>
+              <div className="flex-1">
+                <label className="label-text block mb-1 text-xs">Longitude</label>
+                <input type="number" step="any" value={manualLng} onChange={(e) => setManualLng(e.target.value)} placeholder="e.g. 28.0473" className="input-field text-sm" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={applyManualLocation} className="btn-primary text-xs">Apply</button>
+                <button onClick={() => { setManualMode(false); setGeoError(""); }} className="btn-secondary text-xs">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Check-ins Section */}
       <div>

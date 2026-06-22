@@ -3,8 +3,10 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
-  Navigation, User, Filter, Radio, Edit3,
+  Navigation, User, Filter, Radio, ExternalLink,
 } from "lucide-react";
+
+type CheckInTarget = { customerId: number; address: string } | null;
 
 export default function AppointmentsPage() {
   const { user } = useAuth();
@@ -17,9 +19,7 @@ export default function AppointmentsPage() {
   const [geoLocation, setGeoLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [geoError, setGeoError] = useState("");
   const [filterRep, setFilterRep] = useState<string>("all");
-  const [manualMode, setManualMode] = useState(false);
-  const [manualLat, setManualLat] = useState("");
-  const [manualLng, setManualLng] = useState("");
+  const [mapTarget, setMapTarget] = useState<CheckInTarget>(null);
 
   const { data: appointments } = trpc.appointment.list.useQuery();
   const { data: checkins } = trpc.checkIn.list.useQuery();
@@ -32,7 +32,7 @@ export default function AppointmentsPage() {
     onSuccess: () => { utils.appointment.list.invalidate(); utils.appointment.getStats.invalidate(); setShowForm(false); setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10), startTime: "09:00", location: "" }); },
   });
   const createCheckin = trpc.checkIn.create.useMutation({
-    onSuccess: () => { utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate(); setGeoLocation(null); },
+    onSuccess: () => { utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate(); setGeoLocation(null); setMapTarget(null); setGeoError(""); },
   });
 
   // Filter: admin sees all, sales rep sees own. Filter dropdown further narrows.
@@ -46,38 +46,61 @@ export default function AppointmentsPage() {
 
   function handleGetLocation() {
     setGeoError("");
-    setManualMode(false);
+    setMapTarget(null);
     if (!navigator.geolocation) {
-      setGeoError("GPS not supported by this browser. Tap 'Enter Manually' to type coordinates.");
+      setGeoError("GPS not available on this browser.");
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => { setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGeoError(""); },
-      (err) => {
-        if (err.code === 1) {
-          setGeoError("Location permission denied. On your phone, allow location access when prompted, or tap 'Enter Manually'.");
-        } else if (err.message?.includes("permissions policy")) {
-          setGeoError("GPS blocked by browser policy. This only happens in preview mode — it will work on your phone. For now, tap 'Enter Manually'.");
-        } else {
-          setGeoError("Unable to get GPS location. Tap 'Enter Manually' to type coordinates.");
-        }
-      },
+      (err) => { setGeoError(err.message || "Unable to get location"); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }
 
-  function applyManualLocation() {
-    const lat = parseFloat(manualLat);
-    const lng = parseFloat(manualLng);
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      setGeoError("Invalid coordinates. Latitude: -90 to 90, Longitude: -180 to 180.");
-      return;
-    }
-    setGeoLocation({ lat, lng });
+  function initiateCheckin(customerId: number) {
+    const customer = (customers || []).find((c) => c.id === customerId);
+    if (!customer) return;
+    // Try GPS first
     setGeoError("");
+    setMapTarget(null);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          // GPS success — check in immediately with coords
+          setGeoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          createCheckin.mutate({
+            customerId,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            notes: customer.physicalAddress || "",
+            salesRepName: myRepName,
+          });
+        },
+        () => {
+          // GPS failed — show Google Maps of customer address for confirmation
+          setGeoLocation(null);
+          setMapTarget({ customerId, address: customer.physicalAddress || customer.name });
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+    } else {
+      // No GPS at all — show map directly
+      setMapTarget({ customerId, address: customer.physicalAddress || customer.name });
+    }
   }
 
-  function handleCheckin(customerId: number) {
+  function confirmMapCheckin() {
+    if (!mapTarget) return;
+    const customer = (customers || []).find((c) => c.id === mapTarget.customerId);
+    createCheckin.mutate({
+      customerId: mapTarget.customerId,
+      notes: customer?.physicalAddress || mapTarget.address,
+      salesRepName: myRepName,
+    });
+  }
+
+  function handleCheckinWithGPS(customerId: number) {
     if (!geoLocation) { handleGetLocation(); return; }
     const customer = (customers || []).find((c) => c.id === customerId);
     createCheckin.mutate({
@@ -100,8 +123,17 @@ export default function AppointmentsPage() {
   const inProgress = myAppointments.filter((a: any) => a.status === "in_progress");
   const completed = myAppointments.filter((a: any) => a.status === "completed");
 
+  // Build Google Maps embed URL for customer address
+  const mapEmbedUrl = mapTarget
+    ? `https://maps.google.com/maps?q=${encodeURIComponent(mapTarget.address)}&z=15&ie=UTF8&iwloc=&output=embed`
+    : "";
+  const mapLinkUrl = mapTarget
+    ? `https://www.google.com/maps?q=${encodeURIComponent(mapTarget.address)}`
+    : "";
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Appointments</h1>
@@ -110,8 +142,7 @@ export default function AppointmentsPage() {
           </p>
         </div>
         <div className="flex gap-3 flex-wrap">
-          <button onClick={handleGetLocation} className="btn-secondary"><Navigation className="w-4 h-4" /> {geoLocation ? "Location Ready" : "Get Location"}</button>
-          <button onClick={() => { setManualMode(true); setGeoError("Tap 'Apply' after entering the customer's GPS coordinates from Google Maps or your phone."); }} className="btn-secondary" style={{ borderColor: "#8A8B8C", color: "#8A8B8C" }}><Edit3 className="w-4 h-4" /> Enter Manually</button>
+          <button onClick={handleGetLocation} className="btn-secondary"><Navigation className="w-4 h-4" /> {geoLocation ? "GPS Ready" : "Get Location"}</button>
           <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
         </div>
       </div>
@@ -138,7 +169,7 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Geo Status */}
+      {/* GPS Active Banner */}
       {geoLocation && (
         <div className="p-3 rounded-lg flex items-center gap-2" style={{ backgroundColor: "rgba(74, 222, 128, 0.08)", border: "1px solid rgba(74, 222, 128, 0.2)" }}>
           <Radio className="w-4 h-4 text-[#4ADE80] animate-pulse" />
@@ -147,26 +178,35 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Manual GPS Entry Fallback */}
-      {geoError && (
-        <div className="p-4 rounded-lg space-y-3" style={{ backgroundColor: geoError.includes("Tap 'Apply'") ? "rgba(212, 168, 67, 0.08)" : "rgba(239, 68, 68, 0.08)", border: `1px solid ${geoError.includes("Tap 'Apply'") ? "rgba(212, 168, 67, 0.2)" : "rgba(239, 68, 68, 0.2)"}` }}>
-          <p className="text-sm font-body" style={{ color: geoError.includes("Tap 'Apply'") ? "#D4A843" : "#EF4444" }}>{geoError}</p>
-          {manualMode && (
-            <div className="flex flex-col sm:flex-row gap-3 items-end">
-              <div className="flex-1">
-                <label className="label-text block mb-1 text-xs">Latitude</label>
-                <input type="number" step="any" value={manualLat} onChange={(e) => setManualLat(e.target.value)} placeholder="e.g. -26.2041" className="input-field text-sm" />
-              </div>
-              <div className="flex-1">
-                <label className="label-text block mb-1 text-xs">Longitude</label>
-                <input type="number" step="any" value={manualLng} onChange={(e) => setManualLng(e.target.value)} placeholder="e.g. 28.0473" className="input-field text-sm" />
-              </div>
-              <div className="flex gap-2">
-                <button onClick={applyManualLocation} className="btn-primary text-xs">Apply</button>
-                <button onClick={() => { setManualMode(false); setGeoError(""); }} className="btn-secondary text-xs">Cancel</button>
-              </div>
+      {/* Google Maps Check-In Confirmation */}
+      {mapTarget && (
+        <div className="card-surface p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-display font-medium text-white text-sm">Confirm Check-In Location</h3>
+              <p className="text-xs text-[#8A8B8C] font-body">GPS unavailable. Confirm you are at this location on the map below.</p>
             </div>
-          )}
+            <button onClick={() => setMapTarget(null)} className="text-xs text-[#8A8B8C] hover:text-white cursor-pointer"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #222324" }}>
+            <iframe
+              src={mapEmbedUrl}
+              width="100%"
+              height="300"
+              style={{ border: 0, filter: "grayscale(0.3)" }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              title="Customer Location"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <a href={mapLinkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Open in Google Maps</a>
+            <div className="flex gap-2">
+              <button onClick={() => setMapTarget(null)} className="btn-secondary text-xs">Cancel</button>
+              <button onClick={confirmMapCheckin} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Confirm Check-In</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -174,7 +214,7 @@ export default function AppointmentsPage() {
       <div>
         <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-[#4ADE80]" /> Geo Check-ins</h2>
         {myCheckins.length === 0 ? (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No check-ins yet. Click "Get Location" then check in at a customer.</div>
+          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No check-ins yet. Tap "Check In" on an appointment below.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {myCheckins.map((ci: any) => (
@@ -193,14 +233,21 @@ export default function AppointmentsPage() {
                     <div className="text-xs text-[#8A8B8C] font-mono-data">{new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</div>
                   </div>
                 </div>
-                {ci.latitude && ci.longitude && (
+                {ci.latitude && ci.longitude ? (
                   <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
                       <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
                     </div>
                   </div>
-                )}
+                ) : ci.location ? (
+                  <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#8A8B8C] font-body">Location verified via customer address</span>
+                      <a href={`https://www.google.com/maps?q=${encodeURIComponent(ci.location)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -235,7 +282,7 @@ export default function AppointmentsPage() {
                   </div>
                   {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
                   <div className="flex gap-2 mt-3">
-                    <button onClick={() => { if (geoLocation) handleCheckin(appt.customerId); else handleGetLocation(); }} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
+                    <button onClick={() => initiateCheckin(appt.customerId)} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
                     <button onClick={() => {/* complete */}} className="btn-secondary text-xs"><CheckCircle className="w-3 h-3" /> Complete</button>
                   </div>
                 </div>
@@ -268,7 +315,7 @@ export default function AppointmentsPage() {
                   </div>
                   {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
                   <div className="flex gap-2 mt-3">
-                    <button onClick={() => { if (geoLocation) handleCheckin(appt.customerId); else handleGetLocation(); }} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
+                    <button onClick={() => initiateCheckin(appt.customerId)} className="btn-primary text-xs"><Navigation className="w-3 h-3" /> Check In</button>
                     <button onClick={() => {/* mark in progress */}} className="btn-secondary text-xs"><Radio className="w-3 h-3" /> Start</button>
                   </div>
                 </div>

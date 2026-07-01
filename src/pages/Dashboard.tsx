@@ -10,6 +10,8 @@ import {
   ArrowDownRight,
   TrendingUp,
   UserCheck,
+  CheckCircle,
+  FlaskConical,
 } from "lucide-react";
 import {
   XAxis,
@@ -259,27 +261,81 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card-surface p-6">
-          <div className="flex items-center justify-between mb-3">
-            <span className="label-text">PENDING ORDERS</span>
-            <ShoppingCart className="w-5 h-5 text-[#F59E0B]" />
+      {/* Order Status Overview */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-text">PENDING</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)" }}>
+              <ShoppingCart className="w-4 h-4" style={{ color: "#F59E0B" }} />
+            </div>
           </div>
-          <div className="stat-number" style={{ color: "#F59E0B" }}>{orderStats?.pending || 0}</div>
+          <div className="stat-number" style={{ color: "#F59E0B" }}>{orderStats?.pending ?? 0}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">Awaiting picking</div>
         </div>
-        <div className="card-surface p-6">
-          <div className="flex items-center justify-between mb-3">
-            <span className="label-text">READY FOR DELIVERY</span>
-            <ShoppingCart className="w-5 h-5 text-[#6366F1]" />
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-text">PICKING</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)" }}>
+              <ShoppingCart className="w-4 h-4" style={{ color: "#6366F1" }} />
+            </div>
           </div>
-          <div className="stat-number" style={{ color: "#6366F1" }}>{orderStats?.ready || 0}</div>
+          <div className="stat-number" style={{ color: "#6366F1" }}>{orderStats?.picking ?? 0}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">In warehouse</div>
         </div>
-        <div className="card-surface p-6">
-          <div className="flex items-center justify-between mb-3">
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-text">READY</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)" }}>
+              <ShoppingCart className="w-4 h-4" style={{ color: "#4ADE80" }} />
+            </div>
+          </div>
+          <div className="stat-number" style={{ color: "#4ADE80" }}>{orderStats?.ready ?? 0}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">For delivery</div>
+        </div>
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-text">DELIVERED</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
+              <CheckCircle className="w-4 h-4" style={{ color: "#D4A843" }} />
+            </div>
+          </div>
+          <div className="stat-number" style={{ color: "#D4A843" }}>{orderStats?.delivered ?? 0}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">Completed</div>
+        </div>
+      </div>
+
+      {/* Invoice + Sample Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
             <span className="label-text">OVERDUE INVOICES</span>
-            <AlertTriangle className="w-5 h-5 text-[#EF4444]" />
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)" }}>
+              <AlertTriangle className="w-4 h-4" style={{ color: "#EF4444" }} />
+            </div>
           </div>
-          <div className="stat-number" style={{ color: "#EF4444" }}>{invoiceStats?.overdue || 0}</div>
+          <div className="stat-number" style={{ color: "#EF4444" }}>{invoiceStats?.overdue ?? 0}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">Past due date</div>
+        </div>
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-text">SAMPLE ORDERS</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(139, 92, 246, 0.12)" }}>
+              <FlaskConical className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+            </div>
+          </div>
+          <div className="stat-number" style={{ color: "#8B5CF6" }}>{orderStats?.samples ?? 0}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">With follow-ups</div>
+        </div>
+        <div className="card-surface p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-text">OUTSTANDING</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
+              <DollarSign className="w-4 h-4" style={{ color: "#D4A843" }} />
+            </div>
+          </div>
+          <div className="stat-number" style={{ color: "#D4A843" }}>R {(invoiceStats?.outstanding ?? 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          <div className="text-xs text-[#8A8B8C] font-body mt-1">Unpaid invoices</div>
         </div>
       </div>
     </div>

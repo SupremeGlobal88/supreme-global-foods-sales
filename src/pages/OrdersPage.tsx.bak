@@ -1,12 +1,14 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useLocation } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage } from "@/lib/dataService";
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
-  ShoppingBag, Pencil, RotateCcw, Info, Search,
+  ShoppingBag, Pencil, RotateCcw, Info,
 } from "lucide-react";
+import { subscribeToOrders, isFirebaseReady } from "@/lib/firebaseSync";
+import CustomerSelect from "@/components/CustomerSelect";
 
 const PRICE_TIERS = [
   { key: "corporate", label: "Corporate", color: "#D4A843" },
@@ -39,11 +41,27 @@ export default function OrdersPage() {
   const isAdmin = user?.role === "admin";
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const preselectedId = (location.state as any)?.preselectedCustomerId;
 
   const [activeTab, setActiveTab] = useState("all");
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
+
+  // Auto-open form when coming from customer selection page
+  // Wait for customers to load before pre-selecting
+  const hasPreselectedRef = useRef(false);
+  useEffect(() => {
+    if (hasPreselectedRef.current) return;
+    if (preselectedId && !editingOrder && customers && customers.length > 0) {
+      hasPreselectedRef.current = true;
+      setShowForm(true);
+      handleCustomerSelect(preselectedId);
+      window.history.replaceState({}, document.title);
+    }
+  }, [preselectedId, customers, editingOrder, handleCustomerSelect]);
 
   const [formData, setFormData] = useState({
     customerId: 0, orderType: "regular" as "regular" | "sample",
@@ -52,48 +70,88 @@ export default function OrdersPage() {
     deliveryAddress: "", notes: "",
     items: [] as { stockItemId: number; quantity: number; unitPrice?: number }[],
   });
-  const [customerSearch, setCustomerSearch] = useState("");
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-  const customerInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: orders } = trpc.order.list.useQuery();
+  const { data: localOrders } = trpc.order.list.useQuery();
+  const [firebaseOrders, setFirebaseOrders] = useState<any[]>([]);
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
+
+
   const { data: stats } = trpc.order.getStats.useQuery();
+
+  // Subscribe to Firebase orders for cross-device sync
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let retryCount = 0;
+    const maxRetries = 5;
+
+    function trySubscribe() {
+      if (isFirebaseReady()) {
+        console.log("[OrdersPage] Firebase ready, subscribing...");
+        unsub = subscribeToOrders((fbOrders) => {
+          console.log("[OrdersPage] Firebase orders:", fbOrders.length);
+          setFirebaseOrders(fbOrders);
+        });
+      } else if (retryCount < maxRetries) {
+        retryCount++;
+        console.log("[OrdersPage] Firebase not ready, retrying... (" + retryCount + "/" + maxRetries + ")");
+        setTimeout(trySubscribe, 1000);
+      } else {
+        console.warn("[OrdersPage] Firebase sync unavailable after retries");
+      }
+    }
+
+    // Delay slightly to ensure Firebase has time to init from localStorage
+    const timer = setTimeout(trySubscribe, 500);
+    return () => {
+      clearTimeout(timer);
+      if (unsub) unsub();
+    };
+  }, []);
+
+  // Merge local + Firebase orders (deduplicated by ID)
+  const orders = useMemo(() => {
+    const local = localOrders || [];
+    if (firebaseOrders.length === 0) return local;
+    const map = new Map<number, any>();
+    for (const o of local) if (o?.id) map.set(o.id, o);
+    for (const o of firebaseOrders) {
+      if (!o?.id) continue;
+      const existing = map.get(o.id);
+      if (!existing) {
+        map.set(o.id, o);
+      } else {
+        const existingDate = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+        const fbDate = new Date(o.updatedAt || o.createdAt || 0).getTime();
+        if (fbDate > existingDate) map.set(o.id, o);
+      }
+    }
+    return Array.from(map.values()).sort((a: any, b: any) => {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+  }, [localOrders, firebaseOrders]);
 
   const { data: customerSpecialPrices } = trpc.specialPrice.listByCustomer.useQuery(
     { customerId: formData.customerId }, { enabled: formData.customerId > 0 }
   );
 
   const updateStatus = trpc.order.updateStatus.useMutation({
-    onSuccess: async () => {
-      reloadFromStorage(); // Force re-read from localStorage into memory
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
-    },
+    onSuccess: () => { utils.order.list.invalidate(); utils.order.getStats.invalidate(); utils.stock.search.invalidate(); },
   });
   const createOrder = trpc.order.create.useMutation({
-    onSuccess: async () => {
-      reloadFromStorage();
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
+    onSuccess: () => {
+      utils.order.list.invalidate(); utils.order.getStats.invalidate();
+      utils.stock.search.invalidate(); utils.stock.list.invalidate();
+      utils.stock.getStats.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
     },
   });
   const updateOrder = trpc.order.update.useMutation({
-    onSuccess: async () => {
-      reloadFromStorage();
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
+    onSuccess: () => {
+      utils.order.list.invalidate(); utils.order.getStats.invalidate();
+      utils.stock.search.invalidate(); utils.stock.list.invalidate();
+      utils.stock.getStats.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
     },
   });
@@ -150,33 +208,16 @@ export default function OrdersPage() {
     return getTierPrice(stockItemId);
   }
 
-  function handleCustomerSelect(cid: number) {
+  const handleCustomerSelect = useCallback((cid: number) => {
     const customer = (customers || []).find((c) => c.id === cid);
-    setFormData({ ...formData, customerId: cid,
+    setFormData((prev) => ({
+      ...prev,
+      customerId: cid,
       priceTier: (customer?.priceTier as any) || "wholesale",
       paymentTerms: (customer?.paymentTerms as any) || "cod",
-      deliveryAddress: customer?.physicalAddress || "", items: [],
-    });
-    setCustomerSearch(customer?.name || "");
-    setShowCustomerDropdown(false);
-  }
-
-  function handleOpenCustomerDropdown() {
-    setShowCustomerDropdown(true);
-    setCustomerSearch("");
-    setTimeout(() => customerInputRef.current?.focus(), 50);
-  }
-
-  const filteredCustomers = useMemo(() => {
-    if (!showCustomerDropdown) return [];
-    const q = customerSearch.toLowerCase().trim();
-    if (!q || q.length < 1) return customers || [];
-    return (customers || []).filter((c) =>
-      c.name?.toLowerCase().includes(q) ||
-      c.customerCode?.toLowerCase().includes(q) ||
-      c.city?.toLowerCase().includes(q)
-    );
-  }, [customers, customerSearch, showCustomerDropdown]);
+      deliveryAddress: customer?.physicalAddress || "",
+    }));
+  }, [customers]);
 
   function handleAddItem() { setFormData({ ...formData, items: [...formData.items, { stockItemId: 0, quantity: 1 }] }); }
   function handleRemoveItem(index: number) { setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) }); }
@@ -194,10 +235,19 @@ export default function OrdersPage() {
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
     if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
     for (const item of validItems) {
-      const avail = availableStock[item.stockItemId] || 0;
-      if (avail <= 0) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
+      // When editing, add back the old order's quantities for this product
+      // so the user can adjust within the true available range
+      let editingQty = 0;
+      if (editingOrder && editingOrder.items) {
+        editingQty = editingOrder.items
+          .filter((it: any) => it.stockItemId === item.stockItemId)
+          .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
+      }
+      const avail = (availableStock[item.stockItemId] || 0) + editingQty;
+      if (avail <= 0 && !editingOrder) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
       if (formData.orderType === "sample") {
-        const existing = (orders || []).some((o) => o.customerId === formData.customerId && o.orderType === "sample" && o.items?.some((it: any) => it.stockItemId === item.stockItemId));
+        // When editing a sample, allow keeping the same product (don't flag existing)
+        const existing = (orders || []).some((o) => o.customerId === formData.customerId && o.orderType === "sample" && o.items?.some((it: any) => it.stockItemId === item.stockItemId) && o.id !== editingOrder?.id);
         if (existing) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
         if (item.quantity > 1) return { valid: false, error: "Sample orders: 1 unit per product max." };
       } else { if (item.quantity > avail) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail}, Requested: ${item.quantity}` }; } }
@@ -210,7 +260,9 @@ export default function OrdersPage() {
     const check = canPlaceOrder();
     if (!check.valid) { alert(check.error); return; }
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
-    const payload = { customerId: formData.customerId, orderType: formData.orderType, paymentTerms: formData.paymentTerms, priceTier: formData.priceTier, deliveryAddress: formData.deliveryAddress, notes: formData.notes, items: validItems.map((item) => ({ stockItemId: item.stockItemId, quantity: formData.orderType === "sample" ? 1 : item.quantity, unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined) })) };
+    const customer = (customers || []).find((c) => c.id === formData.customerId);
+    const salesRepName = customer?.salesRepName || myRepName || "";
+    const payload = { customerId: formData.customerId, orderType: formData.orderType, paymentTerms: formData.paymentTerms, priceTier: formData.priceTier, deliveryAddress: formData.deliveryAddress, notes: formData.notes, salesRepName, items: validItems.map((item) => ({ stockItemId: item.stockItemId, quantity: formData.orderType === "sample" ? 1 : item.quantity, unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined) })) };
     if (editingOrder) {
       updateOrder.mutate({ id: editingOrder.id, ...payload });
     } else {
@@ -230,42 +282,35 @@ export default function OrdersPage() {
   }
 
   function canEditOrder(order: any): boolean {
-    // Sales reps can edit their own orders while status is "pending"
-    // Once status moves to "picking" or beyond, only admin can edit
-    // Delivered/cancelled orders cannot be edited by anyone
-    if (order.status === "delivered" || order.status === "cancelled" || order.status === "sample_delivered") return false;
-    if (isAdmin) return true; // Admin can edit pending, picking, ready
-    // Sales rep: can only edit their own orders while still pending
-    if (order.status !== "pending") return false;
+    // Determine which statuses are editable based on role
+    // Sales rep: can edit their own orders in "pending" only
+    // Admin: can edit any order up to "ready" (before delivery)
+    const editableStatuses = isAdmin
+      ? ["pending", "picking", "ready"]
+      : ["pending"];
+    if (!editableStatuses.includes(order.status)) return false;
+    if (isAdmin) return true;
+    // For sales reps, check if this order belongs to them (via customer assignment)
     const cust = (customers || []).find((c) => c.id === order.customerId);
     return cust?.salesRepName === myRepName;
   }
 
   function canCancelOrder(order: any): boolean {
-    // Admin can cancel any non-delivered/non-cancelled order
-    // Sales rep can only cancel their own pending orders
-    if (order.status === "cancelled" || order.status === "delivered" || order.status === "sample_delivered") return false;
-    if (isAdmin) return true;
-    // Sales rep: can only cancel their own pending orders
-    if (order.status !== "pending") return false;
-    const cust = (customers || []).find((c) => c.id === order.customerId);
-    return cust?.salesRepName === myRepName;
-  }
-
-  function canProgressOrder(order: any): boolean {
-    // ONLY ADMIN can click status buttons (Mark Picking / Mark Ready / Mark Delivered)
-    // Sales reps place orders and edit - admin handles the status flow
+    // Only admin can cancel orders
     if (!isAdmin) return false;
-    if (order.status === "delivered" || order.status === "cancelled" || order.status === "sample_delivered") return false;
-    return true;
-  }
-
-  function getCustomer(order: any) {
-    return (customers || []).find((c) => c.id === order.customerId);
+    return order.status !== "cancelled" && order.status !== "delivered";
   }
 
   function printPickingSlip(order: any) {
-    const customer = getCustomer(order);
+    // Use cloud-enriched customer data, fallback to local lookup
+    const cust = order.customer || (customers || []).find((c) => c.id === order.customerId) || {};
+    // Ensure items have product details, fallback to product lookup
+    const items = (order.items || []).map((item: any) => {
+      if (item.productName && item.productCode) return item;
+      const prod = (stockItems || []).find((s) => s.id === item.stockItemId);
+      return { ...item, productCode: prod?.productCode || "", productName: prod?.productName || "Unknown" };
+    });
+    const logoUrl = window.location.origin + "/logo.png";
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
@@ -274,10 +319,11 @@ export default function OrdersPage() {
   @media print { body { padding: 0; } .no-print { display: none; } }
   body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
   .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; }
+  .logo-text { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; }
   .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
   .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
   .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
+  .info-block { }
   .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
   .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
   table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -289,11 +335,17 @@ export default function OrdersPage() {
   .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
   .sig-line { border-bottom: 1px solid #333; height: 40px; margin-top: 8px; }
   .sig-label { font-size: 11px; color: #666; margin-top: 6px; }
+  .totals { text-align: right; margin-top: 15px; font-size: 16px; font-weight: bold; color: #D4A843; }
 </style></head><body>
   <div class="header">
-    <div class="logo">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
-    <div class="subtitle">Tel: 083 293 0644</div>
+    <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+      <img src="${logoUrl}" alt="Supreme Global Foods" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">
+      <div>
+        <div class="logo-text">SUPREME GLOBAL FOODS</div>
+        <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
+        <div class="subtitle">Tel: 083 293 0644</div>
+      </div>
+    </div>
   </div>
   <div class="doc-title">FACTORY PICKING SLIP</div>
   <div style="text-align:center;margin-bottom:15px;">
@@ -302,132 +354,35 @@ export default function OrdersPage() {
   <div class="info-section">
     <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
     <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Phone</div><div class="value">${customer?.phone || "N/A"}</div></div>
-    <div class="info-block" style="grid-column: 1 / -1;"><div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div></div>
+    <div class="info-block"><div class="label">Customer</div><div class="value">${cust.name || "N/A"}</div></div>
+    <div class="info-block"><div class="label">Customer Code</div><div class="value">${cust.customerCode || "N/A"}</div></div>
+    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#4ADE80;font-weight:700;">${order.salesRepName || cust.salesRepName || "N/A"}</div></div>
+    <div class="info-block"><div class="label">Contact Person</div><div class="value">${cust.contactPerson || "N/A"}</div></div>
+    <div class="info-block"><div class="label">Phone</div><div class="value">${cust.phone || "N/A"}</div></div>
+    <div class="info-block" style="grid-column: 1 / -1;"><div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || cust.physicalAddress || "N/A"}${cust.city ? `, ${cust.city}` : ""}</div></div>
     ${order.notes ? `<div class="info-block" style="grid-column: 1 / -1;"><div class="label">Notes</div><div class="value" style="font-style:italic;color:#888;">${order.notes}</div></div>` : ""}
   </div>
   <table>
     <thead><tr><th>Product Code</th><th>Product Name</th><th>Qty</th></tr></thead>
     <tbody>
-      ${order.items?.map((item: any) => `<tr><td>${item.productCode}</td><td>${item.productName}</td><td style="font-weight:bold;font-size:16px;">${item.quantity}</td></tr>`).join("") || ""}
+      ${items.map((item: any) => `<tr><td>${item.productCode || "-"}</td><td>${item.productName || "Unknown"}</td><td style="font-weight:bold;font-size:16px;">${item.quantity}</td></tr>`).join("") || "<tr><td colspan=3 style='text-align:center;color:#999;'>No items</td></tr>"}
     </tbody>
   </table>
   <div class="footer">
     <div class="signatures">
-      <div><div class="label">Picked By (Name & Signature)</div><div class="sig-line"></div><div class="sig-label">Print name and sign</div></div>
-      <div><div class="label">Time Completed</div><div class="sig-line"></div><div class="sig-label">Date & Time order was picked</div></div>
+      <div>
+        <div class="label">Picked By (Name & Signature)</div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Print name and sign</div>
+      </div>
+      <div>
+        <div class="label">Time Completed</div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Date & Time order was picked</div>
+      </div>
     </div>
-    <div style="margin-top:30px;text-align:center;font-size:10px;color:#999;">This is an internal factory document. Prices are not shown. For office use only.</div>
-  </div>
-</body></html>`);
-    printWindow.document.close();
-    printWindow.print();
-  }
-
-  function printCombinedInvoiceDelivery(order: any) {
-    const customer = getCustomer(order);
-    const invoiceNumber = order.invoiceNumber ? order.invoiceNumber.replace("ORD", "INV") : `INV-${order.orderNumber}`;
-    const deliveryNoteNumber = `DN-${order.orderNumber}`;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    const subtotal = Number(order.subtotal || 0);
-    const vatAmount = Number(order.vatAmount || 0);
-    const total = Number(order.total || 0);
-    printWindow.document.write(`
-<html><head><title>Invoice & Delivery Note - ${order.orderNumber}</title>
-<style>
-  @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; }
-  .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
-  .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
-  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-  th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
-  .totals { text-align: right; margin-top: 15px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
-  .grand-total { font-size: 18px; font-weight: bold; color: #D4A843; margin-top: 8px; padding-top: 8px; border-top: 2px solid #D4A843; }
-  .copy-separator { border-top: 3px dashed #999; margin: 40px 0; padding-top: 20px; }
-  .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 11px; color: #666; }
-  .copy-label { position: fixed; top: 10px; right: 10px; background: #D4A843; color: white; padding: 4px 12px; font-size: 11px; font-weight: bold; border-radius: 4px; }
-</style></head><body>
-  <!-- ===== COPY 1: Customer Copy ===== -->
-  <div class="copy-label">CUSTOMER COPY</div>
-  <div class="header">
-    <div class="logo">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
-    <div class="subtitle">VAT: 4120123456 &middot; Reg: 2015/123456/07</div>
-  </div>
-  <div class="doc-title">TAX INVOICE &amp; DELIVERY NOTE</div>
-  <div class="info-section">
-    <div class="info-block"><div class="label">Invoice Number</div><div class="value">${invoiceNumber}</div></div>
-    <div class="info-block"><div class="label">Delivery Note</div><div class="value">${deliveryNoteNumber}</div></div>
-    <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
-    <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA")}</div></div>
-    <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Deliver To</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div></div>
-    <div class="info-block"><div class="label">Payment Terms</div><div class="value">${(order.paymentTerms || "COD").replace("_", " ").toUpperCase()}</div></div>
-  </div>
-  <table>
-    <thead><tr><th>Product</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Line Total</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `<tr><td>${item.productName}</td><td style="text-align:right;">${item.quantity}</td><td style="text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td><td style="text-align:right;">R ${Number(item.lineTotal).toFixed(2)}</td></tr>`).join("") || ""}
-    </tbody>
-  </table>
-  <div class="totals">
-    <div style="display:flex;justify-content:flex-end;gap:40px;margin-bottom:6px;"><span>Subtotal:</span><strong>R ${subtotal.toFixed(2)}</strong></div>
-    <div style="display:flex;justify-content:flex-end;gap:40px;margin-bottom:6px;"><span>VAT (15%):</span><strong>R ${vatAmount.toFixed(2)}</strong></div>
-    <div class="grand-total" style="display:flex;justify-content:flex-end;gap:40px;"><span>Total Due:</span><strong>R ${total.toFixed(2)}</strong></div>
-  </div>
-  <div style="margin-top:20px;padding:15px;border:2px dashed #ddd;border-radius:8px;">
-    <div style="font-size:12px;color:#666;"><strong>Delivery Note:</strong> Goods received in good order. Returns accepted within 7 days.</div>
-  </div>
-  <div class="footer">
-    <p>Banking: FNB | Acc: 62001234567 | Branch: 250655 | Quote invoice number with payment</p>
-    <p style="font-size:10px;color:#999;">E&amp;OE. Thank you for your business!</p>
-  </div>
-
-  <!-- ===== COPY 2: Office Copy ===== -->
-  <div class="copy-separator"></div>
-  <div class="copy-label">OFFICE COPY</div>
-  <div class="header">
-    <div class="logo">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
-  </div>
-  <div class="doc-title">TAX INVOICE &amp; DELIVERY NOTE — OFFICE COPY</div>
-  <div class="info-section">
-    <div class="info-block"><div class="label">Invoice Number</div><div class="value">${invoiceNumber}</div></div>
-    <div class="info-block"><div class="label">Delivery Note</div><div class="value">${deliveryNoteNumber}</div></div>
-    <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
-    <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA")}</div></div>
-    <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Sales Rep</div><div class="value">${customer?.salesRepName || "N/A"}</div></div>
-    <div class="info-block" style="grid-column:1/-1;"><div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div></div>
-  </div>
-  <table>
-    <thead><tr><th>Product</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Line Total</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `<tr><td>${item.productName}</td><td style="text-align:right;">${item.quantity}</td><td style="text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td><td style="text-align:right;">R ${Number(item.lineTotal).toFixed(2)}</td></tr>`).join("") || ""}
-    </tbody>
-  </table>
-  <div class="totals">
-    <div style="display:flex;justify-content:flex-end;gap:40px;margin-bottom:6px;"><span>Subtotal:</span><strong>R ${subtotal.toFixed(2)}</strong></div>
-    <div style="display:flex;justify-content:flex-end;gap:40px;margin-bottom:6px;"><span>VAT (15%):</span><strong>R ${vatAmount.toFixed(2)}</strong></div>
-    <div class="grand-total" style="display:flex;justify-content:flex-end;gap:40px;"><span>Total Due:</span><strong>R ${total.toFixed(2)}</strong></div>
-  </div>
-  <div style="margin-top:20px;padding:15px;background:#f9f9f9;border-radius:8px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;">
-      <div><div class="label">Received By (Name &amp; Signature)</div><div style="border-bottom:1px solid #333;height:40px;margin-top:8px;"></div><div style="font-size:11px;color:#666;margin-top:6px;">Customer sign here</div></div>
-      <div><div class="label">Delivered By (Name &amp; Signature)</div><div style="border-bottom:1px solid #333;height:40px;margin-top:8px;"></div><div style="font-size:11px;color:#666;margin-top:6px;">Driver sign here</div></div>
+    <div style="margin-top:30px;text-align:center;font-size:10px;color:#999;">
+      This is an internal factory document. Prices are not shown. For office use only.
     </div>
   </div>
 </body></html>`);
@@ -445,7 +400,7 @@ export default function OrdersPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Orders</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} total value</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); }} className="btn-primary"><Plus className="w-4 h-4" /> New Order</button>
+        <button onClick={() => { setEditingOrder(null); resetForm(); navigate("/orders/new"); }} className="btn-primary"><Plus className="w-4 h-4" /> New Order</button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -472,6 +427,7 @@ export default function OrdersPage() {
               <tr style={{ backgroundColor: "#131415", borderBottom: "1px solid #222324" }}>
                 <th className="text-left p-4 label-text">Order #</th>
                 <th className="text-left p-4 label-text">Customer</th>
+                <th className="text-left p-4 label-text">Sales Rep</th>
                 <th className="text-left p-4 label-text">Tier</th>
                 <th className="text-left p-4 label-text">Date</th>
                 <th className="text-right p-4 label-text">Items</th>
@@ -489,6 +445,7 @@ export default function OrdersPage() {
                       {order.orderType === "sample" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>}
                     </td>
                     <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.customer?.name || "N/A"}</td>
+                    <td className="p-4 text-sm text-[#4ADE80] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{(order as any).salesRepName || order.customer?.salesRepName || "-"}</td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderType === "sample"
                         ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>
@@ -505,18 +462,8 @@ export default function OrdersPage() {
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Status flow buttons always visible */}
-                        {canProgressOrder(order) && order.status === "pending" && (
-                          <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "picking" }); }} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>
-                        )}
-                        {canProgressOrder(order) && order.status === "picking" && (
-                          <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "ready" }); }} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>
-                        )}
-                        {canProgressOrder(order) && order.status === "ready" && (
-                          <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "delivered" }); }} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>
-                        )}
                         {canEditOrder(order) && (
-                          <button onClick={(e) => { e.stopPropagation(); startEditOrder(order); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit order"><Pencil className="w-4 h-4 text-[#D4A843]" /></button>
+                          <button onClick={() => startEditOrder(order)} className="p-1.5 rounded hover:bg-[#222324]" title="Edit order"><Pencil className="w-4 h-4 text-[#D4A843]" /></button>
                         )}
                         {expandedOrder === order.id ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
                       </div>
@@ -525,46 +472,19 @@ export default function OrdersPage() {
                   {expandedOrder === order.id && (
                     <tr><td colSpan={8} className="p-0">
                       <div className="p-6" style={{ backgroundColor: "#0A0A0B" }}>
-                        {/* Status flow indicator */}
-                        <div className="flex items-center gap-2 mb-4 p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                          {["pending", "picking", "ready", "delivered"].map((s, i, arr) => {
-                            const isCurrent = order.status === s;
-                            const isPast = arr.indexOf(order.status) > i;
-                            const colors: Record<string, string> = { pending: "#F59E0B", picking: "#6366F1", ready: "#4ADE80", delivered: "#4ADE80" };
-                            return (
-                              <div key={s} className="flex items-center gap-2">
-                                <span className="text-xs font-body px-3 py-1 rounded-full" style={{ backgroundColor: isCurrent ? `${colors[s]}30` : isPast ? `${colors[s]}15` : "#222324", color: isCurrent ? colors[s] : isPast ? "#8A8B8C" : "#555", border: isCurrent ? `1px solid ${colors[s]}` : "1px solid transparent", fontWeight: isCurrent ? 700 : 400 }}>
-                                  {STATUS_LABELS[s]?.label}
-                                </span>
-                                {i < arr.length - 1 && <span style={{ color: isPast ? "#4ADE80" : "#333" }}>→</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-
                         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                           <div>
                             <h3 className="font-display font-semibold text-white">Order Details</h3>
                             <span className="text-xs text-[#8A8B8C]">{order.orderType === "sample" ? "Sample Order — No Charge" : `Price Tier: ${(order.priceTier || "wholesale").toUpperCase()}`}</span>
                           </div>
                           <div className="flex gap-2 flex-wrap">
-                            {canEditOrder(order) && (
-                              <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)" }}><Pencil className="w-3 h-3" /> Edit Order</button>
-                            )}
                             <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Picking Slip</button>
-                            {order.orderType !== "sample" && (
-                              <button onClick={() => printCombinedInvoiceDelivery(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)" }}><Printer className="w-3 h-3" /> Print Invoice &amp; Delivery Note</button>
-                            )}
+                            {isAdmin && order.status === "pending" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>}
+                            {isAdmin && order.status === "picking" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>}
+                            {isAdmin && order.status === "ready" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>}
+                            {canCancelOrder(order) && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
+                            {isAdmin && order.status === "cancelled" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "pending" })} className="btn-primary text-xs"><RotateCcw className="w-3 h-3" /> Re-activate</button>}
                           </div>
-                        </div>
-
-                        {/* Status flow buttons */}
-                        <div className="flex gap-2 flex-wrap mb-4">
-                          {canProgressOrder(order) && order.status === "pending" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>}
-                          {canProgressOrder(order) && order.status === "picking" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>}
-                          {canProgressOrder(order) && order.status === "ready" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>}
-                          {canCancelOrder(order) && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
-                          {isAdmin && order.status === "cancelled" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "pending" })} className="btn-primary text-xs"><RotateCcw className="w-3 h-3" /> Re-activate</button>}
                         </div>
                         <table className="w-full mb-4">
                           <thead><tr style={{ borderBottom: "1px solid #222324" }}><th className="text-left p-2 label-text">Product</th><th className="text-right p-2 label-text">Qty</th><th className="text-right p-2 label-text">Unit Price</th><th className="text-right p-2 label-text">Line Total</th></tr></thead>
@@ -609,57 +529,23 @@ export default function OrdersPage() {
               <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
                 <Info className="w-4 h-4 inline mr-2" />
                 {isAdmin
-                  ? "Admin: Editing will restore old stock and re-deduct new quantities."
-                  : "Editing will restore old stock and re-deduct new quantities."
+                  ? `Admin edit mode: ${editingOrder.status === "pending" ? "Pending" : editingOrder.status === "picking" ? "Picking" : "Ready"} order. Old stock will be restored and new quantities re-deducted.`
+                  : "Editing your pending order. Old stock will be restored and new quantities re-deducted."
                 }
               </div>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div style={{ position: "relative", zIndex: 20 }}>
+                <div>
                   <label className="label-text block mb-1.5">Customer *</label>
                   {editingOrder ? (
-                    <div className="input-field" style={{ opacity: 0.7 }}>
-                      {(customers || []).find((c) => c.id === formData.customerId)?.name || "Unknown"}
-                    </div>
+                    <input type="text" value={(customers || []).find((c) => c.id === formData.customerId)?.name || ""} className="input-field" disabled readOnly />
                   ) : (
-                    <>
-                      <input
-                        ref={customerInputRef}
-                        type="text"
-                        value={customerSearch}
-                        onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
-                        onFocus={handleOpenCustomerDropdown}
-                        placeholder="Type to search customers..."
-                        className="input-field w-full"
-                        required
-                        autoComplete="off"
-                      />
-                      {showCustomerDropdown && (
-                        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 200, overflowY: "auto", backgroundColor: "#18191A", border: "1px solid #2A2B2C", borderRadius: 8, zIndex: 30, marginTop: 4 }}>
-                          {filteredCustomers.length === 0 && (
-                            <div style={{ padding: 12, color: "#8A8B8C", fontSize: 12 }}>No customers found</div>
-                          )}
-                          {filteredCustomers.map((c) => (
-                            <div
-                              key={c.id}
-                              onClick={() => handleCustomerSelect(c.id)}
-                              style={{ padding: "10px 12px", cursor: "pointer", borderBottom: "1px solid #222324", color: formData.customerId === c.id ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
-                              className="hover:bg-[#222324]"
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-body font-medium">{c.name}</span>
-                                <span className="font-mono-data text-xs" style={{ color: "#8A8B8C" }}>{c.customerCode}</span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-xs" style={{ color: "#4ADE80" }}>{c.priceTier}</span>
-                                <span className="text-xs" style={{ color: "#8A8B8C" }}>{c.city}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
+                    <CustomerSelect
+                      customers={customers || []}
+                      selectedId={formData.customerId}
+                      onSelect={handleCustomerSelect}
+                    />
                   )}
                 </div>
                 <div>
@@ -797,6 +683,7 @@ export default function OrdersPage() {
                 {editingOrder ? "Update Order" : "Place Order"}
               </button>
             </form>
+
           </div>
         </div>
       )}

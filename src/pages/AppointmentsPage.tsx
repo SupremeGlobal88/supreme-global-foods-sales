@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { reloadFromStorage } from "@/lib/dataService";
 import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
   Navigation, User, Filter, ExternalLink, LogIn, LogOut,
+  AlertTriangle, Phone, Briefcase, Search, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 type MapTarget = { customerId: number; address: string } | null;
@@ -14,6 +16,11 @@ export default function AppointmentsPage() {
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
+  // ===================== STATE =====================
+
+  // Tabs: visits (checkins), schedule (appointments), followups
+  const [activeTab, setActiveTab] = useState<"visits" | "schedule" | "followups">("visits");
+
   // Schedule form
   const [showForm, setShowForm] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"existing" | "new">("existing");
@@ -22,7 +29,7 @@ export default function AppointmentsPage() {
     appointmentDate: new Date().toISOString().slice(0, 16),
     startTime: "09:00", location: "",
   });
-  const [newCustomer, setNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "" });
+  const [newCustomer, setNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days" });
 
   // Check-in flow
   const [showCheckinForm, setShowCheckinForm] = useState(false);
@@ -30,6 +37,7 @@ export default function AppointmentsPage() {
   const [checkinNotes, setCheckinNotes] = useState("");
   const [mapTarget, setMapTarget] = useState<MapTarget>(null);
   const [geoError, setGeoError] = useState("");
+  const [checkinOutcome, setCheckinOutcome] = useState<"visit" | "order" | "sample">("visit");
 
   // Check-out flow
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
@@ -37,6 +45,20 @@ export default function AppointmentsPage() {
   const [checkoutNotes, setCheckoutNotes] = useState("");
 
   const [filterRep, setFilterRep] = useState<string>("all");
+  const [expandedVisit, setExpandedVisit] = useState<number | null>(null);
+  const [expandedAppt, setExpandedAppt] = useState<number | null>(null);
+
+  // Customer search for check-in
+  const [checkinSearch, setCheckinSearch] = useState("");
+
+  // Follow-up action logging
+  const [showActionForm, setShowActionForm] = useState(false);
+  const [actionCustomerId, setActionCustomerId] = useState(0);
+  const [actionType, setActionType] = useState<"phone_call" | "site_visit" | "email" | "whatsapp" | "sms" | "other">("phone_call");
+  const [actionNotes, setActionNotes] = useState("");
+  const [expandedCustomerActions, setExpandedCustomerActions] = useState<number | null>(null);
+
+  // ===================== DATA =====================
 
   const { data: appointments } = trpc.appointment.list.useQuery();
   const { data: checkins } = trpc.checkIn.list.useQuery();
@@ -44,27 +66,78 @@ export default function AppointmentsPage() {
   const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
   const { data: apptStats } = trpc.appointment.getStats.useQuery();
   const { data: checkinStats } = trpc.checkIn.getStats.useQuery();
+  const { data: followUpCustomers } = trpc.customer.getCustomersNeedingFollowUp.useQuery({ days: 10 });
+  const { data: followUpActions } = trpc.followUpAction.list.useQuery();
+
+  // ===================== MUTATIONS =====================
+
+  // Create new customer from appointments page
+  const createCustomer = trpc.customer.create.useMutation({
+    onSuccess: async (res: any) => {
+      reloadFromStorage();
+      await utils.customer.search.invalidate();
+      await utils.customer.getStats.invalidate();
+      if (res?.id) {
+        setFormData({ ...formData, customerId: res.id });
+        setScheduleMode("existing");
+      }
+    },
+  });
 
   const createAppointment = trpc.appointment.create.useMutation({
-    onSuccess: () => {
-      utils.appointment.list.invalidate(); utils.appointment.getStats.invalidate();
-      setShowForm(false);
-      setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10), startTime: "09:00", location: "" });
-      setNewCustomer({ name: "", contactPerson: "", phone: "", address: "" });
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
+      setShowForm(false); resetForm();
     },
   });
   const createCheckin = trpc.checkIn.create.useMutation({
-    onSuccess: () => {
-      utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate();
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
       setMapTarget(null); setGeoError(""); setShowCheckinForm(false); setCheckinCustomerId(0); setCheckinNotes("");
     },
   });
   const checkoutMutation = trpc.checkIn.checkout.useMutation({
-    onSuccess: () => {
-      utils.checkIn.list.invalidate(); utils.checkIn.getStats.invalidate();
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
       setShowCheckoutForm(false); setCheckoutCheckinId(0); setCheckoutNotes("");
     },
   });
+  const createFollowUpAction = trpc.followUpAction.create.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.followUpAction.list.invalidate();
+      setShowActionForm(false); setActionCustomerId(0); setActionNotes(""); setActionType("phone_call");
+    },
+  });
+
+  // ===================== HELPERS =====================
+
+  function resetForm() {
+    setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10) + "T09:00", startTime: "09:00", location: "" });
+    setNewCustomer({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale", paymentTerms: "cod" });
+  }
+
+  function handleAddNewCustomerAndSchedule() {
+    if (!newCustomer.name.trim()) { alert("Enter customer name"); return; }
+    // Actually create the customer in the main database
+    createCustomer.mutate({
+      name: newCustomer.name.trim(),
+      businessName: newCustomer.name.trim(),
+      contactPerson: newCustomer.contactPerson || "",
+      phone: newCustomer.phone || "",
+      physicalAddress: newCustomer.address || "",
+      city: "",
+      province: "",
+      postalCode: "",
+      paymentTerms: newCustomer.paymentTerms,
+      priceTier: newCustomer.priceTier,
+      salesRepName: myRepName,
+      status: "active",
+    });
+  }
 
   // Filter: admin sees all, sales rep sees own
   const myAppointments = isAdmin
@@ -75,14 +148,20 @@ export default function AppointmentsPage() {
     ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
     : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
 
+  const myFollowUps = isAdmin
+    ? (filterRep === "all" ? (followUpCustomers || []) : (followUpCustomers || []).filter((c: any) => c.salesRepName === filterRep))
+    : (followUpCustomers || []).filter((c: any) => c.salesRepName === myRepName);
+
   // ===================== CHECK-IN FLOW =====================
 
   function openCheckinForm() {
     setShowCheckinForm(true);
     setCheckinCustomerId(0);
     setCheckinNotes("");
+    setCheckinSearch("");
     setMapTarget(null);
     setGeoError("");
+    setCheckinOutcome("visit");
   }
 
   function submitCheckinForm() {
@@ -100,8 +179,10 @@ export default function AppointmentsPage() {
             customerId: checkinCustomerId,
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            notes: checkinNotes || customer.physicalAddress || "",
+            notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || customer.physicalAddress || ""}`,
             salesRepName: myRepName,
+            location: customer.physicalAddress || customer.name,
+            outcome: checkinOutcome,
           });
         },
         () => {
@@ -127,8 +208,10 @@ export default function AppointmentsPage() {
     const customer = (customers || []).find((c) => c.id === mapTarget.customerId);
     createCheckin.mutate({
       customerId: mapTarget.customerId,
-      notes: checkinNotes || customer?.physicalAddress || mapTarget.address,
+      notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || customer?.physicalAddress || mapTarget.address}`,
       salesRepName: myRepName,
+      location: customer?.physicalAddress || mapTarget.address,
+      outcome: checkinOutcome,
     });
   }
 
@@ -145,33 +228,34 @@ export default function AppointmentsPage() {
     checkoutMutation.mutate({ id: checkoutCheckinId, notes: checkoutNotes });
   }
 
+  function openActionForm(customerId: number) {
+    setActionCustomerId(customerId);
+    setActionType("phone_call");
+    setActionNotes("");
+    setShowActionForm(true);
+  }
+
+  function submitActionForm() {
+    if (actionCustomerId === 0) return;
+    createFollowUpAction.mutate({
+      customerId: actionCustomerId,
+      actionType,
+      notes: actionNotes,
+      salesRepName: myRepName,
+    });
+  }
+
   // ===================== SCHEDULE APPOINTMENT =====================
 
   function handleScheduleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
-    if (scheduleMode === "existing") {
-      if (formData.customerId === 0) { alert("Select a customer"); return; }
-      createAppointment.mutate({ ...formData, salesRepName: myRepName });
-    } else {
-      if (!newCustomer.name.trim()) { alert("Enter customer name"); return; }
-      const detailLines = [
-        newCustomer.name && `Customer: ${newCustomer.name}`,
-        newCustomer.contactPerson && `Contact: ${newCustomer.contactPerson}`,
-        newCustomer.phone && `Phone: ${newCustomer.phone}`,
-        newCustomer.address && `Address: ${newCustomer.address}`,
-        formData.location && `Location: ${formData.location}`,
-        formData.notes && `Notes: ${formData.notes}`,
-      ].filter(Boolean).join("\n");
-
-      createAppointment.mutate({
-        ...formData,
-        customerId: 0,
-        title: formData.title || `Visit: ${newCustomer.name}`,
-        notes: detailLines,
-        salesRepName: myRepName,
-      });
-    }
+    if (formData.customerId === 0) { alert("Select a customer"); return; }
+    if (!formData.title.trim()) { alert("Enter a title"); return; }
+    createAppointment.mutate({
+      ...formData,
+      salesRepName: myRepName,
+      appointmentDate: formData.appointmentDate,
+    });
   }
 
   // ===================== APPOINTMENT STATUS GROUPS =====================
@@ -183,6 +267,17 @@ export default function AppointmentsPage() {
   // Check-in groups
   const activeCheckins = myCheckins.filter((ci: any) => ci.status === "checked_in");
   const completedCheckins = myCheckins.filter((ci: any) => ci.status === "checked_out");
+
+  // Customer search for check-in
+  const filteredCheckinCustomers = useMemo(() => {
+    const q = checkinSearch.toLowerCase().trim();
+    if (!q) return customers || [];
+    return (customers || []).filter((c: any) =>
+      (c.name || "").toLowerCase().includes(q) ||
+      (c.customerCode || "").toLowerCase().includes(q) ||
+      (c.city || "").toLowerCase().includes(q)
+    );
+  }, [customers, checkinSearch]);
 
   // ===================== GOOGLE MAPS URLS =====================
 
@@ -209,7 +304,7 @@ export default function AppointmentsPage() {
           <button onClick={openCheckinForm} className="btn-primary" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}>
             <LogIn className="w-4 h-4" /> Check In at Location
           </button>
-          <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
+          <button onClick={() => { setShowForm(true); resetForm(); }} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
         </div>
       </div>
 
@@ -219,6 +314,54 @@ export default function AppointmentsPage() {
         <div className="card-surface p-4"><div className="label-text mb-1">TODAY</div><div className="stat-number" style={{ color: "#D4A843" }}>{apptStats?.today || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">CHECKED IN NOW</div><div className="stat-number" style={{ color: "#4ADE80" }}>{checkinStats?.checkedIn || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">COMPLETED VISITS</div><div className="stat-number" style={{ color: "#6366F1" }}>{checkinStats?.checkedOut || 0}</div></div>
+      </div>
+
+      {/* Follow-up Alert Banner */}
+      {myFollowUps && myFollowUps.length > 0 && (
+        <div className="card-surface p-4" style={{ backgroundColor: "rgba(245, 158, 11, 0.06)", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
+          <div className="flex items-center gap-3 mb-3">
+            <AlertTriangle className="w-5 h-5" style={{ color: "#F59E0B" }} />
+            <h3 className="font-display font-semibold text-white text-sm" style={{ color: "#F59E0B" }}>
+              {myFollowUps.length} customer{myFollowUps.length > 1 ? "s" : ""} need{myFollowUps.length === 1 ? "s" : ""} follow-up (no order in 10+ days)
+            </h3>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {myFollowUps.slice(0, 5).map((c: any) => (
+              <button
+                key={c.id}
+                onClick={() => setActiveTab("followups")}
+                className="text-xs px-3 py-1.5 rounded-full font-body"
+                style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B", border: "1px solid rgba(245, 158, 11, 0.2)" }}
+              >
+                {c.name} ({c.daysSinceLastOrder === 999 ? "Never" : c.daysSinceLastOrder + "d"})
+              </button>
+            ))}
+            {myFollowUps.length > 5 && (
+              <button onClick={() => setActiveTab("followups")} className="text-xs px-3 py-1.5 rounded-full font-body" style={{ color: "#8A8B8C" }}>
+                +{myFollowUps.length - 5} more
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
+        {(["visits", "schedule", "followups"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="flex-1 py-2 rounded-md text-sm font-body font-medium transition-all cursor-pointer"
+            style={{
+              backgroundColor: activeTab === tab ? "#222324" : "transparent",
+              color: activeTab === tab ? "#D4A843" : "#8A8B8C",
+            }}
+          >
+            {tab === "visits" && `Visits (${myCheckins.length})`}
+            {tab === "schedule" && `Schedule (${myAppointments.length})`}
+            {tab === "followups" && `Follow-ups (${myFollowUps?.length || 0})`}
+          </button>
+        ))}
       </div>
 
       {/* Sales Rep Filter — Admin Only */}
@@ -235,6 +378,297 @@ export default function AppointmentsPage() {
         </div>
       )}
 
+      {/* ===================== VISITS TAB ===================== */}
+      {activeTab === "visits" && (
+        <div className="space-y-6">
+          {/* Active Visits — Checked In */}
+          {activeCheckins.length > 0 && (
+            <div>
+              <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
+                <LogIn className="w-5 h-5 text-[#4ADE80]" /> Active Visits — Checked In ({activeCheckins.length})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeCheckins.map((ci: any) => (
+                  <div key={ci.id} className="card-surface p-4" style={{ borderLeft: "3px solid #4ADE80" }}>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <User className="w-4 h-4 text-[#D4A843]" />
+                          <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
+                          {isAdmin && (
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ADE80" }}>
+                              {ci.outcome || "visit"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-[#E8E8E9] font-body mb-1">
+                          {ci.customer?.name || (ci.notes?.includes("Customer:") ? ci.notes.split("\n").find((l: string) => l.startsWith("Customer:"))?.replace("Customer: ", "") : "Unknown Customer")}
+                        </div>
+                        {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span>
+                        <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
+                        <div className="text-xs text-[#8A8B8C] font-mono-data">{new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</div>
+                      </div>
+                    </div>
+                    {ci.latitude && ci.longitude && (
+                      <div className="mt-3 p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
+                        <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
+                        <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
+                      </div>
+                    )}
+                    {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
+                    <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary w-full mt-3 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
+                      <LogOut className="w-4 h-4" /> Check Out
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Completed Visits — Checked Out */}
+          <div>
+            <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-[#6366F1]" /> Completed Visits ({completedCheckins.length})
+            </h2>
+            {completedCheckins.length === 0 ? (
+              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No completed visits yet. Check in at a customer, then check out when done.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {completedCheckins.map((ci: any) => (
+                  <div key={ci.id} className="card-surface p-4">
+                    <div className="flex items-start justify-between cursor-pointer" onClick={() => setExpandedVisit(expandedVisit === ci.id ? null : ci.id)}>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <User className="w-4 h-4 text-[#D4A843]" />
+                          <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
+                          {isAdmin && (
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
+                              {ci.outcome || "visit"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-[#E8E8E9] font-body mb-1">
+                          {ci.customer?.name || (ci.notes?.includes("Customer:") ? ci.notes.split("\n").find((l: string) => l.startsWith("Customer:"))?.replace("Customer: ", "") : "Unknown Customer")}
+                        </div>
+                        {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Done</span>
+                        <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
+                      </div>
+                    </div>
+
+                    {expandedVisit === ci.id && (
+                      <div className="mt-3 space-y-2 pt-3" style={{ borderTop: "1px solid #222324" }}>
+                        {ci.durationMinutes !== undefined && (
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3 h-3 text-[#D4A843]" />
+                            <span className="text-xs text-[#D4A843] font-body font-medium">
+                              {ci.durationMinutes < 60 ? `${ci.durationMinutes} min` : `${Math.floor(ci.durationMinutes / 60)}h ${ci.durationMinutes % 60}m`}
+                            </span>
+                            <span className="text-xs text-[#8A8B8C]">
+                              ({new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} - {new Date(ci.checkedOutAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })})
+                            </span>
+                          </div>
+                        )}
+                        {ci.latitude && ci.longitude && (
+                          <div className="p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
+                            <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
+                            <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
+                          </div>
+                        )}
+                        {ci.notes && <p className="text-xs text-[#8A8B8C] italic">Check-in: {ci.notes}</p>}
+                        {ci.checkoutNotes && (
+                          <div className="p-2 rounded-lg" style={{ backgroundColor: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
+                            <p className="text-xs text-[#EF4444] font-body font-medium mb-0.5">Check-out notes:</p>
+                            <p className="text-xs text-[#E8E8E9] font-body">{ci.checkoutNotes}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================== SCHEDULE TAB ===================== */}
+      {activeTab === "schedule" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#D4A843]" /> Scheduled Appointments ({myAppointments.length})
+            </h2>
+
+            {inProgress.length > 0 && (
+              <div className="mb-4">
+                <h3 className="label-text mb-2" style={{ color: "#6366F1" }}>IN PROGRESS</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {inProgress.map((appt: any) => (
+                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #6366F1" }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <User className="w-3 h-3 text-[#D4A843]" />
+                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                          </div>
+                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
+                        </div>
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                        {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {upcoming.length > 0 && (
+              <div className="mb-4">
+                <h3 className="label-text mb-2" style={{ color: "#F59E0B" }}>UPCOMING</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {upcoming.map((appt: any) => (
+                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <User className="w-3 h-3 text-[#D4A843]" />
+                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                          </div>
+                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
+                        </div>
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                        {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {myAppointments.length === 0 && (
+              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No appointments scheduled. Tap "Schedule" to create one.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================== FOLLOW-UPS TAB ===================== */}
+      {activeTab === "followups" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-[#F59E0B]" /> Customers Needing Follow-up
+            </h2>
+            {myFollowUps?.length === 0 ? (
+              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">
+                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-[#4ADE80]" />
+                <p className="text-[#4ADE80] font-body font-medium mb-1">All caught up!</p>
+                <p className="text-sm">All customers have ordered within the last 10 days.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {myFollowUps?.map((c: any) => {
+                  const customerActions = (followUpActions || []).filter((fa: any) => fa.customerId === c.id);
+                  const isExpanded = expandedCustomerActions === c.id;
+                  return (
+                    <div key={c.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Briefcase className="w-4 h-4 text-[#D4A843]" />
+                            <span className="text-sm font-body font-semibold text-white">{c.name}</span>
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(245,158,11,0.12)", color: "#F59E0B" }}>
+                              {c.priceTier || "wholesale"}
+                            </span>
+                            {customerActions.length > 0 && (
+                              <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ADE80" }}>
+                                {customerActions.length} action{customerActions.length > 1 ? "s" : ""} logged
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-[#8A8B8C] mb-2">
+                            {c.contactPerson && <span className="flex items-center gap-1"><User className="w-3 h-3" />{c.contactPerson}</span>}
+                            {c.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</span>}
+                            {c.physicalAddress && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{c.physicalAddress}{c.city ? `, ${c.city}` : ""}</span>}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs">
+                            <span className="text-[#EF4444] font-medium">
+                              {c.daysSinceLastOrder === 999 ? "Never ordered" : `${c.daysSinceLastOrder} days since last order`}
+                            </span>
+                            {c.lastOrder && (
+                              <span className="text-[#8A8B8C]">
+                                Last: {new Date(c.lastOrderDate).toLocaleDateString("en-ZA")} — R {Number(c.lastOrder.total || 0).toFixed(2)}
+                              </span>
+                            )}
+                            <span className="text-[#8A8B8C]">{c.totalOrders} total orders</span>
+                          </div>
+
+                          {/* Previous actions */}
+                          {customerActions.length > 0 && isExpanded && (
+                            <div className="mt-3 space-y-2 pt-3" style={{ borderTop: "1px solid #222324" }}>
+                              <p className="text-xs font-body font-medium text-[#8A8B8C] mb-2">Previous Actions:</p>
+                              {customerActions.map((fa: any) => (
+                                <div key={fa.id} className="flex items-start gap-2 p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}>
+                                  <span className="text-xs px-2 py-0.5 rounded font-medium shrink-0" style={{
+                                    backgroundColor: fa.actionType === "site_visit" ? "rgba(99,102,241,0.15)" : fa.actionType === "phone_call" ? "rgba(74,222,128,0.15)" : fa.actionType === "whatsapp" ? "rgba(37,211,102,0.15)" : fa.actionType === "email" ? "rgba(59,130,246,0.15)" : "rgba(212,168,67,0.15)",
+                                    color: fa.actionType === "site_visit" ? "#6366F1" : fa.actionType === "phone_call" ? "#4ADE80" : fa.actionType === "whatsapp" ? "#25D366" : fa.actionType === "email" ? "#3B82F6" : "#D4A843",
+                                  }}>
+                                    {(fa.actionType || "other").replace("_", " ")}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    {fa.notes && <p className="text-xs text-[#E8E8E9] font-body">{fa.notes}</p>}
+                                    <p className="text-xs text-[#8A8B8C]">{fa.salesRepName || "Unknown"} — {new Date(fa.createdAt).toLocaleDateString("en-ZA")}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 ml-4">
+                          <span className="text-xs font-body" style={{ color: "#D4A843" }}>{c.salesRepName || "Unassigned"}</span>
+                          <button
+                            onClick={() => openActionForm(c.id)}
+                            className="text-xs px-3 py-1.5 rounded-lg font-body font-medium cursor-pointer"
+                            style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843", border: "1px solid rgba(212,168,67,0.3)" }}
+                          >
+                            + Log Action
+                          </button>
+                          {customerActions.length > 0 && (
+                            <button
+                              onClick={() => setExpandedCustomerActions(isExpanded ? null : c.id)}
+                              className="text-xs cursor-pointer"
+                              style={{ color: "#8A8B8C" }}
+                            >
+                              {isExpanded ? "Hide" : "View Actions"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODALS ===================== */}
+
       {/* Check-in Form Modal */}
       {showCheckinForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
@@ -246,13 +680,63 @@ export default function AppointmentsPage() {
 
             {!mapTarget ? (
               <div className="space-y-4">
+                {/* Customer search */}
                 <div>
-                  <label className="label-text block mb-1.5">Customer *</label>
-                  <select value={checkinCustomerId} onChange={(e) => setCheckinCustomerId(parseInt(e.target.value))} className="input-field" required>
-                    <option value={0}>Select customer...</option>
-                    {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <label className="label-text block mb-1.5">Search Customer *</label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
+                    <input
+                      type="text"
+                      value={checkinSearch}
+                      onChange={(e) => setCheckinSearch(e.target.value)}
+                      placeholder="Type to search customers..."
+                      className="input-field w-full pl-10"
+                    />
+                  </div>
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
+                    {filteredCheckinCustomers.length === 0 && (
+                      <div className="p-3 text-xs text-[#8A8B8C]">No customers found</div>
+                    )}
+                    {filteredCheckinCustomers.map((c: any) => (
+                      <div
+                        key={c.id}
+                        onClick={() => setCheckinCustomerId(c.id)}
+                        className="p-3 cursor-pointer flex items-center justify-between"
+                        style={{
+                          borderBottom: "1px solid #222324",
+                          backgroundColor: checkinCustomerId === c.id ? "rgba(212,168,67,0.1)" : "transparent",
+                        }}
+                      >
+                        <div>
+                          <div className="text-sm font-body" style={{ color: checkinCustomerId === c.id ? "#D4A843" : "#E8E8E9" }}>{c.name}</div>
+                          <div className="text-xs text-[#8A8B8C]">{c.physicalAddress}{c.city ? `, ${c.city}` : ""}</div>
+                        </div>
+                        {checkinCustomerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Visit outcome */}
+                <div>
+                  <label className="label-text block mb-1.5">Visit Outcome</label>
+                  <div className="flex gap-2">
+                    {(["visit", "order", "sample"] as const).map((o) => (
+                      <button
+                        key={o}
+                        onClick={() => setCheckinOutcome(o)}
+                        className="flex-1 py-2 rounded-lg text-xs font-body font-medium capitalize cursor-pointer"
+                        style={{
+                          backgroundColor: checkinOutcome === o ? "#D4A843" : "#222324",
+                          color: checkinOutcome === o ? "#0A0A0B" : "#8A8B8C",
+                        }}
+                      >
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div>
                   <label className="label-text block mb-1.5">Notes (optional)</label>
                   <textarea value={checkinNotes} onChange={(e) => setCheckinNotes(e.target.value)} className="input-field" rows={2} placeholder="What did you discuss?" />
@@ -309,195 +793,6 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Active Visits — Checked In */}
-      {activeCheckins.length > 0 && (
-        <div>
-          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><LogIn className="w-5 h-5 text-[#4ADE80]" /> Active Visits — Checked In</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {activeCheckins.map((ci: any) => (
-              <div key={ci.id} className="card-surface p-4" style={{ borderLeft: "3px solid #4ADE80" }}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <User className="w-4 h-4 text-[#D4A843]" />
-                      <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
-                    </div>
-                    <div className="text-sm text-[#E8E8E9] font-body mb-1">{ci.customer?.name || "Unknown Customer"}</div>
-                    {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span>
-                    <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
-                    <div className="text-xs text-[#8A8B8C] font-mono-data">{new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</div>
-                  </div>
-                </div>
-                {ci.latitude && ci.longitude && (
-                  <div className="mt-3 p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
-                    <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
-                    <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
-                  </div>
-                )}
-                {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
-                <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary w-full mt-3 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
-                  <LogOut className="w-4 h-4" /> Check Out
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Completed Visits — Checked Out */}
-      <div>
-        <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-[#6366F1]" /> Completed Visits</h2>
-        {completedCheckins.length === 0 ? (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No completed visits yet. Check in at a customer, then check out when done.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {completedCheckins.map((ci: any) => (
-              <div key={ci.id} className="card-surface p-4 opacity-70">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <User className="w-4 h-4 text-[#D4A843]" />
-                      <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
-                    </div>
-                    <div className="text-sm text-[#E8E8E9] font-body mb-1">{ci.customer?.name || "Unknown Customer"}</div>
-                    {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Done</span>
-                    <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
-                  </div>
-                </div>
-                {/* Duration */}
-                {ci.durationMinutes !== undefined && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <Clock className="w-3 h-3 text-[#D4A843]" />
-                    <span className="text-xs text-[#D4A843] font-body font-medium">
-                      {ci.durationMinutes < 60
-                        ? `${ci.durationMinutes} min`
-                        : `${Math.floor(ci.durationMinutes / 60)}h ${ci.durationMinutes % 60}m`}
-                    </span>
-                    <span className="text-xs text-[#8A8B8C]">
-                      ({new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} - {new Date(ci.checkedOutAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })})
-                    </span>
-                  </div>
-                )}
-                {ci.latitude && ci.longitude && (
-                  <div className="mt-2 p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
-                    <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
-                    <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
-                  </div>
-                )}
-                {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">Check-in: {ci.notes}</p>}
-                {ci.checkoutNotes && (
-                  <div className="mt-2 p-2 rounded-lg" style={{ backgroundColor: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
-                    <p className="text-xs text-[#EF4444] font-body font-medium mb-0.5">Check-out notes:</p>
-                    <p className="text-xs text-[#E8E8E9] font-body">{ci.checkoutNotes}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Appointments Section */}
-      <div>
-        <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><Calendar className="w-5 h-5 text-[#D4A843]" /> Scheduled Appointments</h2>
-
-        {/* In Progress */}
-        {inProgress.length > 0 && (
-          <div className="mb-4">
-            <h3 className="label-text mb-2" style={{ color: "#6366F1" }}>IN PROGRESS</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {inProgress.map((appt: any) => (
-                <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #6366F1" }}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <User className="w-3 h-3 text-[#D4A843]" />
-                        <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                      </div>
-                      <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
-                    </div>
-                    <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                    {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
-                  </div>
-                  {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Upcoming */}
-        {upcoming.length > 0 && (
-          <div className="mb-4">
-            <h3 className="label-text mb-2" style={{ color: "#F59E0B" }}>UPCOMING</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {upcoming.map((appt: any) => (
-                <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <User className="w-3 h-3 text-[#D4A843]" />
-                        <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                      </div>
-                      <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
-                    </div>
-                    <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                    {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
-                  </div>
-                  {appt.notes && <p className="text-xs text-[#8A8B8C] mt-2">{appt.notes}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Completed */}
-        {completed.length > 0 && (
-          <div>
-            <h3 className="label-text mb-2" style={{ color: "#4ADE80" }}>COMPLETED</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {completed.map((appt: any) => (
-                <div key={appt.id} className="card-surface p-4 opacity-60" style={{ borderLeft: "3px solid #4ADE80" }}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <User className="w-3 h-3 text-[#D4A843]" />
-                        <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                      </div>
-                      <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                      <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
-                    </div>
-                    <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Completed</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                    {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {myAppointments.length === 0 && (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No appointments scheduled. Tap "Schedule" to create one.</div>
-        )}
-      </div>
-
       {/* Schedule Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
@@ -511,61 +806,130 @@ export default function AppointmentsPage() {
             <div className="flex p-1 rounded-full mb-5" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
               <button
                 onClick={() => setScheduleMode("existing")}
-                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer"
+                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer"
                 style={{ backgroundColor: scheduleMode === "existing" ? "#D4A843" : "transparent", color: scheduleMode === "existing" ? "#0A0A0B" : "#8A8B8C" }}
-              >Select Existing Customer</button>
+              >Existing Customer</button>
               <button
                 onClick={() => setScheduleMode("new")}
-                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer"
+                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer"
                 style={{ backgroundColor: scheduleMode === "new" ? "#D4A843" : "transparent", color: scheduleMode === "new" ? "#0A0A0B" : "#8A8B8C" }}
-              >Enter New Customer</button>
+              >New Customer</button>
             </div>
 
-            <form onSubmit={handleScheduleSubmit} className="space-y-4">
-              {scheduleMode === "existing" ? (
+            {scheduleMode === "existing" ? (
+              <form onSubmit={handleScheduleSubmit} className="space-y-4">
                 <div>
                   <label className="label-text block mb-1.5">Customer *</label>
                   <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
                     <option value={0}>Select customer...</option>
-                    {(customers || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-              ) : (
-                <div className="space-y-3">
+                <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / First visit" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
+                  <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+                </div>
+                <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
+                <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
+                <button type="submit" className="btn-primary w-full justify-center">Schedule Appointment</button>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="label-text block mb-1.5">Customer Name *</label>
+                  <input type="text" value={newCustomer.name} onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })} className="input-field" placeholder="e.g. Joe's Butchery" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={newCustomer.contactPerson} onChange={(e) => setNewCustomer({ ...newCustomer, contactPerson: e.target.value })} className="input-field" placeholder="e.g. John Smith" /></div>
+                  <div><label className="label-text block mb-1.5">Phone</label><input type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} className="input-field" placeholder="e.g. 011 123 4567" /></div>
+                </div>
+                <div><label className="label-text block mb-1.5">Address</label><input type="text" value={newCustomer.address} onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })} className="input-field" placeholder="e.g. 123 Main St, Germiston" /></div>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="label-text block mb-1.5">Customer Name *</label>
-                    <input type="text" value={newCustomer.name} onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })} className="input-field" required placeholder="e.g. Joe's Butchery" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label-text block mb-1.5">Contact Person</label>
-                      <input type="text" value={newCustomer.contactPerson} onChange={(e) => setNewCustomer({ ...newCustomer, contactPerson: e.target.value })} className="input-field" placeholder="e.g. John Smith" />
-                    </div>
-                    <div>
-                      <label className="label-text block mb-1.5">Phone</label>
-                      <input type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} className="input-field" placeholder="e.g. 011 123 4567" />
-                    </div>
+                    <label className="label-text block mb-1.5">Price Tier</label>
+                    <select value={newCustomer.priceTier} onChange={(e) => setNewCustomer({ ...newCustomer, priceTier: e.target.value as any })} className="input-field">
+                      <option value="wholesale">Wholesale</option><option value="bulk">Bulk</option><option value="corporate">Corporate</option><option value="retail">Retail</option>
+                    </select>
                   </div>
                   <div>
-                    <label className="label-text block mb-1.5">Address</label>
-                    <input type="text" value={newCustomer.address} onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })} className="input-field" placeholder="e.g. 123 Main St, Germiston" />
+                    <label className="label-text block mb-1.5">Payment Terms</label>
+                    <select value={newCustomer.paymentTerms} onChange={(e) => setNewCustomer({ ...newCustomer, paymentTerms: e.target.value as any })} className="input-field">
+                      <option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option>
+                    </select>
                   </div>
                 </div>
-              )}
-
-              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / First visit" /></div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + 'T' + formData.startTime })} className="input-field" required /></div>
-                <div><label className="label-text block mb-1.5">Start Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+                <div><label className="label-text block mb-1.5">Appointment Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" placeholder="e.g. First visit / Product demo" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
+                  <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+                </div>
+                <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office" /></div>
+                <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
+                <button onClick={handleAddNewCustomerAndSchedule} className="btn-primary w-full justify-center">
+                  <Plus className="w-4 h-4" /> Create Customer & Schedule
+                </button>
               </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
-
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
-
-              <button type="submit" className="btn-primary w-full justify-center">Schedule Appointment</button>
-            </form>
+      {/* ===================== LOG ACTION MODAL ===================== */}
+      {showActionForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg">Log Follow-up Action</h2>
+              <button onClick={() => setShowActionForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="label-text block mb-1.5">Customer</label>
+                <div className="text-sm text-white font-body p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                  {(customers || []).find((c: any) => c.id === actionCustomerId)?.name || "Unknown"}
+                </div>
+              </div>
+              <div>
+                <label className="label-text block mb-1.5">Action Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: "phone_call", label: "Phone Call", color: "#4ADE80" },
+                    { value: "site_visit", label: "Site Visit", color: "#6366F1" },
+                    { value: "email", label: "Email", color: "#3B82F6" },
+                    { value: "whatsapp", label: "WhatsApp", color: "#25D366" },
+                    { value: "sms", label: "SMS", color: "#D4A843" },
+                    { value: "other", label: "Other", color: "#8A8B8C" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setActionType(opt.value as any)}
+                      className="py-2 rounded-lg text-xs font-body font-medium cursor-pointer"
+                      style={{
+                        backgroundColor: actionType === opt.value ? `${opt.color}20` : "#222324",
+                        color: actionType === opt.value ? opt.color : "#8A8B8C",
+                        border: actionType === opt.value ? `1px solid ${opt.color}40` : "1px solid transparent",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="label-text block mb-1.5">Notes</label>
+                <textarea
+                  value={actionNotes}
+                  onChange={(e) => setActionNotes(e.target.value)}
+                  className="input-field"
+                  rows={3}
+                  placeholder="e.g. Discussed new product line, sent pricing, follow-up next week..."
+                />
+              </div>
+              <button onClick={submitActionForm} className="btn-primary w-full justify-center">
+                <CheckCircle className="w-4 h-4" /> Log Action
+              </button>
+            </div>
           </div>
         </div>
       )}

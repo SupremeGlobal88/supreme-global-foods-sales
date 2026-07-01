@@ -1,22 +1,10 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { reloadFromStorage } from "@/lib/dataService";
 import {
-  Search,
-  Plus,
-  Pencil,
-  Trash2,
-  X,
-  Users,
-  MapPin,
-  Mail,
-  Download,
-  Upload,
-  FileText,
-  Tag,
-  DollarSign,
-  ShieldAlert,
-  History,
+  Search, Plus, Pencil, Trash2, X, Users, MapPin, Mail,
+  Download, Upload, FileText, Tag, DollarSign, ShieldAlert, History,
 } from "lucide-react";
 
 const PRICE_TIER_COLORS: Record<string, string> = {
@@ -62,19 +50,19 @@ export default function CustomersPage() {
   );
 
   const createCustomer = trpc.customer.create.useMutation({
-    onSuccess: () => { utils.customer.search.invalidate(); utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
   const updateCustomer = trpc.customer.update.useMutation({
-    onSuccess: () => { utils.customer.search.invalidate(); utils.customer.getStats.invalidate(); setShowForm(false); setEditingId(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); setEditingId(null); },
   });
   const deleteCustomer = trpc.customer.delete.useMutation({
-    onSuccess: () => { utils.customer.search.invalidate(); utils.customer.getStats.invalidate(); setSelectedCustomer(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setSelectedCustomer(null); },
   });
   const setSpecialPrice = trpc.specialPrice.set.useMutation({
-    onSuccess: () => { utils.specialPrice.listByCustomer.invalidate(); setShowSpecialPriceForm(false); setSpecialPriceData({ stockItemId: 0, specialPrice: 0 }); },
+    onSuccess: async () => { reloadFromStorage(); await utils.specialPrice.listByCustomer.invalidate(); setShowSpecialPriceForm(false); setSpecialPriceData({ stockItemId: 0, specialPrice: 0 }); },
   });
   const deleteSpecialPrice = trpc.specialPrice.delete.useMutation({
-    onSuccess: () => utils.specialPrice.listByCustomer.invalidate(),
+    onSuccess: async () => { reloadFromStorage(); await utils.specialPrice.listByCustomer.invalidate(); },
   });
 
   function resetForm() {
@@ -129,31 +117,175 @@ export default function CustomersPage() {
     a.click();
   }
 
-  function handleCustomerImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split("\n").filter((l) => l.trim());
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-        if (cols.length >= 3 && cols[0] && cols[1]) {
-          createCustomer.mutate({
-            customerCode: cols[0], name: cols[1], businessName: cols[2] || undefined,
-            contactPerson: cols[3] || undefined, phone: cols[4] || undefined,
-            email: cols[5] || undefined, physicalAddress: cols[6] || undefined,
-            city: cols[7] || undefined, province: cols[8] || undefined,
-            postalCode: cols[9] || undefined, paymentTerms: (cols[10] as "cod" | "7_days" | "14_days" | "30_days") || "cod",
-            priceTier: (cols[11] as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale",
-            salesRepName: cols[12] || myRepName,
-            vatNumber: cols[13] || undefined, notes: cols[14] || undefined,
-          });
+  const bulkUploadCustomers = trpc.customer.bulkUpload.useMutation({
+    onSuccess: async (res: any) => {
+      reloadFromStorage();
+      await utils.customer.search.invalidate();
+      await utils.customer.getStats.invalidate();
+      const created = res?.created || 0;
+      const updated = res?.updated || 0;
+      if (updated > 0 && created > 0) {
+        setImportStatus(`${updated} customers updated, ${created} new customers added!`);
+      } else if (updated > 0) {
+        setImportStatus(`${updated} customers updated!`);
+      } else {
+        setImportStatus(`${created} new customers added!`);
+      }
+      setTimeout(() => { setImportStatus(""); setShowImport(false); }, 3000);
+    },
+    onError: (err: any) => {
+      setImportStatus(`Upload failed: ${err.message || "Unknown error"}`);
+    },
+  });
+
+  const [importStatus, setImportStatus] = useState("");
+
+  // Remove duplicate customers by name (keeps the first/original)
+  function removeDuplicateCustomers() {
+    try {
+      const raw = localStorage.getItem("sgf_customers");
+      if (!raw) return;
+      const allCustomers = JSON.parse(raw);
+      const seen = new Set<string>();
+      const unique: any[] = [];
+      let removed = 0;
+      for (const cust of allCustomers) {
+        const normName = (cust.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+        if (!normName) {
+          unique.push(cust); // keep nameless entries
+          continue;
+        }
+        if (seen.has(normName)) {
+          removed++; // skip duplicate
+        } else {
+          seen.add(normName);
+          unique.push(cust); // keep first occurrence
         }
       }
-      setShowImport(false);
-    };
-    reader.readAsText(file);
+      localStorage.setItem("sgf_customers", JSON.stringify(unique));
+      // Refresh data
+      utils.customer.search.invalidate();
+      utils.customer.getStats.invalidate();
+      alert(`Removed ${removed} duplicate customers. ${unique.length} unique customers remaining.`);
+    } catch (e) {
+      alert("Error removing duplicates.");
+    }
+  }
+
+  // Helper: map price tier from Excel values
+  function mapPriceTier(val: string): "corporate" | "bulk" | "wholesale" | "retail" {
+    const v = val.toLowerCase().trim();
+    if (v.includes("corp")) return "corporate";
+    if (v.includes("bulk")) return "bulk";
+    if (v.includes("retail")) return "retail";
+    return "wholesale"; // default
+  }
+
+  // Helper: map payment terms from Excel values
+  function mapPaymentTerms(val: string): "cod" | "7_days" | "14_days" | "30_days" {
+    const v = val.toLowerCase().trim();
+    if (v.includes("30")) return "30_days";
+    if (v.includes("14")) return "14_days";
+    if (v.includes("7")) return "7_days";
+    return "cod"; // default
+  }
+
+  async function handleCustomerImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportStatus("Reading file...");
+
+    try {
+      const XLSX = await import("xlsx");
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(new Uint8Array(data), { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" }) as any[][];
+
+      if (rows.length < 2) {
+        setImportStatus("Error: File appears to be empty.");
+        return;
+      }
+
+      // Find header row
+      const headers = rows[0].map((h: any) => String(h).toLowerCase().trim());
+      const findCol = (...names: string[]) => {
+        for (const n of names) {
+          const i = headers.findIndex((h) => h === n.toLowerCase() || h.includes(n.toLowerCase()));
+          if (i >= 0) return i;
+        }
+        return -1;
+      };
+
+      // Map columns from the Excel file
+      const colIdx = {
+        name: findCol("client name"),
+        ref: findCol("ref"),
+        level: findCol("level"),
+        payment: findCol("payment"),
+        itemSpices: findCol("item spices"),
+        industry: findCol("industry"),
+        group: findCol("group"),
+        area: findCol("area"),
+        salesRep: findCol("sale rep"),
+        contactPerson: findCol("contact person"),
+        contactNumber: findCol("contact number"),
+        email: findCol("email"),
+        deliveryAddress: findCol("delivery address"),
+        contactPerson2: findCol("contact person 2"),
+        contactNo2: findCol("contact no 2"),
+      };
+
+      if (colIdx.name < 0) {
+        setImportStatus(`Error: Could not find "Client name" column. Headers: ${headers.join(", ")}`);
+        return;
+      }
+
+      const customers: any[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+
+        const name = String(row[colIdx.name] || "").trim();
+        if (!name) continue;
+
+        const getStr = (idx: number) => idx >= 0 ? String(row[idx] || "").trim() : "";
+
+        // Build notes from items and any extra info
+        const notesParts: string[] = [];
+        if (colIdx.itemSpices >= 0 && row[colIdx.itemSpices]) notesParts.push(String(row[colIdx.itemSpices]));
+        if (colIdx.industry >= 0 && row[colIdx.industry]) notesParts.push(`Industry: ${row[colIdx.industry]}`);
+        if (colIdx.group >= 0 && row[colIdx.group]) notesParts.push(`Group: ${row[colIdx.group]}`);
+
+        customers.push({
+          name,
+          customerCode: getStr(colIdx.ref),
+          businessName: name,
+          contactPerson: getStr(colIdx.contactPerson),
+          phone: getStr(colIdx.contactNumber),
+          email: getStr(colIdx.email),
+          physicalAddress: getStr(colIdx.deliveryAddress),
+          city: "",
+          province: getStr(colIdx.area),
+          postalCode: "",
+          paymentTerms: colIdx.payment >= 0 ? mapPaymentTerms(getStr(colIdx.payment)) : "cod",
+          priceTier: colIdx.level >= 0 ? mapPriceTier(getStr(colIdx.level)) : "wholesale",
+          salesRepName: getStr(colIdx.salesRep),
+          vatNumber: "",
+          notes: notesParts.join(" | "),
+        });
+      }
+
+      if (customers.length > 0) {
+        setImportStatus(`Parsed ${customers.length} customers. Processing...`);
+        bulkUploadCustomers.mutate(customers);
+      } else {
+        setImportStatus("No valid customers found in file.");
+      }
+    } catch (err: any) {
+      setImportStatus(`Error: ${err.message || "Could not read file"}`);
+    }
   }
 
   return (
@@ -165,7 +297,8 @@ export default function CustomersPage() {
         </div>
         <div className="flex gap-3 flex-wrap">
           {isAdmin && <button onClick={() => setShowAuditTrail(true)} className="btn-secondary"><History className="w-4 h-4" /> Audit Trail</button>}
-          {isAdmin && <button onClick={() => setShowImport(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Import CSV</button>}
+          {isAdmin && <button onClick={() => { setShowImport(true); setImportStatus(""); }} className="btn-secondary"><Upload className="w-4 h-4" /> Import Customers</button>}
+          {isAdmin && <button onClick={removeDuplicateCustomers} className="btn-secondary" style={{ borderColor: "rgba(239,68,68,0.3)", color: "#EF4444" }} title="Remove customers with duplicate names"><Trash2 className="w-4 h-4" /> Remove Duplicates</button>}
           {isAdmin && <button onClick={handleExport} className="btn-secondary"><Download className="w-4 h-4" /> Export</button>}
           <button onClick={() => { setShowForm(true); resetForm(); setEditingId(null); }} className="btn-primary"><Plus className="w-4 h-4" /> Add Customer</button>
         </div>
@@ -350,13 +483,21 @@ export default function CustomersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-8 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-6"><h2 className="font-display font-semibold text-white text-xl">Import Customers</h2><button onClick={() => setShowImport(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button></div>
-            <div className="border-2 border-dashed rounded-xl p-8 text-center mb-6" style={{ borderColor: "#D4A843", backgroundColor: "rgba(212, 168, 67, 0.05)" }}>
+            <input type="file" accept=".xlsx,.csv" onChange={handleCustomerImport} className="hidden" id="customer-csv-import" />
+            <label htmlFor="customer-csv-import" className="border-2 border-dashed rounded-xl p-8 text-center mb-4 block cursor-pointer" style={{ borderColor: "#D4A843", backgroundColor: "rgba(212, 168, 67, 0.05)" }}>
               <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: "#D4A843" }} />
-              <p className="text-[#E8E8E9] font-body text-sm mb-2">Drop CSV file here or click to browse</p>
-              <p className="text-[#8A8B8C] text-xs font-body mb-4">Format: CustomerCode, Name, BusinessName, ContactPerson, Phone, Email, Address, City, Province, PostalCode, PaymentTerms, PriceTier, SalesRep, VATNumber, Notes</p>
-              <input type="file" accept=".csv" onChange={handleCustomerImport} className="hidden" id="customer-csv-import" />
-              <label htmlFor="customer-csv-import" className="btn-primary inline-flex cursor-pointer">Browse Files</label>
+              <p className="text-[#E8E8E9] font-body text-sm mb-2">Tap here to browse for Excel file</p>
+              <p className="text-[#8A8B8C] text-xs font-body">Supports: Excel (.xlsx) and CSV</p>
+            </label>
+            <div className="text-xs text-[#8A8B8C] font-body space-y-1 mb-4">
+              <p>Expected columns: Client name, Ref, Level, Payment, Item Spices, Industry, Group, Area, Sale Rep, Contact Person, Contact Number, Email, Delivery Address</p>
+              <p>Existing customers are matched by Ref code and updated. New Ref codes create new customers.</p>
             </div>
+            {importStatus && (
+              <div className={`p-3 rounded-lg text-sm font-body ${importStatus.includes("updated") || importStatus.includes("added") ? "text-[#4ADE80]" : importStatus.includes("Error") || importStatus.includes("failed") ? "text-[#EF4444]" : "text-[#D4A843]"}`} style={{ backgroundColor: importStatus.includes("updated") || importStatus.includes("added") ? "rgba(74,222,128,0.08)" : importStatus.includes("Error") || importStatus.includes("failed") ? "rgba(239,68,68,0.08)" : "rgba(212,168,67,0.08)" }}>
+                {importStatus}
+              </div>
+            )}
           </div>
         </div>
       )}

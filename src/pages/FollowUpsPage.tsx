@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { reloadFromStorage } from "@/lib/dataService";
 import { Bell, CheckCircle, Clock, AlertTriangle, MessageSquare, Calendar } from "lucide-react";
 
 export default function FollowUpsPage() {
@@ -17,7 +18,7 @@ export default function FollowUpsPage() {
   const [expectedDate, setExpectedDate] = useState("");
 
   const updateFollowUp = trpc.followUp.update.useMutation({
-    onSuccess: () => { utils.followUp.list.invalidate(); utils.followUp.getStats.invalidate(); setShowForm(null); setReason(""); setExpectedDate(""); },
+    onSuccess: async () => { reloadFromStorage(); await utils.followUp.list.invalidate(); await utils.followUp.getStats.invalidate(); setShowForm(null); setReason(""); setExpectedDate(""); },
   });
 
   const handleSubmit = (id: number) => {

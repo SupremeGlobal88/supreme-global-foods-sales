@@ -1,16 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { reloadFromStorage } from "@/lib/dataService";
 import {
-  Search,
-  Upload,
-  Plus,
-  Pencil,
-  Trash2,
-  X,
-  Package,
-  AlertTriangle,
-  CheckCircle,
+  Search, Upload, Plus, Pencil, Trash2, X, Package, AlertTriangle, CheckCircle,
 } from "lucide-react";
 
 export default function StockPage() {
@@ -23,6 +16,8 @@ export default function StockPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadStatus, setUploadStatus] = useState<string>("");
 
   const [formData, setFormData] = useState({
     productCode: "", productName: "", category: "", strands: "", size: "", grade: "", color: "", species: "", origin: "",
@@ -34,16 +29,16 @@ export default function StockPage() {
   const { data: stats } = trpc.stock.getStats.useQuery();
 
   const createStock = trpc.stock.create.useMutation({
-    onSuccess: () => { utils.stock.search.invalidate(); utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
   const updateStock = trpc.stock.update.useMutation({
-    onSuccess: () => { utils.stock.search.invalidate(); utils.stock.getStats.invalidate(); setShowForm(false); setEditingId(null); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); setEditingId(null); resetForm(); },
   });
   const deleteStock = trpc.stock.delete.useMutation({
-    onSuccess: () => { utils.stock.search.invalidate(); utils.stock.getStats.invalidate(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
   });
   const bulkUpload = trpc.stock.bulkUpload.useMutation({
-    onSuccess: () => { utils.stock.search.invalidate(); utils.stock.getStats.invalidate(); setShowUpload(false); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowUpload(false); },
   });
 
   function resetForm() {
@@ -68,32 +63,160 @@ export default function StockPage() {
     else { createStock.mutate(formData); }
   }
 
-  function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // Auto-detect category from product name
+  function detectCategory(name: string): string {
+    const n = name.toUpperCase();
+    if (n.includes("BARREL")) return "Barrels";
+    if (n.includes("THREAD")) return "Threads";
+    if (n.includes("SALT")) return "Salt";
+    if (n.includes("MEGA LONG")) return n.includes("TUBED") ? "Mega Long Tubed" : "Mega Long";
+    if (n.includes("ELITE LONG")) return n.includes("TUBED") ? "Elite Long Tubed" : "Elite Long";
+    if (n.includes("ULTRA LONG")) return n.includes("TUBED") ? "Ultra Long Tubed" : n.includes("VALUE") ? "Ultra Long Value" : "Ultra Long Lux";
+    if (n.includes("SUPER LONG")) return n.includes("TUBED") ? "Super Long Tubed" : n.includes("VALUE") ? "Super Long Value" : "Super Long Lux";
+    if (n.includes("SELECTED LONG")) return n.includes("TUBED") ? "Selected Long Tubed" : n.includes("VALUE") ? "Selected Long Value" : "Selected Long Lux";
+    if (n.includes("MEDIUM LONG")) return n.includes("TUBED") ? "Medium Long Tubed" : n.includes("VALUE") ? "Medium Long Value" : "Medium Long Lux";
+    if (n.includes("LONG LUX")) return n.includes("TUBED") ? "Long Lux Tubed" : "Long Lux";
+    if (n.includes("LONG VALUE")) return n.includes("TUBED") ? "Long Value Tubed" : "Long Value";
+    return "General";
+  }
+
+  // Generate product code from product name
+  function generateProductCode(name: string): string {
+    return name.trim().toUpperCase().replace(/\s+/g, "-").replace(/\//g, "-").substring(0, 50);
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    e.target.value = "";
+    setUploadStatus("Reading file...");
+
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split("\n").filter((l) => l.trim());
-      const items = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-        if (cols.length >= 9 && cols[0] && cols[1]) {
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" }) as any[][];
+
+        if (rows.length < 2) {
+          setUploadStatus("Error: File appears to be empty or has no data rows.");
+          return;
+        }
+
+        // Find header row (first row with text headers)
+        let headerRowIdx = 0;
+        const headerRow = rows[0].map((h: any) => String(h).toLowerCase().trim());
+        if (!headerRow.some((h) => h.includes("product") || h.includes("soh"))) {
+          // Try second row if first isn't headers
+          headerRowIdx = 1;
+        }
+        const headers = rows[headerRowIdx].map((h: any) => String(h).toLowerCase().trim());
+
+        // Find column indices by matching headers
+        const findCol = (...names: string[]) => {
+          for (const n of names) {
+            const i = headers.findIndex((h) => h === n.toLowerCase() || h.includes(n.toLowerCase()));
+            if (i >= 0) return i;
+          }
+          return -1;
+        };
+
+        const colIdx = {
+          product: findCol("product"),
+          strands: findCol("strands"),
+          size: findCol("size"),
+          grade: findCol("grade"),
+          color: findCol("color"),
+          species: findCol("species"),
+          soh: findCol("soh", "qty", "quantity", "stock"),
+          corpPrice: findCol("corporate price", "corporate"),
+          bulkPrice: findCol("bulk price", "bulk"),
+          wholesalePrice: findCol("wholesale price", "wholesale"),
+          retailPrice: findCol("retail price", "retail"),
+        };
+
+        if (colIdx.product < 0) {
+          setUploadStatus(`Error: Could not find "Product" column. Headers found: ${headers.join(", ")}`);
+          return;
+        }
+        if (colIdx.soh < 0) {
+          setUploadStatus(`Error: Could not find "SOH" column. Headers found: ${headers.join(", ")}`);
+          return;
+        }
+
+        const items = [];
+        let skipped = 0;
+        const dataStartRow = headerRowIdx + 1;
+
+        for (let i = dataStartRow; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) { skipped++; continue; }
+
+          const productName = String(row[colIdx.product] || "").trim();
+          if (!productName) { skipped++; continue; }
+
+          // Get quantity from SOH column
+          const qtyVal = row[colIdx.soh];
+          const quantity = qtyVal !== "" && qtyVal !== undefined ? parseInt(String(qtyVal)) || 0 : 0;
+
+          // Get prices (may be empty for some rows like THREADS)
+          const getPrice = (idx: number) => idx >= 0 && row[idx] !== "" && row[idx] !== undefined ? parseFloat(String(row[idx])) || 0 : 0;
+
+          const category = detectCategory(productName);
+          const productCode = generateProductCode(productName);
+
           items.push({
-            productCode: cols[0], productName: cols[1], category: cols[2] || "General",
-            strands: cols[3] || "", size: cols[4] || "", grade: cols[5] || "",
-            color: cols[6] || "", species: cols[7] || "", origin: cols[8] || "",
-            quantity: parseInt(cols[9]) || 0,
-            corporatePrice: parseFloat(cols[10]) || 0, bulkPrice: parseFloat(cols[11]) || 0,
-            wholesalePrice: parseFloat(cols[12]) || 0, retailPrice: parseFloat(cols[13]) || 0,
-            description: cols[14] || "",
+            productCode,
+            productName,
+            category,
+            strands: colIdx.strands >= 0 ? String(row[colIdx.strands] || "") : "",
+            size: colIdx.size >= 0 ? String(row[colIdx.size] || "") : "",
+            grade: colIdx.grade >= 0 ? String(row[colIdx.grade] || "") : "",
+            color: colIdx.color >= 0 ? String(row[colIdx.color] || "") : "",
+            species: colIdx.species >= 0 ? String(row[colIdx.species] || "") : "",
+            origin: "",
+            quantity,
+            corporatePrice: getPrice(colIdx.corpPrice),
+            bulkPrice: getPrice(colIdx.bulkPrice),
+            wholesalePrice: getPrice(colIdx.wholesalePrice),
+            retailPrice: getPrice(colIdx.retailPrice),
+            description: "",
           });
         }
+
+        if (items.length > 0) {
+          setUploadStatus(`Parsed ${items.length} products. Uploading...`);
+          bulkUpload.mutate(items, {
+            onSuccess: (res: any) => {
+              const created = res?.created || 0;
+              const updated = res?.updated || 0;
+              if (created > 0 && updated > 0) {
+                setUploadStatus(`${updated} products updated, ${created} new products added!`);
+              } else if (updated > 0) {
+                setUploadStatus(`${updated} products updated!`);
+              } else {
+                setUploadStatus(`${created} new products added!`);
+              }
+              setTimeout(() => { setUploadStatus(""); setShowUpload(false); }, 3000);
+            },
+            onError: (err: any) => {
+              setUploadStatus(`Upload failed: ${err.message || "Unknown error"}`);
+            },
+          });
+        } else {
+          setUploadStatus(`No valid products found. Headers detected: ${headers.join(", ")}. Skipped ${skipped} empty rows.`);
+        }
+      } catch (err: any) {
+        setUploadStatus(`Error reading file: ${err.message || "Unknown error"}`);
       }
-      if (items.length > 0) { bulkUpload.mutate(items); }
-      else { alert("No valid products found. Expected format: ProductCode,ProductName,Category,Strands,Size,Grade,Color,Species,Origin,Qty,CorpPrice,BulkPrice,WholesalePrice,RetailPrice,Description"); }
     };
-    reader.readAsText(file);
+    reader.onerror = () => {
+      setUploadStatus("Error: Could not read the file. Try a different format.");
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   const filtered = (stockItems || []).filter((item) => !category || item.category === category);
@@ -110,7 +233,7 @@ export default function StockPage() {
         </div>
         {isAdmin && (
           <div className="flex gap-3">
-            <button onClick={() => setShowUpload(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Upload CSV</button>
+            <button onClick={() => setShowUpload(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Upload Stock</button>
             <button onClick={() => { setShowForm(true); resetForm(); setEditingId(null); }} className="btn-primary"><Plus className="w-4 h-4" /> Add Product</button>
           </div>
         )}
@@ -188,14 +311,32 @@ export default function StockPage() {
       {showUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-8 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
-            <div className="flex items-center justify-between mb-6"><h2 className="font-display font-semibold text-white text-xl">Upload Stock CSV</h2><button onClick={() => setShowUpload(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button></div>
-            <div className="border-2 border-dashed rounded-xl p-8 text-center mb-6" style={{ borderColor: "#D4A843", backgroundColor: "rgba(212, 168, 67, 0.05)" }}>
+            <div className="flex items-center justify-between mb-6"><h2 className="font-display font-semibold text-white text-xl">Upload Stock CSV</h2><button onClick={() => { setShowUpload(false); setUploadStatus(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button></div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.csv,.txt"
+              onChange={handleFileUpload}
+              style={{ display: "none" }}
+            />
+            <div
+              className="border-2 border-dashed rounded-xl p-8 text-center mb-4 cursor-pointer"
+              style={{ borderColor: "#D4A843", backgroundColor: "rgba(212, 168, 67, 0.05)" }}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: "#D4A843" }} />
-              <p className="text-[#E8E8E9] font-body text-sm mb-2">Drop CSV file here or click to browse</p>
-              <p className="text-[#8A8B8C] text-xs font-body mb-4">Format: ProductCode, ProductName, Category, Strands, Size, Grade, Color, Species, Origin, Qty, CorpPrice, BulkPrice, WholesalePrice, RetailPrice, Description</p>
-              <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" id="csv-upload" />
-              <label htmlFor="csv-upload" className="btn-primary inline-flex cursor-pointer">Browse Files</label>
+              <p className="text-[#E8E8E9] font-body text-sm mb-2">Tap here to browse for Excel file</p>
+              <p className="text-[#8A8B8C] text-xs font-body">Supports: Excel (.xlsx) and CSV files</p>
             </div>
+            <div className="text-xs text-[#8A8B8C] font-body space-y-1 mb-4">
+              <p>Expected columns: Product, Strands, Size, Grade, Color, Species, SOH, Corporate Price, Bulk Price, Wholesale Price, Retail Price</p>
+              <p>Upload your Supreme Global Foods Excel stock sheet - we auto-detect everything.</p>
+            </div>
+            {uploadStatus && (
+              <div className={`p-3 rounded-lg text-sm font-body ${uploadStatus.includes("Success") ? "text-[#4ADE80]" : uploadStatus.includes("Error") || uploadStatus.includes("failed") ? "text-[#EF4444]" : "text-[#D4A843]"}`} style={{ backgroundColor: uploadStatus.includes("Success") ? "rgba(74,222,128,0.08)" : uploadStatus.includes("Error") || uploadStatus.includes("failed") ? "rgba(239,68,68,0.08)" : "rgba(212,168,67,0.08)" }}>
+                {uploadStatus}
+              </div>
+            )}
           </div>
         </div>
       )}

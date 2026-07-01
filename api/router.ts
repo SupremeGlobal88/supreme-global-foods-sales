@@ -1,31 +1,108 @@
-import { authRouter } from "./auth-router";
-import { salesRepRouter } from "./salesRep-router";
-import { stockRouter } from "./stock-router";
-import { customerRouter } from "./customer-router";
-import { orderRouter } from "./order-router";
-import { invoiceRouter } from "./invoice-router";
-import { appointmentRouter } from "./appointment-router";
-import { checkInRouter } from "./checkin-router";
-import { specialPriceRouter } from "./specialPrice-router";
-import { auditRouter } from "./audit-router";
-import { followUpRouter } from "./followUp-router";
-import { sampleReportRouter } from "./sampleReport-router";
-import { createRouter, publicQuery } from "./middleware";
+import { initTRPC } from "@trpc/server";
 
-export const appRouter = createRouter({
-  ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
-  auth: authRouter,
-  salesRep: salesRepRouter,
-  stock: stockRouter,
-  customer: customerRouter,
-  order: orderRouter,
-  invoice: invoiceRouter,
-  appointment: appointmentRouter,
-  checkIn: checkInRouter,
-  specialPrice: specialPriceRouter,
-  audit: auditRouter,
-  followUp: followUpRouter,
-  sampleReport: sampleReportRouter,
+const t = initTRPC.create();
+
+export const appRouter = t.router({
+  auth: t.router({
+    me: t.procedure.query(() => null as any),
+  }),
+  stock: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    search: t.procedure.input((val: unknown) => val as { query: string }).query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    getCategories: t.procedure.query(() => [] as string[]),
+    getStats: t.procedure.query(() => ({} as any)),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    bulkUpload: t.procedure.input((val: unknown) => val as any[]).mutation(() => ({} as any)),
+  }),
+  customer: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    search: t.procedure.input((val: unknown) => val as { query: string }).query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    getStats: t.procedure.query(() => ({} as any)),
+    getSalesReps: t.procedure.query(() => [] as any[]),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    bulkUpload: t.procedure.input((val: unknown) => val as any[]).mutation(() => ({} as any)),
+    getCustomersNeedingFollowUp: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),
+  }),
+  order: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    getStats: t.procedure.query(() => ({} as any)),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    updateStatus: t.procedure.input((val: unknown) => val as { id: number; status: string }).mutation(() => ({} as any)),
+    checkExistingSample: t.procedure.input((val: unknown) => val as { customerId: number; stockItemId: number }).query(() => ({} as any)),
+  }),
+  invoice: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    getStats: t.procedure.query(() => ({} as any)),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    updateStatus: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    recordPayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    editPayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    deletePayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    getCustomerStatement: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
+  }),
+  appointment: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getStats: t.procedure.query(() => ({} as any)),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    updateStatus: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+  }),
+  checkIn: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getStats: t.procedure.query(() => ({} as any)),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    checkout: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+  }),
+  followUpAction: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    listByCustomer: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    getStats: t.procedure.query(() => ({} as any)),
+  }),
+  specialPrice: t.router({
+    listByCustomer: t.procedure.input((val: unknown) => val as { customerId: number }).query(() => [] as any[]),
+    set: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+  }),
+  salesRep: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getStats: t.procedure.query(() => ({} as any)),
+  }),
+  dashboard: t.router({
+    stats: t.procedure.query(() => ({} as any)),
+  }),
+  audit: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getCustomerDeletions: t.procedure.query(() => [] as any[]),
+    getAddressChanges: t.procedure.query(() => [] as any[]),
+  }),
+  followUp: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getStats: t.procedure.query(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+  }),
+  sampleReport: t.router({
+    getByCustomer: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
+    getAll: t.procedure.query(() => ({} as any)),
+  }),
+  collections: t.router({
+    getOverdueInvoices: t.procedure.query(() => [] as any[]),
+    getDailyReport: t.procedure.query(() => ({} as any)),
+    getStats: t.procedure.query(() => ({} as any)),
+    getCustomerPaymentHistory: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    addNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    recordPromise: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    placeHold: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    releaseHold: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

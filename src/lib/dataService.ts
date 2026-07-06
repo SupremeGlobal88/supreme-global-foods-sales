@@ -223,11 +223,12 @@ export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; ne
 
 /** Migrate old sample orders to use normal status flow and SGF invoice numbers.
  *  Run this once after the sample order fix is deployed. */
-export function migrateSampleOrders(): { migrated: number; invoicesCreated: number; details: string[] } {
+export function migrateSampleOrders(): { migrated: number; invoicesCreated: number; followUpsCreated: number; details: string[] } {
   load();
   const details: string[] = [];
   let migrated = 0;
   let invoicesCreated = 0;
+  let followUpsCreated = 0;
 
   for (const order of orders) {
     if (order.orderType !== "sample") continue;
@@ -296,14 +297,36 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
       }));
       details.push(`Order ${order.orderNumber}: invoice renumbered ${oldNum} → ${existingInvoice.invoiceNumber}`);
     }
+
+    // Fix 3: Ensure a follow-up exists for this sample order
+    const existingFollowUp = followUps.find((fu) => fu.orderId == order.id);
+    if (!existingFollowUp) {
+      const followUpDate = new Date(order.createdAt || Date.now());
+      followUpDate.setDate(followUpDate.getDate() + 4);
+      const followUp = {
+        id: Date.now() + Math.random(),
+        orderId: order.id,
+        customerId: order.customerId,
+        orderNumber: order.orderNumber,
+        followUpDate: followUpDate.toISOString(),
+        status: "pending",
+        reason: null,
+        expectedOrderDate: null,
+        createdAt: new Date().toISOString(),
+      };
+      followUps.push(followUp);
+      followUpsCreated++;
+      details.push(`Order ${order.orderNumber}: created follow-up for ${followUpDate.toLocaleDateString("en-ZA")}`);
+    }
   }
 
-  if (migrated > 0 || invoicesCreated > 0) {
+  if (migrated > 0 || invoicesCreated > 0 || followUpsCreated > 0) {
     saveItem("sgf_orders", orders);
     saveItem("sgf_invoices", invoices);
+    saveItem("sgf_followUps", followUps);
   }
 
-  return { migrated, invoicesCreated, details };
+  return { migrated, invoicesCreated, followUpsCreated, details };
 }
 
 // Helper: create an invoice from an order

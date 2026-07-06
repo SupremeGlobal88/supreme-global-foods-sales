@@ -480,19 +480,20 @@ export default function SettingsPage() {
             <button
               onClick={() => {
                 const result = migrateSampleOrders();
-                if (result.migrated > 0 || result.invoicesCreated > 0) {
-                  setSyncMessage(`Fixed ${result.migrated} sample orders, created ${result.invoicesCreated} SGF invoices. Refresh to see changes.`);
+                if (result.migrated > 0 || result.invoicesCreated > 0 || result.followUpsCreated > 0) {
+                  setSyncMessage(`Fixed ${result.migrated} orders, created ${result.invoicesCreated} invoices + ${result.followUpsCreated} follow-ups. Reloading...`);
+                  setTimeout(() => window.location.reload(), 2000);
                 } else {
                   setSyncMessage("No sample orders need fixing.");
+                  setTimeout(() => setSyncMessage(""), 5000);
                 }
-                setTimeout(() => setSyncMessage(""), 8000);
               }}
               className="btn-secondary text-sm w-full"
             >
               <FlaskConical className="w-4 h-4" /> Fix Sample Orders
             </button>
             <p className="text-[10px] text-[#8A8B8C]">
-              Migrates old sample orders: changes status from sample_delivered to delivered, creates SGF invoices with item details. Run once after update.
+              Fixes old sample orders: status → delivered, SGF invoices, follow-ups created. Page auto-reloads after.
             </p>
           </div>
         </div>

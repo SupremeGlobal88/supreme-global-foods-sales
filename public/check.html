@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html><head><title>SGF Storage Check</title>
+<style>
+body{background:#0C0D0E;color:#E8E8E9;font-family:Arial;padding:20px}
+.box{background:#131415;border:1px solid #222324;border-radius:12px;padding:20px;max-width:600px;margin:0 auto}
+h1{color:#D4A843;font-size:20px}
+.key{display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #222324;font-size:13px}
+.key button{background:#EF4444;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px}
+.key span{color:#8A8B8C}
+.btn{width:100%;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin:10px 0}
+.btn-red{background:#EF4444;color:#fff}
+.btn-gold{background:#D4A843;color:#0A0A0B}
+.btn-blue{background:#3B82F6;color:#fff}
+.count{color:#D4A843;font-weight:700}
+.warn{color:#F59E0B;font-size:12px}
+</style></head>
+<body>
+<div class="box">
+<h1>Storage Inspector</h1>
+<p style="color:#8A8B8C;font-size:13px">All sgf_ keys in your browser:</p>
+<div id="list"></div>
+<p style="color:#8A8B8C;font-size:12px;margin-top:10px">Total keys: <span id="total" class="count">0</span></p>
+
+<p class="warn" id="syncWarning" style="display:none">
+  <b>WARNING:</b> Firebase sync is active! Data will re-download from cloud after clearing.
+  Use "Disconnect & Clear All" button.
+</p>
+
+<button class="btn btn-blue" onclick="disconnectAndClear()">Disconnect Firebase & Clear All</button>
+<button class="btn btn-red" onclick="justClear()">Just Clear Data (keep sync)</button>
+<button class="btn btn-gold" onclick="goApp()">Open App</button>
+</div>
+<script>
+function show(){
+  const list=document.getElementById('list');
+  list.innerHTML='';
+  let total=0;
+  let hasFirebase=false;
+  Object.keys(localStorage).sort().forEach(key=>{
+    if(!key.startsWith('sgf_'))return;
+    total++;
+    if(key==='sgf_firebase_config') hasFirebase=true;
+    let count=0;
+    try{const d=JSON.parse(localStorage.getItem(key)||'[]');count=Array.isArray(d)?d.length:0}catch{}
+    const div=document.createElement('div');
+    div.className='key';
+    div.innerHTML='<span>'+key+': <b class="count">'+count+'</b> items</span><button onclick="del(\''+key+'\')">Delete</button>';
+    list.appendChild(div);
+  });
+  document.getElementById('total').textContent=total;
+  if(total===0)list.innerHTML='<p style="color:#4ADE80;text-align:center;padding:20px">No sgf_ keys found - storage is clean!</p>';
+  if(hasFirebase) document.getElementById('syncWarning').style.display='block';
+}
+function del(key){localStorage.removeItem(key);show();}
+
+function disconnectAndClear(){
+  if(!confirm('This will:\n1. Disconnect Firebase sync (stop cloud re-download)\n2. Delete ALL orders, invoices, appointments, etc.\n3. Keep customers, products, users\n\nContinue?'))return;
+  // Set disconnect flag FIRST
+  localStorage.setItem('sgf_firebase_disconnected','true');
+  localStorage.removeItem('sgf_firebase_config');
+  // Then clear all sgf_ data
+  Object.keys(localStorage).forEach(k=>{
+    if(k.startsWith('sgf_') && k!=='sgf_firebase_disconnected') localStorage.removeItem(k);
+  });
+  // Keep disconnect flag
+  localStorage.setItem('sgf_firebase_disconnected','true');
+  show();
+  alert('Firebase disconnected and all data cleared. Click Open App to continue.');
+}
+
+function justClear(){
+  if(!confirm('Delete all sgf_ data?'))return;
+  Object.keys(localStorage).forEach(k=>{if(k.startsWith('sgf_'))localStorage.removeItem(k);});
+  show();
+  alert('All SGF data deleted. Click Open App to continue.');
+}
+
+function goApp(){window.location.href='index.html?_='+Date.now();}
+show();
+</script>
+</body></html>

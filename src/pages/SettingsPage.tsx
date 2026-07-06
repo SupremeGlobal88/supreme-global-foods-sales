@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Building2,
   Save,
@@ -9,45 +9,122 @@ import {
   CheckCircle,
   AlertTriangle,
   Copy,
+  Trash2,
+  Wrench,
+  Hash,
 } from "lucide-react";
-import { getFirebaseConfig, saveFirebaseConfig, clearFirebaseConfig, initFirebase, syncAllLocalData, pushCustomers, pushStock } from "@/lib/firebaseSync";
+import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
+import { useRole } from "@/hooks/useRole";
+import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
+
+const DEFAULT_COMPANY = {
+  name: "Supreme Global Foods",
+  tradingName: "Supreme Global Foods",
+  regNumber: "2015/123456/07",
+  vatNumber: "4120123456",
+  phone: "083 293 0644",
+  email: "sales@supremeglobalfoods.co.za",
+  address: "28 Nagington road, Wadeville, Germiston",
+  city: "Germiston",
+  province: "Gauteng",
+  postalCode: "1422",
+  website: "https://www.supremeglobalfoods.co.za",
+};
+
+const DEFAULT_BANKING = {
+  bankName: "First National Bank (FNB)",
+  accountName: "Supreme Global Foods",
+  accountNumber: "62001234567",
+  branchCode: "250655",
+  swiftCode: "FIRNZAJJ",
+};
+
+const DEFAULT_NOTIFICATIONS = {
+  emailOnOrder: true,
+  emailOnPayment: true,
+  smsOnOverdue: false,
+  dailyReport: true,
+  lowStockAlert: true,
+};
+
+function loadSettings<T>(key: string, defaults: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return { ...defaults, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...defaults };
+}
 
 export default function SettingsPage() {
+  const { isSuperAdmin } = useRole();
   const [saved, setSaved] = useState(false);
 
-  const [company, setCompany] = useState({
-    name: "Supreme Global Foods",
-    tradingName: "Supreme Global Foods",
-    regNumber: "2015/123456/07",
-    vatNumber: "4120123456",
-    phone: "+27614788888",
-    email: "sales@supremeglobalfoods.co.za",
-    address: "Germiston, 1422",
-    city: "Germiston",
-    province: "Gauteng",
-    postalCode: "1422",
-    website: "https://www.supremeglobalfoods.co.za",
-  });
+  const [company, setCompany] = useState(() => loadSettings("sgf_settings_company", DEFAULT_COMPANY));
+  const [banking, setBanking] = useState(() => loadSettings("sgf_settings_banking", DEFAULT_BANKING));
+  const [notifications, setNotifications] = useState(() => loadSettings("sgf_settings_notifications", DEFAULT_NOTIFICATIONS));
 
-  const [banking, setBanking] = useState({
-    bankName: "First National Bank (FNB)",
-    accountName: "Supreme Global Foods",
-    accountNumber: "62001234567",
-    branchCode: "250655",
-    swiftCode: "FIRNZAJJ",
-  });
-
-  const [notifications, setNotifications] = useState({
-    emailOnOrder: true,
-    emailOnPayment: true,
-    smsOnOverdue: false,
-    dailyReport: true,
-    lowStockAlert: true,
-  });
+  // Persist to localStorage whenever state changes
+  useEffect(() => { localStorage.setItem("sgf_settings_company", JSON.stringify(company)); }, [company]);
+  useEffect(() => { localStorage.setItem("sgf_settings_banking", JSON.stringify(banking)); }, [banking]);
+  useEffect(() => { localStorage.setItem("sgf_settings_notifications", JSON.stringify(notifications)); }, [notifications]);
 
   function handleSave() {
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  }
+
+  function handleClearAllData() {
+    if (!confirm("WARNING: This will permanently delete ALL orders, invoices, receipts, payments, appointments, check-ins, follow-ups, collection notes, and audit logs.\n\nCustomers, products, and users will be kept.\n\nAre you sure?")) return;
+    if (!confirm("Are you absolutely sure? This cannot be undone.")) return;
+    setClearStatus("Disconnecting Firebase...");
+    setTimeout(() => {
+      disconnectFirebase();
+      setClearStatus("Clearing transaction data...");
+      setTimeout(() => {
+        resetTransactionData();
+        setClearStatus("Data cleared. Reloading...");
+        setTimeout(() => {
+          window.location.href = window.location.pathname + "?_=" + Date.now();
+        }, 500);
+      }, 300);
+    }, 100);
+  }
+
+  function handleClearAppointments() {
+    if (!confirm("This will delete ALL appointments and check-ins.\n\nAre you sure?")) return;
+    setClearStatus("Disconnecting Firebase...");
+    setTimeout(() => {
+      disconnectFirebase();
+      setClearStatus("Clearing appointments...");
+      setTimeout(() => {
+        clearAppointmentsAndCheckins();
+        setClearStatus("Appointments cleared. Reloading...");
+        setTimeout(() => {
+          window.location.href = window.location.pathname + "?_=" + Date.now();
+        }, 500);
+      }, 300);
+    }, 100);
+  }
+
+  function handleFullReset() {
+    if (!confirm("EXTREME WARNING: This will delete ALL data including orders, invoices, customers, and products.\n\nThe app will reload with factory defaults (383 customers, 203 products, 7 users).\n\nThis cannot be undone!")) return;
+    if (!confirm("FINAL WARNING: All your data will be lost. Are you 100% sure?")) return;
+    setClearStatus("Disconnecting Firebase...");
+    setTimeout(() => {
+      // Step 1: Stop Firebase from re-downloading data
+      disconnectFirebase();
+      setClearStatus("Clearing all data...");
+      setTimeout(() => {
+        // Step 2: Clear localStorage
+        Object.keys(localStorage).forEach(k => { if (k.startsWith("sgf_")) localStorage.removeItem(k); });
+        // Keep disconnect flag
+        localStorage.setItem("sgf_firebase_disconnected", "true");
+        setClearStatus("Reset complete. Reloading...");
+        setTimeout(() => {
+          window.location.href = window.location.pathname + "?_=" + Date.now();
+        }, 500);
+      }, 300);
+    }, 100);
   }
 
   // Cloud Sync
@@ -55,6 +132,102 @@ export default function SettingsPage() {
   const [firebaseJson, setFirebaseJson] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
   const [syncError, setSyncError] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [clearStatus, setClearStatus] = useState("");
+
+  useEffect(() => {
+    try {
+      const cfg = localStorage.getItem("sgf_firebase_config");
+      if (cfg) {
+        const encoded = btoa(cfg);
+        setShareUrl(window.location.origin + window.location.pathname + "?fb=" + encoded);
+      }
+    } catch { setShareUrl(""); }
+  }, [syncStatus.configured]);
+
+  async function handleCopyShareLink() {
+    const cfg = getConfigFromStorage();
+    if (!cfg || !cfg.apiKey) { setSyncError("No config found. Reconnect first."); setTimeout(() => setSyncError(""), 5000); return; }
+    const cfgStr = JSON.stringify(cfg);
+    const url = window.location.origin + window.location.pathname + "?fb=" + btoa(cfgStr);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+        setSyncMessage("Link copied! Send to sales reps.");
+        setTimeout(() => setSyncMessage(""), 5000);
+      } else { throw new Error("no api"); }
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url; document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand("copy"); document.body.removeChild(ta);
+        if (ok) { setSyncMessage("Link copied! Send to sales reps."); setTimeout(() => setSyncMessage(""), 5000); }
+        else { throw new Error("fallback failed"); }
+      } catch {
+        setSyncError("Copy blocked. Select and copy the URL below manually.");
+        setTimeout(() => setSyncError(""), 8000);
+      }
+    }
+  }
+
+  async function handleSyncToCloud() {
+    setSyncMessage("Syncing...");
+    const localOrders = JSON.parse(localStorage.getItem("sgf_orders") || "[]");
+    const localCheckins = JSON.parse(localStorage.getItem("sgf_checkins") || "[]");
+    const localAppointments = JSON.parse(localStorage.getItem("sgf_appointments") || "[]");
+    const localInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
+    const localCustomers = JSON.parse(localStorage.getItem("sgf_customers") || "[]");
+    const localStock = JSON.parse(localStorage.getItem("sgf_products") || "[]");
+    await syncAllLocalData({ orders: localOrders, checkins: localCheckins, appointments: localAppointments, invoices: localInvoices });
+    if (localCustomers.length > 0) await pushCustomers(localCustomers);
+    if (localStock.length > 0) await pushStock(localStock);
+    setSyncMessage("Synced to cloud! Sales reps will receive data automatically.");
+    setTimeout(() => setSyncMessage(""), 5000);
+  }
+
+  function parseFirebaseConfig(input: string): any {
+    // Step 1: Strip ALL non-ASCII and control characters (aggressive)
+    let raw = input.replace(/[^\x20-\x7E\s]/g, "");
+    // Step 2: Remove JS comments
+    raw = raw.replace(/\/\/.*$/gm, "");
+    // Step 3: Remove const declaration and trailing semicolon
+    raw = raw.replace(/const\s+\w+\s*=\s*/, "");
+    raw = raw.replace(/;\s*$/, "");
+    // Step 4: Extract { } block
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) raw = match[0];
+    // Step 5: Quote unquoted property names (JS → JSON)
+    raw = raw.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+    // Step 6: Remove trailing commas
+    raw = raw.replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(raw);
+  }
+
+  function handleConnect() {
+    setSyncError("");
+    setSyncMessage("");
+    try {
+      const raw = firebaseJson.trim();
+      if (!raw) { setSyncError("Please paste your Firebase config"); return; }
+      const parsed = parseFirebaseConfig(raw);
+      if (!parsed || typeof parsed !== "object") { setSyncError("Invalid config object"); return; }
+      if (!parsed.apiKey || parsed.apiKey.length < 10) { setSyncError("Invalid apiKey"); return; }
+      if (!parsed.databaseURL) { setSyncError("Missing databaseURL"); return; }
+      // Remove disconnect flag so sync can work
+      localStorage.removeItem("sgf_firebase_disconnected");
+      const success = saveFirebaseConfig(parsed);
+      if (success) {
+        setSyncStatus(getFirebaseConfig());
+        setSyncMessage("Connected!");
+        setFirebaseJson("");
+        setTimeout(() => setSyncMessage(""), 5000);
+      } else {
+        setSyncError("Failed to connect");
+      }
+    } catch (err: any) {
+      setSyncError("Parse error: " + (err?.message || "Check your { } brackets"));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -215,9 +388,13 @@ export default function SettingsPage() {
 
         {!syncStatus.configured ? (
           <>
-            <textarea value={firebaseJson} onChange={(e) => setFirebaseJson(e.target.value)} placeholder='Paste Firebase config JSON here...' className="input-field w-full font-mono text-xs mb-3" rows={6} />
+            <div className="p-3 rounded-lg mb-3 text-xs" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
+              <div className="text-[#8A8B8C] mb-1">Paste your Firebase config below. You can paste the <strong>entire web snippet</strong> — comments, <code>const firebaseConfig =</code>, and all:</div>
+              <code className="text-[#D4A843] font-mono-data block mt-1">// const firebaseConfig = {"{"} apiKey: "...", databaseURL: "..." {"}"};</code>
+            </div>
+            <textarea value={firebaseJson} onChange={(e) => setFirebaseJson(e.target.value)} placeholder='{"apiKey":"AIza...","authDomain":"your-app.firebaseapp.com","databaseURL":"https://your-app-default-rtdb.firebaseio.com","projectId":"your-app",...}' className="input-field w-full font-mono text-xs mb-3" rows={6} />
             <div className="flex gap-2">
-              <button onClick={() => { setSyncError(""); try { let raw = firebaseJson.trim(); const match = raw.match(/\{[\s\S]*\}/); if (match) raw = match[0]; const parsed = new Function("return " + raw)(); if (!parsed.apiKey || parsed.apiKey.length < 10) { setSyncError("Invalid apiKey"); return; } if (!parsed.databaseURL) { setSyncError("Missing databaseURL"); return; } const success = saveFirebaseConfig(parsed); if (success) { setSyncStatus(getFirebaseConfig()); setSyncMessage("Connected!"); setFirebaseJson(""); } else { setSyncError("Failed to connect"); } } catch { setSyncError("Invalid format"); } }} className="btn-primary text-sm"><Cloud className="w-4 h-4" /> Connect</button>
+              <button onClick={handleConnect} className="btn-primary text-sm"><Cloud className="w-4 h-4" /> Connect</button>
             </div>
             {syncError && <div className="mt-2 text-xs text-[#EF4444]"><AlertTriangle className="w-3 h-3 inline mr-1" />{syncError}</div>}
             {syncMessage && <div className="mt-2 text-xs text-[#4ADE80]"><CheckCircle className="w-3 h-3 inline mr-1" />{syncMessage}</div>}
@@ -228,10 +405,19 @@ export default function SettingsPage() {
               <div className="text-xs text-[#4ADE80] font-body">Cloud sync is active. All devices will sync orders, check-ins, and appointments.</div>
             </div>
             <div className="flex gap-2 flex-wrap">
-              <button onClick={async () => { setSyncMessage("Syncing..."); const localOrders = JSON.parse(localStorage.getItem("sgf_orders") || "[]"); const localCheckins = JSON.parse(localStorage.getItem("sgf_checkins") || "[]"); const localAppointments = JSON.parse(localStorage.getItem("sgf_appointments") || "[]"); const localInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]"); const localCustomers = JSON.parse(localStorage.getItem("sgf_customers") || "[]"); const localStock = JSON.parse(localStorage.getItem("sgf_products") || "[]"); await syncAllLocalData({ orders: localOrders, checkins: localCheckins, appointments: localAppointments, invoices: localInvoices }); if (localCustomers.length > 0) await pushCustomers(localCustomers); if (localStock.length > 0) await pushStock(localStock); setSyncMessage("Synced to cloud! Sales reps will receive data automatically."); setTimeout(() => setSyncMessage(""), 5000); }} className="btn-secondary text-sm"><Cloud className="w-4 h-4" /> Sync to Cloud</button>
-              <button onClick={() => { const cfg = localStorage.getItem("sgf_firebase_config"); if (cfg) { navigator.clipboard.writeText(window.location.origin + window.location.pathname + "?fb=" + btoa(cfg)); setSyncMessage("Share link copied! Send this to your sales reps."); setTimeout(() => setSyncMessage(""), 5000); } }} className="btn-secondary text-sm"><Copy className="w-4 h-4" /> Copy Share Link</button>
+              <button onClick={handleSyncToCloud} className="btn-secondary text-sm"><Cloud className="w-4 h-4" /> Sync to Cloud</button>
+              <button onClick={handleCopyShareLink} className="btn-secondary text-sm"><Copy className="w-4 h-4" /> Copy Share Link</button>
               <button onClick={() => { clearFirebaseConfig(); setSyncStatus(getFirebaseConfig()); }} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#222324", color: "#EF4444" }}>Disconnect</button>
+              {isSuperAdmin && (
+                <button onClick={async () => { if (!window.confirm("WARNING: This will WIPE all data from Firebase cloud for ALL devices. Sales reps will lose unsynced data. Are you sure?")) return; setSyncMessage("Clearing cloud data..."); const ok = await clearCloudData(); if (ok) { setSyncMessage("Cloud data cleared! Tell sales reps to disconnect and reconnect."); } else { setSyncError("Failed to clear cloud data."); } setTimeout(() => { setSyncMessage(""); setSyncError(""); }, 5000); }} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#EF4444", color: "#fff" }}>Clear Cloud Data</button>
+              )}
             </div>
+            {syncStatus.configured && shareUrl && (
+              <div className="mt-2 p-2 rounded text-xs break-all select-all" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324", color: "#8A8B8C" }} onClick={(e) => { const range = document.createRange(); range.selectNodeContents(e.currentTarget); const sel = window.getSelection()!; sel.removeAllRanges(); sel.addRange(range); }}>
+                Share URL: {shareUrl}
+              </div>
+            )}
+            {syncError && <div className="mt-2 text-xs text-[#EF4444]"><AlertTriangle className="w-3 h-3 inline mr-1" />{syncError}</div>}
             {syncMessage && <div className="mt-2 text-xs text-[#4ADE80]"><CheckCircle className="w-3 h-3 inline mr-1" />{syncMessage}</div>}
           </>
         )}
@@ -246,6 +432,81 @@ export default function SettingsPage() {
           <span className="text-sm text-[#4ADE80] font-body">Settings saved successfully!</span>
         )}
       </div>
+
+      {/* Clear status overlay */}
+      {clearStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.85)" }}>
+          <div className="text-center">
+            <div className="w-12 h-12 border-3 border-[#D4A843] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <div className="text-white font-display text-lg">{clearStatus}</div>
+            <div className="text-[#8A8B8C] text-sm mt-2">Please wait...</div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Tools - Super Admin Only */}
+      {isSuperAdmin && (
+        <div className="card-surface p-6 mt-6" style={{ border: "1px solid rgba(212, 168, 67, 0.2)" }}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
+              <Wrench className="w-5 h-5 text-[#D4A843]" />
+            </div>
+            <h2 className="font-display font-semibold text-white text-lg">Admin Tools</h2>
+          </div>
+          <p className="text-sm text-[#8A8B8C] font-body mb-4">
+            Tools to fix invoice numbering issues and clean up duplicates.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                const result = fixDuplicateInvoiceNumbers();
+                if (result.changes.length > 0) {
+                  setSyncMessage(`Fixed ${result.changes.length} duplicate invoice numbers. See audit log for details.`);
+                } else {
+                  setSyncMessage("No duplicate invoice numbers found.");
+                }
+                setTimeout(() => setSyncMessage(""), 5000);
+              }}
+              className="btn-secondary text-sm w-full"
+            >
+              <Hash className="w-4 h-4" /> Fix Duplicate SGF Numbers
+            </button>
+            <p className="text-[10px] text-[#8A8B8C]">
+              Scans all invoices. If two invoices have the same SGF number, the most recent one gets renumbered to the next available number. Changes are logged in the audit trail.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Danger Zone - Super Admin Only */}
+      {isSuperAdmin && (
+        <div className="card-surface p-6 mt-6" style={{ border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)" }}>
+              <Trash2 className="w-5 h-5 text-[#EF4444]" />
+            </div>
+            <h2 className="font-display font-semibold text-white text-lg">Danger Zone</h2>
+          </div>
+          <p className="text-sm text-[#8A8B8C] font-body mb-4">
+            Use these options to clear data before going live. These actions cannot be undone.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            <button onClick={handleClearAppointments} className="px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
+              <Trash2 className="w-4 h-4 inline mr-2" />Clear Appointments &amp; Check-ins
+            </button>
+            <button onClick={handleClearAllData} className="px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+              <Trash2 className="w-4 h-4 inline mr-2" />Clear All Transaction Data
+            </button>
+            <button onClick={handleFullReset} className="px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#EF4444", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+              <Trash2 className="w-4 h-4 inline mr-2" />Factory Reset (Everything)
+            </button>
+          </div>
+          <div className="mt-3 text-xs text-[#8A8B8C]">
+            <strong>Clear Transaction Data</strong> removes: orders, invoices, receipts, payments, appointments, check-ins, follow-ups, collections, audit logs. Keeps: users, customers, products, company settings.<br />
+            <strong>Factory Reset</strong> removes everything and reloads defaults.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./",
   plugins: [
     devServer({ entry: "api/boot.ts", exclude: [/^\/(?!api\/).*$/] }),
     inspectAttr(), react()],
@@ -25,16 +26,5 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        entryFileNames: `assets/[name]-${Date.now()}-[hash].js`,
-        chunkFileNames: `assets/[name]-${Date.now()}-[hash].js`,
-        assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.');
-          const ext = info[info.length - 1];
-          return `assets/[name]-${Date.now()}-[hash][extname]`;
-        },
-      },
-    },
   },
 });

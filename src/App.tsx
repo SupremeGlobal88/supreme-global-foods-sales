@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate } from "react-router";
+import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import Login from "./pages/Login";
@@ -17,6 +18,9 @@ import SettingsPage from "./pages/SettingsPage";
 import FollowUpsPage from "./pages/FollowUpsPage";
 import CollectionsPage from "./pages/CollectionsPage";
 import SampleReportsPage from "./pages/SampleReportsPage";
+import UsersPage from "./pages/UsersPage";
+import HistoricalImportPage from "./pages/HistoricalImportPage";
+import { ShieldAlert } from "lucide-react";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -28,6 +32,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** RoleGuard: redirect to dashboard if user lacks permission for this route */
+function RoleGuard({ children }: { children: React.ReactNode }) {
+  const { canAccess } = useRole();
+  const location = useLocation();
+  if (!canAccess(location.pathname)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldAlert className="w-16 h-16 mb-4" style={{ color: "#EF4444", opacity: 0.4 }} />
+        <h2 className="font-display font-semibold text-white text-xl mb-2">Access Denied</h2>
+        <p className="text-[#8A8B8C] font-body text-sm">You don&apos;t have permission to view this page.</p>
+      </div>
+    );
+  }
   return <>{children}</>;
 }
 
@@ -76,13 +96,15 @@ export default function App() {
         <Route path="stock" element={<StockPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="orders" element={<OrdersPage />} />
-        <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="invoices" element={<RoleGuard><InvoicesPage /></RoleGuard>} />
         <Route path="appointments" element={<AppointmentsPage />} />
-        <Route path="sales-reps" element={<SalesRepsPage />} />
+        <Route path="sales-reps" element={<RoleGuard><SalesRepsPage /></RoleGuard>} />
         <Route path="follow-ups" element={<FollowUpsPage />} />
-        <Route path="collections" element={<CollectionsPage />} />
+        <Route path="collections" element={<RoleGuard><CollectionsPage /></RoleGuard>} />
         <Route path="sample-reports" element={<SampleReportsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
+        <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
+        <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

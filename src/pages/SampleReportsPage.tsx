@@ -5,7 +5,7 @@ import { FlaskConical, Download, Search, DollarSign, Package, Calendar, FileText
 
 export default function SampleReportsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
 

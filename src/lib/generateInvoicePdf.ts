@@ -35,7 +35,7 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   doc.setFontSize(9);
   doc.setTextColor(...darkGray);
   doc.setFont("helvetica", "normal");
-  doc.text("19A Steel Road, Spartan, Germiston, 1422", margin, y);
+  doc.text("28 Nagington road, Wadeville, Germiston, 1422", margin, y);
   y += 5;
   doc.text("Tel: 083 293 0644  |  sales@supremeglobalfoods.co.za", margin, y);
   y += 5;

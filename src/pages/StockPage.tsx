@@ -1,15 +1,27 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import { reloadFromStorage } from "@/lib/dataService";
 import {
   Search, Upload, Plus, Pencil, Trash2, X, Package, AlertTriangle, CheckCircle,
+  FileText, Calendar, Printer, Tag,
 } from "lucide-react";
 
 export default function StockPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const { isAdmin } = useRole();
   const utils = trpc.useUtils();
+
+  /* Daily Invoiced Stock Report */
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [reportFrom, setReportFrom] = useState(todayStr);
+  const [reportTo, setReportTo] = useState(todayStr);
+  const [showReport, setShowReport] = useState(false);
+  const { data: dailyReport } = trpc.stock.getDailyInvoicedStock.useQuery(
+    { from: reportFrom, to: reportTo },
+    { enabled: isAdmin && showReport },
+  );
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -83,6 +95,79 @@ export default function StockPage() {
   // Generate product code from product name
   function generateProductCode(name: string): string {
     return name.trim().toUpperCase().replace(/\s+/g, "-").replace(/\//g, "-").substring(0, 50);
+  }
+
+  // Print Daily Invoiced Stock Report to PDF
+  function printReport() {
+    if (!dailyReport || !dailyReport.items) return;
+    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const period = dailyReport.from === dailyReport.to ? dailyReport.from : `${dailyReport.from} to ${dailyReport.to}`;
+
+    const rows = dailyReport.items.map((item: any) => `
+      <tr style="border-bottom:1px solid #e5e5e5;">
+        <td style="padding:7px 8px; font-size:10px; font-weight:700; color:#D4A843;">${item.invoiceNumber}</td>
+        <td style="padding:7px 8px; font-size:10px; color:#555;">${new Date(item.invoiceDate).toLocaleDateString("en-ZA")}</td>
+        <td style="padding:7px 8px; font-size:10px;">
+          <strong>${item.productName}</strong>
+          ${item.productCode ? `<br/><span style="color:#888; font-size:9px;">${item.productCode}</span>` : ""}
+        </td>
+        <td style="padding:7px 8px; font-size:10px; text-align:right;">${item.quantity}</td>
+        <td style="padding:7px 8px; font-size:10px; text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td>
+        <td style="padding:7px 8px; font-size:10px; text-align:right;">R ${Number(item.lineTotal).toFixed(2)}</td>
+        <td style="padding:7px 8px; font-size:10px; text-align:center;">
+          ${item.isSpecialPrice ? '<span style="background:#FFF8E1; color:#D4A843; padding:2px 6px; border-radius:8px; font-weight:700; font-size:9px;">SPECIAL</span>' : '<span style="color:#888;">-</span>'}
+        </td>
+        <td style="padding:7px 8px; font-size:10px; text-align:center; text-transform:capitalize;">${item.priceTier}</td>
+        <td style="padding:7px 8px; font-size:10px;">${item.salesRep || "-"}</td>
+      </tr>
+    `).join("");
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html>
+      <html><head><title>Daily Invoiced Stock Report - ${period}</title>
+      <style>
+        @media print { body { padding: 0; } }
+        body { font-family: Arial, Helvetica, sans-serif; color: #333; max-width: 297mm; margin: 0 auto; font-size: 11px; line-height: 1.4; padding: 20px; }
+        .header { text-align: center; border-bottom: 3px solid #D4A843; padding-bottom: 10px; margin-bottom: 14px; }
+        .header img { height: 50px; margin-bottom: 4px; }
+        .header h1 { font-size: 18px; font-weight: 800; color: #D4A843; margin: 4px 0; letter-spacing: 1px; text-transform: uppercase; }
+        .header .sub { font-size: 10px; color: #666; }
+        .summary { display: flex; justify-content: space-between; margin-bottom: 14px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
+        .summary-box { text-align: center; flex: 1; }
+        .summary-box .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        .summary-box .value { font-size: 16px; font-weight: 800; color: #222; }
+        table.ledger { width: 100%; border-collapse: collapse; font-size: 10px; }
+        table.ledger thead th { background: #D4A843; color: #fff; padding: 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+        table.ledger tbody td { padding: 6px 8px; vertical-align: top; }
+        .footer { text-align: center; font-size: 9px; color: #999; margin-top: 16px; border-top: 1px solid #ddd; padding-top: 8px; }
+      </style></head>
+      <body>
+        <div class="header">
+          <img src="${logoUrl}" onerror="this.style.display='none'" />
+          <h1>Daily Invoiced Stock Report</h1>
+          <div class="sub">${period} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>
+          <div class="sub">28 Nagington road, Wadeville, Germiston &nbsp;|&nbsp; Tel: 083 293 0644</div>
+        </div>
+        <div class="summary">
+          <div class="summary-box"><div class="label">Total Lines</div><div class="value">${dailyReport.totalLines}</div></div>
+          <div class="summary-box"><div class="label">Total Value</div><div class="value" style="color:#D4A843;">R ${Number(dailyReport.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div></div>
+          <div class="summary-box"><div class="label">Period</div><div class="value" style="font-size:12px;">${period}</div></div>
+        </div>
+        <table class="ledger">
+          <thead><tr>
+            <th>Invoice #</th><th>Date</th><th>Product</th><th style="text-align:right">Qty</th>
+            <th style="text-align:right">Unit Price</th><th style="text-align:right">Line Total</th>
+            <th style="text-align:center">Special</th><th style="text-align:center">Tier</th><th>Sales Rep</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="footer">
+          Supreme Global Foods &nbsp;|&nbsp; Confidential Internal Report &nbsp;|&nbsp; Page 1 of 1
+        </div>
+      </body></html>`);
+    w.document.close();
+    w.print();
   }
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -373,6 +458,114 @@ export default function StockPage() {
               <button type="submit" className="btn-primary w-full justify-center">{editingId ? "Update" : "Add"} Product</button>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* ═══════ DAILY INVOICED STOCK REPORT (Admin/Super Admin Only) ═══════ */}
+      {isAdmin && (
+        <div className="card-surface overflow-hidden mt-6">
+          <div className="p-4" style={{ borderBottom: "1px solid #222324" }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212,168,67,0.12)" }}>
+                  <FileText className="w-5 h-5 text-[#D4A843]" />
+                </div>
+                <div>
+                  <h2 className="font-display font-semibold text-white text-lg">Daily Invoiced Stock Report</h2>
+                  <p className="text-[#8A8B8C] font-body text-xs">Track what stock was invoiced and by whom</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#8A8B8C]" />
+                  <input type="date" value={reportFrom} onChange={(e) => setReportFrom(e.target.value)} className="input-field text-xs py-1.5" />
+                  <span className="text-[#8A8B8C] text-xs">to</span>
+                  <input type="date" value={reportTo} onChange={(e) => setReportTo(e.target.value)} className="input-field text-xs py-1.5" />
+                </div>
+                <button onClick={() => setShowReport(true)} className="btn-primary text-xs"><FileText className="w-3.5 h-3.5" /> Generate</button>
+                {showReport && dailyReport && dailyReport.items && dailyReport.items.length > 0 && (
+                  <button onClick={printReport} className="btn-secondary text-xs"><Printer className="w-3.5 h-3.5" /> Print / PDF</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {showReport && dailyReport && (
+            <>
+              {/* Summary bar */}
+              <div className="grid grid-cols-3 gap-4 p-4" style={{ borderBottom: "1px solid #222324", backgroundColor: "#131415" }}>
+                <div>
+                  <div className="label-text mb-1">Period</div>
+                  <div className="text-sm text-white font-body">{dailyReport.from === dailyReport.to ? dailyReport.from : `${dailyReport.from} to ${dailyReport.to}`}</div>
+                </div>
+                <div>
+                  <div className="label-text mb-1">Total Lines</div>
+                  <div className="stat-number">{dailyReport.totalLines}</div>
+                </div>
+                <div>
+                  <div className="label-text mb-1">Total Value</div>
+                  <div className="stat-number" style={{ color: "#D4A843" }}>R {Number(dailyReport.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                </div>
+              </div>
+
+              {/* Report table */}
+              {dailyReport.items && dailyReport.items.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr style={{ backgroundColor: "#131415", borderBottom: "1px solid #222324" }}>
+                        <th className="text-left p-3 label-text">Invoice #</th>
+                        <th className="text-left p-3 label-text">Date</th>
+                        <th className="text-left p-3 label-text">Product</th>
+                        <th className="text-right p-3 label-text">Qty</th>
+                        <th className="text-right p-3 label-text">Price Charged</th>
+                        <th className="text-center p-3 label-text">Special</th>
+                        <th className="text-left p-3 label-text">Tier</th>
+                        <th className="text-left p-3 label-text">Sales Rep</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyReport.items.map((item: any, idx: number) => (
+                        <tr key={idx} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
+                          <td className="p-3 font-display font-semibold text-sm text-[#D4A843]">{item.invoiceNumber}</td>
+                          <td className="p-3 text-xs text-[#8A8B8C]">{new Date(item.invoiceDate).toLocaleDateString("en-ZA")}</td>
+                          <td className="p-3">
+                            <div className="text-sm text-white font-body">{item.productName}</div>
+                            {item.productCode && <div className="text-xs text-[#8A8B8C] font-mono-data">{item.productCode}</div>}
+                          </td>
+                          <td className="p-3 text-right text-sm text-white font-display">{item.quantity}</td>
+                          <td className="p-3 text-right">
+                            <div className="text-sm text-white font-display">R {Number(item.unitPrice).toFixed(2)}</div>
+                            <div className="text-xs text-[#8A8B8C]">R {Number(item.lineTotal).toFixed(2)} total</div>
+                          </td>
+                          <td className="p-3 text-center">
+                            {item.isSpecialPrice ? (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843" }}>
+                                <Tag className="w-3 h-3 inline mr-1" />YES
+                              </span>
+                            ) : (
+                              <span className="text-xs text-[#8A8B8C]">-</span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium capitalize" style={{ backgroundColor: "rgba(59,130,246,0.12)", color: "#3B82F6" }}>
+                              {item.priceTier}
+                            </span>
+                          </td>
+                          <td className="p-3 text-sm text-[#E8E8E9] font-body">{item.salesRep || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : showReport && (
+                <div className="p-8 text-center text-[#8A8B8C] font-body">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  No invoiced stock found for the selected period.
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

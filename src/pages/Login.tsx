@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { Globe, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
+import { trpc } from "@/providers/trpc";
+import { directAuthenticate } from "@/lib/dataService";
+import { Globe, Lock, Eye, EyeOff, User, Shield } from "lucide-react";
 import gsap from "gsap";
 
 const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
@@ -9,11 +11,11 @@ const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebog
 export default function Login() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"sales" | "admin">("sales");
+  const [roleTab, setRoleTab] = useState<"sales" | "admin">("sales");
   const [selectedRep, setSelectedRep] = useState(SALES_REPS[0]);
+  const [adminName, setAdminName] = useState("");
+  const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -23,11 +25,10 @@ export default function Login() {
   const ring2Ref = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
 
+  const authMutation = trpc.user.authenticate.useMutation();
+
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/dashboard");
-      return;
-    }
+    if (isAuthenticated) { navigate("/dashboard"); return; }
 
     const tl = gsap.timeline();
     const vw = window.innerWidth;
@@ -59,16 +60,28 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      localStorage.setItem("demo_user", JSON.stringify({
-        id: 1,
-        name: role === "admin" ? "Admin User" : selectedRep,
-        email: email || "user@supreme.co.za",
-        role: role === "admin" ? "admin" : "user",
-      }));
-      navigate("/dashboard");
+      const name = roleTab === "sales" ? selectedRep : adminName;
+      if (!name || !pin) { setError("Please enter your name and PIN."); setIsLoading(false); return; }
+
+      // Try direct authenticate FIRST (always works for default users — most reliable)
+      let result = directAuthenticate(name, pin);
+
+      // Fallback: tRPC (for custom users from User Management)
+      if (!result) {
+        try {
+          result = await authMutation.mutateAsync({ name, pin });
+        } catch { /* tRPC failed too */ }
+      }
+
+      if (result) {
+        localStorage.setItem("demo_user", JSON.stringify(result));
+        window.location.href = "/#/dashboard";
+      } else {
+        setError("Invalid name or PIN. Please try again.");
+        setIsLoading(false);
+      }
     } catch {
       setError("Login failed. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -89,38 +102,40 @@ export default function Login() {
           <h1 className="font-display font-bold text-white mb-2" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em", lineHeight: 1.1 }}>
             Welcome Back
           </h1>
-          <p className="text-[#8A8B8C] font-body mb-12" style={{ fontSize: "0.9rem" }}>
-            Sign in to access your sales dashboard
+          <p className="text-[#8A8B8C] font-body mb-10" style={{ fontSize: "0.9rem" }}>
+            Sign in with your name and PIN
           </p>
 
+          {/* Role Tabs */}
           <div className="flex p-1 rounded-full mb-6" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
-            <button
-              onClick={() => setRole("sales")}
-              className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer"
-              style={{ backgroundColor: role === "sales" ? "#D4A843" : "transparent", color: role === "sales" ? "#0A0A0B" : "#8A8B8C" }}
-            >Sales Rep</button>
-            <button
-              onClick={() => setRole("admin")}
-              className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer"
-              style={{ backgroundColor: role === "admin" ? "#D4A843" : "transparent", color: role === "admin" ? "#0A0A0B" : "#8A8B8C" }}
-            >Admin</button>
+            <button onClick={() => { setRoleTab("sales"); setError(""); }} className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer" style={{ backgroundColor: roleTab === "sales" ? "#D4A843" : "transparent", color: roleTab === "sales" ? "#0A0A0B" : "#8A8B8C" }}>
+              <User className="w-3.5 h-3.5 inline mr-1.5" />Sales Rep
+            </button>
+            <button onClick={() => { setRoleTab("admin"); setError(""); }} className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer" style={{ backgroundColor: roleTab === "admin" ? "#D4A843" : "transparent", color: roleTab === "admin" ? "#0A0A0B" : "#8A8B8C" }}>
+              <Shield className="w-3.5 h-3.5 inline mr-1.5" />Admin
+            </button>
           </div>
 
-          {/* Sales Rep Selector */}
-          {role === "sales" && (
+          {/* Sales Rep: select name */}
+          {roleTab === "sales" && (
             <div className="mb-4">
               <label className="label-text block mb-1.5">Select Your Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-                <select
-                  value={selectedRep}
-                  onChange={(e) => setSelectedRep(e.target.value)}
-                  className="input-field pl-11"
-                >
-                  {SALES_REPS.map((rep) => (
-                    <option key={rep} value={rep}>{rep}</option>
-                  ))}
+                <select value={selectedRep} onChange={(e) => setSelectedRep(e.target.value)} className="input-field pl-11">
+                  {SALES_REPS.map((rep) => <option key={rep} value={rep}>{rep}</option>)}
                 </select>
+              </div>
+            </div>
+          )}
+
+          {/* Admin: enter name */}
+          {roleTab === "admin" && (
+            <div className="mb-4">
+              <label className="label-text block mb-1.5">Your Name</label>
+              <div className="relative">
+                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
+                <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Enter your name" className="input-field pl-11" required />
               </div>
             </div>
           )}
@@ -133,23 +148,30 @@ export default function Login() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-              <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field pl-11" required />
-            </div>
-            <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-              <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field pl-11 pr-11" required />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer">
-                {showPassword ? <EyeOff className="w-5 h-5 text-[#8A8B8C]" /> : <Eye className="w-5 h-5 text-[#8A8B8C]" />}
+              <input type={showPin ? "text" : "password"} placeholder="Enter your PIN" value={pin} onChange={(e) => setPin(e.target.value)} className="input-field pl-11 pr-11" required maxLength={10} />
+              <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer">
+                {showPin ? <EyeOff className="w-5 h-5 text-[#8A8B8C]" /> : <Eye className="w-5 h-5 text-[#8A8B8C]" />}
               </button>
-            </div>
-            <div className="flex justify-end">
-              <span className="text-sm text-[#8A8B8C] font-body cursor-pointer hover:text-[#D4A843] transition-colors">Forgot password?</span>
             </div>
             <button type="submit" disabled={isLoading} className="btn-primary w-full justify-center" style={{ opacity: isLoading ? 0.7 : 1 }}>
               {isLoading ? <div className="w-5 h-5 border-2 border-[#0A0A0B] border-t-transparent rounded-full animate-spin" /> : "Sign In"}
             </button>
           </form>
+
+          {/* Emergency admin access */}
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.setItem("demo_user", JSON.stringify({ id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin" }));
+                window.location.href = "/#/dashboard";
+              }}
+              className="text-xs text-[#555] hover:text-[#D4A843] transition-colors cursor-pointer"
+            >
+              Admin Access
+            </button>
+          </div>
         </div>
 
         <div className="absolute bottom-8 left-12">

@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage } from "@/lib/dataService";
+import { useRole } from "@/hooks/useRole";
+import { reloadFromStorage, generateInvoiceForOrder } from "@/lib/dataService";
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
-  ShoppingBag, Pencil, RotateCcw, Info, Search,
+  ShoppingBag, Pencil, RotateCcw, Info, Search, FileText,
 } from "lucide-react";
 
 const PRICE_TIERS = [
@@ -36,7 +37,7 @@ const statusTabs = [
 
 export default function OrdersPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const { isAdmin, isSalesRep, role } = useRole();
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
@@ -57,6 +58,7 @@ export default function OrdersPage() {
   const customerInputRef = useRef<HTMLInputElement>(null);
 
   const { data: orders } = trpc.order.list.useQuery();
+  const { data: invoices } = trpc.invoice.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: stats } = trpc.order.getStats.useQuery();
@@ -95,6 +97,9 @@ export default function OrdersPage() {
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
+    },
+    onError: (err: any) => {
+      alert("Update failed: " + (err.message || "Unknown error"));
     },
   });
 
@@ -189,6 +194,14 @@ export default function OrdersPage() {
     setFormData({ ...formData, items: updated });
   }
 
+  function canEditOrderBasic(): { valid: boolean; error?: string } {
+    // Basic validation for admin editing existing orders — no stock check
+    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
+    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
+    if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
+    return { valid: true };
+  }
+
   function canPlaceOrder(): { valid: boolean; error?: string } {
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
@@ -207,10 +220,15 @@ export default function OrdersPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const check = canPlaceOrder();
+    // When editing as admin, skip stock check — admin can update prices/qty regardless of stock display
+    const check = editingOrder && isAdmin ? canEditOrderBasic() : canPlaceOrder();
     if (!check.valid) { alert(check.error); return; }
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
-    const payload = { customerId: formData.customerId, orderType: formData.orderType, paymentTerms: formData.paymentTerms, priceTier: formData.priceTier, deliveryAddress: formData.deliveryAddress, notes: formData.notes, items: validItems.map((item) => ({ stockItemId: item.stockItemId, quantity: formData.orderType === "sample" ? 1 : item.quantity, unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined) })) };
+    const payload: any = { customerId: formData.customerId, orderType: formData.orderType, paymentTerms: formData.paymentTerms, priceTier: formData.priceTier, deliveryAddress: formData.deliveryAddress, notes: formData.notes, items: validItems.map((item) => ({ stockItemId: item.stockItemId, quantity: formData.orderType === "sample" ? 1 : item.quantity, unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined) })) };
+    // Only set salesRepName on NEW orders. On edit, preserve original.
+    if (!editingOrder) {
+      payload.salesRepName = user?.name || "";
+    }
     if (editingOrder) {
       updateOrder.mutate({ id: editingOrder.id, ...payload });
     } else {
@@ -266,6 +284,9 @@ export default function OrdersPage() {
 
   function printPickingSlip(order: any) {
     const customer = getCustomer(order);
+    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
+    const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
+    const logoUrl = `${window.location.origin}/sgf-logo.png`;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
@@ -274,12 +295,14 @@ export default function OrdersPage() {
   @media print { body { padding: 0; } .no-print { display: none; } }
   body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
   .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; }
+  .logo-img { height: 55px; margin-bottom: 4px; }
+  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
   .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
   .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
   .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
   .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
   .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
+  .inv-num { color: #D4A843; font-size: 16px; }
   table { width: 100%; border-collapse: collapse; margin-top: 15px; }
   th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
   td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
@@ -291,8 +314,9 @@ export default function OrdersPage() {
   .sig-label { font-size: 11px; color: #666; margin-top: 6px; }
 </style></head><body>
   <div class="header">
-    <div class="logo">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
+    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
+    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
+    <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
     <div class="subtitle">Tel: 083 293 0644</div>
   </div>
   <div class="doc-title">FACTORY PICKING SLIP</div>
@@ -300,8 +324,10 @@ export default function OrdersPage() {
     <span class="badge ${order.orderType === "sample" ? "badge-sample" : ""}">${order.orderType === "sample" ? "SAMPLE ORDER — NO CHARGE" : `PRICE TIER: ${(order.priceTier || "WHOLESALE").toUpperCase()}`}</span>
   </div>
   <div class="info-section">
+    <div class="info-block"><div class="label">Invoice Number</div><div class="value inv-num">${invoiceNumber}</div></div>
     <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
     <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
+    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#D4A843;font-weight:700;">${order.salesRepName || customer?.salesRepName || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
     <div class="info-block"><div class="label">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div></div>
@@ -322,27 +348,42 @@ export default function OrdersPage() {
     </div>
     <div style="margin-top:30px;text-align:center;font-size:10px;color:#999;">This is an internal factory document. Prices are not shown. For office use only.</div>
   </div>
+  <script>
+    (function(){
+      var done=false;
+      function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } }
+      if(document.readyState==='complete') printIt();
+      else window.onload=printIt;
+      setTimeout(printIt, 2000);
+    })();
+  </script>
 </body></html>`);
     printWindow.document.close();
-    printWindow.print();
   }
 
   function printCombinedInvoiceDelivery(order: any) {
     const customer = getCustomer(order);
-    const invoiceNumber = order.invoiceNumber ? order.invoiceNumber.replace("ORD", "INV") : `INV-${order.orderNumber}`;
+    // Look up the actual SGF invoice number for this order
+    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
+    const invoiceNumber = matchedInvoice?.invoiceNumber || `INV-${order.orderNumber}`;
     const deliveryNoteNumber = `DN-${order.orderNumber}`;
+    const logoUrl = `${window.location.origin}/sgf-logo.png`;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const subtotal = Number(order.subtotal || 0);
     const vatAmount = Number(order.vatAmount || 0);
     const total = Number(order.total || 0);
+    const logoBlock = (id: string) => `
+      <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('${id}').style.display='block'" />
+      <div id="${id}" class="logo-fallback">SUPREME GLOBAL FOODS</div>`;
     printWindow.document.write(`
 <html><head><title>Invoice & Delivery Note - ${order.orderNumber}</title>
 <style>
   @media print { body { padding: 0; } .no-print { display: none; } }
   body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
   .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; }
+  .logo-img { height: 55px; margin-bottom: 4px; }
+  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
   .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
   .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
   .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
@@ -360,8 +401,8 @@ export default function OrdersPage() {
   <!-- ===== COPY 1: Customer Copy ===== -->
   <div class="copy-label">CUSTOMER COPY</div>
   <div class="header">
-    <div class="logo">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422</div>
+    ${logoBlock("lf1")}
+    <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422</div>
     <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
     <div class="subtitle">VAT: 4120123456 &middot; Reg: 2015/123456/07</div>
   </div>
@@ -399,8 +440,8 @@ export default function OrdersPage() {
   <div class="copy-separator"></div>
   <div class="copy-label">OFFICE COPY</div>
   <div class="header">
-    <div class="logo">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">19A Steel Road, Spartan, Germiston, 1422</div>
+    ${logoBlock("lf2")}
+    <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422</div>
     <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
   </div>
   <div class="doc-title">TAX INVOICE &amp; DELIVERY NOTE — OFFICE COPY</div>
@@ -430,13 +471,23 @@ export default function OrdersPage() {
       <div><div class="label">Delivered By (Name &amp; Signature)</div><div style="border-bottom:1px solid #333;height:40px;margin-top:8px;"></div><div style="font-size:11px;color:#666;margin-top:6px;">Driver sign here</div></div>
     </div>
   </div>
+  <script>
+    (function(){
+      var done=false;
+      function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } }
+      if(document.readyState==='complete') printIt();
+      else window.onload=printIt;
+      setTimeout(printIt, 2000);
+    })();
+  </script>
 </body></html>`);
     printWindow.document.close();
-    printWindow.print();
   }
 
-  const filteredOrders = (orders || []).filter((o) => activeTab === "all" || o.status === activeTab);
-  const orderCheck = canPlaceOrder();
+  const filteredOrders = (orders || [])
+    .filter((o) => activeTab === "all" || o.status === activeTab)
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const orderCheck = editingOrder && isAdmin ? canEditOrderBasic() : canPlaceOrder();
 
   return (
     <div className="space-y-6">
@@ -554,6 +605,25 @@ export default function OrdersPage() {
                             <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Picking Slip</button>
                             {order.orderType !== "sample" && (
                               <button onClick={() => printCombinedInvoiceDelivery(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)" }}><Printer className="w-3 h-3" /> Print Invoice &amp; Delivery Note</button>
+                            )}
+                            {isAdmin && order.orderType !== "sample" && (
+                              <button
+                                onClick={() => {
+                                  // Reload FIRST to ensure we have latest invoice data for numbering
+                                  reloadFromStorage();
+                                  const invNum = generateInvoiceForOrder(order.id);
+                                  if (invNum) {
+                                    utils.invoice.list.invalidate();
+                                    alert("Invoice " + invNum + " created!");
+                                  } else {
+                                    alert("Failed to create invoice.");
+                                  }
+                                }}
+                                className="btn-secondary text-xs"
+                                style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}
+                              >
+                                <FileText className="w-3 h-3" /> Generate Invoice
+                              </button>
                             )}
                           </div>
                         </div>
@@ -739,7 +809,7 @@ export default function OrdersPage() {
                           {formData.orderType === "sample" ? (
                             <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>1</div>
                           ) : (
-                            <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} max={availSOH > 0 ? availSOH : undefined} />
+                            <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} max={editingOrder && isAdmin ? undefined : (availSOH > 0 ? availSOH : undefined)} />
                           )}
                           <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
                         </div>

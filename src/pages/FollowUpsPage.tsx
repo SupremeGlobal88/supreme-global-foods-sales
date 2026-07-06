@@ -6,7 +6,7 @@ import { Bell, CheckCircle, Clock, AlertTriangle, MessageSquare, Calendar } from
 
 export default function FollowUpsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 

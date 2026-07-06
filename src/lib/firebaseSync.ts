@@ -20,22 +20,23 @@ import {
   set,
   onValue,
   update,
+  get,
 } from "firebase/database";
 
 const CONFIG_KEY = "sgf_firebase_config";
 
-// Default placeholder config (will be replaced at runtime from localStorage)
+// Supreme Global Foods Firebase — auto-connects
 const DEFAULT_CONFIG = {
-  apiKey: "PLACEHOLDER",
-  authDomain: "placeholder.firebaseapp.com",
-  databaseURL: "https://placeholder-default-rtdb.firebaseio.com",
-  projectId: "placeholder",
-  storageBucket: "placeholder.appspot.com",
-  messagingSenderId: "000000",
-  appId: "1:000000:web:000000",
+  apiKey: "AIzaSyAj68G-CmO9ImmBB5MgPwlas389gHWqPu8",
+  authDomain: "supreme-global-foods-835b0.firebaseapp.com",
+  databaseURL: "https://supreme-global-foods-835b0-default-rtdb.firebaseio.com",
+  projectId: "supreme-global-foods-835b0",
+  storageBucket: "supreme-global-foods-835b0.firebasestorage.app",
+  messagingSenderId: "570220829537",
+  appId: "1:570220829537:web:3c8d3c870887e9cc7a4320",
 };
 
-function getConfigFromStorage(): any {
+export function getConfigFromStorage(): any {
   try {
     const stored = localStorage.getItem(CONFIG_KEY);
     if (stored) {
@@ -45,7 +46,8 @@ function getConfigFromStorage(): any {
       }
     }
   } catch { /* ignore */ }
-  return null;
+  // Return the built-in real config — no setup needed
+  return DEFAULT_CONFIG;
 }
 
 let db: any = null;
@@ -124,11 +126,12 @@ export function clearFirebaseConfig(): void {
 // PUSH: Save a single item to Firebase
 // =============================================================================
 
-export async function pushOrder(order: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+export async function pushOrder(order: any): Promise<boolean> {
+  if (!isFirebaseReady()) return false;
   try {
     await set(ref(db, `orders/${order.id}`), { ...order, _syncedAt: Date.now() });
-  } catch { /* ignore */ }
+    return true;
+  } catch (e: any) { console.warn("[FirebaseSync] pushOrder failed:", e.message); return false; }
 }
 
 export async function pushCheckin(checkin: any): Promise<void> {
@@ -168,6 +171,44 @@ export async function pushCustomers(customers: any[]): Promise<void> {
 export async function pushStock(stock: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, "stock"), stock); } catch { /* ignore */ }
+}
+
+// =============================================================================
+// MANUAL PULL: Force-fetch all data from Firebase into localStorage
+// =============================================================================
+
+/** Pull all data from Firebase and merge into localStorage. Returns counts per type. */
+export async function pullFromCloud(): Promise<Record<string, number>> {
+  if (!isFirebaseReady()) return {};
+  const counts: Record<string, number> = {};
+
+  const pullType = async (path: string, storageKey: string) => {
+    try {
+      const snapshot = await get(ref(db, path));
+      const data = fbToArray(snapshot.val());
+      if (data.length > 0) {
+        const merged = mergeWithLocal(storageKey, data);
+        localStorage.setItem(storageKey, JSON.stringify(merged));
+      }
+      counts[path] = data.length;
+      return data;
+    } catch (e: any) {
+      console.warn(`[FirebaseSync] pull ${path} failed:`, e.message);
+      counts[path] = 0;
+      return [];
+    }
+  };
+
+  await pullType("orders", "sgf_orders");
+  await pullType("appointments", "sgf_appointments");
+  await pullType("checkins", "sgf_checkins");
+  await pullType("invoices", "sgf_invoices");
+  await pullType("customers", "sgf_customers");
+  await pullType("stock", "sgf_products");
+  await pullType("followUpActions", "sgf_followUpActions");
+
+  dataServiceRefresh?.();
+  return counts;
 }
 
 /** Firebase stores arrays as objects with numeric keys. Convert back to array. */
@@ -343,6 +384,21 @@ export async function syncAllLocalData(localData: {
 }
 
 // =============================================================================
+// CLEAR CLOUD DATA
+// =============================================================================
+
+export async function clearCloudData(): Promise<boolean> {
+  if (!isFirebaseReady()) return false;
+  try {
+    const rootRef = ref(db);
+    await set(rootRef, null);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// =============================================================================
 // CLEANUP
 // =============================================================================
 
@@ -362,6 +418,29 @@ export function unsubscribeAll(): void {
 // =============================================================================
 
 let autoSyncInitialized = false;
+let autoSyncCleanup: (() => void) | null = null;
+
+/** Disconnect Firebase: stop all subscriptions and prevent reconnection */
+export function disconnectFirebase(): void {
+  console.log("[FirebaseSync] Disconnecting...");
+  // Stop auto-sync subscriptions
+  if (autoSyncCleanup) {
+    autoSyncCleanup();
+    autoSyncCleanup = null;
+  }
+  // Stop manual subscriptions
+  unsubscribeAll();
+  // Set flag to prevent reconnection
+  localStorage.setItem("sgf_firebase_disconnected", "true");
+  console.log("[FirebaseSync] Disconnected. Flag set.");
+}
+
+/** Reconnect Firebase after disconnect */
+export function reconnectFirebase(): void {
+  localStorage.removeItem("sgf_firebase_disconnected");
+  autoSyncInitialized = false;
+  initAutoSync();
+}
 
 // Allow dataService to refresh its in-memory cache after Firebase writes to localStorage
 type RefreshFn = () => void;
@@ -370,27 +449,60 @@ export function registerDataServiceRefresh(fn: RefreshFn): void {
   dataServiceRefresh = fn;
 }
 
+/** Get current user role from localStorage */
+function getCurrentUserRole(): string {
+  try {
+    const userStr = localStorage.getItem("sgf_user");
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      return user.role || "sales_rep";
+    }
+  } catch { /* ignore */ }
+  return "sales_rep";
+}
+
 export function initAutoSync(): () => void {
+  // Check disconnect flag
+  if (localStorage.getItem("sgf_firebase_disconnected") === "true") {
+    console.log("[FirebaseSync] Skipped — disconnected by user");
+    return () => {};
+  }
   if (autoSyncInitialized) return () => {};
   if (!isFirebaseReady()) return () => {};
 
   autoSyncInitialized = true;
   console.log("[FirebaseSync] Auto-sync initializing...");
 
-  // Subscribe to all data channels:
-  // - customers + stock: admin pushes, sales reps pull
-  // - orders + appointments + checkins: sales reps push, admin pulls
   const unsubs: Array<() => void> = [];
-
-  // Track last known counts per type — notify admin whenever count increases
   const lastCounts: Record<string, number> = {};
 
-  const handleReceived = (type: string) => (data: any[]) => {
+  /** Merge received Firebase data into localStorage then refresh dataService */
+  const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
     if (data && data.length > 0) {
       console.log(`[FirebaseSync] Received ${data.length} ${type}`);
-      dataServiceRefresh?.(); // refresh dataService in-memory cache
-      // For bidirectional data (orders/checkins/appointments from sales reps),
-      // dispatch event whenever count increases so admin knows to refresh
+      // Write received data to localStorage so it persists
+      try {
+        const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
+        const existingIds = new Set(existing.map((item: any) => item.id));
+        // Merge: add new items, update existing ones
+        for (const item of data) {
+          if (item && item.id) {
+            const idx = existing.findIndex((e: any) => e.id === item.id);
+            if (idx >= 0) {
+              // Update if Firebase item is newer (has _syncedAt)
+              if (item._syncedAt && (!existing[idx]._syncedAt || item._syncedAt > existing[idx]._syncedAt)) {
+                existing[idx] = item;
+              }
+            } else {
+              existing.push(item);
+            }
+          }
+        }
+        localStorage.setItem(storageKey, JSON.stringify(existing));
+      } catch (e) {
+        console.warn("[FirebaseSync] Failed to merge", type, e);
+      }
+      dataServiceRefresh?.();
       if (["orders", "checkins", "appointments"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
@@ -404,16 +516,21 @@ export function initAutoSync(): () => void {
     }
   };
 
-  unsubs.push(subscribeToCustomers(handleReceived("customers")));
-  unsubs.push(subscribeToStock(handleReceived("stock")));
-  unsubs.push(subscribeToOrders(handleReceived("orders")));
-  unsubs.push(subscribeToAppointments(handleReceived("appointments")));
-  unsubs.push(subscribeToCheckins(handleReceived("checkins")));
-  unsubs.push(subscribeToInvoices(handleReceived("invoices")));
-  unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions")));
+  // Subscribe to all data channels for all users
+  // - customers + stock: shared reference data
+  // - orders + appointments + checkins: bidirectional (reps create, admin sees)
+  // - invoices + follow-ups: admin-managed
+  unsubs.push(subscribeToCustomers(handleReceived("customers", "sgf_customers")));
+  unsubs.push(subscribeToStock(handleReceived("stock", "sgf_products")));
+  unsubs.push(subscribeToOrders(handleReceived("orders", "sgf_orders")));
+  unsubs.push(subscribeToAppointments(handleReceived("appointments", "sgf_appointments")));
+  unsubs.push(subscribeToCheckins(handleReceived("checkins", "sgf_checkins")));
+  unsubs.push(subscribeToInvoices(handleReceived("invoices", "sgf_invoices")));
+  unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions", "sgf_followUpActions")));
 
-  return () => {
+  autoSyncCleanup = () => {
     autoSyncInitialized = false;
     for (const u of unsubs) u();
   };
+  return autoSyncCleanup;
 }

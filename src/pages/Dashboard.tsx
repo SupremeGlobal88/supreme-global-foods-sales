@@ -1,6 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
+import { pullFromCloud } from "@/lib/firebaseSync";
+import { reloadFromStorage } from "@/lib/dataService";
 import {
   DollarSign,
   ShoppingCart,
@@ -12,6 +15,10 @@ import {
   UserCheck,
   CheckCircle,
   FlaskConical,
+  Calendar,
+  Sun,
+  BarChart3,
+  CloudDownload,
 } from "lucide-react";
 import {
   XAxis,
@@ -101,23 +108,25 @@ function StatCard({
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { isAdmin } = useRole();
   const { data: orderStats } = trpc.order.getStats.useQuery();
   const { data: customerStats } = trpc.customer.getStats.useQuery();
   const { data: stockStats } = trpc.stock.getStats.useQuery();
   const { data: invoiceStats } = trpc.invoice.getStats.useQuery();
   const { data: recentOrders } = trpc.order.list.useQuery();
   const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
+  const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: isAdmin });
 
   const chartRef = useRef<HTMLDivElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
+  const salesRef = useRef<HTMLDivElement>(null);
+  const [pullStatus, setPullStatus] = useState("");
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     if (!chartRef.current) return;
     gsap.from(chartRef.current, {
-      y: 24,
-      opacity: 0,
-      duration: 0.6,
-      ease: "power3.out",
+      y: 24, opacity: 0, duration: 0.6, ease: "power3.out",
       scrollTrigger: { trigger: chartRef.current, start: "top 85%" },
     });
   }, []);
@@ -125,16 +134,18 @@ export default function Dashboard() {
   useEffect(() => {
     if (!perfRef.current) return;
     gsap.from(perfRef.current, {
-      y: 24,
-      opacity: 0,
-      duration: 0.6,
-      ease: "power3.out",
-      delay: 0.2,
+      y: 24, opacity: 0, duration: 0.6, ease: "power3.out", delay: 0.2,
       scrollTrigger: { trigger: perfRef.current, start: "top 85%" },
     });
   }, []);
 
-  const isAdmin = user?.role === "admin";
+  useEffect(() => {
+    if (!salesRef.current) return;
+    gsap.from(salesRef.current, {
+      y: 24, opacity: 0, duration: 0.6, ease: "power3.out", delay: 0.1,
+      scrollTrigger: { trigger: salesRef.current, start: "top 85%" },
+    });
+  }, []);
 
   // Sales rep's own stats
   const myRepName = user?.name || "";
@@ -151,6 +162,31 @@ export default function Dashboard() {
             {isAdmin ? "Admin Overview" : `Sales Rep: ${myRepName}`} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setPullStatus("Pulling...");
+                try {
+                  const counts = await pullFromCloud();
+                  reloadFromStorage();
+                  await utils.order.list.invalidate();
+                  await utils.appointment.list.invalidate();
+                  await utils.invoice.list.invalidate();
+                  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+                  setPullStatus(total > 0 ? `Pulled ${total} items!` : "No new data");
+                } catch {
+                  setPullStatus("Pull failed");
+                }
+                setTimeout(() => setPullStatus(""), 3000);
+              }}
+              className="btn-secondary text-sm"
+              disabled={!!pullStatus}
+            >
+              <CloudDownload className="w-4 h-4" /> {pullStatus || "Pull from Cloud"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Stat Cards - Admin sees revenue, sales reps don't */}
@@ -227,10 +263,60 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Sales Rep Sales Breakdown - Admin only */}
+      {isAdmin && salesBreakdown && (
+        <div ref={salesRef} className="card-surface p-6">
+          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-[#D4A843]" /> Sales by Rep</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+              <div className="flex items-center gap-2 mb-2"><Sun className="w-4 h-4 text-[#F59E0B]" /><span className="label-text">TODAY</span></div>
+              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number(salesBreakdown.totals.today).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-[#8A8B8C] mt-1">{salesBreakdown.today}</div>
+            </div>
+            <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+              <div className="flex items-center gap-2 mb-2"><Calendar className="w-4 h-4 text-[#6366F1]" /><span className="label-text">THIS WEEK</span></div>
+              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number(salesBreakdown.totals.week).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-[#8A8B8C] mt-1">{salesBreakdown.weekRange}</div>
+            </div>
+            <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+              <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-[#4ADE80]" /><span className="label-text">THIS MONTH</span></div>
+              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number(salesBreakdown.totals.month).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-[#8A8B8C] mt-1">{salesBreakdown.month}</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ backgroundColor: "#131415", borderBottom: "1px solid #222324" }}>
+                  <th className="text-left p-3 label-text">Sales Rep</th>
+                  <th className="text-right p-3 label-text">Today</th>
+                  <th className="text-right p-3 label-text">This Week</th>
+                  <th className="text-right p-3 label-text">This Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesBreakdown.repSales.map((rep: any) => (
+                  <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
+                    <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
+                    <td className="p-3 text-right text-sm font-display" style={{ color: rep.todaySales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.todaySales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                    <td className="p-3 text-right text-sm font-display" style={{ color: rep.weekSales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.weekSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                    <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(rep.monthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+                {salesBreakdown.repSales.length === 0 && (
+                  <tr><td colSpan={4} className="p-8 text-center text-[#8A8B8C] font-body">No sales data available</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Sales Rep Performance - Admin only */}
       {isAdmin && (
         <div ref={perfRef} className="card-surface p-6">
-          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Performance</h2>
+          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Overview</h2>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>

@@ -2,12 +2,22 @@ import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 
 const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
 
+/** Get fresh static customer data */
+function getStaticCustomers() {
+  return [...STATIC_CUSTOMERS.map((c: any) => ({
+    ...c,
+    salesRepName: c.salesRepName || "",
+  }))];
+}
+
+/** Get fresh static product data */
+function getStaticProducts() {
+  return [...STATIC_PRODUCTS.map((p: any) => ({ ...p }))];
+}
+
 // In-memory storage
-let customers = [...STATIC_CUSTOMERS.map((c: any) => ({
-  ...c,
-  salesRepName: c.salesRepName || "",
-}))] as any[];
-let products = [...STATIC_PRODUCTS.map((p: any) => ({ ...p }))] as any[];
+let customers = getStaticCustomers();
+let products = getStaticProducts();
 let orders = [] as any[];
 let invoices = [] as any[];
 let appointments = [] as any[];
@@ -19,39 +29,103 @@ let followUpActions = [] as any[];
 let collectionNotes = [] as any[];
 let collectionPromises = [] as any[];
 let accountHolds = [] as any[];
+let receipts = [] as any[];
+let creditNotes = [] as any[];
+let users = [] as any[];
+
+/** Validate array: must be non-empty array with items that have expected shape */
+function isValidArray(data: any, minLength: number, requiredKey?: string): boolean {
+  if (!Array.isArray(data)) return false;
+  if (data.length < minLength) return false;
+  if (requiredKey && !data[0][requiredKey]) return false;
+  return true;
+}
 
 function load() {
   try {
+    // CUSTOMERS: load from localStorage if valid, else reset to static defaults
     const c = localStorage.getItem("sgf_customers");
-    if (c) customers = JSON.parse(c);
+    if (c) {
+      const parsed = JSON.parse(c);
+      if (isValidArray(parsed, 100, "name")) customers = parsed;
+      else customers = getStaticCustomers();
+    } else {
+      customers = getStaticCustomers();
+    }
+    // PRODUCTS: load from localStorage if valid, else reset to static defaults
     const p = localStorage.getItem("sgf_products");
-    if (p) products = JSON.parse(p);
+    if (p) {
+      const parsed = JSON.parse(p);
+      if (isValidArray(parsed, 50, "productName")) products = parsed;
+      else products = getStaticProducts();
+    } else {
+      products = getStaticProducts();
+    }
+    // TRANSACTION DATA: always load if present (these are user-generated)
     const o = localStorage.getItem("sgf_orders");
-    if (o) orders = JSON.parse(o);
+    if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
     const i = localStorage.getItem("sgf_invoices");
-    if (i) invoices = JSON.parse(i);
+    if (i) { const d = JSON.parse(i); if (Array.isArray(d)) invoices = d; }
     const a = localStorage.getItem("sgf_appointments");
-    if (a) appointments = JSON.parse(a);
+    if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
+    const ci = localStorage.getItem("sgf_checkins");
+    if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
     const s = localStorage.getItem("sgf_specialPrices");
-    if (s) specialPrices = JSON.parse(s);
+    if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
     const log = localStorage.getItem("sgf_auditLog");
-    if (log) auditLog = JSON.parse(log);
+    if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
     else auditLog = [];
     const fu = localStorage.getItem("sgf_followUps");
-    if (fu) followUps = JSON.parse(fu);
+    if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
     else followUps = [];
     const fa = localStorage.getItem("sgf_followUpActions");
-    if (fa) followUpActions = JSON.parse(fa);
+    if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
     else followUpActions = [];
     const cn = localStorage.getItem("sgf_collectionNotes");
-    if (cn) collectionNotes = JSON.parse(cn);
+    if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
     else collectionNotes = [];
     const cp = localStorage.getItem("sgf_collectionPromises");
-    if (cp) collectionPromises = JSON.parse(cp);
+    if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
     else collectionPromises = [];
     const ah = localStorage.getItem("sgf_accountHolds");
-    if (ah) accountHolds = JSON.parse(ah);
+    if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
     else accountHolds = [];
+    const rc = localStorage.getItem("sgf_receipts");
+    if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
+    else receipts = [];
+    const crn = localStorage.getItem("sgf_creditNotes");
+    if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
+    else creditNotes = [];
+    // USERS: always load and merge with defaults
+    const u = localStorage.getItem("sgf_users");
+    if (u) { try { const d = JSON.parse(u); if (Array.isArray(d)) users = d; } catch { users = []; } }
+    const DEFAULT_USERS = [
+      { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
+      { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
+      { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
+      { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333", isActive: true, createdAt: new Date().toISOString() },
+      { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444", isActive: true, createdAt: new Date().toISOString() },
+      { id: 6, name: "Shanelle", email: "shanelle@supremeglobalfoods.co.za", role: "sales_rep", pin: "5555", isActive: true, createdAt: new Date().toISOString() },
+      { id: 7, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666", isActive: true, createdAt: new Date().toISOString() },
+      { id: 8, name: "Ryleigh", email: "ryleigh@supremeglobalfoods.co.za", role: "admin", pin: "9999", isActive: true, createdAt: new Date().toISOString() },
+      { id: 9, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018", isActive: true, createdAt: new Date().toISOString() },
+      { id: 10, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581", isActive: true, createdAt: new Date().toISOString() },
+      { id: 11, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777", isActive: true, createdAt: new Date().toISOString() },
+      { id: 12, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888", isActive: true, createdAt: new Date().toISOString() },
+    ];
+    if (!users || users.length === 0) {
+      users = [...DEFAULT_USERS];
+      saveItem("sgf_users", users);
+    } else {
+      let added = false;
+      for (const du of DEFAULT_USERS) {
+        if (!users.find((existing: any) => existing.name?.toLowerCase() === du.name.toLowerCase())) {
+          users.push(du);
+          added = true;
+        }
+      }
+      if (added) saveItem("sgf_users", users);
+    }
   } catch { /* ignore */ }
 }
 
@@ -114,6 +188,39 @@ export function reloadFromStorage(): void {
   load();
 }
 
+/** Fix duplicate SGF invoice numbers. Renames duplicates to next available number.
+ *  Returns list of changes made for audit trail.
+ */
+export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; new: string; id: number; customer: string }> } {
+  load(); // Ensure fresh data
+  const changes: Array<{ old: string; new: string; id: number; customer: string }> = [];
+  const seenNumbers = new Map<string, number>(); // invoiceNumber -> first invoice index
+
+  // Sort by createdAt ascending so the oldest keeps the original number
+  const sorted = [...invoices].sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+  for (const inv of sorted) {
+    const num = inv.invoiceNumber;
+    if (!num || !num.startsWith("SGF")) continue;
+    if (seenNumbers.has(num)) {
+      // Duplicate found — assign next available SGF number
+      const nextNum = getNextInvoiceNumber();
+      const oldNum = inv.invoiceNumber;
+      inv.invoiceNumber = nextNum;
+      inv.updatedAt = new Date().toISOString();
+      changes.push({ old: oldNum, new: nextNum, id: inv.id, customer: inv.customer?.name || "Unknown" });
+      logAudit("UPDATE", "invoice", inv.id, `Auto-renumbered duplicate invoice: ${oldNum} → ${nextNum} (${inv.customer?.name || "Unknown"})`);
+    } else {
+      seenNumbers.set(num, inv.id);
+    }
+  }
+
+  if (changes.length > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+  return { changes };
+}
+
 // Helper: create an invoice from an order
 /** Get next SGF invoice number. Starts at SGF1801 (last was SGF1800). */
 function getNextInvoiceNumber(): string {
@@ -135,6 +242,16 @@ function getNextSampleInvoiceNumber(): string {
   return `SGF-SMP-${String(smpCount + 1).padStart(3, "0")}`;
 }
 
+/** Get next receipt number: REC-001, REC-002 etc */
+function getNextReceiptNumber(): string {
+  const nums = receipts
+    .map((r) => (r.receiptNumber || "").match(/REC-(\d+)/))
+    .filter(Boolean)
+    .map((m) => parseInt(m[1]));
+  const max = nums.length > 0 ? Math.max(...nums) : 0;
+  return `REC-${String(max + 1).padStart(3, "0")}`;
+}
+
 function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean) {
   const now = new Date();
   const customer = customers.find((c) => c.id === order.customerId);
@@ -152,8 +269,11 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
   // Status: draft until order is ready for delivery, then sent
   const status = isSample ? "paid" : (order.status === "ready" || order.status === "delivered" ? "sent" : "draft");
 
+  // Use sequential integer ID to avoid decimal/float issues
+  const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+
   invoices.push({
-    id: Date.now() + Math.random(),
+    id: nextInvId,
     orderId: order.id,
     orderNumber: order.orderNumber,
     invoiceNumber,
@@ -182,6 +302,24 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
   });
   saveItem("sgf_invoices", invoices);
   return invoiceNumber;
+}
+
+/** Generate an invoice for an existing order that doesn't have one */
+export function generateInvoiceForOrder(orderId: number): string | null {
+  // Reload from storage first to ensure latest invoice data for numbering
+  load();
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const order = orders.find((o) => o.id == orderId);
+  if (!order) return null;
+  // Check if invoice already exists
+  const existing = invoices.find((i) => i.orderId == orderId);
+  if (existing) return existing.invoiceNumber;
+  // Calculate totals
+  const items = order.items || [];
+  const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+  const vatAmount = subtotal * 0.15;
+  const total = subtotal + vatAmount;
+  return createInvoiceFromOrder(order, subtotal, vatAmount, total, false);
 }
 
 /** Update an existing invoice when its order is edited */
@@ -334,6 +472,77 @@ export const dataService = {
       saveItem("sgf_products", products);
       return { created: created.length, updated: updated.length };
     },
+
+    /** Daily Invoiced Stock Report — shows what stock was invoiced on a given date */
+    getDailyInvoicedStock: ({ from, to }: { from?: string; to?: string }) => {
+      const fromDate = from || new Date().toISOString().slice(0, 10);
+      const toDate = to || fromDate;
+      const fromTs = new Date(fromDate + "T00:00:00").getTime();
+      const toTs = new Date(toDate + "T23:59:59").getTime();
+
+      const results: any[] = [];
+
+      for (const inv of invoices) {
+        const invTs = new Date(inv.createdAt || inv.invoiceDate).getTime();
+        if (invTs < fromTs || invTs > toTs) continue;
+
+        const order = orders.find((o) => o.id === inv.orderId);
+        if (!order) continue;
+
+        const customer = customers.find((c) => c.id === inv.customerId || c.id === order.customerId);
+        if (!customer) continue;
+
+        const repName = customer.salesRepName || customer.salesRep || "";
+        const priceTier = customer.priceTier || "retail";
+
+        for (const item of inv.items || order.items || []) {
+          const product = products.find((p) => p.id === item.stockItemId);
+          const specialPrice = specialPrices.find(
+            (sp: any) => sp.customerId === customer.id && sp.stockItemId === item.stockItemId
+          );
+
+          const unitPrice = Number(item.unitPrice || 0);
+          const quantity = Number(item.quantity || 0);
+          const lineTotal = Number(item.lineTotal || unitPrice * quantity);
+
+          // Determine if special price was used
+          let isSpecialPrice = false;
+          let tierPrice = 0;
+          if (product) {
+            tierPrice = Number((product as any)[`${priceTier}Price`] || 0);
+            if (specialPrice && Math.abs(specialPrice.specialPrice - unitPrice) < 0.01) {
+              isSpecialPrice = true;
+            }
+          }
+
+          results.push({
+            invoiceNumber: inv.invoiceNumber,
+            orderNumber: inv.orderNumber || order.orderNumber,
+            invoiceDate: inv.invoiceDate || inv.createdAt,
+            productName: item.description || item.productName || product?.name || "Unknown",
+            productCode: product?.productCode || "",
+            quantity,
+            unitPrice,
+            lineTotal,
+            priceTier,
+            isSpecialPrice,
+            specialPriceAmount: specialPrice?.specialPrice || null,
+            tierPrice: tierPrice || null,
+            salesRep: repName,
+            customerName: customer.name || "",
+          });
+        }
+      }
+
+      return {
+        from: fromDate,
+        to: toDate,
+        generatedAt: new Date().toISOString(),
+        totalLines: results.length,
+        totalValue: results.reduce((s, r) => s + r.lineTotal, 0),
+        items: results.sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()),
+      };
+    },
   },
 
   customer: {
@@ -472,10 +681,12 @@ export const dataService = {
   },
 
   order: {
-    list: () => orders.map((o) => {
-      const customer = customers.find((c) => c.id === o.customerId);
-      return { ...o, customer: customer || null };
-    }),
+    list: () => orders
+      .map((o) => {
+        const customer = customers.find((c) => c.id === o.customerId);
+        return { ...o, customer: customer || null };
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getById: (id: number) => {
       const order = orders.find((o) => o.id === id);
       if (!order) return null;
@@ -646,21 +857,23 @@ export const dataService = {
   },
 
   invoice: {
-    list: () => invoices.map((inv) => {
-      const customer = customers.find((c) => c.id === inv.customerId);
-      return {
-        ...inv,
-        customer: customer || null,
-        subtotal: inv.subtotal ?? inv.totalAmount ?? 0,
-        vatAmount: inv.vatAmount ?? (inv.totalAmount ?? 0) * 0.15 / 1.15,
-        total: inv.total ?? inv.totalAmount ?? 0,
-        balanceDue: inv.balanceDue ?? (inv.total ?? inv.totalAmount ?? 0) - (inv.amountPaid ?? 0),
-        invoiceDate: inv.invoiceDate || inv.createdAt,
-        dueDate: inv.dueDate || inv.createdAt,
-        paymentTerms: inv.paymentTerms || "cod",
-        deliveryNoteNumber: inv.deliveryNoteNumber || `DN-${inv.orderId}`,
-      };
-    }),
+    list: () => invoices
+      .map((inv) => {
+        const customer = customers.find((c) => c.id === inv.customerId);
+        return {
+          ...inv,
+          customer: customer || null,
+          subtotal: inv.subtotal ?? inv.totalAmount ?? 0,
+          vatAmount: inv.vatAmount ?? (inv.totalAmount ?? 0) * 0.15 / 1.15,
+          total: inv.total ?? inv.totalAmount ?? 0,
+          balanceDue: inv.balanceDue ?? (inv.total ?? inv.totalAmount ?? 0) - (inv.amountPaid ?? 0),
+          invoiceDate: inv.invoiceDate || inv.createdAt,
+          dueDate: inv.dueDate || inv.createdAt,
+          paymentTerms: inv.paymentTerms || "cod",
+          deliveryNoteNumber: inv.deliveryNoteNumber || `DN-${inv.orderId}`,
+        };
+      })
+      .sort((a, b) => new Date(b.invoiceDate || b.createdAt).getTime() - new Date(a.invoiceDate || a.createdAt).getTime()),
     getById: (id: number) => {
       const inv = invoices.find((i) => i.id === id);
       if (!inv) return null;
@@ -735,9 +948,31 @@ export const dataService = {
         followUpDate: null,
         createdAt: paymentDate || new Date().toISOString(),
       });
+      // Generate receipt for this payment
+      const receiptNumber = getNextReceiptNumber();
+      const receipt = {
+        id: Date.now() + Math.random(),
+        receiptNumber,
+        invoiceId,
+        invoiceNumber: inv.invoiceNumber,
+        orderNumber: inv.orderNumber,
+        customerId: inv.customerId,
+        customerName: (customers.find((c) => c.id === inv.customerId) || {}).name || "",
+        amount,
+        paymentMethod: paymentMethod || "cash",
+        paymentDate: paymentDate || new Date().toISOString(),
+        referenceNumber: referenceNumber || "",
+        notes: notes || "",
+        totalInvoiceAmount: total,
+        amountPaidBefore: currentPaid,
+        balanceAfter: Math.max(0, total - newPaid),
+        createdAt: new Date().toISOString(),
+      };
+      receipts.push(receipt);
+      saveItem("sgf_receipts", receipts);
       saveItem("sgf_collectionNotes", collectionNotes);
       saveItem("sgf_invoices", invoices);
-      return inv;
+      return { invoice: inv, receipt };
     },
     editPayment: ({ invoiceId, paymentId, amount, paymentMethod, paymentDate, referenceNumber, notes }: any) => {
       const invIdx = invoices.findIndex((i) => i.id === invoiceId);
@@ -791,19 +1026,223 @@ export const dataService = {
       saveItem("sgf_invoices", invoices);
       return inv;
     },
+    getReceipts: () => receipts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getReceiptsByInvoice: (invoiceId: number) => receipts.filter((r) => r.invoiceId === invoiceId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getReceiptsByCustomer: (customerId: number) => receipts.filter((r) => r.customerId === customerId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getReceiptById: (id: number) => receipts.find((r) => r.id === r.id) || null,
+
+    // Credit note methods
+    getCreditNotes: () => creditNotes.filter((cn) => !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId === invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId === customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    createCreditNote: (data: any) => {
+      const creditNote = {
+        id: Date.now() + Math.random(),
+        creditNoteNumber: `CN-${String(creditNotes.filter((cn) => !cn.voided).length + 1).padStart(3, "0")}`,
+        ...data,
+        createdAt: new Date().toISOString(),
+      };
+      creditNotes.push(creditNote);
+      saveItem("sgf_creditNotes", creditNotes);
+      if (data.invoiceId) {
+        const inv = invoices.find((i) => i.id === data.invoiceId);
+        if (inv) {
+          inv.balanceDue = Math.max(0, (inv.balanceDue || inv.total || 0) - (data.amount || 0));
+          inv.amountPaid = (inv.amountPaid || 0) + (data.amount || 0);
+          if (inv.balanceDue <= 0.01) inv.status = "paid";
+          else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
+          saveItem("sgf_invoices", invoices);
+        }
+      }
+      logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${data.amount}`);
+      return creditNote;
+    },
+    voidCreditNote: (id: number) => {
+      const idx = creditNotes.findIndex((cn) => cn.id === id);
+      if (idx >= 0) {
+        const cn = creditNotes[idx];
+        cn.voided = true;
+        cn.voidedAt = new Date().toISOString();
+        if (cn.invoiceId) {
+          const inv = invoices.find((i) => i.id === cn.invoiceId);
+          if (inv) {
+            inv.balanceDue = (inv.balanceDue || 0) + (cn.amount || 0);
+            inv.amountPaid = Math.max(0, (inv.amountPaid || 0) - (cn.amount || 0));
+            if ((inv.amountPaid || 0) <= 0) inv.status = inv.status === "draft" ? "draft" : "sent";
+            else if ((inv.balanceDue || 0) > 0) inv.status = "partially_paid";
+            saveItem("sgf_invoices", invoices);
+          }
+        }
+        saveItem("sgf_creditNotes", creditNotes);
+        return cn;
+      }
+      return null;
+    },
+
+    /** Update invoice fields (admin only) — for correcting historical data */
+    updateInvoice: ({ id, data }: { id: number; data: any }) => {
+      const idx = invoices.findIndex((i) => i.id === id);
+      if (idx < 0) return null;
+      const inv = invoices[idx];
+      // Audit log: invoice number change
+      if (data.invoiceNumber !== undefined && data.invoiceNumber !== inv.invoiceNumber) {
+        logAudit("UPDATE", "invoice", id, `Invoice number changed from ${inv.invoiceNumber} to ${data.invoiceNumber}`);
+        inv.invoiceNumber = data.invoiceNumber;
+      }
+      // Update allowed fields
+      if (data.customerId !== undefined) {
+        inv.customerId = data.customerId;
+        inv.customer = customers.find((c) => c.id === data.customerId) || null;
+      }
+      if (data.invoiceDate !== undefined) inv.invoiceDate = data.invoiceDate;
+      if (data.total !== undefined) {
+        const oldTotal = inv.total || 0;
+        inv.total = data.total;
+        // Recalculate balance if total changed and not a payment edit
+        if (data.amountPaid === undefined) {
+          inv.balanceDue = data.total - (inv.amountPaid || 0);
+          if (inv.balanceDue <= 0) inv.status = "paid";
+          else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
+          else inv.status = "sent";
+        }
+      }
+      if (data.amountPaid !== undefined) inv.amountPaid = data.amountPaid;
+      if (data.balanceDue !== undefined) inv.balanceDue = data.balanceDue;
+      if (data.status !== undefined) inv.status = data.status;
+      if (data.notes !== undefined) inv.notes = data.notes;
+      if (data.items !== undefined) inv.items = data.items;
+      if (data.subtotal !== undefined) inv.subtotal = data.subtotal;
+      if (data.vatAmount !== undefined) inv.vatAmount = data.vatAmount;
+      if (data.paymentTerms !== undefined) inv.paymentTerms = data.paymentTerms;
+      inv.updatedAt = new Date().toISOString();
+      saveItem("sgf_invoices", invoices);
+      return inv;
+    },
+
+    /** Find customer by fuzzy name matching */
+    findCustomerByFuzzyName: (searchName: string) => {
+      if (!searchName) return null;
+      const search = searchName.toLowerCase().trim();
+      // Exact match first
+      let match = customers.find((c) => c.name?.toLowerCase().trim() === search);
+      if (match) return match;
+      // Contains match (name is substring of customer name or vice versa)
+      match = customers.find((c) => {
+        const cn = c.name?.toLowerCase() || "";
+        return cn.includes(search) || search.includes(cn);
+      });
+      if (match) return match;
+      // Token match (match individual words)
+      const tokens = search.split(/\s+/).filter((t) => t.length > 2);
+      if (tokens.length > 0) {
+        let bestMatch = null;
+        let bestScore = 0;
+        for (const c of customers) {
+          const cn = c.name?.toLowerCase() || "";
+          let score = 0;
+          for (const token of tokens) {
+            if (cn.includes(token)) score++;
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = c;
+          }
+        }
+        // Require at least one significant word to match
+        if (bestMatch && bestScore > 0) return bestMatch;
+      }
+      return null;
+    },
+
+    /** Bulk import historical invoices from Sage — preserves original invoice numbers and dates */
+    bulkHistoricalImport: (historicalInvoices: any[]) => {
+      let created = 0;
+      let skipped = 0;
+      const unmatched: string[] = [];
+      for (const hist of historicalInvoices) {
+        // Check if invoice number already exists
+        const exists = invoices.find((i) => i.invoiceNumber === hist.invoiceNumber);
+        if (exists) { skipped++; continue; }
+
+        // Find customer by ID or fuzzy name matching
+        let customerId = hist.customerId;
+        let matchedCustomer = null;
+        if (!customerId && hist.customerName) {
+          matchedCustomer = dataService.invoice.findCustomerByFuzzyName(hist.customerName);
+          if (matchedCustomer) {
+            customerId = matchedCustomer.id;
+          } else {
+            unmatched.push(hist.customerName);
+          }
+        }
+
+        // Parse historical date
+        let invoiceDate = hist.invoiceDate;
+        if (!invoiceDate && hist.date) {
+          // Try DD/MM/YYYY format
+          const parts = hist.date.split("/");
+          if (parts.length === 3) {
+            invoiceDate = `20${parts[2]}-${parts[1]}-${parts[0]}`;
+          }
+        }
+
+        const subtotal = hist.subtotal || hist.total || 0;
+        const vatAmount = hist.vatAmount || subtotal * 0.15;
+        const total = hist.total || subtotal + vatAmount;
+
+        const newInvoice = {
+          id: Date.now() + Math.random(),
+          invoiceNumber: hist.invoiceNumber,
+          orderNumber: hist.orderNumber || hist.invoiceNumber,
+          orderId: null,
+          customerId: customerId || 0,
+          customer: customerId ? customers.find((c) => c.id === customerId) : null,
+          items: hist.items || [],
+          subtotal,
+          vatAmount,
+          total,
+          amountPaid: hist.amountPaid || 0,
+          balanceDue: total - (hist.amountPaid || 0),
+          status: hist.status || "sent",
+          paymentTerms: hist.paymentTerms || "cod",
+          invoiceDate: invoiceDate || new Date().toISOString(),
+          notes: hist.notes || "Historical import from Sage",
+          payments: hist.payments || [],
+          deliveryNoteNumber: hist.deliveryNoteNumber || null,
+          source: "sage",
+          createdAt: invoiceDate || new Date().toISOString(),
+        };
+        invoices.push(newInvoice);
+        created++;
+      }
+      saveItem("sgf_invoices", invoices);
+      // Deduplicate unmatched list
+      const uniqueUnmatched = [...new Set(unmatched)];
+      return { created, skipped, total: invoices.length, unmatched: uniqueUnmatched, unmatchedCount: uniqueUnmatched.length };
+    },
     getCustomerStatement: ({ customerId, fromDate, toDate }: any) => {
-      const customer = customers.find((c) => c.id === customerId);
+      const customer = customers.find((c) => c.id == customerId);
+      // Use loose equality (==) for customerId because Firebase may convert numbers to strings
       const custInvoices = invoices
-        .filter((i) => i.customerId === customerId)
-        .filter((i) => !fromDate || new Date(i.createdAt) >= new Date(fromDate))
-        .filter((i) => !toDate || new Date(i.createdAt) <= new Date(toDate));
-      const lines = custInvoices.map((inv) => ({
-        date: inv.createdAt,
-        description: `${inv.invoiceNumber} - ${inv.notes || "Invoice"}`,
-        debit: Number(inv.total || inv.totalAmount || 0),
-        credit: Number(inv.amountPaid || 0),
-        balance: Number(inv.total || inv.totalAmount || 0) - Number(inv.amountPaid || 0),
-      }));
+        .filter((i) => i.customerId == customerId)
+        .filter((i) => !fromDate || new Date(i.invoiceDate || i.createdAt) >= new Date(fromDate))
+        .filter((i) => !toDate || new Date(i.invoiceDate || i.createdAt) <= new Date(toDate + "T23:59:59"));
+      let runningBal = 0;
+      const lines = custInvoices.map((inv) => {
+        const debit = Number(inv.total || inv.totalAmount || 0);
+        const credit = Number(inv.amountPaid || 0);
+        runningBal += debit - credit;
+        return {
+          date: inv.invoiceDate || inv.createdAt,
+          invoiceNumber: inv.invoiceNumber,
+          orderNumber: inv.orderNumber || "",
+          description: inv.notes || "Invoice",
+          paymentTerms: inv.paymentTerms || "cod",
+          debit,
+          credit,
+          balance: runningBal,
+        };
+      });
       const totalInvoiced = custInvoices.reduce((s, i) => s + Number(i.total || i.totalAmount || 0), 0);
       const totalPaid = custInvoices.reduce((s, i) => s + Number(i.amountPaid || 0), 0);
       return {
@@ -995,6 +1434,63 @@ export const dataService = {
       });
       return { total: SALES_REPS.length, active: SALES_REPS.length, inactive: 0, repStats };
     },
+
+    /** Sales breakdown per rep: today, this week, this month */
+    getSalesBreakdown: () => {
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+
+      // Week: Monday to Sunday
+      const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const weekStart = new Date(now); weekStart.setDate(now.getDate() + mondayOffset);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      // Month
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const repSales = SALES_REPS.map((name) => {
+        const repOrders = orders.filter((o) => {
+          const cust = customers.find((c) => c.id === o.customerId);
+          return cust?.salesRepName === name && o.orderType !== "sample";
+        });
+
+        const todaySales = repOrders
+          .filter((o) => (o.createdAt || "").startsWith(todayStr))
+          .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+        const weekSales = repOrders
+          .filter((o) => {
+            const ts = new Date(o.createdAt).getTime();
+            return ts >= weekStart.getTime() && ts <= weekEnd.getTime();
+          })
+          .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+        const monthSales = repOrders
+          .filter((o) => {
+            const ts = new Date(o.createdAt).getTime();
+            return ts >= monthStart.getTime() && ts <= monthEnd.getTime();
+          })
+          .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+        return { name, todaySales, weekSales, monthSales };
+      });
+
+      return {
+        today: todayStr,
+        weekRange: `${weekStart.toISOString().slice(0, 10)} to ${weekEnd.toISOString().slice(0, 10)}`,
+        month: now.toLocaleString("en-ZA", { month: "long", year: "numeric" }),
+        repSales,
+        totals: {
+          today: repSales.reduce((s, r) => s + r.todaySales, 0),
+          week: repSales.reduce((s, r) => s + r.weekSales, 0),
+          month: repSales.reduce((s, r) => s + r.monthSales, 0),
+        },
+      };
+    },
   },
 
   followUp: {
@@ -1035,8 +1531,14 @@ export const dataService = {
         .filter((inv) => inv.status !== "paid")
         .map((inv) => {
           const customer = customers.find((c) => c.id === inv.customerId);
-          const createdAt = new Date(inv.createdAt);
-          const daysOverdue = Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / 86400000) - 30);
+          // Use invoiceDate (actual invoice date) not createdAt (import date)
+          const invoiceDate = new Date(inv.invoiceDate || inv.createdAt);
+          // Calculate due date from payment terms
+          const terms = inv.paymentTerms || "30_days";
+          const termDays = terms === "30_days" ? 30 : terms === "14_days" ? 14 : terms === "7_days" ? 7 : terms === "cod" ? 0 : 30;
+          const dueDate = new Date(invoiceDate);
+          dueDate.setDate(dueDate.getDate() + termDays);
+          const daysOverdue = Math.max(0, Math.floor((now.getTime() - dueDate.getTime()) / 86400000));
           let bucket = "pre_due";
           if (daysOverdue >= 21) bucket = "days_21_plus";
           else if (daysOverdue >= 11) bucket = "days_11_20";
@@ -1054,7 +1556,7 @@ export const dataService = {
             customer: customer || null,
             daysOverdue,
             bucket,
-            balanceDue: Number(inv.totalAmount || 0) - Number(inv.amountPaid || 0),
+            balanceDue: Number(inv.total || inv.totalAmount || 0) - Number(inv.amountPaid || 0),
             collectionNotes: notes,
             latestPromise,
             accountHold,
@@ -1189,7 +1691,7 @@ export const dataService = {
 
   dashboard: {
     stats: () => ({
-      totalRevenue: invoices.filter((i) => !i.notes?.includes("Sample")).reduce((s, i) => s + Number(i.totalAmount || 0), 0),
+      totalRevenue: invoices.filter((i) => !i.notes?.includes("Sample")).reduce((s, i) => s + Number(i.total || i.totalAmount || 0), 0),
       totalOrders: orders.filter((o) => o.orderType !== "sample").length,
       totalCustomers: customers.length,
       lowStockItems: products.filter((p) => p.status === "low_stock" || p.status === "out_of_stock").length,
@@ -1205,7 +1707,237 @@ export const dataService = {
     getCustomerDeletions: () => auditLog.filter((entry) => entry.entityType === "customer" && entry.action === "DELETE"),
     getAddressChanges: () => auditLog.filter((entry) => entry.action === "UPDATE_ADDRESS"),
   },
+
+  /* ─── User Management with Roles ─── */
+  user: {
+    list: () => users.filter((u) => u.isActive !== false),
+    getById: (id: number) => users.find((u) => u.id === id) || null,
+    getByName: (name: string) => users.find((u) => u.name?.toLowerCase() === name.toLowerCase() && u.isActive !== false) || null,
+    authenticate: ({ name, pin }: { name: string; pin: string }) => {
+      const DEFAULT_USERS = [
+        { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true },
+        { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111", isActive: true },
+        { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222", isActive: true },
+        { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333", isActive: true },
+        { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444", isActive: true },
+        { id: 6, name: "Shanelle", email: "shanelle@supremeglobalfoods.co.za", role: "sales_rep", pin: "5555", isActive: true },
+        { id: 7, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666", isActive: true },
+        { id: 8, name: "Ryleigh", email: "ryleigh@supremeglobalfoods.co.za", role: "admin", pin: "9999", isActive: true },
+        { id: 9, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018", isActive: true },
+        { id: 10, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581", isActive: true },
+        { id: 11, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777", isActive: true },
+        { id: 12, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888", isActive: true },
+      ];
+
+      // Try 1: in-memory users array
+      let found = users.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
+
+      // Try 2: localStorage direct read
+      if (!found) {
+        try {
+          const raw = localStorage.getItem("sgf_users");
+          if (raw) {
+            const stored = JSON.parse(raw);
+            found = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Try 3: hardcoded defaults (always works, also repairs the DB)
+      if (!found) {
+        found = DEFAULT_USERS.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
+        if (found) {
+          // Repair: merge defaults into stored users so next time it works from DB
+          const existingNames = new Set((users || []).map((u: any) => u.name?.toLowerCase()));
+          for (const du of DEFAULT_USERS) {
+            if (!existingNames.has(du.name.toLowerCase())) {
+              users.push({ ...du, createdAt: new Date().toISOString() });
+            }
+          }
+          saveItem("sgf_users", users);
+        }
+      }
+
+      if (!found) return null;
+      return { id: found.id, name: found.name, email: found.email, role: found.role };
+    },
+    create: (data: any) => {
+      const newUser = { ...data, id: Date.now(), isActive: true, createdAt: new Date().toISOString() };
+      users.push(newUser);
+      saveItem("sgf_users", users);
+      logAudit("CREATE", "user", newUser.id, `Created user: ${newUser.name} (${newUser.role})`);
+      return newUser;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = users.findIndex((u) => u.id === id);
+      if (idx >= 0) {
+        // Never allow changing a super_admin's role away from super_admin via update
+        if (users[idx].role === "super_admin" && data.role && data.role !== "super_admin") {
+          // Silently prevent demoting the last super admin
+          const superAdminCount = users.filter((u) => u.role === "super_admin").length;
+          if (superAdminCount <= 1) {
+            delete data.role; // Remove role change
+          }
+        }
+        users[idx] = { ...users[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_users", users);
+        return users[idx];
+      }
+      return null;
+    },
+    delete: ({ id }: { id: number }) => {
+      // Prevent deleting the last super admin
+      const target = users.find((u) => u.id === id);
+      if (target?.role === "super_admin") {
+        const superAdminCount = users.filter((u) => u.role === "super_admin").length;
+        if (superAdminCount <= 1) return { success: false, error: "Cannot delete the last super admin" };
+      }
+      users = users.filter((u) => u.id !== id);
+      saveItem("sgf_users", users);
+      return { success: true };
+    },
+    toggleActive: ({ id }: { id: number }) => {
+      const idx = users.findIndex((u) => u.id === id);
+      if (idx >= 0) {
+        // Prevent deactivating the last super admin
+        if (users[idx].role === "super_admin" && users[idx].isActive !== false) {
+          const activeSuperAdminCount = users.filter((u) => u.role === "super_admin" && u.isActive !== false).length;
+          if (activeSuperAdminCount <= 1) return { success: false, error: "Cannot deactivate the last active super admin" };
+        }
+        users[idx].isActive = users[idx].isActive === false ? true : false;
+        saveItem("sgf_users", users);
+        return { success: true, isActive: users[idx].isActive };
+      }
+      return { success: false };
+    },
+    resetPin: ({ id, pin }: { id: number; pin: string }) => {
+      const idx = users.findIndex((u) => u.id === id);
+      if (idx >= 0) {
+        users[idx].pin = pin;
+        users[idx].updatedAt = new Date().toISOString();
+        saveItem("sgf_users", users);
+        return { success: true };
+      }
+      return { success: false };
+    },
+  },
 };
+
+/** Reset all transaction data (orders, invoices, receipts, etc.) but keep users, customers, products, settings */
+export function resetTransactionData(): void {
+  orders = [];
+  invoices = [];
+  receipts = [];
+  creditNotes = [];
+  appointments = [];
+  checkins = [];
+  followUps = [];
+  followUpActions = [];
+  specialPrices = [];
+  collectionNotes = [];
+  collectionPromises = [];
+  accountHolds = [];
+  auditLog = [];
+
+  const keysToRemove = [
+    "sgf_orders", "sgf_invoices", "sgf_receipts", "sgf_creditNotes", "sgf_appointments",
+    "sgf_checkins", "sgf_specialPrices", "sgf_auditLog", "sgf_followUps",
+    "sgf_followUpActions", "sgf_collectionNotes", "sgf_collectionPromises",
+    "sgf_accountHolds",
+  ];
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+}
+
+/** Clear only appointments and check-ins */
+export function clearAppointmentsAndCheckins(): void {
+  appointments = [];
+  checkins = [];
+  localStorage.removeItem("sgf_appointments");
+  localStorage.removeItem("sgf_checkins");
+}
+
+/** Full factory reset — clears EVERYTHING and reloads defaults */
+export function factoryReset(): void {
+  // Step 1: Disconnect Firebase to prevent re-download
+  try {
+    const { disconnectFirebase } = require("./firebaseSync");
+    if (disconnectFirebase) disconnectFirebase();
+  } catch { /* ignore if firebaseSync not loaded */ }
+  localStorage.setItem("sgf_firebase_disconnected", "true");
+  // Step 2: Clear all localStorage
+  const allKeys = Object.keys(localStorage).filter(k => k.startsWith("sgf_"));
+  allKeys.forEach(k => localStorage.removeItem(k));
+  // Step 3: Keep disconnect flag set (re-add after clearing)
+  localStorage.setItem("sgf_firebase_disconnected", "true");
+  // Step 4: Reset ALL in-memory arrays including users
+  orders = []; invoices = []; receipts = []; creditNotes = []; appointments = []; checkins = [];
+  followUps = []; followUpActions = []; specialPrices = [];
+  collectionNotes = []; collectionPromises = []; accountHolds = []; auditLog = []; users = [];
+  // Step 5: Reset customers and products back to original static defaults
+  customers = getStaticCustomers();
+  products = getStaticProducts();
+  // Step 6: Re-create default users
+  load();
+}
+
+/**
+ * DIRECT LOGIN — bypasses tRPC/localLink entirely.
+ * Called directly from Login.tsx. Checks hardcoded defaults first.
+ */
+export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string } | null {
+  const DEFAULT_USERS = [
+    { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580" },
+    { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111" },
+    { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222" },
+    { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333" },
+    { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444" },
+    { id: 6, name: "Shanelle", email: "shanelle@supremeglobalfoods.co.za", role: "sales_rep", pin: "5555" },
+    { id: 7, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666" },
+    { id: 8, name: "Ryleigh", email: "ryleigh@supremeglobalfoods.co.za", role: "admin", pin: "9999" },
+    { id: 9, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018" },
+    { id: 10, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581" },
+    { id: 11, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777" },
+    { id: 12, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888" },
+  ];
+
+  // 1. Check stored users FIRST (so User Management additions work without code changes)
+  try {
+    const raw = localStorage.getItem("sgf_users");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      const found = stored.find(
+        (x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false
+      );
+      if (found) {
+        return { id: found.id, name: found.name, email: found.email, role: found.role };
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 2. Check hardcoded defaults (fallback — survives data clears)
+  const fromDefaults = DEFAULT_USERS.find(
+    (u) => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin
+  );
+  if (fromDefaults) {
+    // Repair stored users if needed
+    try {
+      const raw = localStorage.getItem("sgf_users");
+      const stored = raw ? JSON.parse(raw) : [];
+      const exists = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase());
+      if (!exists) {
+        stored.push({ ...fromDefaults, isActive: true, createdAt: new Date().toISOString() });
+        localStorage.setItem("sgf_users", JSON.stringify(stored));
+        users = stored;
+      }
+    } catch { /* ignore */ }
+    return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role };
+  }
+
+  return null;
+}
+
+// NOTE: load() is already called at line 143 after all module-level variables are declared.
+// Do NOT call load() again here — it would overwrite in-memory data with stale localStorage.
 
 function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number): number {
   const sp = specialPrices.find((p) => p.customerId === customerId && p.stockItemId === stockItemId);

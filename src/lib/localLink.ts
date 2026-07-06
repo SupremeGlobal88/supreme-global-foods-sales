@@ -7,7 +7,19 @@ function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "custome
   if (!isFirebaseReady()) return;
   try {
     switch (type) {
-      case "order": pushOrder(item); break;
+      case "order": {
+        pushOrder(item);
+        // Also push the associated invoice so admin sees it
+        // Use setTimeout to ensure invoice is fully saved before push
+        setTimeout(() => {
+          try {
+            const invoices = dataService.invoice.list();
+            const inv = invoices.find((i: any) => i.orderId == item.id);
+            if (inv) pushInvoice(inv);
+          } catch { /* ignore */ }
+        }, 100);
+        break;
+      }
       case "appointment": pushAppointment(item); break;
       case "checkin": pushCheckin(item); break;
       case "invoice": pushInvoice(item); break;
@@ -37,6 +49,7 @@ export function createLocalLink() {
               case "stock.getById": result = dataService.stock.getById(input); break;
               case "stock.getCategories": result = dataService.stock.getCategories(); break;
               case "stock.getStats": result = dataService.stock.getStats(); break;
+              case "stock.getDailyInvoicedStock": result = dataService.stock.getDailyInvoicedStock(input || {}); break;
               case "stock.create": result = dataService.stock.create(input); break;
               case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); break; }
               case "stock.delete": result = dataService.stock.delete(input); break;
@@ -56,17 +69,37 @@ export function createLocalLink() {
               case "order.create": result = dataService.order.create(input); fbPush("order", result); break;
               case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); fbPush("order", result); break; }
               case "order.updateStatus": result = dataService.order.updateStatus(input); fbPush("order", result); break;
+              case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
               case "order.getStats": result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
               case "invoice.list": result = dataService.invoice.list(); break;
               case "invoice.getById": result = dataService.invoice.getById(input); break;
               case "invoice.create": result = dataService.invoice.create(input); fbPush("invoice", result); break;
               case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); fbPush("invoice", result); break;
+              case "invoice.update": result = dataService.invoice.updateInvoice(input); fbPush("invoice", result); break;
               case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); break;
               case "invoice.editPayment": result = dataService.invoice.editPayment(input); break;
               case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); break;
               case "invoice.getCustomerStatement": result = dataService.invoice.getCustomerStatement(input); break;
               case "invoice.getStats": result = dataService.invoice.getStats(); break;
+              case "invoice.getReceipts": result = dataService.invoice.getReceipts(); break;
+              case "invoice.getReceiptsByInvoice": result = dataService.invoice.getReceiptsByInvoice(input); break;
+              case "invoice.getReceiptsByCustomer": result = dataService.invoice.getReceiptsByCustomer(input); break;
+              case "invoice.getReceiptById": result = dataService.invoice.getReceiptById(input); break;
+              case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); break;
+              case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
+              case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
+              case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
+              case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); break;
+              case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); break;
+              case "user.list": result = dataService.user.list(); break;
+              case "user.getById": result = dataService.user.getById(input); break;
+              case "user.authenticate": result = dataService.user.authenticate(input); break;
+              case "user.create": result = dataService.user.create(input); break;
+              case "user.update": { const { id, ...data } = input; result = dataService.user.update({ id, data }); break; }
+              case "user.delete": result = dataService.user.delete(input); break;
+              case "user.toggleActive": result = dataService.user.toggleActive(input); break;
+              case "user.resetPin": result = dataService.user.resetPin(input); break;
               case "appointment.list": result = dataService.appointment.list(); break;
               case "appointment.create": result = dataService.appointment.create(input); fbPush("appointment", result); break;
               case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); fbPush("appointment", result); break;
@@ -84,6 +117,7 @@ export function createLocalLink() {
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
               case "salesRep.list": result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
+              case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
               case "dashboard.stats": result = dataService.dashboard.stats(); break;
               case "audit.list": result = dataService.audit.list(); break;
               case "audit.getCustomerDeletions": result = dataService.audit.getCustomerDeletions(); break;

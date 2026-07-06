@@ -12,7 +12,7 @@ type MapTarget = { customerId: number; address: string } | null;
 
 export default function AppointmentsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 

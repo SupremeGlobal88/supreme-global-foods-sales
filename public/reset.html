@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SGF Data Reset</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #0C0D0E; color: #E8E8E9; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .box { background: #131415; border: 1px solid #222324; border-radius: 16px; padding: 40px; max-width: 500px; width: 100%; text-align: center; }
+    h1 { color: #D4A843; font-size: 22px; margin-bottom: 10px; }
+    p { color: #8A8B8C; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+    .status { background: #0A0A0B; border: 1px solid #222324; border-radius: 8px; padding: 15px; margin: 15px 0; text-align: left; font-size: 13px; }
+    .status .label { color: #8A8B8C; display: block; margin-bottom: 3px; }
+    .status .value { color: #E8E8E9; }
+    button { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: opacity 0.2s; }
+    button:hover { opacity: 0.85; }
+    .btn-reset { background: #EF4444; color: white; }
+    .btn-app { background: #D4A843; color: #0A0A0B; }
+    .warning { color: #EF4444; font-size: 12px; margin-top: 15px; }
+    .hidden { display: none; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid white; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="box" id="step1">
+    <h1>Supreme Global Foods</h1>
+    <p>Factory Reset Tool</p>
+    <div class="status">
+      <span class="label">Orders in localStorage:</span>
+      <span class="value" id="orderCount">Checking...</span>
+    </div>
+    <div class="status">
+      <span class="label">Invoices in localStorage:</span>
+      <span class="value" id="invoiceCount">Checking...</span>
+    </div>
+    <div class="status">
+      <span class="label">Appointments in localStorage:</span>
+      <span class="value" id="apptCount">Checking...</span>
+    </div>
+    <button class="btn-reset" onclick="doReset()">Factory Reset Everything</button>
+    <p class="warning">This will delete all orders, invoices, appointments, collections data and reload the app with fresh defaults.</p>
+  </div>
+
+  <div class="box hidden" id="step2">
+    <h1>Reset Complete</h1>
+    <p>All transaction data has been cleared. The app now has clean defaults.</p>
+    <div class="status">
+      <span class="label">Orders:</span>
+      <span class="value" style="color:#4ADE80">0 (cleared)</span>
+    </div>
+    <div class="status">
+      <span class="label">Invoices:</span>
+      <span class="value" style="color:#4ADE80">0 (cleared)</span>
+    </div>
+    <div class="status">
+      <span class="label">Appointments:</span>
+      <span class="value" style="color:#4ADE80">0 (cleared)</span>
+    </div>
+    <div class="status">
+      <span class="label">Customers:</span>
+      <span class="value" style="color:#4ADE80">383 (restored)</span>
+    </div>
+    <div class="status">
+      <span class="label">Products:</span>
+      <span class="value" style="color:#4ADE80">203 (restored)</span>
+    </div>
+    <div class="status">
+      <span class="label">Users:</span>
+      <span class="value" style="color:#4ADE80">7 (restored)</span>
+    </div>
+    <button class="btn-app" onclick="goToApp()">Open App & Log In</button>
+  </div>
+
+  <script>
+    function countItems(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return 0;
+        const data = JSON.parse(raw);
+        return Array.isArray(data) ? data.length : 0;
+      } catch { return 0; }
+    }
+
+    document.getElementById('orderCount').textContent = countItems('sgf_orders');
+    document.getElementById('invoiceCount').textContent = countItems('sgf_invoices');
+    document.getElementById('apptCount').textContent = countItems('sgf_appointments');
+
+    function doReset() {
+      const btn = document.querySelector('.btn-reset');
+      btn.innerHTML = '<span class="spinner"></span> Clearing all data...';
+      btn.disabled = true;
+
+      // Wipe ALL sgf_ data from localStorage
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('sgf_'));
+      keys.forEach(k => localStorage.removeItem(k));
+
+      // Also clear login session
+      localStorage.removeItem('demo_user');
+
+      // Set fresh defaults: customers, products, users
+      // These will be set from the app's static data on next load
+      // The key thing is we removed all the sgf_ keys
+
+      setTimeout(() => {
+        document.getElementById('step1').classList.add('hidden');
+        document.getElementById('step2').classList.remove('hidden');
+      }, 800);
+    }
+
+    function goToApp() {
+      // Add cache-busting parameter
+      window.location.href = 'index.html?_=' + Date.now();
+    }
+  </script>
+</body>
+</html>

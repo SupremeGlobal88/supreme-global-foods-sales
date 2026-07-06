@@ -10,7 +10,7 @@ import DatePicker from "@/components/DatePicker";
 
 export default function AdminAuditPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const [filterRep, setFilterRep] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

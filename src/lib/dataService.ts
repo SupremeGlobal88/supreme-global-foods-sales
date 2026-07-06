@@ -1262,6 +1262,10 @@ export const dataService = {
       const outstanding = invoices
         .filter((i) => i.status !== "draft" && i.status !== "paid")
         .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0);
+      const sageCount = invoices.filter((i) => i.source === "sage").length;
+      const sageOutstanding = invoices
+        .filter((i) => i.source === "sage" && i.status !== "draft" && i.status !== "paid")
+        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0);
       return {
         total: invoices.length,
         draft: invoices.filter((i) => i.status === "draft").length,
@@ -1272,6 +1276,8 @@ export const dataService = {
         totalValue,
         totalPaid,
         outstanding,
+        sageCount,
+        sageOutstanding,
       };
     },
   },

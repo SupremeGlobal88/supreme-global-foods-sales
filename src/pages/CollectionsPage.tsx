@@ -180,7 +180,14 @@ export default function CollectionsPage() {
                       return (
                         <>
                           <tr key={inv.id} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
-                            <td className="p-3 font-mono-data text-xs text-[#D4A843]">{inv.invoiceNumber}</td>
+                            <td className="p-3 font-mono-data text-xs text-[#D4A843]">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {inv.invoiceNumber}
+                                {inv.source === "sage" && (
+                                  <span className="px-1 py-0.5 rounded text-[9px] font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>SAGE</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || "N/A"}</td>
                             <td className="p-3 text-sm text-[#4ADE80] font-body">{inv.salesRepName || inv.customer?.salesRepName || "-"}</td>
                             <td className="p-3 text-right font-display text-white">R {inv.balanceDue.toFixed(2)}</td>

@@ -19,6 +19,7 @@ import {
   Sun,
   BarChart3,
   CloudDownload,
+  History,
 } from "lucide-react";
 import {
   XAxis,
@@ -228,6 +229,26 @@ export default function Dashboard() {
         <StatCard label="CUSTOMERS" value={(customerStats?.total || 0).toString()} change={5.1} icon={Users} accent="#6366F1" delay={0.16} />
         <StatCard label="LOW STOCK ITEMS" value={(stockStats?.lowStock || 0).toString()} change={-2.4} icon={AlertTriangle} accent="#F59E0B" delay={0.24} />
       </div>
+
+      {/* Sage Historical Data Alert - Admin only */}
+      {isAdmin && (invoiceStats?.sageCount || 0) > 0 && (
+        <div className="card-surface p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(99,102,241,0.12)" }}>
+              <History className="w-5 h-5 text-[#818CF8]" />
+            </div>
+            <div>
+              <div className="text-sm font-display font-semibold text-white">Sage Historical Data Loaded</div>
+              <div className="text-xs text-[#8A8B8C]">
+                {invoiceStats?.sageCount} historical invoice(s) · Outstanding: R {(invoiceStats?.sageOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+          <a href="#/invoices" className="btn-secondary text-xs">
+            <History className="w-3.5 h-3.5" /> View Invoices
+          </a>
+        </div>
+      )}
 
       {/* Revenue Chart - Admin only */}
       {isAdmin && (

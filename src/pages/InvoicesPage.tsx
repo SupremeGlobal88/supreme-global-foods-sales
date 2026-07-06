@@ -16,6 +16,8 @@ export default function InvoicesPage() {
   /* Search & filter */
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all"); // all | system | sage
+  const [sortBy, setSortBy] = useState("date"); // date | number
   const [expanded, setExpanded] = useState<number | null>(null);
 
   /* Payment form */
@@ -127,7 +129,16 @@ export default function InvoicesPage() {
       );
     }
     if (statusFilter !== "all") list = list.filter((i: any) => i.status === statusFilter);
+    // Source filter: show system-only, sage-only, or all
+    if (sourceFilter === "system") list = list.filter((i: any) => i.source !== "sage");
+    if (sourceFilter === "sage") list = list.filter((i: any) => i.source === "sage");
     return list.sort((a: any, b: any) => {
+      if (sortBy === "date") {
+        // Sort by invoice date descending (newest first)
+        const aTime = new Date(a.invoiceDate || a.createdAt || 0).getTime();
+        const bTime = new Date(b.invoiceDate || b.createdAt || 0).getTime();
+        if (bTime !== aTime) return bTime - aTime;
+      }
       // Extract numeric portion from any invoice number format
       const aNum = parseInt((a.invoiceNumber || "").replace(/\D/g, ""), 10) || 0;
       const bNum = parseInt((b.invoiceNumber || "").replace(/\D/g, ""), 10) || 0;
@@ -136,7 +147,7 @@ export default function InvoicesPage() {
       // Fallback: sort by created date
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
-  }, [invoices, search, statusFilter]);
+  }, [invoices, search, statusFilter, sourceFilter, sortBy]);
 
   /* Status badge */
   const badge = (s: string) => {
@@ -587,7 +598,7 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      {/* ═══════ SEARCH BAR ═══════ */}
+      {/* ═══════ SEARCH + SOURCE FILTER + SORT ═══════ */}
       <div className="card-surface p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
@@ -598,7 +609,44 @@ export default function InvoicesPage() {
               className="input-field w-full pl-10"
             />
           </div>
+          <div className="flex gap-2 flex-wrap">
+            {/* Source filter */}
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="input-field text-sm py-2 px-3"
+              style={{ minWidth: "120px" }}
+            >
+              <option value="all">All Sources</option>
+              <option value="system">System Only</option>
+              <option value="sage">Sage Import</option>
+            </select>
+            {/* Sort by */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="input-field text-sm py-2 px-3"
+              style={{ minWidth: "110px" }}
+            >
+              <option value="date">Sort by Date</option>
+              <option value="number">Sort by Number</option>
+            </select>
+          </div>
         </div>
+        {/* Sage count indicator */}
+        {(invoices || []).filter((i: any) => i.source === "sage").length > 0 && (
+          <div className="mt-3 flex items-center gap-2 text-xs">
+            <span className="px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>
+              Sage Import
+            </span>
+            <span className="text-[#8A8B8C]">
+              {(invoices || []).filter((i: any) => i.source === "sage").length} historical invoice(s) loaded
+              {sourceFilter !== "all" && (
+                <button onClick={() => setSourceFilter("all")} className="ml-2 underline text-[#D4A843] hover:text-white">Show all</button>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ═══════ INVOICE TABLE ═══════ */}
@@ -635,7 +683,14 @@ export default function InvoicesPage() {
                       style={{ borderBottom: "1px solid #18191A" }}
                       onClick={() => setExpanded(isExp ? null : inv.id)}
                     >
-                      <td className="p-3 font-display font-semibold text-sm text-[#D4A843]">{inv.invoiceNumber}</td>
+                      <td className="p-3 font-display font-semibold text-sm text-[#D4A843]">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {inv.invoiceNumber}
+                          {inv.source === "sage" && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>SAGE</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || "N/A"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>

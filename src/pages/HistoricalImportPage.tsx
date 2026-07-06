@@ -126,53 +126,100 @@ export default function HistoricalImportPage() {
     });
   }
 
+  /** Smart Sage order report parser — scans all columns to find data */
   function mergeOrderData(rawData: any[][]): any[] {
     const lineItems: Record<string, any[]> = {};
+    let currentInvRef = "";
 
-    for (const row of rawData) {
-      const col4 = String(row[4] || "").trim();
-      const col7 = String(row[7] || "").trim();
-      const col9 = row[9];
-      const col14 = String(row[14] || "").trim();
-
-      if (col4 && (col4.startsWith("SGF") || col4.startsWith("INV"))) {
-        if (!lineItems[col4]) lineItems[col4] = [];
+    // Helper: find invoice number in any column
+    function findInvoiceRef(row: any[]): string {
+      for (const cell of row) {
+        const s = String(cell || "").trim();
+        if (s && (s.startsWith("SGF") || s.startsWith("INV")) && s.length > 5) return s;
       }
-
-      const currentInvoice = Object.keys(lineItems).find(ref => {
-        const inv = preview?.invoices?.find((i: any) => i.invoiceNumber === ref);
-        return inv && col7 && col7 !== "Description" && col7 !== "nan";
-      });
-
-      // More direct approach: track current invoice as we iterate
+      return "";
     }
 
-    // Re-parse properly with state tracking
-    let currentInvRef = "";
-    for (const row of rawData) {
-      const col1 = String(row[1] || "").trim();
-      const col4 = String(row[4] || "").trim();
-      const col7 = String(row[7] || "").trim();
-      const col9 = row[9];
-      const col14 = String(row[14] || "").trim();
+    // Helper: find description (text with product name, not a number/code)
+    function findDescription(row: any[]): string {
+      for (let i = 0; i < row.length; i++) {
+        const s = String(row[i] || "").trim();
+        if (s.length > 3 && s !== "Description" && s !== "nan" && s !== "Item Description" &&
+            !s.match(/^\d{2}\/\d{2}\/\d{2,4}$/) && // not a date
+            !s.match(/^R?\s*[\d,]+\.?\d*$/) && // not just a number/amount
+            !s.match(/^(SGF|INV|CRN|DN)/i) && // not an invoice ref
+            !s.match(/^(Qty|Quantity|Unit Price|Total|Tax|VAT|Code|Account|Customer)/i)) {
+          return s;
+        }
+      }
+      return "";
+    }
 
-      // New invoice header
-      if (col4 && (col4.startsWith("SGF") || col4.startsWith("INV"))) {
-        currentInvRef = col4;
+    // Helper: find quantity (small positive number, usually 1-9999)
+    function findQty(row: any[]): number {
+      for (const cell of row) {
+        const n = parseFloat(String(cell || "0"));
+        if (n > 0 && n < 100000 && Number.isFinite(n)) return n;
+      }
+      return 0;
+    }
+
+    // Helper: find amount (larger number, could have R prefix)
+    function findAmount(row: any[]): number {
+      let bestVal = 0;
+      for (const cell of row) {
+        try {
+          const s = String(cell || "").replace(/[R,\s]/g, "").trim();
+          const n = parseFloat(s);
+          if (n > bestVal && n < 10000000) bestVal = n;
+        } catch { /* ignore */ }
+      }
+      return bestVal;
+    }
+
+    // First pass: scan for any rows that look like invoice headers
+    const invoiceRefCols: number[] = [];
+    if (rawData.length > 0) {
+      const headerRow = rawData[0];
+      for (let i = 0; i < headerRow.length; i++) {
+        const h = String(headerRow[i] || "").toLowerCase();
+        if (h.includes("document") || h.includes("inv") || h.includes("invoice") || h.includes("reference") || h.includes("doc no")) {
+          invoiceRefCols.push(i);
+        }
+      }
+    }
+
+    for (const row of rawData) {
+      // Try to find invoice reference in this row
+      let invRef = findInvoiceRef(row);
+
+      // Also check known invoice ref columns
+      if (!invRef && invoiceRefCols.length > 0) {
+        for (const colIdx of invoiceRefCols) {
+          const s = String(row[colIdx] || "").trim();
+          if (s && (s.startsWith("SGF") || s.startsWith("INV")) && s.length > 5) {
+            invRef = s;
+            break;
+          }
+        }
+      }
+
+      if (invRef) {
+        currentInvRef = invRef;
         if (!lineItems[currentInvRef]) lineItems[currentInvRef] = [];
         continue;
       }
 
-      // Line item
-      if (currentInvRef && col7 && col7 !== "Description" && col7 !== "nan") {
-        const qty = parseFloat(String(col9 || "0")) || 0;
-        let amount = 0;
-        try { amount = parseFloat(col14.replace(/[R,]/g, "").trim()) || 0; } catch { }
+      // Try to parse line item
+      if (currentInvRef) {
+        const desc = findDescription(row);
+        const qty = findQty(row);
+        const amount = findAmount(row);
 
-        if (qty > 0 || amount > 0) {
+        if (desc && (qty > 0 || amount > 0)) {
           if (!lineItems[currentInvRef]) lineItems[currentInvRef] = [];
           lineItems[currentInvRef].push({
-            description: col7,
+            description: desc,
             qty,
             amount,
             unitPrice: qty > 0 ? amount / qty : amount,
@@ -186,8 +233,9 @@ export default function HistoricalImportPage() {
       const items = lineItems[inv.invoiceNumber] || [];
       return {
         ...inv,
-        items: items.length > 0 ? items : [{ description: "Historical invoice", qty: 1, amount: Math.abs(inv.total), unitPrice: Math.abs(inv.total) }],
+        items: items.length > 0 ? items : [{ description: "Historical invoice — no order report line items matched", qty: 1, amount: Math.abs(inv.total), unitPrice: Math.abs(inv.total) }],
         hasLineItems: items.length > 0,
+        lineItemCount: items.length,
       };
     });
   }
@@ -352,7 +400,14 @@ export default function HistoricalImportPage() {
           <div className="card-surface overflow-hidden">
             <div className="p-4" style={{ borderBottom: "1px solid #222324" }}>
               <h3 className="font-display font-semibold text-white">Invoice Preview</h3>
-              <p className="text-xs text-[#8A8B8C]">Click to expand — green dot = has line items from order report</p>
+              <p className="text-xs text-[#8A8B8C]">
+                Click to expand — green dot = has line items from order report
+                {preview.invoices.filter((i: any) => i.hasLineItems).length > 0 && (
+                  <span className="ml-2 text-[#4ADE80]">
+                    {preview.invoices.filter((i: any) => i.hasLineItems).length} of {preview.invoices.length} invoices have line items
+                  </span>
+                )}
+              </p>
             </div>
             <div className="max-h-96 overflow-y-auto">
               {preview.invoices.map((inv: any) => {
@@ -366,6 +421,9 @@ export default function HistoricalImportPage() {
                         <span className="text-sm text-[#D4A843] font-display">{inv.invoiceNumber}</span>
                         <span className="text-sm text-white font-body">{inv.customerName}</span>
                         {inv.isCreditNote && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>CRN</span>}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: inv.hasLineItems ? "rgba(74,222,128,0.1)" : "rgba(138,139,140,0.1)", color: inv.hasLineItems ? "#4ADE80" : "#8A8A8A" }}>
+                          {inv.lineItemCount || inv.items?.length || 0} lines
+                        </span>
                       </div>
                       <div className="flex items-center gap-3">
                         {inv.outstanding > 0 && <span className="text-xs text-[#EF4444]">R {inv.outstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })} due</span>}
@@ -401,8 +459,9 @@ export default function HistoricalImportPage() {
             <CheckCircle className="w-8 h-8 text-[#4ADE80]" />
           </div>
           <h2 className="font-display font-semibold text-white text-xl mb-2">Import Complete!</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-lg mx-auto mt-6">
-            <div><div className="stat-number text-[#4ADE80]">{result.created}</div><div className="label-text text-xs">Imported</div></div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 max-w-2xl mx-auto mt-6">
+            <div><div className="stat-number text-[#4ADE80]">{result.created}</div><div className="label-text text-xs">New</div></div>
+            {(result.updated || 0) > 0 && <div><div className="stat-number text-[#6366F1]">{result.updated}</div><div className="label-text text-xs">Line Items Added</div></div>}
             <div><div className="stat-number text-[#F59E0B]">{result.skipped}</div><div className="label-text text-xs">Skipped</div></div>
             <div><div className="stat-number text-[#D4A843]">{result.total}</div><div className="label-text text-xs">Total</div></div>
             {result.unmatchedCount > 0 && <div><div className="stat-number text-[#EF4444]">{result.unmatchedCount}</div><div className="label-text text-xs">Unmatched</div></div>}

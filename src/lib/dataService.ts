@@ -1154,15 +1154,37 @@ export const dataService = {
       return null;
     },
 
-    /** Bulk import historical invoices from Sage — preserves original invoice numbers and dates */
+    /** Bulk import historical invoices from Sage — preserves original invoice numbers and dates.
+     *  UPDATES existing invoices with line items if they already exist (no more skipping). */
     bulkHistoricalImport: (historicalInvoices: any[]) => {
       let created = 0;
+      let updated = 0;
       let skipped = 0;
       const unmatched: string[] = [];
       for (const hist of historicalInvoices) {
         // Check if invoice number already exists
-        const exists = invoices.find((i) => i.invoiceNumber === hist.invoiceNumber);
-        if (exists) { skipped++; continue; }
+        const existing = invoices.find((i) => i.invoiceNumber === hist.invoiceNumber);
+
+        if (existing) {
+          // UPDATE existing invoice with line items from order report
+          const hasRealItems = hist.items && hist.items.length > 0 &&
+            !(hist.items.length === 1 && (hist.items[0].description || "").toLowerCase().includes("historical"));
+
+          if (hasRealItems) {
+            // Replace the generic fallback items with real line items
+            existing.items = hist.items;
+            // Also ensure source is marked as sage
+            existing.source = "sage";
+            // Ensure other fields are populated
+            if (!existing.salesRep && hist.salesRep) existing.salesRep = hist.salesRep;
+            if (!existing.subtotal && hist.subtotal) existing.subtotal = hist.subtotal;
+            if (!existing.vatAmount && hist.vatAmount) existing.vatAmount = hist.vatAmount;
+            updated++;
+          } else {
+            skipped++;
+          }
+          continue;
+        }
 
         // Find customer by ID or fuzzy name matching
         let customerId = hist.customerId;
@@ -1218,7 +1240,7 @@ export const dataService = {
       saveItem("sgf_invoices", invoices);
       // Deduplicate unmatched list
       const uniqueUnmatched = [...new Set(unmatched)];
-      return { created, skipped, total: invoices.length, unmatched: uniqueUnmatched, unmatchedCount: uniqueUnmatched.length };
+      return { created, updated, skipped, total: invoices.length, unmatched: uniqueUnmatched, unmatchedCount: uniqueUnmatched.length };
     },
     getCustomerStatement: ({ customerId, fromDate, toDate }: any) => {
       const customer = customers.find((c) => c.id == customerId);

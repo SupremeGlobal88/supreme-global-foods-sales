@@ -5,6 +5,7 @@ import { reloadFromStorage } from "@/lib/dataService";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
+  Database,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -689,6 +690,9 @@ export default function InvoicesPage() {
                           {inv.source === "sage" && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>SAGE</span>
                           )}
+                          {(inv.items || []).length > 0 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(74,222,128,0.1)", color: "#4ADE80" }}>{inv.items.length} item{(inv.items || []).length !== 1 ? "s" : ""}</span>
+                          )}
                         </div>
                       </td>
                       <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || "N/A"}</td>
@@ -729,7 +733,15 @@ export default function InvoicesPage() {
                           {/* Items table */}
                           {(inv.items || []).length > 0 && (
                             <div className="mb-4">
-                              <div className="label-text mb-2">Invoice Items</div>
+                              <div className="label-text mb-2 flex items-center gap-2">
+                                {inv.source === "sage" ? (
+                                  <>
+                                    <Database className="w-3.5 h-3.5 text-[#818CF8]" /> Sage Order Details — {(inv.items || []).length} line item{(inv.items || []).length !== 1 ? "s" : ""}
+                                  </>
+                                ) : (
+                                  <>Invoice Items</>
+                                )}
+                              </div>
                               <table className="w-full text-xs">
                                 <thead>
                                   <tr style={{ borderBottom: "1px solid #222324" }}>

@@ -147,6 +147,30 @@ export default function Dashboard() {
     });
   }, []);
 
+  // Auto-pull data from Firebase for admin users on first load
+  useEffect(() => {
+    if (!isAdmin) return;
+    let done = false;
+    async function autoPull() {
+      if (done) return;
+      done = true;
+      setPullStatus("Syncing data...");
+      try {
+        await pullFromCloud();
+        reloadFromStorage();
+        await utils.order.list.invalidate();
+        await utils.appointment.list.invalidate();
+        await utils.invoice.list.invalidate();
+        await utils.customer.search.invalidate();
+        setPullStatus("Data synced!");
+      } catch {
+        setPullStatus("");
+      }
+      setTimeout(() => setPullStatus(""), 3000);
+    }
+    autoPull();
+  }, [isAdmin]);
+
   // Sales rep's own stats
   const myRepName = user?.name || "";
   const myStats = ((salesRepStats as any)?.repStats || []).find((r: Record<string, any>) => r.name === myRepName);

@@ -221,6 +221,91 @@ export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; ne
   return { changes };
 }
 
+/** Migrate old sample orders to use normal status flow and SGF invoice numbers.
+ *  Run this once after the sample order fix is deployed. */
+export function migrateSampleOrders(): { migrated: number; invoicesCreated: number; details: string[] } {
+  load();
+  const details: string[] = [];
+  let migrated = 0;
+  let invoicesCreated = 0;
+
+  for (const order of orders) {
+    if (order.orderType !== "sample") continue;
+
+    // Fix 1: Change sample_delivered status to delivered
+    if (order.status === "sample_delivered") {
+      order.status = "delivered";
+      migrated++;
+      details.push(`Order ${order.orderNumber}: status changed from sample_delivered → delivered`);
+    }
+
+    // Fix 2: Ensure a proper SGF invoice exists
+    const existingInvoice = invoices.find((i) => i.orderId == order.id);
+    if (!existingInvoice) {
+      // Create a new SGF invoice for this sample order
+      const invoiceNumber = getNextInvoiceNumber();
+      const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+      const now = new Date();
+
+      invoices.push({
+        id: nextInvId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        invoiceNumber,
+        deliveryNoteNumber: `DN-${order.orderNumber}`,
+        customerId: order.customerId,
+        customer: customers.find((c) => c.id === order.customerId) || null,
+        subtotal: 0,
+        vatAmount: 0,
+        total: 0,
+        totalAmount: 0,
+        balanceDue: 0,
+        amountPaid: 0,
+        status: "paid",
+        paymentTerms: order.paymentTerms || "cod",
+        invoiceDate: order.createdAt || now.toISOString(),
+        dueDate: now.toISOString(),
+        notes: `Sample order - ${order.orderNumber} (No Charge)`,
+        items: (order.items || []).map((item: any) => ({
+          description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
+          quantity: item.quantity,
+          unitPrice: 0,
+          lineTotal: 0,
+        })),
+        createdAt: order.createdAt || now.toISOString(),
+        updatedAt: now.toISOString(),
+      });
+      invoicesCreated++;
+      details.push(`Order ${order.orderNumber}: created invoice ${invoiceNumber}`);
+    } else if (existingInvoice && !existingInvoice.invoiceNumber?.startsWith("SGF")) {
+      // Fix existing non-SGF invoice number
+      const oldNum = existingInvoice.invoiceNumber;
+      existingInvoice.invoiceNumber = getNextInvoiceNumber();
+      existingInvoice.subtotal = 0;
+      existingInvoice.vatAmount = 0;
+      existingInvoice.total = 0;
+      existingInvoice.totalAmount = 0;
+      existingInvoice.balanceDue = 0;
+      existingInvoice.status = "paid";
+      existingInvoice.notes = `Sample order - ${order.orderNumber} (No Charge)`;
+      existingInvoice.items = (order.items || []).map((item: any) => ({
+        description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
+        quantity: item.quantity,
+        unitPrice: 0,
+        lineTotal: 0,
+      }));
+      details.push(`Order ${order.orderNumber}: invoice renumbered ${oldNum} → ${existingInvoice.invoiceNumber}`);
+    }
+  }
+
+  if (migrated > 0 || invoicesCreated > 0) {
+    saveItem("sgf_orders", orders);
+    saveItem("sgf_invoices", invoices);
+  }
+
+  return { migrated, invoicesCreated, details };
+}
+
 // Helper: create an invoice from an order
 /** Get next SGF invoice number. Starts at SGF1801 (last was SGF1800). */
 function getNextInvoiceNumber(): string {
@@ -262,12 +347,12 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
   const dueDate = new Date(now);
   dueDate.setDate(dueDate.getDate() + days);
 
-  // Invoice numbering: SGF1801, SGF1802, etc.
-  const invoiceNumber = isSample ? getNextSampleInvoiceNumber() : getNextInvoiceNumber();
+  // Invoice numbering: SGF1801, SGF1802, etc. — ALL orders use SGF numbers
+  const invoiceNumber = getNextInvoiceNumber();
   const deliveryNoteNumber = `DN-${order.orderNumber}`;
 
   // Status: draft until order is ready for delivery, then sent
-  const status = isSample ? "paid" : (order.status === "ready" || order.status === "delivered" ? "sent" : "draft");
+  const status = (order.status === "ready" || order.status === "delivered") ? "sent" : "draft";
 
   // Use sequential integer ID to avoid decimal/float issues
   const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
@@ -285,17 +370,18 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
     total: isSample ? 0 : total,
     totalAmount: isSample ? 0 : total,
     balanceDue: isSample ? 0 : total,
-    amountPaid: 0,
-    status,
+    amountPaid: isSample ? 0 : 0, // Samples are zero-value but not "paid" — they're no-charge
+    status: isSample ? "paid" : status, // Samples are marked paid (no charge)
     paymentTerms: order.paymentTerms || "cod",
     invoiceDate: now.toISOString(),
     dueDate: dueDate.toISOString(),
-    notes: isSample ? `Sample order - ${order.orderNumber}` : `Invoice for ${order.orderNumber}`,
-    items: isSample ? [] : (order.items || []).map((item: any) => ({
+    notes: isSample ? `Sample order - ${order.orderNumber} (No Charge)` : `Invoice for ${order.orderNumber}`,
+    // Include items for ALL invoices — samples show items with zero prices
+    items: (order.items || []).map((item: any) => ({
       description: `${item.productCode} - ${item.productName}`,
       quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      lineTotal: item.lineTotal,
+      unitPrice: isSample ? 0 : item.unitPrice,
+      lineTotal: isSample ? 0 : item.lineTotal,
     })),
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -717,7 +803,7 @@ export const dataService = {
         ...data,
         id: Date.now(),
         orderNumber,
-        status: isSample ? "sample_delivered" : "pending",
+        status: "pending", // All orders start as pending — samples follow same flow
         items,
         subtotal,
         vatAmount,
@@ -825,16 +911,17 @@ export const dataService = {
           }
           saveItem("sgf_products", products);
         }
-        // ACTIVATE INVOICE from draft to sent when order becomes ready or delivered
-        if ((status === "ready" || status === "delivered") && order.orderType !== "sample") {
+        // ACTIVATE INVOICE from draft to sent when order becomes ready or delivered (ALL order types)
+        if (status === "ready" || status === "delivered") {
+          const isSample = order.orderType === "sample";
           activateInvoiceFromOrder(order.id);
           // If no invoice exists yet, create one
           const existingInvoice = invoices.find((i) => i.orderId === order.id);
           if (!existingInvoice) {
-            const subtotal = order.subtotal || 0;
-            const vatAmount = order.vatAmount || 0;
-            const total = order.total || 0;
-            createInvoiceFromOrder(order, subtotal, vatAmount, total, false);
+            const subtotal = isSample ? 0 : (order.subtotal || 0);
+            const vatAmount = isSample ? 0 : (order.vatAmount || 0);
+            const total = isSample ? 0 : (order.total || 0);
+            createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
           }
         }
         saveItem("sgf_orders", orders);

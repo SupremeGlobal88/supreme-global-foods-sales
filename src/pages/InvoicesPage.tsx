@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, dataService } from "@/lib/dataService";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
@@ -60,7 +60,7 @@ export default function InvoicesPage() {
   const [editInvStatus, setEditInvStatus] = useState("sent");
 
   /* Data */
-  const { data: invoices } = trpc.invoice.list.useQuery();
+  const { data: invoices, refetch: refetchInvoices } = trpc.invoice.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stats } = trpc.invoice.getStats.useQuery();
   const { data: allReceipts } = trpc.invoice.getReceipts.useQuery();
@@ -378,12 +378,16 @@ export default function InvoicesPage() {
   }
 
   /* ── Statement Print ── */
-  function printStmt() {
+  async function printStmt() {
+    // Force refresh tRPC data before generating statement — ensures Sage imports are included
+    await refetchInvoices();
+    await utils.invoice.list.invalidate();
+
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
 
-    // Build invoice list — use tRPC data with loose equality
+    // Build invoice list — use the SAME tRPC data as the UI with loose equality
     let list = (invoices || []).filter((i: any) => i.customerId == stmtCust);
     if (stmtFrom) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) >= new Date(stmtFrom));
     if (stmtTo) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) <= new Date(stmtTo + "T23:59:59"));
@@ -971,7 +975,7 @@ export default function InvoicesPage() {
                 </div>
               )}
               <button
-                onClick={() => { if (stmtCust) { printStmt(); setShowStmt(false); } }}
+                onClick={async () => { if (stmtCust) { await printStmt(); setShowStmt(false); } }}
                 disabled={!stmtCust}
                 className="btn-primary w-full justify-center"
                 style={{ opacity: stmtCust ? 1 : 0.5 }}

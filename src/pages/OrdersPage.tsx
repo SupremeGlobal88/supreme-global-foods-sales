@@ -32,7 +32,7 @@ const statusTabs = [
   { key: "ready", label: "Ready" },
   { key: "delivered", label: "Delivered" },
   { key: "cancelled", label: "Cancelled" },
-  { key: "sample_delivered", label: "Samples" },
+  { key: "sample", label: "Samples" },
 ];
 
 export default function OrdersPage() {
@@ -210,7 +210,13 @@ export default function OrdersPage() {
       const avail = availableStock[item.stockItemId] || 0;
       if (avail <= 0) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
       if (formData.orderType === "sample") {
-        const existing = (orders || []).some((o) => o.customerId === formData.customerId && o.orderType === "sample" && o.items?.some((it: any) => it.stockItemId === item.stockItemId));
+        // When editing, exclude the current order from the duplicate check
+        const existing = (orders || []).some((o) => 
+          o.id !== editingOrder?.id && // Exclude the order being edited
+          o.customerId === formData.customerId && 
+          o.orderType === "sample" && 
+          o.items?.some((it: any) => it.stockItemId === item.stockItemId)
+        );
         if (existing) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
         if (item.quantity > 1) return { valid: false, error: "Sample orders: 1 unit per product max." };
       } else { if (item.quantity > avail) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail}, Requested: ${item.quantity}` }; } }
@@ -248,23 +254,20 @@ export default function OrdersPage() {
   }
 
   function canEditOrder(order: any): boolean {
-    // Sales reps can edit their own orders while status is "pending"
-    // Once status moves to "picking" or beyond, only admin can edit
-    // Delivered/cancelled orders cannot be edited by anyone
+    // Admin can edit ANY order (including delivered/cancelled/sample_delivered)
+    if (isAdmin) return true;
+    // Sales reps can edit their own orders while status is "pending" only
     if (order.status === "delivered" || order.status === "cancelled" || order.status === "sample_delivered") return false;
-    if (isAdmin) return true; // Admin can edit pending, picking, ready
-    // Sales rep: can only edit their own orders while still pending
     if (order.status !== "pending") return false;
     const cust = (customers || []).find((c) => c.id === order.customerId);
     return cust?.salesRepName === myRepName;
   }
 
   function canCancelOrder(order: any): boolean {
-    // Admin can cancel any non-delivered/non-cancelled order
+    // Admin can cancel ANY non-cancelled order
+    if (isAdmin) return order.status !== "cancelled";
     // Sales rep can only cancel their own pending orders
     if (order.status === "cancelled" || order.status === "delivered" || order.status === "sample_delivered") return false;
-    if (isAdmin) return true;
-    // Sales rep: can only cancel their own pending orders
     if (order.status !== "pending") return false;
     const cust = (customers || []).find((c) => c.id === order.customerId);
     return cust?.salesRepName === myRepName;
@@ -272,9 +275,8 @@ export default function OrdersPage() {
 
   function canProgressOrder(order: any): boolean {
     // ONLY ADMIN can click status buttons (Mark Picking / Mark Ready / Mark Delivered)
-    // Sales reps place orders and edit - admin handles the status flow
     if (!isAdmin) return false;
-    if (order.status === "delivered" || order.status === "cancelled" || order.status === "sample_delivered") return false;
+    if (order.status === "delivered" || order.status === "cancelled") return false;
     return true;
   }
 
@@ -485,7 +487,11 @@ export default function OrdersPage() {
   }
 
   const filteredOrders = (orders || [])
-    .filter((o) => activeTab === "all" || o.status === activeTab)
+    .filter((o) => {
+      if (activeTab === "all") return true;
+      if (activeTab === "sample") return o.orderType === "sample";
+      return o.status === activeTab;
+    })
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const orderCheck = editingOrder && isAdmin ? canEditOrderBasic() : canPlaceOrder();
 

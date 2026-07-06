@@ -12,10 +12,11 @@ import {
   Trash2,
   Wrench,
   Hash,
+  FlaskConical,
 } from "lucide-react";
 import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
-import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
+import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers, migrateSampleOrders } from "@/lib/dataService";
 
 const DEFAULT_COMPANY = {
   name: "Supreme Global Foods",
@@ -56,7 +57,7 @@ function loadSettings<T>(key: string, defaults: T): T {
 }
 
 export default function SettingsPage() {
-  const { isSuperAdmin } = useRole();
+  const { isAdmin, isSuperAdmin } = useRole();
   const [saved, setSaved] = useState(false);
 
   const [company, setCompany] = useState(() => loadSettings("sgf_settings_company", DEFAULT_COMPANY));
@@ -444,8 +445,8 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Admin Tools - Super Admin Only */}
-      {isSuperAdmin && (
+      {/* Admin Tools - Admin & Super Admin */}
+      {isAdmin && (
         <div className="card-surface p-6 mt-6" style={{ border: "1px solid rgba(212, 168, 67, 0.2)" }}>
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
@@ -473,6 +474,25 @@ export default function SettingsPage() {
             </button>
             <p className="text-[10px] text-[#8A8B8C]">
               Scans all invoices. If two invoices have the same SGF number, the most recent one gets renumbered to the next available number. Changes are logged in the audit trail.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                const result = migrateSampleOrders();
+                if (result.migrated > 0 || result.invoicesCreated > 0) {
+                  setSyncMessage(`Fixed ${result.migrated} sample orders, created ${result.invoicesCreated} SGF invoices. Refresh to see changes.`);
+                } else {
+                  setSyncMessage("No sample orders need fixing.");
+                }
+                setTimeout(() => setSyncMessage(""), 8000);
+              }}
+              className="btn-secondary text-sm w-full"
+            >
+              <FlaskConical className="w-4 h-4" /> Fix Sample Orders
+            </button>
+            <p className="text-[10px] text-[#8A8B8C]">
+              Migrates old sample orders: changes status from sample_delivered to delivered, creates SGF invoices with item details. Run once after update.
             </p>
           </div>
         </div>

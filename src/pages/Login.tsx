@@ -7,17 +7,44 @@ import { Globe, Lock, Eye, EyeOff, User, Shield } from "lucide-react";
 import gsap from "gsap";
 
 const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
+const DEFAULT_ADMINS = ["Collin", "Ryleigh", "Aggie", "Ronald", "Jolene", "David"];
+
+function getAdminUsers(): string[] {
+  try {
+    const raw = localStorage.getItem("sgf_users");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      const adminNames = stored
+        .filter((u: any) => (u.role === "admin" || u.role === "super_admin") && u.isActive !== false)
+        .map((u: any) => u.name);
+      if (adminNames.length > 0) return adminNames;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_ADMINS;
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [roleTab, setRoleTab] = useState<"sales" | "admin">("sales");
   const [selectedRep, setSelectedRep] = useState(SALES_REPS[0]);
-  const [adminName, setAdminName] = useState("");
+  const [selectedAdmin, setSelectedAdmin] = useState("");
+  const [adminUsers, setAdminUsers] = useState<string[]>(DEFAULT_ADMINS);
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Load admin users from localStorage when admin tab is selected
+  useEffect(() => {
+    if (roleTab === "admin") {
+      const admins = getAdminUsers();
+      setAdminUsers(admins);
+      if (!selectedAdmin || !admins.includes(selectedAdmin)) {
+        setSelectedAdmin(admins[0] || "");
+      }
+    }
+  }, [roleTab]);
 
   const bgImageRef = useRef<HTMLDivElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);
@@ -60,7 +87,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const name = roleTab === "sales" ? selectedRep : adminName;
+      const name = roleTab === "sales" ? selectedRep : selectedAdmin;
       if (!name || !pin) { setError("Please enter your name and PIN."); setIsLoading(false); return; }
 
       // Try direct authenticate FIRST (always works for default users — most reliable)
@@ -129,13 +156,15 @@ export default function Login() {
             </div>
           )}
 
-          {/* Admin: enter name */}
+          {/* Admin: select name */}
           {roleTab === "admin" && (
             <div className="mb-4">
-              <label className="label-text block mb-1.5">Your Name</label>
+              <label className="label-text block mb-1.5">Select Your Name</label>
               <div className="relative">
                 <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-                <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Enter your name" className="input-field pl-11" required />
+                <select value={selectedAdmin} onChange={(e) => setSelectedAdmin(e.target.value)} className="input-field pl-11">
+                  {adminUsers.map((admin) => <option key={admin} value={admin}>{admin}</option>)}
+                </select>
               </div>
             </div>
           )}

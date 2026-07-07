@@ -1,6 +1,6 @@
 import { dataService } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushCustomers, pushFollowUpAction, isFirebaseReady } from "./firebaseSync";
+import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushFollowUpAction, isFirebaseReady } from "./firebaseSync";
 
 /** Push data to Firebase after local write. Static import ensures reliability. */
 function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer", item: any) {
@@ -86,7 +86,7 @@ export function createLocalLink() {
               case "invoice.getReceiptsByInvoice": result = dataService.invoice.getReceiptsByInvoice(input); break;
               case "invoice.getReceiptsByCustomer": result = dataService.invoice.getReceiptsByCustomer(input); break;
               case "invoice.getReceiptById": result = dataService.invoice.getReceiptById(input); break;
-              case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); break;
+              case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); pushInvoices(dataService.invoice.list()); break;
               case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;

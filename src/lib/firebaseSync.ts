@@ -155,6 +155,14 @@ export async function pushInvoice(invoice: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
+/** Push all invoices to Firebase (used after bulk historical import) */
+export async function pushInvoices(invoices: any[]): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    await set(ref(db, "invoices"), invoices);
+  } catch { /* ignore */ }
+}
+
 export async function pushFollowUpAction(action: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {

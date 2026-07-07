@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
@@ -24,6 +24,151 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   cancelled: { label: "Cancelled", color: "#EF4444" },
   sample_delivered: { label: "Sample", color: "#D4A843" },
 };
+
+// Mobile-friendly product picker modal
+function ProductPickerModal({
+  isOpen,
+  onClose,
+  onSelect,
+  stockItems,
+  availableStock,
+  selectedId,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (id: number) => void;
+  stockItems: any[];
+  availableStock: Record<number, number>;
+  selectedId: number;
+}) {
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearch("");
+      setTimeout(() => searchRef.current?.focus(), 100);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const filtered = (stockItems || [])
+    .filter((s) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        s.productName?.toLowerCase().includes(q) ||
+        s.productCode?.toLowerCase().includes(q) ||
+        s.category?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      // Sort by availability first (in-stock first), then alphabetically
+      const availA = availableStock[a.id] || 0;
+      const availB = availableStock[b.id] || 0;
+      if (availA > 0 && availB <= 0) return -1;
+      if (availA <= 0 && availB > 0) return 1;
+      return (a.productName || "").localeCompare(b.productName || "");
+    });
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
+      <div
+        className="card-surface w-full sm:max-w-lg sm:mx-4 max-h-[85vh] flex flex-col"
+        style={{ borderRadius: "16px 16px 0 0", maxHeight: "85vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "#222324" }}>
+          <h3 className="font-display font-semibold text-white text-lg">Select Product</h3>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-[#222324] cursor-pointer">
+            <X className="w-5 h-5 text-[#8A8B8C]" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="p-4 border-b" style={{ borderColor: "#222324" }}>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
+            <input
+              ref={searchRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, code or category..."
+              className="input-field w-full pl-10"
+              autoComplete="off"
+            />
+          </div>
+          <div className="flex items-center gap-4 mt-2 text-xs">
+            <span className="text-[#4ADE80]">● In Stock</span>
+            <span className="text-[#EF4444]">● Out of Stock</span>
+            <span className="text-[#8A8B8C]">{filtered.length} products</span>
+          </div>
+        </div>
+
+        {/* Product List */}
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(85vh - 160px)" }}>
+          {filtered.length === 0 && (
+            <div className="p-8 text-center text-[#8A8B8C] text-sm">No products found</div>
+          )}
+          {filtered.map((s) => {
+            const avail = availableStock[s.id] || 0;
+            const isOutOfStock = avail <= 0;
+            const isSelected = selectedId === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => {
+                  if (!isOutOfStock || isSelected) {
+                    onSelect(s.id);
+                    onClose();
+                  }
+                }}
+                className="w-full text-left p-4 border-b transition-colors cursor-pointer"
+                style={{
+                  borderColor: "#18191A",
+                  backgroundColor: isSelected ? "rgba(212, 168, 67, 0.12)" : "transparent",
+                  opacity: isOutOfStock && !isSelected ? 0.5 : 1,
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: isOutOfStock ? "#EF4444" : "#4ADE80" }}
+                      />
+                      <span className="text-sm font-body font-medium text-[#E8E8E9] truncate">
+                        {s.productName}
+                      </span>
+                      {isSelected && (
+                        <span className="status-badge text-xs flex-shrink-0" style={{ backgroundColor: "rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 ml-4">
+                      <span className="text-xs text-[#8A8B8C] font-mono-data">{s.productCode}</span>
+                      <span className="text-xs text-[#8A8B8C]">{s.category}</span>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-3">
+                    <div className={`text-sm font-display font-semibold ${isOutOfStock ? "text-[#EF4444]" : "text-[#4ADE80]"}`}>
+                      {avail} avail
+                    </div>
+                    <div className="text-xs text-[#8A8B8C]">SOH: {s.quantity || 0}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const statusTabs = [
   { key: "all", label: "All" },
@@ -56,6 +201,10 @@ export default function OrdersPage() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerInputRef = useRef<HTMLInputElement>(null);
+
+  // Product picker modal state
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productPickerIndex, setProductPickerIndex] = useState<number>(0);
 
   const { data: orders } = trpc.order.list.useQuery();
   const { data: invoices } = trpc.invoice.list.useQuery();
@@ -673,6 +822,16 @@ export default function OrdersPage() {
         </div>
       </div>
 
+      {/* Product Picker Modal */}
+      <ProductPickerModal
+        isOpen={productPickerOpen}
+        onClose={() => setProductPickerOpen(false)}
+        onSelect={(id) => handleUpdateItem(productPickerIndex, "stockItemId", id)}
+        stockItems={stockItems || []}
+        availableStock={availableStock}
+        selectedId={formData.items[productPickerIndex]?.stockItemId || 0}
+      />
+
       {/* New / Edit Order Dialog */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
@@ -805,13 +964,20 @@ export default function OrdersPage() {
                     return (
                       <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: availSOH <= 0 && item.stockItemId > 0 ? "1px solid #EF4444" : "1px solid #222324" }}>
                         <div className="flex gap-3 mb-2">
-                          <select value={item.stockItemId} onChange={(e) => handleUpdateItem(index, "stockItemId", parseInt(e.target.value))} className="input-field flex-1">
-                            <option value={0}>Select product...</option>
-                            {(stockItems || []).map((s) => {
-                              const avail = availableStock[s.id] || 0;
-                              return <option key={s.id} value={s.id} disabled={avail <= 0 && item.stockItemId !== s.id}>{s.productName} — AVAIL: {avail} {avail <= 0 ? "(OUT)" : ""}</option>;
-                            })}
-                          </select>
+                          {/* Mobile-friendly product picker */}
+                          <button
+                            type="button"
+                            onClick={() => { setProductPickerIndex(index); setProductPickerOpen(true); }}
+                            className="input-field flex-1 text-left flex items-center justify-between cursor-pointer"
+                            style={{ minHeight: 40 }}
+                          >
+                            <span className={item.stockItemId > 0 ? "text-[#E8E8E9]" : "text-[#8A8B8C]"}>
+                              {item.stockItemId > 0
+                                ? (stockItems || []).find((s) => s.id === item.stockItemId)?.productName || "Select product..."
+                                : "Select product..."}
+                            </span>
+                            <ChevronDown className="w-4 h-4 text-[#8A8B8C] flex-shrink-0" />
+                          </button>
                           {formData.orderType === "sample" ? (
                             <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>1</div>
                           ) : (

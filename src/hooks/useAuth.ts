@@ -10,9 +10,15 @@ export interface AuthUser {
 }
 
 export function useAuth() {
-  // Read session user from localStorage
-  const demoUserStr = typeof window !== "undefined" ? localStorage.getItem(DEMO_USER_KEY) : null;
-  const demoUser: AuthUser | null = demoUserStr ? JSON.parse(demoUserStr) : null;
+  // Read session user from localStorage with error handling
+  let demoUser: AuthUser | null = null;
+  try {
+    const demoUserStr = typeof window !== "undefined" ? localStorage.getItem(DEMO_USER_KEY) : null;
+    if (demoUserStr) demoUser = JSON.parse(demoUserStr);
+  } catch {
+    // Corrupted localStorage data - clear it
+    if (typeof window !== "undefined") localStorage.removeItem(DEMO_USER_KEY);
+  }
 
   const user = demoUser;
 

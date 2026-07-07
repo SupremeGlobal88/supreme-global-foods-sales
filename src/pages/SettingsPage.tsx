@@ -12,11 +12,10 @@ import {
   Trash2,
   Wrench,
   Hash,
-  FlaskConical,
 } from "lucide-react";
 import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
-import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers, migrateSampleOrders } from "@/lib/dataService";
+import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
 
 const DEFAULT_COMPANY = {
   name: "Supreme Global Foods",
@@ -455,7 +454,7 @@ export default function SettingsPage() {
             <h2 className="font-display font-semibold text-white text-lg">Admin Tools</h2>
           </div>
           <p className="text-sm text-[#8A8B8C] font-body mb-4">
-            Tools to fix invoice numbering issues and clean up duplicates.
+            Maintenance tools. Only use if instructed.
           </p>
           <div className="space-y-3">
             <button
@@ -464,7 +463,7 @@ export default function SettingsPage() {
                 if (result.changes.length > 0) {
                   setSyncMessage(`Fixed ${result.changes.length} duplicate invoice numbers. See audit log for details.`);
                 } else {
-                  setSyncMessage("No duplicate invoice numbers found.");
+                  setSyncMessage("No duplicate invoice numbers found — all clean!");
                 }
                 setTimeout(() => setSyncMessage(""), 5000);
               }}
@@ -473,27 +472,7 @@ export default function SettingsPage() {
               <Hash className="w-4 h-4" /> Fix Duplicate SGF Numbers
             </button>
             <p className="text-[10px] text-[#8A8B8C]">
-              Scans all invoices. If two invoices have the same SGF number, the most recent one gets renumbered to the next available number. Changes are logged in the audit trail.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={() => {
-                const result = migrateSampleOrders();
-                if (result.migrated > 0 || result.invoicesCreated > 0 || result.followUpsCreated > 0) {
-                  setSyncMessage(`Fixed ${result.migrated} orders, created ${result.invoicesCreated} invoices + ${result.followUpsCreated} follow-ups. Reloading...`);
-                  setTimeout(() => window.location.reload(), 2000);
-                } else {
-                  setSyncMessage("No sample orders need fixing.");
-                  setTimeout(() => setSyncMessage(""), 5000);
-                }
-              }}
-              className="btn-secondary text-sm w-full"
-            >
-              <FlaskConical className="w-4 h-4" /> Fix Sample Orders
-            </button>
-            <p className="text-[10px] text-[#8A8B8C]">
-              Fixes old sample orders: status → delivered, SGF invoices, follow-ups created. Page auto-reloads after.
+              Safety net: scans all invoices. Only fixes if duplicates are found. Safe to run anytime — does nothing if all invoices are clean.
             </p>
           </div>
         </div>

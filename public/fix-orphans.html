@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGF Fix Orphan Orders & Wrong SGF-SMP</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0C0D0E;color:#E8E8E9;font-family:Arial,sans-serif;padding:20px;line-height:1.5}
+.container{max-width:900px;margin:0 auto}
+h1{color:#D4A843;font-size:22px;margin-bottom:5px}
+h2{color:#D4A843;font-size:16px;margin-top:20px;margin-bottom:8px;border-bottom:1px solid #2A2B2C;padding-bottom:5px}
+p{color:#8A8B8C;font-size:13px;margin-bottom:10px}
+.card{background:#131415;border:1px solid #2A2B2C;border-radius:10px;padding:16px;margin-bottom:16px}
+button{cursor:pointer;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;transition:opacity 0.2s}
+button:hover{opacity:0.85}
+.btn-primary{background:#D4A843;color:#0C0D0E;width:100%;margin-top:10px}
+.btn-secondary{background:#2A2B2C;color:#E8E8E9;border:1px solid #3A3B3C;width:100%;margin-top:8px}
+pre{background:#1A1B1C;border-radius:8px;padding:10px;font-family:monospace;font-size:11px;color:#8A8B8C;max-height:300px;overflow:auto;white-space:pre-wrap}
+.status-ok{color:#4ADE80}
+.status-warn{color:#F59E0B}
+.status-error{color:#EF4444}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+th{text-align:left;color:#D4A843;padding:5px 4px;border-bottom:1px solid #2A2B2C;font-size:10px}
+td{padding:4px;border-bottom:1px solid #1A1B1C}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Fix Orphan Orders & Wrong SGF-SMP</h1>
+<p>This tool creates missing invoices for orders without them, and fixes regular orders that have SGF-SMP numbers.</p>
+
+<div class="card">
+<button class="btn-primary" onclick="scanIssues()">1. Scan for Issues</button>
+<div id="scanResults"></div>
+</div>
+
+<div class="card" id="fixCard" style="display:none">
+<button class="btn-primary" onclick="applyFixes()">2. Apply All Fixes</button>
+<button class="btn-secondary" onclick="pushToCloud()">3. Push Changes to Cloud</button>
+<pre id="fixResults"></pre>
+</div>
+
+</div>
+
+<script>
+const SGF_START = 1817;
+let issuesFound = [];
+
+function scanIssues() {
+  const el = document.getElementById('scanResults');
+  const allOrders = JSON.parse(localStorage.getItem('sgf_orders') || '[]');
+  const allInvoices = JSON.parse(localStorage.getItem('sgf_invoices') || '[]');
+  const customers = JSON.parse(localStorage.getItem('sgf_customers') || '[]');
+  const customerMap = {};
+  customers.forEach(c => customerMap[c.id] = c.name || c.companyName || `Cust#${c.id}`);
+
+  issuesFound = [];
+  let html = '<h2>Issues Found</h2>';
+
+  // 1. Find orders without invoices (excluding cancelled)
+  const appOrders = allOrders.filter(o => (o.orderNumber || '').startsWith('ORD-') || (o.orderNumber || '').startsWith('SMP-'));
+  const orphanOrders = appOrders.filter(o => {
+    if (o.status === 'cancelled') return false; // skip cancelled
+    return !allInvoices.find(i => i.orderId == o.id);
+  });
+
+  if (orphanOrders.length > 0) {
+    html += `<p class="status-error">${orphanOrders.length} order(s) without invoices:</p>`;
+    html += '<table><thead><tr><th>Order #</th><th>Customer</th><th>Status</th><th>Total</th><th>Fix</th></tr></thead><tbody>';
+    orphanOrders.forEach(o => {
+      const customer = customerMap[o.customerId] || `Cust#${o.customerId}`;
+      const isSample = o.orderNumber.startsWith('SMP-');
+      html += `<tr><td>${o.orderNumber}</td><td>${customer}</td><td>${o.status}</td><td>R ${(o.total || 0).toFixed(2)}</td><td>Create ${isSample ? 'SGF-SMP' : 'SGF'} invoice</td></tr>`;
+      issuesFound.push({ type: 'orphan', order: o, isSample });
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p class="status-ok">All orders have invoices.</p>';
+  }
+
+  // 2. Find regular orders with SGF-SMP invoice numbers
+  const wrongSmpOrders = appOrders.filter(o => {
+    if (o.orderNumber.startsWith('SMP-')) return false; // sample orders are fine
+    const inv = allInvoices.find(i => i.orderId == o.id);
+    return inv && inv.invoiceNumber && inv.invoiceNumber.startsWith('SGF-SMP-');
+  });
+
+  if (wrongSmpOrders.length > 0) {
+    html += `<p class="status-warn">${wrongSmpOrders.length} regular order(s) with SGF-SMP invoice numbers:</p>`;
+    html += '<table><thead><tr><th>Order #</th><th>Customer</th><th>Wrong Invoice #</th><th>Fix</th></tr></thead><tbody>';
+    wrongSmpOrders.forEach(o => {
+      const inv = allInvoices.find(i => i.orderId == o.id);
+      const customer = customerMap[o.customerId] || `Cust#${o.customerId}`;
+      html += `<tr><td>${o.orderNumber}</td><td>${customer}</td><td>${inv.invoiceNumber}</td><td>Change to proper SGF</td></tr>`;
+      issuesFound.push({ type: 'wrong_smp', order: o, invoice: inv });
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p class="status-ok">No regular orders with wrong SGF-SMP numbers.</p>';
+  }
+
+  el.innerHTML = html;
+
+  if (issuesFound.length > 0) {
+    document.getElementById('fixCard').style.display = 'block';
+  }
+}
+
+function getNextSgfNumber(invoices) {
+  const sgfNums = invoices
+    .map(i => (i.invoiceNumber || '').match(/^SGF(\d+)$/))
+    .filter(m => m)
+    .map(m => parseInt(m[1]));
+  return sgfNums.length > 0 ? Math.max(...sgfNums) + 1 : SGF_START;
+}
+
+function applyFixes() {
+  const el = document.getElementById('fixResults');
+  const invoices = JSON.parse(localStorage.getItem('sgf_invoices') || '[]');
+  const customers = JSON.parse(localStorage.getItem('sgf_customers') || '[]');
+  const customerMap = {};
+  customers.forEach(c => customerMap[c.id] = c);
+
+  const results = [];
+  let nextSgf = getNextSgfNumber(invoices);
+
+  issuesFound.forEach(issue => {
+    if (issue.type === 'orphan') {
+      // Create missing invoice
+      const order = issue.order;
+      const isSample = issue.isSample;
+      const customer = customerMap[order.customerId] || null;
+      const now = new Date().toISOString();
+
+      const invoiceNumber = isSample ? getNextSmpNumber(invoices) : `SGF${nextSgf++}`;
+      const nextInvId = invoices.length > 0 ? Math.max(...invoices.map(i => Number(i.id) || 0)) + 1 : 1;
+
+      const subtotal = isSample ? 0 : (order.subtotal || 0);
+      const vatAmount = isSample ? 0 : (order.vatAmount || 0);
+      const total = isSample ? 0 : (order.total || 0);
+
+      invoices.push({
+        id: nextInvId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        invoiceNumber,
+        deliveryNoteNumber: `DN-${order.orderNumber}`,
+        customerId: order.customerId,
+        customer,
+        subtotal,
+        vatAmount,
+        total,
+        totalAmount: total,
+        balanceDue: total,
+        amountPaid: isSample ? total : 0,
+        status: isSample ? 'paid' : 'draft',
+        paymentTerms: order.paymentTerms || 'cod',
+        invoiceDate: order.createdAt || now,
+        dueDate: now,
+        notes: isSample ? `Sample order - ${order.orderNumber} (No Charge)` : `Order invoice - ${order.orderNumber}`,
+        items: (order.items || []).map(item => ({
+          description: `${item.productCode || ''} - ${item.productName || ''}`.trim(),
+          quantity: item.quantity,
+          unitPrice: item.unitPrice || 0,
+          lineTotal: (item.unitPrice || 0) * item.quantity,
+        })),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      results.push(`Created invoice ${invoiceNumber} for ${order.orderNumber} (${customer?.name || 'Unknown'})`);
+
+    } else if (issue.type === 'wrong_smp') {
+      // Fix SGF-SMP on regular order — change to proper SGF number
+      const inv = invoices.find(i => i.id === issue.invoice.id);
+      if (inv) {
+        const oldNum = inv.invoiceNumber;
+        const newNum = `SGF${nextSgf++}`;
+        inv.invoiceNumber = newNum;
+        inv.updatedAt = new Date().toISOString();
+        results.push(`Changed ${oldNum} → ${newNum} for ${issue.order.orderNumber}`);
+      }
+    }
+  });
+
+  // Save
+  localStorage.setItem('sgf_invoices', JSON.stringify(invoices));
+  results.push(`\n=== SAVED: ${invoices.length} total invoices ===`);
+
+  el.textContent = results.join('\n');
+}
+
+function getNextSmpNumber(invoices) {
+  const smpNums = invoices
+    .map(i => (i.invoiceNumber || '').match(/^SGF-SMP-(\d+)$/))
+    .filter(m => m)
+    .map(m => parseInt(m[1]));
+  const next = smpNums.length > 0 ? Math.max(...smpNums) + 1 : 1;
+  return `SGF-SMP-${String(next).padStart(3, '0')}`;
+}
+
+function pushToCloud() {
+  const el = document.getElementById('fixResults');
+  const current = el.textContent;
+  el.textContent = current + '\n\nPushing to Firebase...';
+
+  import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js')
+    .then(({initializeApp,getApps})=>{
+      import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js')
+        .then(({getDatabase,ref,set})=>{
+          const AP=getApps();let a=AP.length>0?AP[0]:initializeApp({apiKey:"AIzaSyAj68G-CmO9ImmBB5MgPwlas389gHWqPu8",authDomain:"supreme-global-foods-835b0.firebaseapp.com",databaseURL:"https://supreme-global-foods-835b0-default-rtdb.firebaseio.com",projectId:"supreme-global-foods-835b0"});
+          const db=getDatabase(a);
+          const invoices=JSON.parse(localStorage.getItem('sgf_invoices')||'[]');
+          set(ref(db,'invoices'),invoices).then(()=>{
+            el.textContent = current + '\n\nPushed to Firebase successfully!';
+          }).catch(e=>el.textContent = current + '\n\nPush failed: ' + e.message);
+        }).catch(e=>el.textContent = current + '\n\nFirebase DB error: ' + e.message);
+    }).catch(e=>el.textContent = current + '\n\nFirebase init error: ' + e.message);
+}
+</script>
+</body>
+</html>

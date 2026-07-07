@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify Picking Slips</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0C0D0E;color:#E8E8E9;font-family:Arial,sans-serif;padding:20px;line-height:1.5}
+.container{max-width:1100px;margin:0 auto}
+h1{color:#D4A843;font-size:22px;margin-bottom:5px}
+h2{color:#D4A843;font-size:16px;margin-top:20px;margin-bottom:8px;border-bottom:1px solid #2A2B2C;padding-bottom:5px}
+p{color:#8A8B8C;font-size:13px;margin-bottom:10px}
+.card{background:#131415;border:1px solid #2A2B2C;border-radius:10px;padding:16px;margin-bottom:16px}
+button{cursor:pointer;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;transition:opacity 0.2s}
+button:hover{opacity:0.85}
+.btn-primary{background:#D4A843;color:#0C0D0E;width:100%;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+th{text-align:left;color:#D4A843;padding:5px 4px;border-bottom:1px solid #2A2B2C;font-size:10px;position:sticky;top:0;background:#131415}
+td{padding:4px;border-bottom:1px solid #1A1B1C;vertical-align:top}
+tr:hover td{background:#1A1B1C}
+.status-ok{color:#4ADE80;font-weight:600}
+.status-warn{color:#F59E0B;font-weight:600}
+.status-error{color:#EF4444;font-weight:600}
+.scroll-table{max-height:400px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Picking Slip Verification</h1>
+<p>Verifies every picking slip (DN-) is correctly linked to its order AND invoice, with correct invoice number.</p>
+
+<div class="card">
+<button class="btn-primary" onclick="runVerification()">Run Verification</button>
+<div id="results"></div>
+</div>
+
+</div>
+
+<script>
+function runVerification() {
+  const el = document.getElementById('results');
+  el.innerHTML = '<p style="color:#D4A843">Verifying picking slips...</p>';
+
+  setTimeout(() => {
+    try {
+      const allOrders = JSON.parse(localStorage.getItem('sgf_orders') || '[]');
+      const allInvoices = JSON.parse(localStorage.getItem('sgf_invoices') || '[]');
+      const customers = JSON.parse(localStorage.getItem('sgf_customers') || '[]');
+
+      const customerMap = {};
+      customers.forEach(c => customerMap[c.id] = c.name || c.companyName || `Cust#${c.id}`);
+
+      // Only app data
+      const orders = allOrders.filter(o => (o.orderNumber || '').startsWith('ORD-') || (o.orderNumber || '').startsWith('SMP-'));
+      const invoices = allInvoices.filter(i => {
+        const m = (i.invoiceNumber || '').match(/^SGF(\d+)$/);
+        if (m) return parseInt(m[1]) >= 1817;
+        return (i.invoiceNumber || '').startsWith('SGF-SMP-');
+      });
+
+      let html = '';
+      let allOk = true;
+
+      html += '<h2>Picking Slip → Order → Invoice Verification</h2>';
+      html += '<div class="scroll-table"><table><thead><tr><th>DN (Picking Slip)</th><th>Order #</th><th>Customer</th><th>Invoice #</th><th>DN matches Order?</th><th>DN matches Invoice?</th><th>Invoice on DN correct?</th><th>Result</th></tr></thead><tbody>';
+
+      orders.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+      orders.forEach(order => {
+        if (order.status === 'cancelled') return; // skip cancelled
+
+        const invoice = invoices.find(i => i.orderId == order.id);
+        const customer = customerMap[order.customerId] || `Cust#${order.customerId}`;
+        const expectedDn = `DN-${order.orderNumber}`;
+
+        if (!invoice) {
+          html += `<tr style="opacity:0.5">`;
+          html += `<td>${expectedDn}</td>`;
+          html += `<td>${order.orderNumber}</td>`;
+          html += `<td>${customer}</td>`;
+          html += `<td class="status-error">NONE</td>`;
+          html += `<td>-</td><td>-</td><td>-</td>`;
+          html += `<td class="status-error">No invoice</td>`;
+          html += `</tr>`;
+          allOk = false;
+          return;
+        }
+
+        const actualDn = invoice.deliveryNoteNumber || '';
+        const dnMatchesOrder = actualDn === expectedDn;
+        const dnOnInvoice = actualDn === `DN-${invoice.orderNumber}`;
+        const invoiceNumCorrect = invoice.invoiceNumber && invoice.invoiceNumber.length > 0;
+
+        const allChecks = dnMatchesOrder && dnOnInvoice && invoiceNumCorrect;
+        if (!allChecks) allOk = false;
+
+        html += `<tr>`;
+        html += `<td>${actualDn || 'MISSING'}</td>`;
+        html += `<td>${order.orderNumber}</td>`;
+        html += `<td>${customer}</td>`;
+        html += `<td>${invoice.invoiceNumber}</td>`;
+        html += `<td>${dnMatchesOrder ? '<span class="status-ok">Yes</span>' : '<span class="status-error">No</span>'}</td>`;
+        html += `<td>${dnOnInvoice ? '<span class="status-ok">Yes</span>' : '<span class="status-error">No</span>'}</td>`;
+        html += `<td>${invoiceNumCorrect ? '<span class="status-ok">Yes</span>' : '<span class="status-error">No</span>'}</td>`;
+        html += `<td>${allChecks ? '<span class="status-ok">OK</span>' : '<span class="status-error">ISSUE</span>'}</td>`;
+        html += `</tr>`;
+      });
+
+      html += '</tbody></table></div>';
+
+      if (allOk) {
+        html += '<p class="status-ok" style="margin-top:10px">All picking slips are correctly linked!</p>';
+      } else {
+        html += '<p class="status-warn" style="margin-top:10px">Some picking slips have issues. Check the table above.</p>';
+      }
+
+      // Summary
+      html += '<h2>Summary</h2>';
+      const linkedOrders = orders.filter(o => o.status !== 'cancelled' && invoices.find(i => i.orderId == o.id));
+      const withDn = linkedOrders.filter(o => {
+        const inv = invoices.find(i => i.orderId == o.id);
+        return inv && inv.deliveryNoteNumber && inv.deliveryNoteNumber === `DN-${o.orderNumber}`;
+      });
+
+      html += `<p>Total active orders: ${linkedOrders.length}</p>`;
+      html += `<p>Orders with correct DN link: <span class="status-ok">${withDn.length}</span></p>`;
+      html += `<p>Orders with missing or wrong DN: <span class="${withDn.length === linkedOrders.length ? 'status-ok' : 'status-error'}">${linkedOrders.length - withDn.length}</span></p>`;
+
+      el.innerHTML = html;
+
+    } catch (e) {
+      el.innerHTML = '<p class="status-error">Error: ' + e.message + '</p>';
+    }
+  }, 100);
+}
+</script>
+</body>
+</html>

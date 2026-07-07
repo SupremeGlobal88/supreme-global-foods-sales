@@ -542,3 +542,4 @@ export function initAutoSync(): () => void {
   };
   return autoSyncCleanup;
 }
+// Built: 2026-07-07T16:33:54Z

@@ -47,7 +47,11 @@ function ProductPickerModal({
   useEffect(() => {
     if (isOpen) {
       setSearch("");
-      setTimeout(() => searchRef.current?.focus(), 100);
+      // Only auto-focus on desktop — mobile keyboard pushes modal up
+      const isMobile = window.innerWidth < 768 || "ontouchstart" in window;
+      if (!isMobile) {
+        setTimeout(() => searchRef.current?.focus(), 100);
+      }
     }
   }, [isOpen]);
 
@@ -117,39 +121,48 @@ function ProductPickerModal({
             const avail = availableStock[s.id] || 0;
             const isOutOfStock = avail <= 0;
             const isSelected = selectedId === s.id;
+            const canSelect = !isOutOfStock || isSelected;
             return (
-              <button
+              <div
                 key={s.id}
-                onClick={() => {
-                  if (!isOutOfStock || isSelected) {
+                onPointerUp={(e) => {
+                  // Only select if user actually tapped (minimal movement)
+                  if (canSelect) {
                     onSelect(s.id);
                     onClose();
                   }
                 }}
-                className="w-full text-left p-4 border-b transition-colors cursor-pointer"
+                className="w-full text-left border-b select-none"
                 style={{
                   borderColor: "#18191A",
                   backgroundColor: isSelected ? "rgba(212, 168, 67, 0.12)" : "transparent",
                   opacity: isOutOfStock && !isSelected ? 0.5 : 1,
+                  minHeight: 56,
+                  padding: "12px 16px",
+                  cursor: canSelect ? "pointer" : "not-allowed",
+                  touchAction: "manipulation",
+                  WebkitTapHighlightColor: "rgba(212,168,67,0.2)",
                 }}
+                role="button"
+                aria-label={`${s.productName}, ${avail} available`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between pointer-events-none">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span
-                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: isOutOfStock ? "#EF4444" : "#4ADE80" }}
                       />
                       <span className="text-sm font-body font-medium text-[#E8E8E9] truncate">
                         {s.productName}
                       </span>
                       {isSelected && (
-                        <span className="status-badge text-xs flex-shrink-0" style={{ backgroundColor: "rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
+                        <span className="text-xs flex-shrink-0 px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
                           Selected
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1 ml-4">
+                    <div className="flex items-center gap-3 mt-1 ml-[18px]">
                       <span className="text-xs text-[#8A8B8C] font-mono-data">{s.productCode}</span>
                       <span className="text-xs text-[#8A8B8C]">{s.category}</span>
                     </div>
@@ -161,7 +174,7 @@ function ProductPickerModal({
                     <div className="text-xs text-[#8A8B8C]">SOH: {s.quantity || 0}</div>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>

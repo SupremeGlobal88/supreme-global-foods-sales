@@ -2038,23 +2038,46 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
     { id: 12, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888" },
   ];
 
+  const ADMIN_ALIASES = ["admin", "administrator", "superadmin"];
+  const typedName = name.toLowerCase().trim();
+
   // 1. Check stored users FIRST (so User Management additions work without code changes)
   try {
     const raw = localStorage.getItem("sgf_users");
     if (raw) {
       const stored = JSON.parse(raw);
+      // Exact name match
       const found = stored.find(
-        (x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false
+        (x: any) => x.name?.toLowerCase() === typedName && x.pin === pin && x.isActive !== false
       );
       if (found) {
         return { id: found.id, name: found.name, email: found.email, role: found.role };
       }
+      // Admin alias match — check if any stored user has this PIN and is admin
+      if (ADMIN_ALIASES.includes(typedName)) {
+        const adminFound = stored.find(
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && x.pin === pin && x.isActive !== false
+        );
+        if (adminFound) {
+          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role };
+        }
+      }
     }
   } catch { /* ignore */ }
 
-  // 2. Check hardcoded defaults (fallback — survives data clears)
+  // 2. Allow "admin" as a generic alias — match against ANY hardcoded admin/super_admin PIN
+  if (ADMIN_ALIASES.includes(typedName)) {
+    const adminMatch = DEFAULT_USERS.find(
+      (u) => (u.role === "admin" || u.role === "super_admin") && u.pin === pin
+    );
+    if (adminMatch) {
+      return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role };
+    }
+  }
+
+  // 3. Check hardcoded defaults (fallback — survives data clears)
   const fromDefaults = DEFAULT_USERS.find(
-    (u) => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin
+    (u) => u.name.toLowerCase() === typedName && u.pin === pin
   );
   if (fromDefaults) {
     // Repair stored users if needed

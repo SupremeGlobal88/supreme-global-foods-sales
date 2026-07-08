@@ -130,7 +130,18 @@ function load() {
 }
 
 function saveItem(key: string, value: any) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e: any) {
+    // Quota exceeded - clear non-essential data and retry
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      const itemsToClear = ["sgf_audit_log", "sgf_activity_log", "sgf_receipts", "sgf_creditNotes", "fix-invoice-backup", "sgf_invoice_backups"];
+      for (const itemKey of itemsToClear) {
+        try { localStorage.removeItem(itemKey); } catch { /* ignore */ }
+      }
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+    }
+  }
 }
 
 function logAudit(action: string, entityType: string, entityId: number | string, details: string, userName?: string) {

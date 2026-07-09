@@ -66,9 +66,9 @@ export function createLocalLink() {
               case "customer.getCustomersNeedingFollowUp": result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
               case "order.list": result = dataService.order.list(); break;
               case "order.getById": result = dataService.order.getById(input); break;
-              case "order.create": result = dataService.order.create(input); fbPush("order", result); pushInvoices(dataService.invoice.list()); break;
+              case "order.create": result = dataService.order.create(input); fbPush("order", result); { const inv = dataService.invoice.list().find((i: any) => i.orderId == result.id); if (inv) pushInvoice(inv); } break;
               case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); fbPush("order", result); break; }
-              case "order.updateStatus": result = dataService.order.updateStatus(input); fbPush("order", result); pushInvoices(dataService.invoice.list()); break;
+              case "order.updateStatus": result = dataService.order.updateStatus(input); fbPush("order", result); { const inv = dataService.invoice.list().find((i: any) => i.orderId == result.id); if (inv) pushInvoice(inv); } break;
               case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
               case "order.getStats": result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;

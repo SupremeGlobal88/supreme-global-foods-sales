@@ -205,7 +205,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
       const snapshot = await get(ref(db, path));
       const data = fbToArray(snapshot.val());
       if (data.length > 0) {
-        const merged = mergeWithLocal(storageKey, data);
+        const merged = replaceWithCloudData(storageKey, data);
         localStorage.setItem(storageKey, JSON.stringify(merged));
       }
       counts[path] = data.length;
@@ -236,26 +236,11 @@ function fbToArray(data: any): any[] {
   return Object.values(data);
 }
 
-/** Merge Firebase data with localStorage data — preserves local items that haven't been synced yet */
-function mergeWithLocal(key: string, incoming: any[]): any[] {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return incoming;
-    const local = JSON.parse(raw) as any[];
-    if (!Array.isArray(local) || local.length === 0) return incoming;
-    // Build map of local items by id
-    const merged = new Map<number, any>();
-    for (const item of local) {
-      if (item && item.id !== undefined) merged.set(item.id, item);
-    }
-    // Overlay Firebase items (newer data from other devices)
-    for (const item of incoming) {
-      if (item && item.id !== undefined) merged.set(item.id, item);
-    }
-    return Array.from(merged.values());
-  } catch {
-    return incoming;
-  }
+/** Replace localStorage with Firebase data — Firebase is the single source of truth */
+function replaceWithCloudData(key: string, incoming: any[]): any[] {
+  // Firebase data is the source of truth. Local data is overwritten.
+  // This ensures all devices see exactly the same data.
+  return incoming;
 }
 
 export function subscribeToCustomers(onData?: (customers: any[]) => void): () => void {
@@ -265,7 +250,7 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
     const data = snapshot.val();
     const customers = fbToArray(data);
     if (customers.length > 0) {
-      const merged = mergeWithLocal("sgf_customers", customers);
+      const merged = replaceWithCloudData("sgf_customers", customers);
       try {
         localStorage.setItem("sgf_customers", JSON.stringify(merged));
         console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud");
@@ -284,7 +269,7 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
     const data = snapshot.val();
     const stock = fbToArray(data);
     if (stock.length > 0) {
-      const merged = mergeWithLocal("sgf_products", stock);
+      const merged = replaceWithCloudData("sgf_products", stock);
       try {
         localStorage.setItem("sgf_products", JSON.stringify(merged));
         console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
@@ -307,7 +292,7 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
     const data = snapshot.val();
     const orders = fbToArray(data);
     if (orders.length > 0) {
-      const merged = mergeWithLocal("sgf_orders", orders);
+      const merged = replaceWithCloudData("sgf_orders", orders);
       try { localStorage.setItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(orders);
@@ -323,7 +308,7 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
     const data = snapshot.val();
     const checkins = fbToArray(data);
     if (checkins.length > 0) {
-      const merged = mergeWithLocal("sgf_checkins", checkins);
+      const merged = replaceWithCloudData("sgf_checkins", checkins);
       try { localStorage.setItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(checkins);
@@ -339,7 +324,7 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
     const data = snapshot.val();
     const appts = fbToArray(data);
     if (appts.length > 0) {
-      const merged = mergeWithLocal("sgf_appointments", appts);
+      const merged = replaceWithCloudData("sgf_appointments", appts);
       try { localStorage.setItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(appts);
@@ -355,7 +340,7 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
     const data = snapshot.val();
     const invoices = fbToArray(data);
     if (invoices.length > 0) {
-      const merged = mergeWithLocal("sgf_invoices", invoices);
+      const merged = replaceWithCloudData("sgf_invoices", invoices);
       try { localStorage.setItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(invoices);
@@ -371,7 +356,7 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
     const data = snapshot.val();
     const actions = fbToArray(data);
     if (actions.length > 0) {
-      const merged = mergeWithLocal("sgf_followUpActions", actions);
+      const merged = replaceWithCloudData("sgf_followUpActions", actions);
       try { localStorage.setItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(actions);
@@ -513,27 +498,11 @@ export function initAutoSync(): () => void {
   const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
     if (data && data.length > 0) {
       console.log(`[FirebaseSync] Received ${data.length} ${type}`);
-      // Write received data to localStorage so it persists
+      // Firebase is the single source of truth — replace localStorage entirely
       try {
-        const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
-        const existingIds = new Set(existing.map((item: any) => item.id));
-        // Merge: add new items, update existing ones
-        for (const item of data) {
-          if (item && item.id) {
-            const idx = existing.findIndex((e: any) => e.id === item.id);
-            if (idx >= 0) {
-              // Update if Firebase item is newer (has _syncedAt)
-              if (item._syncedAt && (!existing[idx]._syncedAt || item._syncedAt > existing[idx]._syncedAt)) {
-                existing[idx] = item;
-              }
-            } else {
-              existing.push(item);
-            }
-          }
-        }
-        localStorage.setItem(storageKey, JSON.stringify(existing));
+        localStorage.setItem(storageKey, JSON.stringify(data));
       } catch (e) {
-        console.warn("[FirebaseSync] Failed to merge", type, e);
+        console.warn("[FirebaseSync] Failed to replace", type, e);
       }
       dataServiceRefresh?.();
       if (["orders", "checkins", "appointments", "invoices", "customers", "stock"].includes(type)) {

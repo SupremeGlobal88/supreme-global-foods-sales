@@ -6,7 +6,7 @@ import { createLocalLink } from "@/lib/localLink";
 
 export const trpc = createTRPCReact<AppRouter>();
 
-const queryClient = new QueryClient();
+export const queryClient = new QueryClient();
 const trpcClient = trpc.createClient({
   links: [createLocalLink()],
 });

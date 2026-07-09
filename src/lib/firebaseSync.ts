@@ -511,7 +511,7 @@ export function initAutoSync(): () => void {
         console.warn("[FirebaseSync] Failed to merge", type, e);
       }
       dataServiceRefresh?.();
-      if (["orders", "checkins", "appointments"].includes(type)) {
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;

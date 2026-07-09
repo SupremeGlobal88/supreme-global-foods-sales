@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
+import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/Layout";
@@ -70,6 +71,8 @@ function checkUrlForFirebaseConfig() {
 }
 
 export default function App() {
+  const utils = trpc.useUtils();
+
   useEffect(() => {
     checkUrlForFirebaseConfig();
     // Register dataService reload so Firebase can refresh in-memory data after cloud download
@@ -79,6 +82,19 @@ export default function App() {
     const unsub = initAutoSync();
     return () => { unsub(); };
   }, []);
+
+  // When Firebase data changes, invalidate tRPC queries so UI refreshes automatically
+  useEffect(() => {
+    const handler = (e: any) => {
+      const type = e.detail?.type;
+      if (type === "invoices") utils.invoice.list.invalidate();
+      if (type === "orders") { utils.order.list.invalidate(); utils.order.getStats.invalidate(); }
+      if (type === "customers") utils.customer.search.invalidate();
+      if (type === "stock") { utils.stock.list.invalidate(); utils.stock.search.invalidate(); }
+    };
+    window.addEventListener("firebaseDataReceived", handler);
+    return () => window.removeEventListener("firebaseDataReceived", handler);
+  }, [utils]);
 
   return (
     <Routes>

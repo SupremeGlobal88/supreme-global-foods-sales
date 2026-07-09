@@ -1,9 +1,9 @@
 import { dataService } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushFollowUpAction, isFirebaseReady } from "./firebaseSync";
+import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushFollowUpAction, pushUser, pushUserDelete, isFirebaseReady } from "./firebaseSync";
 
 /** Push data to Firebase after local write. Static import ensures reliability. */
-function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer", item: any) {
+function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
   if (!isFirebaseReady()) return;
   try {
     switch (type) {
@@ -28,6 +28,8 @@ function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "custome
         pushCustomers(customers);
         break;
       }
+      case "user": pushUser(item); break;
+      case "userDeleted": pushUserDelete(item); break;
     }
   } catch { /* Firebase not configured, ignore */ }
 }
@@ -113,10 +115,10 @@ export function createLocalLink() {
               case "checkIn.delete": result = dataService.checkin.delete(input); fbPush("checkinDeleted", input); break;
               case "checkIn.checkout": result = dataService.checkin.checkout(input); fbPush("checkin", result); break;
               case "checkIn.getStats": result = dataService.checkin.getStats(); break;
-      case "followUpAction.list": result = dataService.followUpAction.list(); break;
-      case "followUpAction.listByCustomer": result = dataService.followUpAction.listByCustomer(input); break;
-      case "followUpAction.create": result = dataService.followUpAction.create(input); fbPush("followUpAction", result); break;
-      case "followUpAction.getStats": result = dataService.followUpAction.getStats(); break;
+              case "followUpAction.list": result = dataService.followUpAction.list(); break;
+              case "followUpAction.listByCustomer": result = dataService.followUpAction.listByCustomer(input); break;
+              case "followUpAction.create": result = dataService.followUpAction.create(input); pushFollowUpAction(result); break;
+              case "followUpAction.getStats": result = dataService.followUpAction.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); fbPush("specialPrice", result); break;
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); fbPush("specialPriceDeleted", input); break;

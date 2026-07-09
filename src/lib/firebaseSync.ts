@@ -181,6 +181,16 @@ export async function pushStock(stock: any[]): Promise<void> {
   try { await set(ref(db, "stock"), stock); } catch { /* ignore */ }
 }
 
+export async function pushUser(user: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `users/${user.id}`), { ...user, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+
+export async function pushUserDelete(userId: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `users/${userId}`), null); } catch { /* ignore */ }
+}
+
 // =============================================================================
 // MANUAL PULL: Force-fetch all data from Firebase into localStorage
 // =============================================================================
@@ -385,7 +395,7 @@ export async function syncAllLocalData(localData: {
 
   // Push orders one at a time
   for (const o of localData.orders) {
-    try { await fbPush("order", o); result.orders++; } catch (e) { console.error("[sync] order failed:", o.id, e); }
+    try { await pushOrder(o); result.orders++; } catch (e) { console.error("[sync] order failed:", o.id, e); }
   }
 
   // Push checkins one at a time

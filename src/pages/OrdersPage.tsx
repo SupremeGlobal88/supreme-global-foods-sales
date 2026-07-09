@@ -238,6 +238,7 @@ export default function OrdersPage() {
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
     },
   });
   const createOrder = trpc.order.create.useMutation({
@@ -248,6 +249,7 @@ export default function OrdersPage() {
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
     },
   });
@@ -259,6 +261,7 @@ export default function OrdersPage() {
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
     },
     onError: (err: any) => {

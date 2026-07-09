@@ -9,10 +9,10 @@ export default function SampleReportsPage() {
 
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
 
-  const { data: report } = trpc.sampleReport.getAll.useQuery();
+  const { data: report } = trpc.sampleReport.getAll.useQuery(undefined, { refetchOnWindowFocus: true });
   const { data: customerReport } = trpc.sampleReport.getByCustomer.useQuery(
     { customerId: selectedCustomer || 0 },
-    { enabled: !!selectedCustomer }
+    { enabled: !!selectedCustomer, refetchOnWindowFocus: true }
   );
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
 

@@ -200,6 +200,7 @@ export default function OrdersPage() {
   const utils = trpc.useUtils();
 
   const [activeTab, setActiveTab] = useState("all");
+  const [orderSearch, setOrderSearch] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
@@ -654,6 +655,17 @@ export default function OrdersPage() {
       if (activeTab === "sample") return o.orderType === "sample";
       return o.status === activeTab;
     })
+    .filter((o) => {
+      if (!orderSearch.trim()) return true;
+      const q = orderSearch.toLowerCase();
+      return (
+        (o.orderNumber || "").toLowerCase().includes(q) ||
+        (o.customer?.name || "").toLowerCase().includes(q) ||
+        (o.customerName || "").toLowerCase().includes(q) ||
+        (o.status || "").toLowerCase().includes(q) ||
+        (o.invoiceNumber || "").toLowerCase().includes(q)
+      );
+    })
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const orderCheck = editingOrder && isAdmin ? canEditOrderBasic() : canPlaceOrder();
 
@@ -682,6 +694,20 @@ export default function OrdersPage() {
         {statusTabs.map((tab) => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === tab.key ? "#D4A843" : "#18191A", color: activeTab === tab.key ? "#0A0A0B" : "#8A8B8C", border: activeTab === tab.key ? "none" : "1px solid #2A2B2C" }}>{tab.label}</button>
         ))}
+      </div>
+
+      <div className="relative">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
+        <input
+          type="text"
+          value={orderSearch}
+          onChange={(e) => setOrderSearch(e.target.value)}
+          placeholder="Search by order number, customer name, status or invoice number..."
+          className="w-full bg-[#18191A] border border-[#2A2B2C] rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-[#555] focus:outline-none focus:border-[#D4A843]"
+        />
+        {orderSearch && (
+          <button onClick={() => setOrderSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8B8C] hover:text-white text-xs">Clear</button>
+        )}
       </div>
 
       <div className="card-surface overflow-hidden">

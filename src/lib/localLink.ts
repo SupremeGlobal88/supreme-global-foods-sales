@@ -50,10 +50,10 @@ export function createLocalLink() {
               case "stock.getCategories": result = dataService.stock.getCategories(); break;
               case "stock.getStats": result = dataService.stock.getStats(); break;
               case "stock.getDailyInvoicedStock": result = dataService.stock.getDailyInvoicedStock(input || {}); break;
-              case "stock.create": result = dataService.stock.create(input); break;
-              case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); break; }
-              case "stock.delete": result = dataService.stock.delete(input); break;
-              case "stock.bulkUpload": { const items = input || []; const { created, updated } = dataService.stock.bulkCreate(items); result = { count: created + updated, created, updated }; break; }
+              case "stock.create": result = dataService.stock.create(input); pushStock(dataService.stock.list()); break;
+              case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); pushStock(dataService.stock.list()); break; }
+              case "stock.delete": result = dataService.stock.delete(input); pushStock(dataService.stock.list()); break;
+              case "stock.bulkUpload": { const items = input || []; const { created, updated } = dataService.stock.bulkCreate(items); result = { count: created + updated, created, updated }; pushStock(dataService.stock.list()); break; }
               case "customer.list": result = dataService.customer.list(); break;
               case "customer.search": result = dataService.customer.search(input || { query: "" }); break;
               case "customer.getById": result = dataService.customer.getById(input); break;
@@ -78,9 +78,9 @@ export function createLocalLink() {
               case "invoice.create": result = dataService.invoice.create(input); fbPush("invoice", result); break;
               case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); fbPush("invoice", result); break;
               case "invoice.update": result = dataService.invoice.updateInvoice(input); fbPush("invoice", result); break;
-              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); break;
-              case "invoice.editPayment": result = dataService.invoice.editPayment(input); break;
-              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); break;
+              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
+              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
+              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
               case "invoice.getCustomerStatement": result = dataService.invoice.getCustomerStatement(input); break;
               case "invoice.getStats": result = dataService.invoice.getStats(); break;
               case "invoice.getReceipts": result = dataService.invoice.getReceipts(); break;
@@ -91,16 +91,16 @@ export function createLocalLink() {
               case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
-              case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); break;
-              case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); break;
+              case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
+              case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
               case "user.list": result = dataService.user.list(); break;
               case "user.getById": result = dataService.user.getById(input); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
-              case "user.create": result = dataService.user.create(input); break;
-              case "user.update": { const { id, ...data } = input; result = dataService.user.update({ id, data }); break; }
-              case "user.delete": result = dataService.user.delete(input); break;
-              case "user.toggleActive": result = dataService.user.toggleActive(input); break;
-              case "user.resetPin": result = dataService.user.resetPin(input); break;
+              case "user.create": result = dataService.user.create(input); fbPush("user", result); break;
+              case "user.update": { const { id, ...data } = input; result = dataService.user.update({ id, data }); fbPush("user", result); break; }
+              case "user.delete": result = dataService.user.delete(input); fbPush("userDeleted", input); break;
+              case "user.toggleActive": result = dataService.user.toggleActive(input); fbPush("user", result); break;
+              case "user.resetPin": result = dataService.user.resetPin(input); fbPush("user", result); break;
               case "appointment.list": result = dataService.appointment.list(); break;
               case "appointment.create": result = dataService.appointment.create(input); fbPush("appointment", result); break;
               case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); fbPush("appointment", result); break;
@@ -114,8 +114,8 @@ export function createLocalLink() {
       case "followUpAction.create": result = dataService.followUpAction.create(input); fbPush("followUpAction", result); break;
       case "followUpAction.getStats": result = dataService.followUpAction.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
-              case "specialPrice.set": result = dataService.specialPrice.set(input); break;
-              case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
+              case "specialPrice.set": result = dataService.specialPrice.set(input); fbPush("specialPrice", result); break;
+              case "specialPrice.delete": result = dataService.specialPrice.delete(input); fbPush("specialPriceDeleted", input); break;
               case "salesRep.list": result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
@@ -124,7 +124,7 @@ export function createLocalLink() {
               case "audit.getCustomerDeletions": result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": result = dataService.audit.getAddressChanges(); break;
               case "followUp.list": result = dataService.followUp.list(); break;
-              case "followUp.update": result = dataService.followUp.update(input); break;
+              case "followUp.update": result = dataService.followUp.update(input); fbPush("followUp", result); break;
               case "followUp.getStats": result = dataService.followUp.getStats(); break;
               case "sampleReport.getByCustomer": result = dataService.sampleReport.getByCustomer(input); break;
               case "sampleReport.getAll": result = dataService.sampleReport.getAll(); break;
@@ -132,10 +132,10 @@ export function createLocalLink() {
               case "collections.getDailyReport": result = dataService.collections.getDailyReport(); break;
               case "collections.getStats": result = dataService.collections.getStats(); break;
               case "collections.getCustomerPaymentHistory": result = dataService.collections.getCustomerPaymentHistory(input); break;
-              case "collections.addNote": result = dataService.collections.addNote(input); break;
-              case "collections.recordPromise": result = dataService.collections.recordPromise(input); break;
-              case "collections.placeHold": result = dataService.collections.placeHold(input); break;
-              case "collections.releaseHold": result = dataService.collections.releaseHold(input); break;
+              case "collections.addNote": result = dataService.collections.addNote(input); fbPush("collection", result); break;
+              case "collections.recordPromise": result = dataService.collections.recordPromise(input); fbPush("collection", result); break;
+              case "collections.placeHold": result = dataService.collections.placeHold(input); fbPush("collection", result); break;
+              case "collections.releaseHold": result = dataService.collections.releaseHold(input); fbPush("collection", result); break;
               default: console.warn("[localLink] Unhandled:", path, input); result = null;
             }
 

@@ -12,7 +12,9 @@ import {
   Trash2,
   Wrench,
   Hash,
+  FileText,
 } from "lucide-react";
+import { trpc } from "@/providers/trpc";
 import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
 import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
@@ -57,6 +59,23 @@ function loadSettings<T>(key: string, defaults: T): T {
 
 export default function SettingsPage() {
   const { isAdmin, isSuperAdmin } = useRole();
+  const utils = trpc.useUtils();
+  const generateMissingInvoices = trpc.order.generateMissingInvoices.useMutation({
+    onSuccess: async (result) => {
+      await utils.invoice.list.invalidate();
+      await utils.order.list.invalidate();
+      if (result.created > 0) {
+        setSyncMessage(`Generated ${result.created} missing invoices: ${result.details.join(", ")}`);
+      } else {
+        setSyncMessage("No missing invoices found.");
+      }
+      setTimeout(() => setSyncMessage(""), 8000);
+    },
+    onError: (e) => {
+      setSyncMessage("Error: " + e.message);
+      setTimeout(() => setSyncMessage(""), 5000);
+    },
+  });
   const [saved, setSaved] = useState(false);
 
   const [company, setCompany] = useState(() => loadSettings("sgf_settings_company", DEFAULT_COMPANY));
@@ -471,6 +490,18 @@ export default function SettingsPage() {
             >
               <Hash className="w-4 h-4" /> Fix Duplicate SGF Numbers
             </button>
+            <button
+              onClick={() => {
+                setSyncMessage("Scanning for missing invoices...");
+                generateMissingInvoices.mutate();
+              }}
+              className="btn-secondary text-sm w-full mt-3"
+            >
+              <FileText className="w-4 h-4" /> Generate Missing Invoices
+            </button>
+            <p className="text-[10px] text-[#8A8B8C] mt-1">
+              Scans all orders and creates SGF invoices for any missing ones. Results are pushed to the cloud automatically.
+            </p>
             <p className="text-[10px] text-[#8A8B8C]">
               Safety net: scans all invoices. Only fixes if duplicates are found. Safe to run anytime — does nothing if all invoices are clean.
             </p>

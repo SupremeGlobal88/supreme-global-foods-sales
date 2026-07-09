@@ -442,6 +442,36 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   return createInvoiceFromOrder(order, subtotal, vatAmount, total, false);
 }
 
+/** Generate invoices for all orders that don't have one. Returns count created. */
+export function generateMissingInvoices(): { created: number; details: string[] } {
+  load();
+  let created = 0;
+  const details: string[] = [];
+
+  for (const order of orders) {
+    // Use loose equality (==) because Firebase may convert number IDs to strings
+    const existing = invoices.find((i) => i.orderId == order.id && i.invoiceNumber && i.invoiceNumber.startsWith("SGF"));
+    if (!existing) {
+      const items = order.items || [];
+      const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+      const vatAmount = subtotal * 0.15;
+      const total = subtotal + vatAmount;
+      const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
+      const invNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
+      if (invNum) {
+        created++;
+        details.push(`${order.orderNumber} -> ${invNum}`);
+      }
+    }
+  }
+
+  if (created > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+
+  return { created, details };
+}
+
 /** Update an existing invoice when its order is edited */
 function updateInvoiceFromOrder(order: any) {
   const idx = invoices.findIndex((i) => i.orderId === order.id);

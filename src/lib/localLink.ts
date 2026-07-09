@@ -72,6 +72,7 @@ export function createLocalLink() {
               case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
               case "order.getStats": result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
+              case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { pushInvoice(inv); } break;
               case "invoice.list": result = dataService.invoice.list(); break;
               case "invoice.getById": result = dataService.invoice.getById(input); break;
               case "invoice.create": result = dataService.invoice.create(input); fbPush("invoice", result); break;

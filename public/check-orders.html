@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order-Invoice Link Check</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:10pt;padding:20px;background:#f5f5f5}
+.box{background:#fff;padding:15px;margin-bottom:15px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+h1{font-size:14pt;color:#1a1a1a;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:9pt}
+th{background:#1a1a1a;color:#fff;padding:8px;text-align:left}
+td{padding:6px 8px;border-bottom:1px solid #e5e5e5}
+.ok{background:#c6f6d5;font-weight:700;color:#22543d}
+.missing{background:#fed7d7;color:#742a2a}
+.pending{background:#fefcbf}
+.num{font-family:'Courier New',monospace}
+</style>
+</head>
+<body>
+<h1>Order-Invoice Link Check</h1>
+<div class="box">
+<table>
+<thead><tr><th>Order #</th><th>Customer</th><th>Total</th><th>Invoice #</th><th>Status</th></tr></thead>
+<tbody id="out"></tbody>
+</table>
+</div>
+<script>
+const orders=JSON.parse(localStorage.getItem('sgf_orders')||'[]');
+const invoices=JSON.parse(localStorage.getItem('sgf_invoices')||'[]');
+const out=document.getElementById('out');
+
+// Check sample orders SMP-20260708-0007 to 0012
+const sampleNums=['SMP-20260708-0007','SMP-20260708-0008','SMP-20260708-0009','SMP-20260708-0010','SMP-20260708-0011','SMP-20260708-0012'];
+
+// Also check regular orders ORD-20260708-0030 to 0033
+const regularNums=['ORD-20260708-0030','ORD-20260708-0031','ORD-20260708-0032','ORD-20260708-0033'];
+
+const allNums=[...sampleNums,...regularNums];
+
+allNums.forEach(on=>{
+  const order=orders.find(o=>o.orderNumber===on);
+  if(!order)return;
+  
+  const inv=invoices.find(i=>i.orderId==order.id);
+  const tr=document.createElement('tr');
+  
+  if(inv&&inv.invoiceNumber&&inv.invoiceNumber.startsWith('SGF')){
+    tr.className='ok';
+    tr.innerHTML=`<td class="num">${on}</td><td>${order.customerName||'-'}</td><td>R ${(order.total||0).toFixed(2)}</td><td class="num">${inv.invoiceNumber}</td><td>LINKED</td>`;
+  }else if(inv){
+    tr.className='pending';
+    tr.innerHTML=`<td class="num">${on}</td><td>${order.customerName||'-'}</td><td>R ${(order.total||0).toFixed(2)}</td><td class="num">${inv.invoiceNumber||'N/A'}</td><td>Invoice exists but no SGF#</td>`;
+  }else{
+    tr.className='missing';
+    tr.innerHTML=`<td class="num">${on}</td><td>${order.customerName||'-'}</td><td>R ${(order.total||0).toFixed(2)}</td><td class="num">N/A</td><td>NO INVOICE - Lost</td>`;
+  }
+  out.appendChild(tr);
+});
+
+// Summary row
+const totalChecked=allNums.length;
+const linked=invoices.filter(i=>allNums.some(on=>{
+  const o=orders.find(x=>x.orderNumber===on);
+  return o&&i.orderId==o.id&&i.invoiceNumber&&i.invoiceNumber.startsWith('SGF');
+})).length;
+
+const tr=document.createElement('tr');
+tr.style.fontWeight='700';
+tr.style.background='#f0f0f0';
+tr.innerHTML=`<td colspan="5">Summary: ${linked} of ${totalChecked} orders have SGF invoices linked</td>`;
+out.appendChild(tr);
+</script>
+</body>
+</html>

@@ -1487,6 +1487,16 @@ export const dataService = {
       saveItem("sgf_appointments", appointments);
       return newItem;
     },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = appointments.findIndex((a) => a.id === id);
+      if (idx >= 0) { appointments[idx] = { ...appointments[idx], ...data, updatedAt: new Date().toISOString() }; saveItem("sgf_appointments", appointments); return appointments[idx]; }
+      return null;
+    },
+    delete: (id: number) => {
+      const idx = appointments.findIndex((a) => a.id === id);
+      if (idx >= 0) { const deleted = appointments[idx]; appointments.splice(idx, 1); saveItem("sgf_appointments", appointments); return deleted; }
+      return null;
+    },
     updateStatus: ({ id, status }: { id: number; status: string }) => {
       const idx = appointments.findIndex((a) => a.id === id);
       if (idx >= 0) { appointments[idx].status = status; saveItem("sgf_appointments", appointments); return appointments[idx]; }
@@ -1505,6 +1515,16 @@ export const dataService = {
       ...ci,
       customer: customers.find((c) => c.id === ci.customerId) || null,
     })),
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = checkins.findIndex((c) => c.id === id);
+      if (idx >= 0) { checkins[idx] = { ...checkins[idx], ...data, updatedAt: new Date().toISOString() }; saveItem("sgf_checkins", checkins); return checkins[idx]; }
+      return null;
+    },
+    delete: (id: number) => {
+      const idx = checkins.findIndex((c) => c.id === id);
+      if (idx >= 0) { const deleted = checkins[idx]; checkins.splice(idx, 1); saveItem("sgf_checkins", checkins); return deleted; }
+      return null;
+    },
     create: (data: any) => {
       const newItem = { ...data, id: Date.now(), status: "checked_in", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       // Auto-populate salesRepName from customer if not provided

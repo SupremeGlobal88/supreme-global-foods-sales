@@ -6,6 +6,7 @@ import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
   Navigation, User, Filter, ExternalLink, LogIn, LogOut,
   AlertTriangle, Phone, Briefcase, Search, ChevronDown, ChevronUp,
+  Edit, Trash2,
 } from "lucide-react";
 
 type MapTarget = { customerId: number; address: string } | null;
@@ -24,6 +25,10 @@ export default function AppointmentsPage() {
   // Schedule form
   const [showForm, setShowForm] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"existing" | "new">("existing");
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState<any>(null);
+  const [showEditCheckinForm, setShowEditCheckinForm] = useState(false);
+  const [editingCheckin, setEditingCheckin] = useState<any>(null);
   const [formData, setFormData] = useState({
     customerId: 0, title: "", notes: "",
     appointmentDate: new Date().toISOString().slice(0, 16),
@@ -89,6 +94,33 @@ export default function AppointmentsPage() {
       reloadFromStorage();
       await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
       setShowForm(false); resetForm();
+    },
+  });
+  const updateAppointment = trpc.appointment.update.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
+      setShowEditForm(false); setEditingAppointment(null); resetForm();
+    },
+  });
+  const deleteAppointment = trpc.appointment.delete.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
+    },
+  });
+  const updateCheckin = trpc.checkIn.update.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
+      setShowEditCheckinForm(false); setEditingCheckin(null);
+    },
+  });
+  const deleteCheckin = trpc.checkIn.delete.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
+      setShowEditCheckinForm(false); setEditingCheckin(null);
     },
   });
   const createCheckin = trpc.checkIn.create.useMutation({
@@ -419,9 +451,13 @@ export default function AppointmentsPage() {
                       </div>
                     )}
                     {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
-                    <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary w-full mt-3 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
-                      <LogOut className="w-4 h-4" /> Check Out
-                    </button>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary flex-1 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
+                        <LogOut className="w-4 h-4" /> Check Out
+                      </button>
+                      <button onClick={() => { setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="btn-secondary" title="Edit"><Edit className="w-4 h-4" /></button>
+                      <button onClick={() => { if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="btn-secondary" style={{ color: "#EF4444" }} title="Delete"><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -455,9 +491,13 @@ export default function AppointmentsPage() {
                         </div>
                         {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end gap-1">
                         <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Done</span>
-                        <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
+                        <div className="flex gap-1">
+                          <button onClick={(e) => { e.stopPropagation(); setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors p-1" title="Edit"><Edit className="w-3.5 h-3.5" /></button>
+                          <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors p-1" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                        <div className="text-xs text-[#8A8B8C]">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
                       </div>
                     </div>
 
@@ -520,7 +560,11 @@ export default function AppointmentsPage() {
                           <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
                           <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
                         </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
+                        <div className="flex items-center gap-2">
+                          <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
+                          <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                          <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
@@ -547,7 +591,11 @@ export default function AppointmentsPage() {
                           <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
                           <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
                         </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
+                        <div className="flex items-center gap-2">
+                          <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
+                          <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                          <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
@@ -871,6 +919,114 @@ export default function AppointmentsPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================== EDIT APPOINTMENT MODAL ===================== */}
+      {showEditForm && editingAppointment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><Edit className="w-5 h-5 text-[#D4A843]" /> Edit Appointment</h2>
+              <button onClick={() => { setShowEditForm(false); setEditingAppointment(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingAppointment) return;
+              updateAppointment.mutate({
+                id: editingAppointment.id,
+                data: {
+                  title: formData.title,
+                  notes: formData.notes,
+                  appointmentDate: formData.appointmentDate,
+                  location: formData.location,
+                  customerId: formData.customerId,
+                },
+              });
+            }} className="space-y-4">
+              <div>
+                <label className="label-text block mb-1.5">Customer</label>
+                <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
+                  <option value={0}>Select customer...</option>
+                  {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / Follow-up visit" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
+                <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+              </div>
+              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
+              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => { if (confirm("Delete this appointment?")) { deleteAppointment.mutate(editingAppointment.id); setShowEditForm(false); setEditingAppointment(null); } }} className="btn-secondary flex items-center gap-2" style={{ color: "#EF4444", borderColor: "#EF4444" }}><Trash2 className="w-4 h-4" /> Delete</button>
+                <button type="submit" className="btn-primary flex-1 justify-center" disabled={updateAppointment.isPending}>
+                  {updateAppointment.isPending ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== EDIT CHECK-IN MODAL ===================== */}
+      {showEditCheckinForm && editingCheckin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><Edit className="w-5 h-5 text-[#D4A843]" /> Edit Check-in</h2>
+              <button onClick={() => { setShowEditCheckinForm(false); setEditingCheckin(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingCheckin) return;
+              updateCheckin.mutate({
+                id: editingCheckin.id,
+                data: {
+                  notes: editingCheckin.notes,
+                  location: editingCheckin.location,
+                  outcome: editingCheckin.outcome,
+                },
+              });
+            }} className="space-y-4">
+              <div>
+                <label className="label-text block mb-1.5">Customer</label>
+                <div className="text-sm text-white font-body p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                  {editingCheckin.customer?.name || editingCheckin.location || "Unknown"}
+                </div>
+              </div>
+              <div>
+                <label className="label-text block mb-1.5">Sales Rep</label>
+                <div className="text-sm text-white font-body p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                  {editingCheckin.salesRepName || "Unknown"}
+                </div>
+              </div>
+              <div>
+                <label className="label-text block mb-1.5">Outcome</label>
+                <div className="flex gap-2">
+                  {(["visit", "order", "sample"] as const).map((o) => (
+                    <button
+                      key={o}
+                      type="button"
+                      onClick={() => setEditingCheckin({ ...editingCheckin, outcome: o })}
+                      className="flex-1 py-2 rounded-lg text-xs font-body font-medium capitalize cursor-pointer"
+                      style={{ backgroundColor: editingCheckin.outcome === o ? "#D4A843" : "#222324", color: editingCheckin.outcome === o ? "#0A0A0B" : "#8A8B8C" }}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={editingCheckin.location || ""} onChange={(e) => setEditingCheckin({ ...editingCheckin, location: e.target.value })} className="input-field" placeholder="e.g. Customer address" /></div>
+              <div><label className="label-text block mb-1.5">Notes</label><textarea value={editingCheckin.notes || ""} onChange={(e) => setEditingCheckin({ ...editingCheckin, notes: e.target.value })} className="input-field" rows={3} placeholder="Check-in notes..." /></div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => { if (confirm("Delete this check-in?")) { deleteCheckin.mutate(editingCheckin.id); setShowEditCheckinForm(false); setEditingCheckin(null); } }} className="btn-secondary flex items-center gap-2" style={{ color: "#EF4444", borderColor: "#EF4444" }}><Trash2 className="w-4 h-4" /> Delete</button>
+                <button type="submit" className="btn-primary flex-1 justify-center" disabled={updateCheckin.isPending}>
+                  {updateCheckin.isPending ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

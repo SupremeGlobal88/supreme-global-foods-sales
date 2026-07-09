@@ -103,10 +103,14 @@ export function createLocalLink() {
               case "user.resetPin": result = dataService.user.resetPin(input); fbPush("user", result); break;
               case "appointment.list": result = dataService.appointment.list(); break;
               case "appointment.create": result = dataService.appointment.create(input); fbPush("appointment", result); break;
+              case "appointment.update": { const { id, data } = input; result = dataService.appointment.update({ id, data }); fbPush("appointment", result); break; }
+              case "appointment.delete": result = dataService.appointment.delete(input); fbPush("appointmentDeleted", input); break;
               case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); fbPush("appointment", result); break;
               case "appointment.getStats": result = dataService.appointment.getStats(); break;
               case "checkIn.list": result = dataService.checkin.list(); break;
               case "checkIn.create": result = dataService.checkin.create(input); fbPush("checkin", result); break;
+              case "checkIn.update": { const { id, data } = input; result = dataService.checkin.update({ id, data }); fbPush("checkin", result); break; }
+              case "checkIn.delete": result = dataService.checkin.delete(input); fbPush("checkinDeleted", input); break;
               case "checkIn.checkout": result = dataService.checkin.checkout(input); fbPush("checkin", result); break;
               case "checkIn.getStats": result = dataService.checkin.getStats(); break;
       case "followUpAction.list": result = dataService.followUpAction.list(); break;

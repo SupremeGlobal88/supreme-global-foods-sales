@@ -16,57 +16,52 @@ button{padding:10px 20px;border:none;border-radius:4px;font-size:10pt;font-weigh
 .btn-go{background:#38a169;color:#fff}.btn-go:hover{background:#2f855a}
 .btn-refresh{background:#718096;color:#fff}
 .num{font-family:'Courier New',monospace}
+.status{margin:10px 0;padding:10px;border-radius:4px}
+.status-ok{background:#c6f6d5;color:#22543d}
+.status-err{background:#fed7d7;color:#742a2a}
+.status-info{background:#bee3f8;color:#2a4365}
 </style>
 </head>
 <body>
 <h1>Fix Missing Invoices</h1>
 <div class="box">
-<p>This tool finds orders without invoices and creates them with proper SGF numbers.</p>
-<button class="btn-go" onclick="scan()">Scan for Missing Invoices</button>
+<p>This tool finds orders without invoices, creates them, and pushes to the cloud.</p>
+<button class="btn-go" onclick="scan()">1. Scan for Missing Invoices</button>
 <button class="btn-refresh" onclick="location.reload()">Refresh</button>
 <div id="results"></div>
+<div id="fb-status"></div>
 </div>
+
+<!-- Load Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
 <script>
 const orders=JSON.parse(localStorage.getItem('sgf_orders')||'[]');
 const invoices=JSON.parse(localStorage.getItem('sgf_invoices')||'[]');
 const customers=JSON.parse(localStorage.getItem('sgf_customers')||'[]');
+const fbConfig=JSON.parse(localStorage.getItem('sgf_firebase_config')||'{}');
 
 function fmt(n){return 'R '+Number(n||0).toFixed(2)}
+function status(msg,cls){document.getElementById('fb-status').innerHTML='<div class="status status-'+cls+'">'+msg+'</div>';}
 
 function scan(){
   const missing=[];
-  orders.forEach(order=>{
-    const hasInvoice=invoices.some(i=>i.orderId==order.id&&i.invoiceNumber&&i.invoiceNumber.startsWith('SGF'));
-    if(!hasInvoice){
-      missing.push(order);
-    }
-  });
+  orders.forEach(o=>{if(!invoices.some(i=>i.orderId==o.id&&i.invoiceNumber&&i.invoiceNumber.startsWith('SGF')))missing.push(o);});
 
   let html='<table><thead><tr><th>Order #</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead><tbody>';
-  missing.forEach(o=>{
-    html+=`<tr class="missing"><td class="num">${o.orderNumber}</td><td>${o.customerName||'-'}</td><td>${fmt(o.total)}</td><td>NO INVOICE</td></tr>`;
-  });
+  missing.forEach(o=>{html+=`<tr class="missing"><td class="num">${o.orderNumber}</td><td>${o.customerName||'-'}</td><td>${fmt(o.total)}</td><td>NO INVOICE</td></tr>`;});
   html+='</tbody></table>';
 
-  if(missing.length===0){
-    html='<p style="color:#38a169;font-weight:700">All orders have SGF invoices! Nothing to fix.</p>';
-  }else{
-    html+=`<p><strong>${missing.length} orders missing invoices</strong></p>`;
-    html+='<button class="btn-go" onclick="fixAll()">Generate All Missing Invoices</button>';
-  }
+  if(missing.length===0){html='<p style="color:#38a169;font-weight:700">All orders have SGF invoices!</p>';}
+  else{html+=`<p><strong>${missing.length} orders missing invoices</strong></p><button class="btn-go" onclick="fixAndPush()">2. Generate & Push to Cloud</button>`;}
   document.getElementById('results').innerHTML=html;
 }
 
-function getNextSGF(){
-  let max=1800;
-  invoices.forEach(i=>{
-    const m=(i.invoiceNumber||'').match(/SGF(\d+)/);
-    if(m){const n=parseInt(m[1]);if(n>max)max=n;}
-  });
-  return 'SGF'+String(max+1);
-}
+function getNextSGF(){let max=1800;invoices.forEach(i=>{const m=(i.invoiceNumber||'').match(/SGF(\d+)/);if(m){const n=parseInt(m[1]);if(n>max)max=n;}});return'SGF'+String(max+1);}
 
-function fixAll(){
+async function fixAndPush(){
+  status('Generating invoices...','info');
   const missing=orders.filter(o=>!invoices.some(i=>i.orderId==o.id&&i.invoiceNumber&&i.invoiceNumber.startsWith('SGF')));
   let nextNum=getNextSGF();
   const created=[];
@@ -80,54 +75,37 @@ function fixAll(){
     const customer=customers.find(c=>c.id==order.customerId);
 
     const inv={
-      id:Date.now()+Math.random(),
-      orderId:order.id,
-      orderNumber:order.orderNumber,
-      invoiceNumber:nextNum,
-      deliveryNoteNumber:`DN-${order.orderNumber}`,
-      customerId:order.customerId,
-      customer:customer||null,
-      subtotal:isSample?0:subtotal,
-      vatAmount:isSample?0:vat,
-      total:isSample?0:total,
-      totalAmount:isSample?0:total,
-      balanceDue:isSample?0:total,
-      amountPaid:isSample?0:0,
-      status:isSample?'paid':'draft',
-      paymentTerms:order.paymentTerms||'cod',
-      invoiceDate:order.createdAt||new Date().toISOString(),
+      id:Date.now()+Math.random(),orderId:order.id,orderNumber:order.orderNumber,
+      invoiceNumber:nextNum,deliveryNoteNumber:'DN-'+order.orderNumber,
+      customerId:order.customerId,customer:customer||null,
+      subtotal:isSample?0:subtotal,vatAmount:isSample?0:vat,total:isSample?0:total,totalAmount:isSample?0:total,
+      balanceDue:isSample?0:total,amountPaid:isSample?0:0,status:isSample?'paid':'draft',
+      paymentTerms:order.paymentTerms||'cod',invoiceDate:order.createdAt||new Date().toISOString(),
       dueDate:order.createdAt||new Date().toISOString(),
-      notes:isSample?`Sample order - ${order.orderNumber} (No Charge)`:`Invoice for ${order.orderNumber}`,
-      items:items.map(it=>({
-        description:`${it.productCode} - ${it.productName}`,
-        quantity:it.quantity,
-        unitPrice:isSample?0:it.unitPrice,
-        lineTotal:isSample?0:it.lineTotal
-      })),
-      createdAt:order.createdAt||new Date().toISOString(),
-      updatedAt:new Date().toISOString()
+      notes:isSample?'Sample order - '+order.orderNumber+' (No Charge)':'Invoice for '+order.orderNumber,
+      items:items.map(it=>({description:it.productCode+' - '+it.productName,quantity:it.quantity,unitPrice:isSample?0:it.unitPrice,lineTotal:isSample?0:it.lineTotal})),
+      createdAt:order.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()
     };
-
-    invoices.push(inv);
-    created.push({order:order.orderNumber,invoice:nextNum});
-
-    // Increment SGF number
-    const m=nextNum.match(/SGF(\d+)/);
-    if(m) nextNum='SGF'+String(parseInt(m[1])+1);
+    invoices.push(inv);created.push({order:order.orderNumber,invoice:nextNum});
+    const m=nextNum.match(/SGF(\d+)/);if(m)nextNum='SGF'+String(parseInt(m[1])+1);
   });
 
-  // Save
   localStorage.setItem('sgf_invoices',JSON.stringify(invoices));
+  status(created.length+' invoices created. Now pushing to cloud...','info');
 
-  // Show results
-  let html='<h3>Invoices Created:</h3><table><thead><tr><th>Order</th><th>Invoice #</th></tr></thead><tbody>';
-  created.forEach(c=>{
-    html+=`<tr class="ok"><td class="num">${c.order}</td><td class="num">${c.invoice}</td></tr>`;
-  });
-  html+='</tbody></table>';
-  html+=`<p style="color:#38a169;font-weight:700">${created.length} invoices created and saved!</p>`;
-  html+='<p><strong>Next:</strong> Go to Settings and click "Push All Data to Cloud" to sync to Firebase.</p>';
-  document.getElementById('results').innerHTML=html;
+  // Push to Firebase
+  if(!fbConfig.apiKey||!fbConfig.databaseURL){status('No Firebase config found. Invoices saved locally. Go to app Settings and click "Push All Data to Cloud".','err');return;}
+
+  try{
+    if(!firebase.apps.length)firebase.initializeApp(fbConfig);
+    const db=firebase.database();
+    const updates={};
+    created.forEach((c,idx)=>{const inv=invoices.find(i=>i.invoiceNumber===c.invoice);if(inv)updates['invoices/'+inv.id]=inv;});
+    await db.ref().update(updates);
+    status('SUCCESS: '+created.length+' invoices pushed to cloud! They will appear on all devices automatically.','ok');
+  }catch(e){
+    status('Firebase push failed: '+e.message+'. Invoices saved locally. Go to app Settings and click "Push All Data to Cloud".','err');
+  }
 }
 </script>
 </body>

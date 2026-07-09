@@ -448,7 +448,11 @@ export default function OrdersPage() {
 
   function printPickingSlip(order: any) {
     const customer = getCustomer(order);
-    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
+    let matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
+    if (!matchedInvoice) {
+      const allInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
+      matchedInvoice = allInvoices.find((i: any) => i.orderId == order.id);
+    }
     const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
     const printWindow = window.open("", "_blank");
@@ -528,7 +532,11 @@ export default function OrdersPage() {
   function printCombinedInvoiceDelivery(order: any) {
     const customer = getCustomer(order);
     // Look up the actual SGF invoice number for this order
-    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
+    let matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
+    if (!matchedInvoice) {
+      const allInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
+      matchedInvoice = allInvoices.find((i: any) => i.orderId == order.id);
+    }
     const invoiceNumber = matchedInvoice?.invoiceNumber || `INV-${order.orderNumber}`;
     const deliveryNoteNumber = `DN-${order.orderNumber}`;
     const logoUrl = `${window.location.origin}/sgf-logo.png`;

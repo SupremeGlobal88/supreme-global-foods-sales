@@ -197,11 +197,11 @@ export default function SettingsPage() {
     const localInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
     const localCustomers = JSON.parse(localStorage.getItem("sgf_customers") || "[]");
     const localStock = JSON.parse(localStorage.getItem("sgf_products") || "[]");
-    await syncAllLocalData({ orders: localOrders, checkins: localCheckins, appointments: localAppointments, invoices: localInvoices });
+    const result = await syncAllLocalData({ orders: localOrders, checkins: localCheckins, appointments: localAppointments, invoices: localInvoices });
     if (localCustomers.length > 0) await pushCustomers(localCustomers);
     if (localStock.length > 0) await pushStock(localStock);
-    setSyncMessage("Synced to cloud! Sales reps will receive data automatically.");
-    setTimeout(() => setSyncMessage(""), 5000);
+    setSyncMessage(`Synced to cloud! ${result.invoices} invoices, ${result.orders} orders pushed. Sales reps will receive data automatically.`);
+    setTimeout(() => setSyncMessage(""), 8000);
   }
 
   function parseFirebaseConfig(input: string): any {

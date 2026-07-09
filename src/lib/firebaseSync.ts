@@ -379,16 +379,31 @@ export async function syncAllLocalData(localData: {
   checkins: any[];
   appointments: any[];
   invoices: any[];
-}): Promise<void> {
-  if (!isFirebaseReady()) return;
-  try {
-    const updates: Record<string, any> = {};
-    for (const o of localData.orders) updates[`orders/${o.id}`] = { ...o, _syncedAt: Date.now() };
-    for (const c of localData.checkins) updates[`checkins/${c.id}`] = { ...c, _syncedAt: Date.now() };
-    for (const a of localData.appointments) updates[`appointments/${a.id}`] = { ...a, _syncedAt: Date.now() };
-    for (const i of localData.invoices) updates[`invoices/${i.id}`] = { ...i, _syncedAt: Date.now() };
-    await update(ref(db), updates);
-  } catch { /* ignore */ }
+}): Promise<{ orders: number; checkins: number; appointments: number; invoices: number }> {
+  const result = { orders: 0, checkins: 0, appointments: 0, invoices: 0 };
+  if (!isFirebaseReady()) return result;
+
+  // Push orders one at a time
+  for (const o of localData.orders) {
+    try { await fbPush("order", o); result.orders++; } catch (e) { console.error("[sync] order failed:", o.id, e); }
+  }
+
+  // Push checkins one at a time
+  for (const c of localData.checkins) {
+    try { await pushCheckin(c); result.checkins++; } catch (e) { console.error("[sync] checkin failed:", c.id, e); }
+  }
+
+  // Push appointments one at a time
+  for (const a of localData.appointments) {
+    try { await pushAppointment(a); result.appointments++; } catch (e) { console.error("[sync] appointment failed:", a.id, e); }
+  }
+
+  // Push invoices one at a time (critical - don't batch 1900+ invoices)
+  for (const i of localData.invoices) {
+    try { await pushInvoice(i); result.invoices++; } catch (e) { console.error("[sync] invoice failed:", i.id, e); }
+  }
+
+  return result;
 }
 
 // =============================================================================

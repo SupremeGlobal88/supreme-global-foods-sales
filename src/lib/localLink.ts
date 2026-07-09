@@ -1,37 +1,32 @@
 import { dataService } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushFollowUpAction, pushUser, pushUserDelete, isFirebaseReady } from "./firebaseSync";
+import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushFollowUpAction, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
 
-/** Push data to Firebase after local write. Static import ensures reliability. */
-function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
+/** Push data to Firebase after local write. All pushes are awaited with error logging. */
+async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
   if (!isFirebaseReady()) return;
   try {
     switch (type) {
       case "order": {
-        pushOrder(item);
+        await pushOrder(item);
         // Also push the associated invoice so admin sees it
-        // Use setTimeout to ensure invoice is fully saved before push
-        setTimeout(() => {
-          try {
-            const invoices = dataService.invoice.list();
-            const inv = invoices.find((i: any) => i.orderId == item.id);
-            if (inv) pushInvoice(inv);
-          } catch { /* ignore */ }
-        }, 100);
+        const invoices = dataService.invoice.list();
+        const inv = invoices.find((i: any) => i.orderId == item.id);
+        if (inv) await pushInvoice(inv);
         break;
       }
-      case "appointment": pushAppointment(item); break;
-      case "checkin": pushCheckin(item); break;
-      case "invoice": pushInvoice(item); break;
+      case "appointment": await pushAppointment(item); break;
+      case "checkin": await pushCheckin(item); break;
+      case "invoice": await pushInvoice(item); break;
       case "customer": {
         const customers = dataService.customer.list();
-        pushCustomers(customers);
+        await pushCustomers(customers);
         break;
       }
-      case "user": pushUser(item); break;
-      case "userDeleted": pushUserDelete(item); break;
+      case "user": await pushUser(item); break;
+      case "userDeleted": await pushUserDelete(item); break;
     }
-  } catch { /* Firebase not configured, ignore */ }
+  } catch (e: any) { console.error("[fbPush] FAILED:", type, item?.id, e?.message || e); }
 }
 
 export function createLocalLink() {
@@ -59,30 +54,30 @@ export function createLocalLink() {
               case "customer.list": result = dataService.customer.list(); break;
               case "customer.search": result = dataService.customer.search(input || { query: "" }); break;
               case "customer.getById": result = dataService.customer.getById(input); break;
-              case "customer.create": result = dataService.customer.create(input); fbPush("customer", result); break;
-              case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); fbPush("customer", result); pushCustomers(dataService.customer.list()); break; }
-              case "customer.delete": result = dataService.customer.delete(input); pushCustomers(dataService.customer.list()); break;
+              case "customer.create": result = dataService.customer.create(input); await fbPush("customer", result); break;
+              case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); await fbPush("customer", result); await pushCustomers(dataService.customer.list()); break; }
+              case "customer.delete": result = dataService.customer.delete(input); await pushCustomers(dataService.customer.list()); break;
               case "customer.getStats": result = dataService.customer.getStats(); break;
               case "customer.getSalesReps": result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;
               case "customer.getCustomersNeedingFollowUp": result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
               case "order.list": result = dataService.order.list(); break;
               case "order.getById": result = dataService.order.getById(input); break;
-              case "order.create": result = dataService.order.create(input); fbPush("order", result); { const inv = dataService.invoice.list().find((i: any) => i.orderId == result.id); if (inv) pushInvoice(inv); } break;
-              case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); fbPush("order", result); break; }
-              case "order.updateStatus": result = dataService.order.updateStatus(input); fbPush("order", result); { const inv = dataService.invoice.list().find((i: any) => i.orderId == result.id); if (inv) pushInvoice(inv); } break;
+              case "order.create": result = dataService.order.create(input); await fbPush("order", result); break;
+              case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); await fbPush("order", result); break; }
+              case "order.updateStatus": result = dataService.order.updateStatus(input); await fbPush("order", result); break;
               case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
               case "order.getStats": result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
-              case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { pushInvoice(inv); } break;
+              case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { await pushInvoice(inv); } break;
               case "invoice.list": result = dataService.invoice.list(); break;
               case "invoice.getById": result = dataService.invoice.getById(input); break;
-              case "invoice.create": result = dataService.invoice.create(input); fbPush("invoice", result); break;
-              case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); fbPush("invoice", result); break;
-              case "invoice.update": result = dataService.invoice.updateInvoice(input); fbPush("invoice", result); break;
-              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
-              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
-              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
+              case "invoice.create": result = dataService.invoice.create(input); await fbPush("invoice", result); break;
+              case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); await fbPush("invoice", result); break;
+              case "invoice.update": result = dataService.invoice.updateInvoice(input); await fbPush("invoice", result); break;
+              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
+              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
+              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
               case "invoice.getCustomerStatement": result = dataService.invoice.getCustomerStatement(input); break;
               case "invoice.getStats": result = dataService.invoice.getStats(); break;
               case "invoice.getReceipts": result = dataService.invoice.getReceipts(); break;
@@ -93,35 +88,35 @@ export function createLocalLink() {
               case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
-              case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
-              case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) pushInvoice(inv); } break;
+              case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
+              case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
               case "user.list": result = dataService.user.list(); break;
               case "user.getById": result = dataService.user.getById(input); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
-              case "user.create": result = dataService.user.create(input); fbPush("user", result); break;
-              case "user.update": { const { id, ...data } = input; result = dataService.user.update({ id, data }); fbPush("user", result); break; }
-              case "user.delete": result = dataService.user.delete(input); fbPush("userDeleted", input); break;
-              case "user.toggleActive": result = dataService.user.toggleActive(input); fbPush("user", result); break;
-              case "user.resetPin": result = dataService.user.resetPin(input); fbPush("user", result); break;
+              case "user.create": result = dataService.user.create(input); await fbPush("user", result); break;
+              case "user.update": { const { id, ...data } = input; result = dataService.user.update({ id, data }); await fbPush("user", result); break; }
+              case "user.delete": result = dataService.user.delete(input); await fbPush("userDeleted", input); break;
+              case "user.toggleActive": result = dataService.user.toggleActive(input); await fbPush("user", result); break;
+              case "user.resetPin": result = dataService.user.resetPin(input); await fbPush("user", result); break;
               case "appointment.list": result = dataService.appointment.list(); break;
-              case "appointment.create": result = dataService.appointment.create(input); fbPush("appointment", result); break;
-              case "appointment.update": { const { id, data } = input; result = dataService.appointment.update({ id, data }); fbPush("appointment", result); break; }
-              case "appointment.delete": result = dataService.appointment.delete(input); fbPush("appointmentDeleted", input); break;
-              case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); fbPush("appointment", result); break;
+              case "appointment.create": result = dataService.appointment.create(input); await fbPush("appointment", result); break;
+              case "appointment.update": { const { id, data } = input; result = dataService.appointment.update({ id, data }); await fbPush("appointment", result); break; }
+              case "appointment.delete": result = dataService.appointment.delete(input); await pushAppointmentDelete(input); break;
+              case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); await fbPush("appointment", result); break;
               case "appointment.getStats": result = dataService.appointment.getStats(); break;
               case "checkIn.list": result = dataService.checkin.list(); break;
-              case "checkIn.create": result = dataService.checkin.create(input); fbPush("checkin", result); break;
-              case "checkIn.update": { const { id, data } = input; result = dataService.checkin.update({ id, data }); fbPush("checkin", result); break; }
-              case "checkIn.delete": result = dataService.checkin.delete(input); fbPush("checkinDeleted", input); break;
-              case "checkIn.checkout": result = dataService.checkin.checkout(input); fbPush("checkin", result); break;
+              case "checkIn.create": result = dataService.checkin.create(input); await fbPush("checkin", result); break;
+              case "checkIn.update": { const { id, data } = input; result = dataService.checkin.update({ id, data }); await fbPush("checkin", result); break; }
+              case "checkIn.delete": result = dataService.checkin.delete(input); await pushCheckinDelete(input); break;
+              case "checkIn.checkout": result = dataService.checkin.checkout(input); await fbPush("checkin", result); break;
               case "checkIn.getStats": result = dataService.checkin.getStats(); break;
               case "followUpAction.list": result = dataService.followUpAction.list(); break;
               case "followUpAction.listByCustomer": result = dataService.followUpAction.listByCustomer(input); break;
               case "followUpAction.create": result = dataService.followUpAction.create(input); pushFollowUpAction(result); break;
               case "followUpAction.getStats": result = dataService.followUpAction.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
-              case "specialPrice.set": result = dataService.specialPrice.set(input); fbPush("specialPrice", result); break;
-              case "specialPrice.delete": result = dataService.specialPrice.delete(input); fbPush("specialPriceDeleted", input); break;
+              case "specialPrice.set": result = dataService.specialPrice.set(input); break;
+              case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
               case "salesRep.list": result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
@@ -130,7 +125,7 @@ export function createLocalLink() {
               case "audit.getCustomerDeletions": result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": result = dataService.audit.getAddressChanges(); break;
               case "followUp.list": result = dataService.followUp.list(); break;
-              case "followUp.update": result = dataService.followUp.update(input); fbPush("followUp", result); break;
+              case "followUp.update": result = dataService.followUp.update(input); break;
               case "followUp.getStats": result = dataService.followUp.getStats(); break;
               case "sampleReport.getByCustomer": result = dataService.sampleReport.getByCustomer(input); break;
               case "sampleReport.getAll": result = dataService.sampleReport.getAll(); break;
@@ -138,10 +133,10 @@ export function createLocalLink() {
               case "collections.getDailyReport": result = dataService.collections.getDailyReport(); break;
               case "collections.getStats": result = dataService.collections.getStats(); break;
               case "collections.getCustomerPaymentHistory": result = dataService.collections.getCustomerPaymentHistory(input); break;
-              case "collections.addNote": result = dataService.collections.addNote(input); fbPush("collection", result); break;
-              case "collections.recordPromise": result = dataService.collections.recordPromise(input); fbPush("collection", result); break;
-              case "collections.placeHold": result = dataService.collections.placeHold(input); fbPush("collection", result); break;
-              case "collections.releaseHold": result = dataService.collections.releaseHold(input); fbPush("collection", result); break;
+              case "collections.addNote": result = dataService.collections.addNote(input); break;
+              case "collections.recordPromise": result = dataService.collections.recordPromise(input); break;
+              case "collections.placeHold": result = dataService.collections.placeHold(input); break;
+              case "collections.releaseHold": result = dataService.collections.releaseHold(input); break;
               default: console.warn("[localLink] Unhandled:", path, input); result = null;
             }
 

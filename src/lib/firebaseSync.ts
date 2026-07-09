@@ -170,6 +170,16 @@ export async function pushFollowUpAction(action: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
+export async function pushAppointmentDelete(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `appointments/${id}`), null); } catch { /* ignore */ }
+}
+
+export async function pushCheckinDelete(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `checkins/${id}`), null); } catch { /* ignore */ }
+}
+
 // Customer and Stock sync — admin pushes, sales reps pull
 export async function pushCustomers(customers: any[]): Promise<void> {
   if (!isFirebaseReady()) return;

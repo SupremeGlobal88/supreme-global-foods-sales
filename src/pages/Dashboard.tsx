@@ -115,6 +115,7 @@ export default function Dashboard() {
   const { data: stockStats } = trpc.stock.getStats.useQuery();
   const { data: invoiceStats } = trpc.invoice.getStats.useQuery();
   const { data: recentOrders } = trpc.order.list.useQuery();
+  const { data: allInvoices } = trpc.invoice.list.useQuery();
   const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
   const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: isAdmin });
 
@@ -280,6 +281,55 @@ export default function Dashboard() {
                   <Area type="monotone" dataKey="revenue" stroke="#D4A843" strokeWidth={2} fill="url(#revenueGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Outstanding Invoices - Payment Due */}
+          <div className="card-surface p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" style={{ color: "#EF4444" }} />
+                <h2 className="font-display font-semibold text-white text-lg">Outstanding Invoices - Payment Due</h2>
+              </div>
+              <span className="text-xs font-mono-data text-[#8A8B8C]">{((allInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length} invoices</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#2A2B2C]">
+                    <th className="text-left p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Invoice #</th>
+                    <th className="text-left p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Customer</th>
+                    <th className="text-right p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Amount Due</th>
+                    <th className="text-right p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Due Date</th>
+                    <th className="text-right p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {((allInvoices || [])
+                    .filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")
+                    .sort((a: any, b: any) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime())
+                    .slice(0, 20)
+                  ).map((inv: any) => {
+                    const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(inv.dueDate || Date.now()).getTime()) / 86400000));
+                    return (
+                      <tr key={inv.id} className="border-b border-[#1C1D1E] hover:bg-[#1C1D1E]">
+                        <td className="p-2 text-sm font-display font-semibold" style={{ color: "#D4A843" }}>{inv.invoiceNumber}</td>
+                        <td className="p-2 text-sm text-white font-body">{inv.customer?.name || inv.customerName || "Unknown"}</td>
+                        <td className="p-2 text-right text-sm font-display font-semibold text-white">R {Number(inv.balanceDue).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                        <td className="p-2 text-right text-sm text-[#8A8B8C] font-body">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-ZA") : "-"}</td>
+                        <td className="p-2 text-right">
+                          <span className={`text-xs font-body px-2 py-0.5 rounded-full ${daysOverdue > 30 ? "bg-red-900/30 text-red-400" : daysOverdue > 7 ? "bg-yellow-900/30 text-yellow-400" : "bg-green-900/30 text-green-400"}`}>
+                            {daysOverdue === 0 ? "Due today" : daysOverdue + " days"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {((allInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length === 0 && (
+                    <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">No outstanding invoices - all paid!</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 

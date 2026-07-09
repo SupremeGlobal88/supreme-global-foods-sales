@@ -1282,9 +1282,25 @@ export const dataService = {
       let updated = 0;
       let skipped = 0;
       const unmatched: string[] = [];
+      // Pre-clean: remove any existing duplicate Sage invoices (keep best one)
+      const sageInvoices = invoices.filter(i => i.source === 'sage' || !i.orderId);
+      const nonSageInvoices = invoices.filter(i => i.source !== 'sage' && i.orderId);
+      const uniqueSage = new Map<string, any>();
+      for (const inv of sageInvoices) {
+        const key = (inv.invoiceNumber || '').toString().trim().toLowerCase();
+        if (!key) continue;
+        const existing = uniqueSage.get(key);
+        if (!existing || (inv.items?.length || 0) > (existing.items?.length || 0)) {
+          uniqueSage.set(key, inv);
+        }
+      }
+      invoices = [...nonSageInvoices, ...uniqueSage.values()];
+      saveItem("sgf_invoices", invoices);
+
       for (const hist of historicalInvoices) {
-        // Check if invoice number already exists
-        const existing = invoices.find((i) => i.invoiceNumber === hist.invoiceNumber);
+        // Check if invoice number already exists (case-insensitive, trimmed)
+        const histNum = (hist.invoiceNumber || '').toString().trim().toLowerCase();
+        const existing = invoices.find((i) => (i.invoiceNumber || '').toString().trim().toLowerCase() === histNum);
 
         if (existing) {
           // UPDATE existing invoice with line items from order report

@@ -58,8 +58,8 @@ export function createLocalLink() {
               case "customer.search": result = dataService.customer.search(input || { query: "" }); break;
               case "customer.getById": result = dataService.customer.getById(input); break;
               case "customer.create": result = dataService.customer.create(input); fbPush("customer", result); break;
-              case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); break; }
-              case "customer.delete": result = dataService.customer.delete(input); break;
+              case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); fbPush("customer", result); pushCustomers(dataService.customer.list()); break; }
+              case "customer.delete": result = dataService.customer.delete(input); pushCustomers(dataService.customer.list()); break;
               case "customer.getStats": result = dataService.customer.getStats(); break;
               case "customer.getSalesReps": result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;

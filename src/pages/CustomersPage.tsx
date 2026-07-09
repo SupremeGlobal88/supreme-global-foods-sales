@@ -53,10 +53,10 @@ export default function CustomersPage() {
     onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
   const updateCustomer = trpc.customer.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); setEditingId(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setShowForm(false); setEditingId(null); },
   });
   const deleteCustomer = trpc.customer.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setSelectedCustomer(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setSelectedCustomer(null); },
   });
   const setSpecialPrice = trpc.specialPrice.set.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.specialPrice.listByCustomer.invalidate(); setShowSpecialPriceForm(false); setSpecialPriceData({ stockItemId: 0, specialPrice: 0 }); },

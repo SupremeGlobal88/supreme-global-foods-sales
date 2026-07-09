@@ -13,6 +13,7 @@
  * =============================================================================
  */
 
+import { dataService } from "./dataService";
 import { initializeApp, getApps } from "firebase/app";
 import {
   getDatabase,
@@ -515,6 +516,15 @@ export function initAutoSync(): () => void {
         console.warn("[FirebaseSync] Failed to replace", type, e);
       }
       dataServiceRefresh?.();
+      // Deduplicate orders/invoices after sync to fix duplicates from old merge bug
+      if (type === "orders" || type === "invoices") {
+        try {
+          const result = dataService.deduplicateData();
+          if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
+            console.log(`[FirebaseSync] Auto-dedup removed ${result.ordersRemoved} orders, ${result.invoicesRemoved} invoices`);
+          }
+        } catch { /* ignore */ }
+      }
       if (["orders", "checkins", "appointments", "invoices", "customers", "stock"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;

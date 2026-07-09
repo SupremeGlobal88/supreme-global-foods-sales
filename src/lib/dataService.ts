@@ -127,6 +127,59 @@ function load() {
       if (added) saveItem("sgf_users", users);
     }
   } catch { /* ignore */ }
+
+  // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
+  deduplicateAll();
+}
+
+/** Deduplicate orders by orderNumber and invoices by invoiceNumber.
+ *  Keeps the most recent record (by updatedAt > createdAt > id).
+ *  This fixes duplicates created when Firebase sync treated number/string IDs as different keys. */
+function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number } {
+  const beforeOrders = orders.length;
+  const beforeInvoices = invoices.length;
+
+  // Deduplicate orders: group by orderNumber, keep most recent
+  const orderMap = new Map<string, any>();
+  for (const o of orders) {
+    const key = o.orderNumber || o.id;
+    const existing = orderMap.get(key);
+    if (!existing || isMoreRecent(o, existing)) {
+      orderMap.set(key, o);
+    }
+  }
+  orders = Array.from(orderMap.values());
+
+  // Deduplicate invoices: group by invoiceNumber (for SGF), keep most recent
+  const invMap = new Map<string, any>();
+  for (const inv of invoices) {
+    const key = inv.invoiceNumber || inv.id;
+    const existing = invMap.get(key);
+    if (!existing || isMoreRecent(inv, existing)) {
+      invMap.set(key, inv);
+    }
+  }
+  invoices = Array.from(invMap.values());
+
+  const result = {
+    ordersRemoved: beforeOrders - orders.length,
+    invoicesRemoved: beforeInvoices - invoices.length,
+  };
+
+  if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
+    console.log(`[DEDUPLICATE] Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices`);
+    saveItem("sgf_orders", orders);
+    saveItem("sgf_invoices", invoices);
+  }
+
+  return result;
+}
+
+/** Check if item a is more recent than item b */
+function isMoreRecent(a: any, b: any): boolean {
+  const aTime = a.updatedAt || a.createdAt || a.id || 0;
+  const bTime = b.updatedAt || b.createdAt || b.id || 0;
+  return String(aTime) > String(bTime);
 }
 
 function saveItem(key: string, value: any) {
@@ -470,6 +523,13 @@ export function generateMissingInvoices(): { created: number; details: string[] 
   }
 
   return { created, details };
+}
+
+/** Remove duplicate orders and invoices. Call after Firebase sync or on demand. */
+export function deduplicateData(): { ordersRemoved: number; invoicesRemoved: number } {
+  load();
+  const result = deduplicateAll();
+  return result;
 }
 
 /** Update an existing invoice when its order is edited */

@@ -1486,6 +1486,7 @@ export const dataService = {
           orderId: null,
           customerId: customerId || 0,
           customer: customerId ? customers.find((c) => c.id === customerId) : null,
+          customerCode: hist.customerCode || null, // PRESERVE Sage customerCode for statement matching
           items: hist.items || [],
           subtotal,
           vatAmount,
@@ -1530,6 +1531,7 @@ export const dataService = {
           if (matched) {
             inv.customerId = matched.id;
             inv.customer = matched;
+            inv.customerCode = matched.customerCode; // Store code on invoice for statement matching
             relinked++;
             changedInvoices.push(inv);
             details.push(`${inv.invoiceNumber} → ${matched.name} (${matched.customerCode})`);
@@ -1561,11 +1563,12 @@ export const dataService = {
     getCustomerStatement: ({ customerId, fromDate, toDate }: any) => {
       const customer = customers.find((c) => c.id == customerId);
       const custCode = customer?.customerCode;
-      // Match by customerId (app invoices) OR by customerCode (Sage invoices with customerId === 0)
+      // Match by customerId (app + linked Sage) OR by customerCode (unlinked Sage)
       const custInvoices = invoices
         .filter((i) => {
           if (i.customerId == customerId) return true;
           if (i.source === "sage" && custCode && (i as any).customerCode === custCode) return true;
+          if (i.source === "sage" && custCode && i.customer && (i.customer as any).customerCode === custCode) return true;
           return false;
         })
         .filter((i) => !fromDate || new Date(i.invoiceDate || i.createdAt) >= new Date(fromDate))

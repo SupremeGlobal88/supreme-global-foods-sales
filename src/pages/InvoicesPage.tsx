@@ -387,8 +387,15 @@ export default function InvoicesPage() {
     if (!cust) { alert("Please select a customer."); return; }
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
 
-    // Build invoice list — use the SAME tRPC data as the UI with loose equality
-    let list = (invoices || []).filter((i: any) => i.customerId == stmtCust);
+    // Build invoice list — match by customerId OR by customerCode (for Sage invoices)
+    const custCode = cust.customerCode;
+    let list = (invoices || []).filter((i: any) => {
+      // Direct customerId match (app invoices and already-linked Sage invoices)
+      if (i.customerId == stmtCust) return true;
+      // Sage invoices: match by customerCode when customerId is 0/missing
+      if (i.source === "sage" && custCode && (i.customerCode === custCode || (i.customer && i.customer.customerCode === custCode))) return true;
+      return false;
+    });
     if (stmtFrom) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) >= new Date(stmtFrom));
     if (stmtTo) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) <= new Date(stmtTo + "T23:59:59"));
     list = list.sort((a: any, b: any) => new Date(a.invoiceDate || a.createdAt).getTime() - new Date(b.invoiceDate || b.createdAt).getTime());

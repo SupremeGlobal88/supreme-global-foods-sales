@@ -1560,9 +1560,14 @@ export const dataService = {
 
     getCustomerStatement: ({ customerId, fromDate, toDate }: any) => {
       const customer = customers.find((c) => c.id == customerId);
-      // Use loose equality (==) for customerId because Firebase may convert numbers to strings
+      const custCode = customer?.customerCode;
+      // Match by customerId (app invoices) OR by customerCode (Sage invoices with customerId === 0)
       const custInvoices = invoices
-        .filter((i) => i.customerId == customerId)
+        .filter((i) => {
+          if (i.customerId == customerId) return true;
+          if (i.source === "sage" && custCode && (i as any).customerCode === custCode) return true;
+          return false;
+        })
         .filter((i) => !fromDate || new Date(i.invoiceDate || i.createdAt) >= new Date(fromDate))
         .filter((i) => !toDate || new Date(i.invoiceDate || i.createdAt) <= new Date(toDate + "T23:59:59"));
       let runningBal = 0;

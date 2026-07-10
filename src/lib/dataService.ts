@@ -487,12 +487,14 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   // Check if invoice already exists
   const existing = invoices.find((i) => i.orderId == orderId);
   if (existing) return existing.invoiceNumber;
-  // Calculate totals
+  // Detect sample orders
+  const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
+  // Calculate totals: samples are always zero-value
   const items = order.items || [];
-  const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-  const vatAmount = subtotal * 0.15;
-  const total = subtotal + vatAmount;
-  return createInvoiceFromOrder(order, subtotal, vatAmount, total, false);
+  const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+  const vatAmount = isSample ? 0 : subtotal * 0.15;
+  const total = isSample ? 0 : subtotal + vatAmount;
+  return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
 }
 
 /** Generate invoices for all orders that don't have one. Returns count created. */

@@ -811,12 +811,26 @@ export default function OrdersPage() {
                                 const hasInvoice = (invoices || []).some((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF"));
                                 return (
                                   <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                       reloadFromStorage();
                                       const invNum = generateInvoiceForOrder(order.id);
                                       if (invNum) {
-                                        utils.invoice.list.invalidate();
-                                        alert("Invoice " + invNum + " created!");
+                                        // Push new invoice to Firebase cloud
+                                        try {
+                                          const { dataService } = await import("@/lib/dataService");
+                                          const allInvoices = dataService.invoice.list();
+                                          const newInv = allInvoices.find((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF"));
+                                          if (newInv) {
+                                            const { pushInvoice } = await import("@/lib/firebaseSync");
+                                            await pushInvoice(newInv);
+                                          }
+                                        } catch (e: any) {
+                                          console.warn("[Invoice] Firebase push failed:", e?.message);
+                                        }
+                                        // Force immediate refetch so UI updates
+                                        await utils.invoice.list.refetch();
+                                        reloadFromStorage();
+                                        alert("Invoice " + invNum + " created and synced!");
                                       } else {
                                         alert("Failed to create invoice.");
                                       }

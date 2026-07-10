@@ -25,6 +25,66 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   sample_delivered: { label: "Sample", color: "#D4A843" },
 };
 
+/** Dedicated component for Generate Invoice button.
+ *  Isolated so it re-renders with fresh invoice data.
+ *  Uses global lock + page reload to guarantee unique numbers. */
+function GenerateInvoiceButton({
+  orderId,
+  invoices,
+}: {
+  orderId: number;
+  invoices: any[];
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const hasInvoice = (invoices || []).some(
+    (i: any) => i.orderId == orderId && i.invoiceNumber?.startsWith("SGF")
+  );
+
+  return (
+    <button
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        reloadFromStorage();
+        const invNum = generateInvoiceForOrder(orderId);
+        if (invNum) {
+          // Push to Firebase
+          try {
+            const { dataService } = await import("@/lib/dataService");
+            const allInv = dataService.invoice.list();
+            const newInv = allInv.find((i: any) => i.orderId == orderId && i.invoiceNumber === invNum);
+            if (newInv) {
+              const { pushInvoice } = await import("@/lib/firebaseSync");
+              await pushInvoice(newInv);
+            }
+          } catch (e: any) {
+            console.warn("[Invoice] Firebase push:", e?.message);
+          }
+          // Hard reload guarantees fresh state everywhere
+          window.location.reload();
+        } else {
+          alert("Invoice generation is busy. Please wait and try again.");
+          setBusy(false);
+        }
+      }}
+      disabled={busy}
+      className="btn-secondary text-xs flex items-center gap-1.5"
+      style={{
+        borderColor: hasInvoice ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.5)",
+        color: hasInvoice ? "#4ADE80" : busy ? "#8A8B8C" : "#EF4444",
+        backgroundColor: hasInvoice ? "rgba(74,222,128,0.08)" : busy ? "rgba(138,139,140,0.08)" : "rgba(239,68,68,0.08)",
+        opacity: busy ? 0.6 : 1,
+        cursor: busy ? "not-allowed" : "pointer",
+      }}
+    >
+      <FileText className="w-3 h-3" />
+      {busy ? "Generating..." : hasInvoice ? "Regenerate Invoice" : "Generate Invoice"}
+      {!hasInvoice && !busy && <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] animate-pulse" />}
+    </button>
+  );
+}
+
 // Mobile-friendly product picker modal
 function ProductPickerModal({
   isOpen,
@@ -807,47 +867,10 @@ export default function OrdersPage() {
                               <button onClick={() => printCombinedInvoiceDelivery(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)" }}><Printer className="w-3 h-3" /> Print Invoice &amp; Delivery Note</button>
                             )}
                             {isAdmin && (
-                              (() => {
-                                const hasInvoice = (invoices || []).some((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF"));
-                                return (
-                                  <button
-                                    onClick={async () => {
-                                      reloadFromStorage();
-                                      const invNum = generateInvoiceForOrder(order.id);
-                                      if (invNum) {
-                                        // Push new invoice to Firebase cloud
-                                        try {
-                                          const { dataService } = await import("@/lib/dataService");
-                                          const allInvoices = dataService.invoice.list();
-                                          const newInv = allInvoices.find((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF"));
-                                          if (newInv) {
-                                            const { pushInvoice } = await import("@/lib/firebaseSync");
-                                            await pushInvoice(newInv);
-                                          }
-                                        } catch (e: any) {
-                                          console.warn("[Invoice] Firebase push failed:", e?.message);
-                                        }
-                                        // Force immediate refetch so UI updates
-                                        await utils.invoice.list.refetch();
-                                        reloadFromStorage();
-                                        alert("Invoice " + invNum + " created and synced!");
-                                      } else {
-                                        alert("Failed to create invoice.");
-                                      }
-                                    }}
-                                    className="btn-secondary text-xs flex items-center gap-1.5"
-                                    style={{
-                                      borderColor: hasInvoice ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.5)",
-                                      color: hasInvoice ? "#4ADE80" : "#EF4444",
-                                      backgroundColor: hasInvoice ? "rgba(74,222,128,0.08)" : "rgba(239,68,68,0.08)",
-                                    }}
-                                  >
-                                    <FileText className="w-3 h-3" />
-                                    {hasInvoice ? "Regenerate Invoice" : "Generate Invoice"}
-                                    {!hasInvoice && <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] animate-pulse" />}
-                                  </button>
-                                );
-                              })()
+                              <GenerateInvoiceButton
+                                orderId={order.id}
+                                invoices={invoices}
+                              />
                             )}
                           </div>
                         </div>

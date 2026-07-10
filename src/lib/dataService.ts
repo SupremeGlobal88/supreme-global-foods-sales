@@ -33,6 +33,12 @@ let receipts = [] as any[];
 let creditNotes = [] as any[];
 let users = [] as any[];
 
+/** Global lock to prevent concurrent invoice generation.
+ *  When two "Generate Invoice" buttons are clicked rapidly,
+ *  both reads happen before either push — causing duplicate numbers.
+ *  This lock ensures only one invoice is generated at a time. */
+let invoiceGenerationLock = false;
+
 /** Validate array: must be non-empty array with items that have expected shape */
 function isValidArray(data: any, minLength: number, requiredKey?: string): boolean {
   if (!Array.isArray(data)) return false;
@@ -432,57 +438,80 @@ function getNextReceiptNumber(): string {
   return `REC-${String(max + 1).padStart(3, "0")}`;
 }
 
-function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean) {
-  const now = new Date();
-  const customer = customers.find((c) => c.id === order.customerId);
+function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean): string | null {
+  // ACQUIRE LOCK: prevent concurrent generation that causes duplicate numbers
+  if (invoiceGenerationLock) {
+    console.warn("[createInvoiceFromOrder] LOCKED — another invoice is being generated. Please wait.");
+    return null;
+  }
+  invoiceGenerationLock = true;
 
-  // Calculate due date from payment terms
-  const paymentTerms = order.paymentTerms || "cod";
-  const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
-  const dueDate = new Date(now);
-  dueDate.setDate(dueDate.getDate() + days);
+  try {
+    const now = new Date();
+    const customer = customers.find((c) => c.id === order.customerId);
 
-  // Invoice numbering: SGF1801, SGF1802, etc. — ALL orders use SGF numbers
-  const invoiceNumber = getNextInvoiceNumber();
-  const deliveryNoteNumber = `DN-${order.orderNumber}`;
+    // Calculate due date from payment terms
+    const paymentTerms = order.paymentTerms || "cod";
+    const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + days);
 
-  // Status: draft until order is ready for delivery, then sent
-  const status = (order.status === "ready" || order.status === "delivered") ? "sent" : "draft";
+    // Invoice numbering: SGF1801, SGF1802, etc. — ALL orders use SGF numbers
+    let invoiceNumber = getNextInvoiceNumber();
+    const deliveryNoteNumber = `DN-${order.orderNumber}`;
 
-  // Use sequential integer ID to avoid decimal/float issues
-  const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+    // FINAL SAFETY CHECK: re-read the array right before pushing.
+    // If another invoice was created between getNextInvoiceNumber() and now,
+    // this loop finds a truly unique number.
+    const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+    let safetyCounter = 0;
+    while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
+      const match = invoiceNumber.match(/SGF(\d+)/);
+      const n = match ? parseInt(match[1]) + 1 : 1853;
+      invoiceNumber = `SGF${n}`;
+      safetyCounter++;
+    }
 
-  invoices.push({
-    id: nextInvId,
-    orderId: order.id,
-    orderNumber: order.orderNumber,
-    invoiceNumber,
-    deliveryNoteNumber,
-    customerId: order.customerId,
-    customer: customer || null,
-    subtotal: isSample ? 0 : subtotal,
-    vatAmount: isSample ? 0 : vatAmount,
-    total: isSample ? 0 : total,
-    totalAmount: isSample ? 0 : total,
-    balanceDue: isSample ? 0 : total,
-    amountPaid: isSample ? 0 : 0, // Samples are zero-value but not "paid" — they're no-charge
-    status: isSample ? "paid" : status, // Samples are marked paid (no charge)
-    paymentTerms: order.paymentTerms || "cod",
-    invoiceDate: now.toISOString(),
-    dueDate: dueDate.toISOString(),
-    notes: isSample ? `Sample order - ${order.orderNumber} (No Charge)` : `Invoice for ${order.orderNumber}`,
-    // Include items for ALL invoices — samples show items with zero prices
-    items: (order.items || []).map((item: any) => ({
-      description: `${item.productCode} - ${item.productName}`,
-      quantity: item.quantity,
-      unitPrice: isSample ? 0 : item.unitPrice,
-      lineTotal: isSample ? 0 : item.lineTotal,
-    })),
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-  });
-  saveItem("sgf_invoices", invoices);
-  return invoiceNumber;
+    // Status: draft until order is ready for delivery, then sent
+    const status = (order.status === "ready" || order.status === "delivered") ? "sent" : "draft";
+
+    // Use sequential integer ID to avoid decimal/float issues
+    const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+
+    invoices.push({
+      id: nextInvId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      invoiceNumber,
+      deliveryNoteNumber,
+      customerId: order.customerId,
+      customer: customer || null,
+      subtotal: isSample ? 0 : subtotal,
+      vatAmount: isSample ? 0 : vatAmount,
+      total: isSample ? 0 : total,
+      totalAmount: isSample ? 0 : total,
+      balanceDue: isSample ? 0 : total,
+      amountPaid: isSample ? 0 : 0,
+      status: isSample ? "paid" : status,
+      paymentTerms: order.paymentTerms || "cod",
+      invoiceDate: now.toISOString(),
+      dueDate: dueDate.toISOString(),
+      notes: isSample ? `Sample order - ${order.orderNumber} (No Charge)` : `Invoice for ${order.orderNumber}`,
+      items: (order.items || []).map((item: any) => ({
+        description: `${item.productCode} - ${item.productName}`,
+        quantity: item.quantity,
+        unitPrice: isSample ? 0 : item.unitPrice,
+        lineTotal: isSample ? 0 : item.lineTotal,
+      })),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+    saveItem("sgf_invoices", invoices);
+    return invoiceNumber;
+  } finally {
+    // RELEASE LOCK: always release even if an error occurred
+    invoiceGenerationLock = false;
+  }
 }
 
 /** Generate an invoice for an existing order that doesn't have one.

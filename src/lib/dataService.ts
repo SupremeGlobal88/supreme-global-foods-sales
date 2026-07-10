@@ -1517,6 +1517,7 @@ export const dataService = {
       load();
       let relinked = 0;
       const details: string[] = [];
+      const changedInvoices: any[] = [];
 
       for (const inv of invoices) {
         // Only process Sage invoices with no customerId (or customerId === 0)
@@ -1530,6 +1531,7 @@ export const dataService = {
             inv.customerId = matched.id;
             inv.customer = matched;
             relinked++;
+            changedInvoices.push(inv);
             details.push(`${inv.invoiceNumber} → ${matched.name} (${matched.customerCode})`);
             continue;
           }
@@ -1543,6 +1545,7 @@ export const dataService = {
             inv.customerId = fuzzyMatch.id;
             inv.customer = fuzzyMatch;
             relinked++;
+            changedInvoices.push(inv);
             details.push(`${inv.invoiceNumber} → ${fuzzyMatch.name} (fuzzy match)`);
           }
         }
@@ -1552,7 +1555,7 @@ export const dataService = {
         saveItem("sgf_invoices", invoices);
       }
 
-      return { relinked, details };
+      return { relinked, details, changedInvoices };
     },
 
     getCustomerStatement: ({ customerId, fromDate, toDate }: any) => {

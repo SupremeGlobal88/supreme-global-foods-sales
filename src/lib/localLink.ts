@@ -85,7 +85,16 @@ export function createLocalLink() {
               case "invoice.getReceiptsByCustomer": result = dataService.invoice.getReceiptsByCustomer(input); break;
               case "invoice.getReceiptById": result = dataService.invoice.getReceiptById(input); break;
               case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); pushInvoices(dataService.invoice.list()); break;
-              case "invoice.relinkSageInvoices": result = dataService.invoice.relinkSageInvoices(); pushInvoices(dataService.invoice.list()); break;
+              case "invoice.relinkSageInvoices": {
+                result = dataService.invoice.relinkSageInvoices();
+                // Push only the CHANGED invoices individually — avoid bulk push timeout
+                if (result?.changedInvoices && result.changedInvoices.length > 0) {
+                  for (const inv of result.changedInvoices) {
+                    try { await pushInvoice(inv); } catch (e) { console.warn("[relink] push failed for", inv.invoiceNumber, e); }
+                  }
+                }
+                break;
+              }
               case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;

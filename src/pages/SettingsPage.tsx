@@ -15,6 +15,7 @@ import {
   FileText,
   Link,
 } from "lucide-react";
+import { reloadFromStorage } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
@@ -79,13 +80,15 @@ export default function SettingsPage() {
   });
   const relinkSage = trpc.invoice.relinkSageInvoices.useMutation({
     onSuccess: async (result: any) => {
-      await utils.invoice.list.invalidate();
+      reloadFromStorage();
+      await utils.invoice.list.refetch();
+      await utils.invoice.getStats.invalidate();
       if (result?.relinked > 0) {
-        setSyncMessage(`Re-linked ${result.relinked} Sage invoices to customers: ${result.details.slice(0, 5).join(", ")}${result.details.length > 5 ? "..." : ""}`);
+        setSyncMessage(`Re-linked ${result.relinked} Sage invoices. ${result.details.slice(0, 5).join(", ")}${result.details.length > 5 ? "..." : ""}`);
       } else {
-        setSyncMessage("No Sage invoices needed re-linking — all already matched.");
+        setSyncMessage("No Sage invoices needed re-linking.");
       }
-      setTimeout(() => setSyncMessage(""), 8000);
+      setTimeout(() => setSyncMessage(""), 10000);
     },
     onError: (e) => {
       setSyncMessage("Error: " + e.message);

@@ -909,7 +909,7 @@ export const dataService = {
       
       const items = (data.items || []).map((item: any) => {
         const product = products.find((p) => p.id === item.stockItemId);
-        const unitPrice = isSample ? 0 : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
+        const unitPrice = isSample ? getEffectivePrice(item.stockItemId, "corporate", data.customerId) : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
         return {
           ...item,
           productCode: product?.productCode || "",
@@ -993,7 +993,7 @@ export const dataService = {
         const isSample = data.orderType === "sample";
         const items = (data.items || []).map((item: any) => {
           const product = products.find((p) => p.id === item.stockItemId);
-          const unitPrice = isSample ? 0 : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
+          const unitPrice = isSample ? getEffectivePrice(item.stockItemId, "corporate", data.customerId) : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
           return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice };
         });
         const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
@@ -1910,7 +1910,8 @@ export const dataService = {
         (o.items || []).map((item: any) => {
           const product = products.find((p) => p.id === item.stockItemId);
           const invoice = invoices.find((i) => i.orderId === o.id);
-          const cost = Number(product?.wholesalePrice || 0) * item.quantity;
+          const unitCost = Number(item.unitPrice || product?.corporatePrice || 0);
+          const cost = unitCost * item.quantity;
           return {
             productCode: product?.productCode || "",
             productName: product?.productName || "Unknown",
@@ -1918,7 +1919,7 @@ export const dataService = {
             orderNumber: o.orderNumber,
             invoiceNumber: invoice?.invoiceNumber || "N/A",
             quantity: item.quantity,
-            unitCost: Number(product?.wholesalePrice || 0),
+            unitCost,
             totalCost: cost,
           };
         })
@@ -1936,6 +1937,7 @@ export const dataService = {
           (o.items || []).map((item: any) => {
             const product = products.find((p) => p.id === item.stockItemId);
             const invoice = invoices.find((i) => i.orderId === o.id);
+            const unitCost = Number(item.unitPrice || product?.corporatePrice || 0);
             return {
               productCode: product?.productCode || "",
               productName: product?.productName || "Unknown",
@@ -1943,8 +1945,8 @@ export const dataService = {
               orderNumber: o.orderNumber,
               invoiceNumber: invoice?.invoiceNumber || "N/A",
               quantity: item.quantity,
-              unitCost: Number(product?.wholesalePrice || 0),
-              totalCost: Number(product?.wholesalePrice || 0) * item.quantity,
+              unitCost,
+              totalCost: unitCost * item.quantity,
             };
           })
         );

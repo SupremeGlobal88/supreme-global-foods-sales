@@ -1509,6 +1509,52 @@ export const dataService = {
       const uniqueUnmatched = [...new Set(unmatched)];
       return { created, updated, skipped, total: invoices.length, unmatched: uniqueUnmatched, unmatchedCount: uniqueUnmatched.length };
     },
+
+    /** Re-link existing Sage invoices to customers by customerCode.
+     *  Call this after updating Sage data to match app customerCodes.
+     *  Returns count of re-linked invoices. */
+    relinkSageInvoices: () => {
+      load();
+      let relinked = 0;
+      const details: string[] = [];
+
+      for (const inv of invoices) {
+        // Only process Sage invoices with no customerId (or customerId === 0)
+        if (inv.source !== "sage" || (inv.customerId && inv.customerId !== 0)) continue;
+
+        // Try to find customer by customerCode on the Sage invoice data
+        const sageCode = (inv as any).customerCode || (inv as any).sageCustomerCode;
+        if (sageCode) {
+          const matched = customers.find((c) => c.customerCode && c.customerCode.toLowerCase() === String(sageCode).toLowerCase());
+          if (matched) {
+            inv.customerId = matched.id;
+            inv.customer = matched;
+            relinked++;
+            details.push(`${inv.invoiceNumber} → ${matched.name} (${matched.customerCode})`);
+            continue;
+          }
+        }
+
+        // Fallback: try matching by customer name in the notes or invoice data
+        const customerName = (inv as any).customerName || (inv.customer && (inv.customer as any).name);
+        if (customerName) {
+          const fuzzyMatch = dataService.invoice.findCustomerByFuzzyName(customerName);
+          if (fuzzyMatch) {
+            inv.customerId = fuzzyMatch.id;
+            inv.customer = fuzzyMatch;
+            relinked++;
+            details.push(`${inv.invoiceNumber} → ${fuzzyMatch.name} (fuzzy match)`);
+          }
+        }
+      }
+
+      if (relinked > 0) {
+        saveItem("sgf_invoices", invoices);
+      }
+
+      return { relinked, details };
+    },
+
     getCustomerStatement: ({ customerId, fromDate, toDate }: any) => {
       const customer = customers.find((c) => c.id == customerId);
       // Use loose equality (==) for customerId because Firebase may convert numbers to strings

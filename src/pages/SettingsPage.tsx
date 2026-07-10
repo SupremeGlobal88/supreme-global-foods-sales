@@ -13,6 +13,7 @@ import {
   Wrench,
   Hash,
   FileText,
+  Link,
 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
@@ -68,6 +69,21 @@ export default function SettingsPage() {
         setSyncMessage(`Generated ${result.created} missing invoices: ${result.details.join(", ")}`);
       } else {
         setSyncMessage("No missing invoices found.");
+      }
+      setTimeout(() => setSyncMessage(""), 8000);
+    },
+    onError: (e) => {
+      setSyncMessage("Error: " + e.message);
+      setTimeout(() => setSyncMessage(""), 5000);
+    },
+  });
+  const relinkSage = trpc.invoice.relinkSageInvoices.useMutation({
+    onSuccess: async (result: any) => {
+      await utils.invoice.list.invalidate();
+      if (result?.relinked > 0) {
+        setSyncMessage(`Re-linked ${result.relinked} Sage invoices to customers: ${result.details.slice(0, 5).join(", ")}${result.details.length > 5 ? "..." : ""}`);
+      } else {
+        setSyncMessage("No Sage invoices needed re-linking — all already matched.");
       }
       setTimeout(() => setSyncMessage(""), 8000);
     },
@@ -499,8 +515,20 @@ export default function SettingsPage() {
             >
               <FileText className="w-4 h-4" /> Generate Missing Invoices
             </button>
+            <button
+              onClick={() => {
+                setSyncMessage("Re-linking Sage invoices by customerCode...");
+                relinkSage.mutate();
+              }}
+              className="btn-secondary text-sm w-full mt-3"
+            >
+              <Link className="w-4 h-4" /> Re-link Sage Invoices to Customers
+            </button>
             <p className="text-[10px] text-[#8A8B8C] mt-1">
               Scans all orders and creates SGF invoices for any missing ones. Results are pushed to the cloud automatically.
+            </p>
+            <p className="text-[10px] text-[#8A8B8C]">
+              Links existing Sage invoices to app customers using customerCode. Run this after updating Sage data with app customerCodes. Safe to run anytime.
             </p>
             <p className="text-[10px] text-[#8A8B8C]">
               Safety net: scans all invoices. Only fixes if duplicates are found. Safe to run anytime — does nothing if all invoices are clean.

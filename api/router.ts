@@ -68,6 +68,7 @@ export const appRouter = t.router({
     getReceiptsByCustomer: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),
     getReceiptById: t.procedure.input((val: unknown) => val as any).query(() => null as any),
     bulkHistoricalImport: t.procedure.input((val: unknown) => val as any[]).mutation(() => ({} as any)),
+    relinkSageInvoices: t.procedure.mutation(() => ({} as any)),
     getCreditNotes: t.procedure.query(() => [] as any[]),
     getCreditNotesByInvoice: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),
     getCreditNotesByCustomer: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),

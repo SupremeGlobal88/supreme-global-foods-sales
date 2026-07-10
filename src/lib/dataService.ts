@@ -394,7 +394,9 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
 }
 
 // Helper: create an invoice from an order
-/** Get next SGF invoice number. Starts at SGF1801 (last was SGF1800). */
+/** Get next SGF invoice number. Starts at SGF1801 (last was SGF1800).
+ *  Loops to ensure the number is truly unique — prevents duplicates
+ *  when rapid clicks or save failures occur. */
 function getNextInvoiceNumber(): string {
   // Find the highest existing SGF number
   let maxNum = 1800; // Last known invoice
@@ -405,7 +407,13 @@ function getNextInvoiceNumber(): string {
       if (n > maxNum) maxNum = n;
     }
   }
-  return `SGF${String(maxNum + 1)}`;
+  // Safety loop: ensure the number doesn't already exist
+  let candidate = maxNum + 1;
+  const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+  while (existingNumbers.has(`SGF${candidate}`)) {
+    candidate++;
+  }
+  return `SGF${String(candidate)}`;
 }
 
 /** Get next sample invoice number */
@@ -477,10 +485,9 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
   return invoiceNumber;
 }
 
-/** Generate an invoice for an existing order that doesn't have one */
+/** Generate an invoice for an existing order that doesn't have one.
+ *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {
-  // Reload from storage first to ensure latest invoice data for numbering
-  load();
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const order = orders.find((o) => o.id == orderId);
   if (!order) return null;

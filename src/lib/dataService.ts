@@ -1442,10 +1442,21 @@ export const dataService = {
           continue;
         }
 
-        // Find customer by ID or fuzzy name matching
+        // Find customer: first by customerCode (Sage data already has app customerCode),
+        // then fall back to fuzzy name matching
         let customerId = hist.customerId;
         let matchedCustomer = null;
+
+        if (!customerId && hist.customerCode) {
+          // Try exact match by customerCode — Sage export was already updated to match app codes
+          matchedCustomer = customers.find((c) => c.customerCode && c.customerCode.toLowerCase() === String(hist.customerCode).toLowerCase());
+          if (matchedCustomer) {
+            customerId = matchedCustomer.id;
+          }
+        }
+
         if (!customerId && hist.customerName) {
+          // Fall back to fuzzy name matching if customerCode lookup failed
           matchedCustomer = dataService.invoice.findCustomerByFuzzyName(hist.customerName);
           if (matchedCustomer) {
             customerId = matchedCustomer.id;

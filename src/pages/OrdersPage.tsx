@@ -61,8 +61,10 @@ function GenerateInvoiceButton({
           } catch (e: any) {
             console.warn("[Invoice] Firebase push:", e?.message);
           }
-          // Hard reload guarantees fresh state everywhere
-          window.location.reload();
+          // Force UI refresh — smart merge in firebaseSync preserves local invoices
+          await utils.invoice.list.refetch();
+          reloadFromStorage();
+          alert("Invoice " + invNum + " created and synced!");
         } else {
           alert("Invoice generation is busy. Please wait and try again.");
           setBusy(false);

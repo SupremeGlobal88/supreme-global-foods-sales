@@ -216,7 +216,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
       const snapshot = await get(ref(db, path));
       const data = fbToArray(snapshot.val());
       if (data.length > 0) {
-        const merged = replaceWithCloudData(storageKey, data);
+        const merged = mergeWithCloudData(storageKey, data);
         localStorage.setItem(storageKey, JSON.stringify(merged));
       }
       counts[path] = data.length;
@@ -247,11 +247,46 @@ function fbToArray(data: any): any[] {
   return Object.values(data);
 }
 
-/** Replace localStorage with Firebase data — Firebase is the single source of truth */
-function replaceWithCloudData(key: string, incoming: any[]): any[] {
-  // Firebase data is the source of truth. Local data is overwritten.
-  // This ensures all devices see exactly the same data.
-  return incoming;
+/** Get the stable key for an item based on its data type */
+function getStableKey(item: any, storageKey: string): string | null {
+  if (!item) return null;
+  // Use invoiceNumber for invoices, orderNumber for orders, id for everything else
+  if (storageKey === "sgf_invoices") return item.invoiceNumber != null ? String(item.invoiceNumber) : null;
+  if (storageKey === "sgf_orders") return item.orderNumber != null ? String(item.orderNumber) : null;
+  return item.id != null ? String(item.id) : null;
+}
+
+/** Smart merge: Firebase is source of truth, but local-only items are preserved.
+ *  This prevents newly generated invoices from being wiped before they sync to Firebase. */
+function mergeWithCloudData(key: string, incoming: any[]): any[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return incoming;
+    const local = JSON.parse(raw) as any[];
+    if (!Array.isArray(local) || local.length === 0) return incoming;
+
+    // Build map of incoming (Firebase) items by stable key
+    const incomingMap = new Map<string, any>();
+    for (const item of incoming) {
+      const k = getStableKey(item, key);
+      if (k !== null) incomingMap.set(k, item);
+    }
+
+    // Start with all Firebase items (source of truth)
+    const merged = new Map<string, any>(incomingMap);
+
+    // Add local items that DON'T exist in Firebase (unsynced / newly created)
+    for (const item of local) {
+      const k = getStableKey(item, key);
+      if (k !== null && !incomingMap.has(k)) {
+        merged.set(k, item); // Preserve local-only item
+      }
+    }
+
+    return Array.from(merged.values());
+  } catch {
+    return incoming;
+  }
 }
 
 export function subscribeToCustomers(onData?: (customers: any[]) => void): () => void {
@@ -261,7 +296,7 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
     const data = snapshot.val();
     const customers = fbToArray(data);
     if (customers.length > 0) {
-      const merged = replaceWithCloudData("sgf_customers", customers);
+      const merged = mergeWithCloudData("sgf_customers", customers);
       try {
         localStorage.setItem("sgf_customers", JSON.stringify(merged));
         console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud");
@@ -280,7 +315,7 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
     const data = snapshot.val();
     const stock = fbToArray(data);
     if (stock.length > 0) {
-      const merged = replaceWithCloudData("sgf_products", stock);
+      const merged = mergeWithCloudData("sgf_products", stock);
       try {
         localStorage.setItem("sgf_products", JSON.stringify(merged));
         console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
@@ -303,7 +338,7 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
     const data = snapshot.val();
     const orders = fbToArray(data);
     if (orders.length > 0) {
-      const merged = replaceWithCloudData("sgf_orders", orders);
+      const merged = mergeWithCloudData("sgf_orders", orders);
       try { localStorage.setItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(orders);
@@ -319,7 +354,7 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
     const data = snapshot.val();
     const checkins = fbToArray(data);
     if (checkins.length > 0) {
-      const merged = replaceWithCloudData("sgf_checkins", checkins);
+      const merged = mergeWithCloudData("sgf_checkins", checkins);
       try { localStorage.setItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(checkins);
@@ -335,7 +370,7 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
     const data = snapshot.val();
     const appts = fbToArray(data);
     if (appts.length > 0) {
-      const merged = replaceWithCloudData("sgf_appointments", appts);
+      const merged = mergeWithCloudData("sgf_appointments", appts);
       try { localStorage.setItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(appts);
@@ -351,7 +386,7 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
     const data = snapshot.val();
     const invoices = fbToArray(data);
     if (invoices.length > 0) {
-      const merged = replaceWithCloudData("sgf_invoices", invoices);
+      const merged = mergeWithCloudData("sgf_invoices", invoices);
       try { localStorage.setItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(invoices);
@@ -367,7 +402,7 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
     const data = snapshot.val();
     const actions = fbToArray(data);
     if (actions.length > 0) {
-      const merged = replaceWithCloudData("sgf_followUpActions", actions);
+      const merged = mergeWithCloudData("sgf_followUpActions", actions);
       try { localStorage.setItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     onData(actions);
@@ -509,11 +544,12 @@ export function initAutoSync(): () => void {
   const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
     if (data && data.length > 0) {
       console.log(`[FirebaseSync] Received ${data.length} ${type}`);
-      // Firebase is the single source of truth — replace localStorage entirely
+      // Smart merge: Firebase is source of truth, but preserve local-only items
       try {
-        localStorage.setItem(storageKey, JSON.stringify(data));
+        const merged = mergeWithCloudData(storageKey, data);
+        localStorage.setItem(storageKey, JSON.stringify(merged));
       } catch (e) {
-        console.warn("[FirebaseSync] Failed to replace", type, e);
+        console.warn("[FirebaseSync] Failed to merge", type, e);
       }
       dataServiceRefresh?.();
       // Deduplicate orders/invoices after sync to fix duplicates from old merge bug

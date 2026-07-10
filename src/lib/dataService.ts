@@ -967,12 +967,11 @@ export const dataService = {
         };
         followUps.push(followUp);
         saveItem("sgf_followUps", followUps);
-
-        createInvoiceFromOrder(newOrder, subtotal, vatAmount, total, true);
-      } else {
-        // Regular order: create invoice as draft (activates to "sent" when order is marked "ready")
-        createInvoiceFromOrder(newOrder, subtotal, vatAmount, total, false);
       }
+
+      // NOTE: Invoices are NO LONGER auto-generated on order creation.
+      // Admin/Super Admin must manually click "Generate Invoice" button.
+      // This eliminates the race condition where invoices failed to push to cloud.
 
       return newOrder;
     },
@@ -1035,18 +1034,10 @@ export const dataService = {
           }
           saveItem("sgf_products", products);
         }
-        // ACTIVATE INVOICE from draft to sent when order becomes ready or delivered (ALL order types)
+        // ACTIVATE INVOICE from draft to sent when order becomes ready or delivered
+        // (only if invoice already exists — admin must generate it manually)
         if (status === "ready" || status === "delivered") {
-          const isSample = order.orderType === "sample";
           activateInvoiceFromOrder(order.id);
-          // If no invoice exists yet, create one
-          const existingInvoice = invoices.find((i) => i.orderId === order.id);
-          if (!existingInvoice) {
-            const subtotal = isSample ? 0 : (order.subtotal || 0);
-            const vatAmount = isSample ? 0 : (order.vatAmount || 0);
-            const total = isSample ? 0 : (order.total || 0);
-            createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
-          }
         }
         saveItem("sgf_orders", orders);
         return order;

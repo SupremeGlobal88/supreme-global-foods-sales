@@ -735,6 +735,9 @@ export default function OrdersPage() {
                     <td className="p-4 font-mono-data text-xs text-[#D4A843] cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderNumber}
                       {order.orderType === "sample" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>}
+                      {isAdmin && order.orderType !== "sample" && !(invoices || []).some((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF")) && (
+                        <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
+                      )}
                     </td>
                     <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.customer?.name || "N/A"}</td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
@@ -804,23 +807,33 @@ export default function OrdersPage() {
                               <button onClick={() => printCombinedInvoiceDelivery(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)" }}><Printer className="w-3 h-3" /> Print Invoice &amp; Delivery Note</button>
                             )}
                             {isAdmin && order.orderType !== "sample" && (
-                              <button
-                                onClick={() => {
-                                  // Reload FIRST to ensure we have latest invoice data for numbering
-                                  reloadFromStorage();
-                                  const invNum = generateInvoiceForOrder(order.id);
-                                  if (invNum) {
-                                    utils.invoice.list.invalidate();
-                                    alert("Invoice " + invNum + " created!");
-                                  } else {
-                                    alert("Failed to create invoice.");
-                                  }
-                                }}
-                                className="btn-secondary text-xs"
-                                style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}
-                              >
-                                <FileText className="w-3 h-3" /> Generate Invoice
-                              </button>
+                              (() => {
+                                const hasInvoice = (invoices || []).some((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF"));
+                                return (
+                                  <button
+                                    onClick={() => {
+                                      reloadFromStorage();
+                                      const invNum = generateInvoiceForOrder(order.id);
+                                      if (invNum) {
+                                        utils.invoice.list.invalidate();
+                                        alert("Invoice " + invNum + " created!");
+                                      } else {
+                                        alert("Failed to create invoice.");
+                                      }
+                                    }}
+                                    className="btn-secondary text-xs flex items-center gap-1.5"
+                                    style={{
+                                      borderColor: hasInvoice ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.5)",
+                                      color: hasInvoice ? "#4ADE80" : "#EF4444",
+                                      backgroundColor: hasInvoice ? "rgba(74,222,128,0.08)" : "rgba(239,68,68,0.08)",
+                                    }}
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    {hasInvoice ? "Regenerate Invoice" : "Generate Invoice"}
+                                    {!hasInvoice && <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] animate-pulse" />}
+                                  </button>
+                                );
+                              })()
                             )}
                           </div>
                         </div>

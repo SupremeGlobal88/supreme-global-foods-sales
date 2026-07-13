@@ -379,23 +379,18 @@ export default function InvoicesPage() {
 
   /* ── Statement Print ── */
   async function printStmt() {
-    // Use the SAME invoices data as the invoice list page — from tRPC useQuery
-    // The invoice list already shows Sage invoices correctly for this customer
+    // Fetch FRESH invoice data — bypass stale closure variable
+    const freshInvoices = await utils.invoice.list.fetch();
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
 
-    // Build invoice list — same matching as the invoice list search:
-    // by customerId, by customer.name, or by customerCode
+    // Build invoice list — same matching as the invoice list search
     const custCode = cust.customerCode;
-    let list = (invoices || []).filter((i: any) => {
-      // Match by customerId
+    let list = (freshInvoices || []).filter((i: any) => {
       if (i.customerId == stmtCust) return true;
-      // Match by customer name (how the invoice list search finds Sage invoices)
       if (i.customer && i.customer.name === cust.name) return true;
-      // Match by customerCode on invoice
       if (i.customerCode === custCode) return true;
-      // Match by customerCode on nested customer object
       if (i.customer && i.customer.customerCode === custCode) return true;
       return false;
     });
@@ -982,7 +977,9 @@ export default function InvoicesPage() {
               {(() => {
                 const sc = (customers || []).find((c: any) => c.id == stmtCust);
                 if (!sc) return null;
-                const stmtCount = (invoices || []).filter((i: any) => {
+                // Use same filter as printStmt for consistent count
+                const allInv = invoices || [];
+                const stmtCount = allInv.filter((i: any) => {
                   if (i.customerId == stmtCust) return true;
                   if (i.customer && i.customer.name === sc.name) return true;
                   if (i.customerCode === sc.customerCode) return true;

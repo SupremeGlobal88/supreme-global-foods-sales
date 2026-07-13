@@ -561,17 +561,16 @@ export function initAutoSync(): () => void {
           }
         } catch { /* ignore */ }
       }
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock"].includes(type)) {
+      // Dispatch firebaseDataReceived event for ALL data types.
+      // This ensures tRPC cache invalidates on every device when ANY
+      // user creates/updates data — not just when the count increases.
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;
-        // Dispatch event for invoices ALWAYS (not just on count increase)
-        // so that tRPC cache invalidates when other admins generate invoices
-        if (curr > prev || type === "invoices" || type === "orders") {
-          try {
-            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: curr, newItems: Math.max(0, curr - prev) } }));
-          } catch { /* ignore */ }
-        }
+        try {
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: curr, newItems: Math.max(0, curr - prev) } }));
+        } catch { /* ignore */ }
       }
     }
   };

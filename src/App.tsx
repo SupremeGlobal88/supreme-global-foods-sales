@@ -87,10 +87,45 @@ export default function App() {
   useEffect(() => {
     const handler = (e: any) => {
       const type = e.detail?.type;
-      if (type === "invoices") utils.invoice.list.invalidate();
-      if (type === "orders") { utils.order.list.invalidate(); utils.order.getStats.invalidate(); }
-      if (type === "customers") utils.customer.search.invalidate();
-      if (type === "stock") { utils.stock.list.invalidate(); utils.stock.search.invalidate(); }
+      // Invoices: orders page GenerateInvoiceButton + invoices page
+      if (type === "invoices") {
+        utils.invoice.list.invalidate();
+        utils.invoice.getStats.invalidate();
+        utils.invoice.getCustomerStatement.invalidate();
+      }
+      // Orders: orders page list + dashboard stats
+      if (type === "orders") {
+        utils.order.list.invalidate();
+        utils.order.getStats.invalidate();
+        utils.dashboard.stats.invalidate();
+      }
+      // Checkins: appointments page
+      if (type === "checkins") {
+        utils.checkIn.list.invalidate();
+        utils.checkIn.getStats.invalidate();
+      }
+      // Appointments: appointments page
+      if (type === "appointments") {
+        utils.appointment.list.invalidate();
+        utils.appointment.getStats.invalidate();
+      }
+      // Customers: customers page + orders page
+      if (type === "customers") {
+        utils.customer.search.invalidate();
+        utils.customer.list.invalidate();
+        utils.customer.getStats.invalidate();
+      }
+      // Stock: stock page
+      if (type === "stock") {
+        utils.stock.list.invalidate();
+        utils.stock.search.invalidate();
+        utils.stock.getStats.invalidate();
+      }
+      // Follow-up actions: follow-ups page
+      if (type === "followUpActions") {
+        utils.followUpAction.list.invalidate();
+        utils.followUpAction.getStats.invalidate();
+      }
     };
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);

@@ -257,7 +257,9 @@ function getStableKey(item: any, storageKey: string): string | null {
 }
 
 /** Smart merge: Firebase is source of truth, but local-only items are preserved.
- *  This prevents newly generated invoices from being wiped before they sync to Firebase. */
+ *  For items in BOTH, local properties win over null/missing Firebase properties.
+ *  This preserves local enrichment (customerCode matching, status updates)
+ *  without losing Firebase updates. */
 function mergeWithCloudData(key: string, incoming: any[]): any[] {
   try {
     const raw = localStorage.getItem(key);
@@ -280,6 +282,23 @@ function mergeWithCloudData(key: string, incoming: any[]): any[] {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
         merged.set(k, item); // Preserve local-only item
+      }
+    }
+
+    // For items in BOTH: merge local properties into Firebase item.
+    // Local non-null values win over Firebase null/missing values.
+    // This preserves customerCode, customerId updates from relinkSageInvoices().
+    for (const item of local) {
+      const k = getStableKey(item, key);
+      if (k !== null && incomingMap.has(k)) {
+        const fbItem = incomingMap.get(k)!;
+        const mergedItem = { ...fbItem };
+        for (const prop of Object.keys(item)) {
+          if (item[prop] != null && fbItem[prop] == null) {
+            mergedItem[prop] = item[prop]; // Local enrichment wins
+          }
+        }
+        merged.set(k, mergedItem);
       }
     }
 

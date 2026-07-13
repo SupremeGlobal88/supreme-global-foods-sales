@@ -565,9 +565,11 @@ export function initAutoSync(): () => void {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;
-        if (curr > prev) {
+        // Dispatch event for invoices ALWAYS (not just on count increase)
+        // so that tRPC cache invalidates when other admins generate invoices
+        if (curr > prev || type === "invoices" || type === "orders") {
           try {
-            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: curr, newItems: curr - prev } }));
+            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: curr, newItems: Math.max(0, curr - prev) } }));
           } catch { /* ignore */ }
         }
       }

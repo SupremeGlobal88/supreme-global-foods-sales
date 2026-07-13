@@ -380,29 +380,35 @@ export default function InvoicesPage() {
   /* ── Statement Print ── */
   async function printStmt() {
     // Read DIRECTLY from dataService — bypass tRPC cache entirely
-    // This guarantees we see the ACTUAL current invoice data including
-    // Sage invoices that were auto-linked by autoLinkSageInvoices()
     const { dataService } = await import("@/lib/dataService");
     const freshInvoices = dataService.invoice.list();
+
+    // DEBUG: log what we found
+    console.log("[Statement] Total invoices:", freshInvoices.length);
+    console.log("[Statement] Sage invoices:", freshInvoices.filter((i: any) => i.source === "sage").length);
+    console.log("[Statement] Selected customer:", stmtCust);
 
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
 
     // Build invoice list — match by customerId (app + linked Sage) OR by customerCode (unlinked Sage)
-    // Uses trimmed lowercase for robust matching across all devices
     const custCodeLower = cust.customerCode ? String(cust.customerCode).trim().toLowerCase() : null;
+    console.log("[Statement] Customer code:", custCodeLower);
     let list = freshInvoices.filter((i: any) => {
-      // Direct customerId match — app invoices and Sage invoices linked during import
       if (i.customerId == stmtCust) return true;
-      // Sage invoices with customerId === 0: match by the preserved customerCode
       const invCode = i.customerCode;
       if (i.source === "sage" && custCodeLower && invCode && String(invCode).trim().toLowerCase() === custCodeLower) return true;
-      // Fallback: check nested customer object (for already-linked invoices)
       const nestedCode = i.customer && i.customer.customerCode;
       if (i.source === "sage" && custCodeLower && nestedCode && String(nestedCode).trim().toLowerCase() === custCodeLower) return true;
       return false;
     });
+    console.log("[Statement] Matched invoices:", list.length);
+    if (list.length === 0) {
+      // Show sample of Sage invoices for debugging
+      const sample = freshInvoices.filter((i: any) => i.source === "sage").slice(0, 3);
+      console.log("[Statement] Sample Sage invoices:", sample.map((i: any) => ({ num: i.invoiceNumber, custId: i.customerId, custCode: i.customerCode })));
+    }
     if (stmtFrom) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) >= new Date(stmtFrom));
     if (stmtTo) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) <= new Date(stmtTo + "T23:59:59"));
     list = list.sort((a: any, b: any) => new Date(a.invoiceDate || a.createdAt).getTime() - new Date(b.invoiceDate || b.createdAt).getTime());

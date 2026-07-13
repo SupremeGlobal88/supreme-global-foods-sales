@@ -36,9 +36,13 @@ function GenerateInvoiceButton({
 }) {
   const [busy, setBusy] = useState(false);
 
-  // Use tRPC useQuery so React re-renders when invoices change (sync from other devices)
+  // Use tRPC useQuery — ALWAYS fetch fresh on mount + poll every 5s
+  // The button only mounts when an order is EXPANDED, so refetchOnMount
+  // guarantees we see the latest invoices from other admins
   const { data: liveInvoices } = trpc.invoice.list.useQuery(undefined, {
-    refetchInterval: 5000, // Check every 5s for invoices pushed by other admins
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 
   const hasInvoice = (liveInvoices || []).some(

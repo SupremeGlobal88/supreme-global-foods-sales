@@ -385,16 +385,18 @@ export default function InvoicesPage() {
     if (!cust) { alert("Please select a customer."); return; }
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
 
-    // Build invoice list — match by customerId (app invoices + Sage already linked by customerId)
-    // OR by customerCode (Sage invoices where customerId is 0 but customerCode matches)
+    // Build invoice list — same matching as the invoice list search:
+    // by customerId, by customer.name, or by customerCode
     const custCode = cust.customerCode;
     let list = (invoices || []).filter((i: any) => {
-      // Match 1: customerId — works for app invoices and Sage invoices linked during import/relink
+      // Match by customerId
       if (i.customerId == stmtCust) return true;
-      // Match 2: customerCode on invoice — for Sage invoices with customerId === 0
-      if (i.source === "sage" && custCode && i.customerCode === custCode) return true;
-      // Match 3: customerCode on nested customer object
-      if (i.source === "sage" && custCode && i.customer && i.customer.customerCode === custCode) return true;
+      // Match by customer name (how the invoice list search finds Sage invoices)
+      if (i.customer && i.customer.name === cust.name) return true;
+      // Match by customerCode on invoice
+      if (i.customerCode === custCode) return true;
+      // Match by customerCode on nested customer object
+      if (i.customer && i.customer.customerCode === custCode) return true;
       return false;
     });
     if (stmtFrom) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) >= new Date(stmtFrom));
@@ -977,11 +979,22 @@ export default function InvoicesPage() {
                 <div><label className="label-text block mb-1.5">From Date</label><input type="date" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} className="input-field" /></div>
                 <div><label className="label-text block mb-1.5">To Date</label><input type="date" value={stmtTo} onChange={(e) => setStmtTo(e.target.value)} className="input-field" /></div>
               </div>
-              {stmtCust > 0 && (
-                <div className="text-xs text-center" style={{ color: (invoices || []).filter((i: any) => i.customerId == stmtCust).length > 0 ? "#4ADE80" : "#8A8B8C" }}>
-                  {(invoices || []).filter((i: any) => i.customerId == stmtCust).length} invoice{(invoices || []).filter((i: any) => i.customerId == stmtCust).length !== 1 ? "s" : ""} found
-                </div>
-              )}
+              {(() => {
+                const sc = (customers || []).find((c: any) => c.id == stmtCust);
+                if (!sc) return null;
+                const stmtCount = (invoices || []).filter((i: any) => {
+                  if (i.customerId == stmtCust) return true;
+                  if (i.customer && i.customer.name === sc.name) return true;
+                  if (i.customerCode === sc.customerCode) return true;
+                  if (i.customer && i.customer.customerCode === sc.customerCode) return true;
+                  return false;
+                }).length;
+                return (
+                  <div className="text-xs text-center" style={{ color: stmtCount > 0 ? "#4ADE80" : "#8A8B8C" }}>
+                    {stmtCount} invoice{stmtCount !== 1 ? "s" : ""} found
+                  </div>
+                );
+              })()}
               <button
                 onClick={async () => { if (stmtCust) { await printStmt(); setShowStmt(false); } }}
                 disabled={!stmtCust}

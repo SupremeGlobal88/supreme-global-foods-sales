@@ -13,6 +13,7 @@ import StockPage from "./pages/StockPage";
 import CustomersPage from "./pages/CustomersPage";
 import OrdersPage from "./pages/OrdersPage";
 import InvoicesPage from "./pages/InvoicesPage";
+import StatementPage from "./pages/StatementPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
 import SalesRepsPage from "./pages/SalesRepsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -148,6 +149,7 @@ export default function App() {
         <Route path="customers" element={<CustomersPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="invoices" element={<RoleGuard><InvoicesPage /></RoleGuard>} />
+        <Route path="statement/:customerId" element={<RoleGuard><StatementPage /></RoleGuard>} />
         <Route path="appointments" element={<AppointmentsPage />} />
         <Route path="sales-reps" element={<RoleGuard><SalesRepsPage /></RoleGuard>} />
         <Route path="follow-ups" element={<FollowUpsPage />} />

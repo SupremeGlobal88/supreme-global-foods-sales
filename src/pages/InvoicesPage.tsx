@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage, dataService } from "@/lib/dataService";
+import { reloadFromStorage } from "@/lib/dataService";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
@@ -10,6 +11,7 @@ import {
 
 /* ─── InvoicePage ─── */
 export default function InvoicesPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const utils = trpc.useUtils();
@@ -993,12 +995,12 @@ export default function InvoicesPage() {
                 );
               })()}
               <button
-                onClick={async () => { if (stmtCust) { await printStmt(); setShowStmt(false); } }}
+                onClick={() => { if (stmtCust) { navigate(`/statement/${stmtCust}`); setShowStmt(false); } }}
                 disabled={!stmtCust}
                 className="btn-primary w-full justify-center"
                 style={{ opacity: stmtCust ? 1 : 0.5 }}
               >
-                <Printer className="w-4 h-4" /> Print Statement
+                <Printer className="w-4 h-4" /> View & Print Statement
               </button>
             </div>
           </div>

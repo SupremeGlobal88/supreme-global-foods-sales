@@ -26,21 +26,22 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 /** Dedicated component for Generate Invoice button.
- *  Reads invoices DIRECTLY from dataService on every render —
- *  never uses stale props. This guarantees the button always
- *  shows correct state after generation or sync. */
+ *  Uses tRPC useQuery with 5s polling so React auto-re-renders
+ *  when invoices change from other devices. This guarantees the
+ *  button always shows correct state after any admin generates. */
 function GenerateInvoiceButton({
   orderId,
 }: {
   orderId: number;
 }) {
   const [busy, setBusy] = useState(false);
-  const [tick, setTick] = useState(0);
 
-  // Read directly from dataService — always fresh, never stale
-  const liveInvoices = dataService.invoice.list();
+  // Use tRPC useQuery so React re-renders when invoices change (sync from other devices)
+  const { data: liveInvoices } = trpc.invoice.list.useQuery(undefined, {
+    refetchInterval: 5000, // Check every 5s for invoices pushed by other admins
+  });
 
-  const hasInvoice = liveInvoices.some(
+  const hasInvoice = (liveInvoices || []).some(
     (i: any) => i.orderId == orderId && i.invoiceNumber?.startsWith("SGF")
   );
 
@@ -63,10 +64,9 @@ function GenerateInvoiceButton({
           } catch (e: any) {
             console.warn("[Invoice] Firebase push:", e?.message);
           }
-          // Force UI refresh — smart merge in firebaseSync preserves local invoices
+          // Force UI refresh — tRPC will auto-re-render with fresh data
           await utils.invoice.list.refetch();
           reloadFromStorage();
-          setTick((t) => t + 1); // Force re-render with fresh data
           alert("Invoice " + invNum + " created and synced!");
         } else {
           alert("Invoice generation is busy. Please wait and try again.");

@@ -1,6 +1,6 @@
 import { dataService } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushFollowUpAction, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
+import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
 
 /** Push data to Firebase after local write. All pushes are awaited with error logging. */
 async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {

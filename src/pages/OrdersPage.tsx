@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { reloadFromStorage, generateInvoiceForOrder } from "@/lib/dataService";
+import { reloadFromStorage, generateInvoiceForOrder, dataService } from "@/lib/dataService";
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
@@ -26,18 +26,21 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 /** Dedicated component for Generate Invoice button.
- *  Isolated so it re-renders with fresh invoice data.
- *  Uses global lock + page reload to guarantee unique numbers. */
+ *  Reads invoices DIRECTLY from dataService on every render —
+ *  never uses stale props. This guarantees the button always
+ *  shows correct state after generation or sync. */
 function GenerateInvoiceButton({
   orderId,
-  invoices,
 }: {
   orderId: number;
-  invoices: any[];
 }) {
   const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
 
-  const hasInvoice = (invoices || []).some(
+  // Read directly from dataService — always fresh, never stale
+  const liveInvoices = dataService.invoice.list();
+
+  const hasInvoice = liveInvoices.some(
     (i: any) => i.orderId == orderId && i.invoiceNumber?.startsWith("SGF")
   );
 
@@ -51,7 +54,6 @@ function GenerateInvoiceButton({
         if (invNum) {
           // Push to Firebase
           try {
-            const { dataService } = await import("@/lib/dataService");
             const allInv = dataService.invoice.list();
             const newInv = allInv.find((i: any) => i.orderId == orderId && i.invoiceNumber === invNum);
             if (newInv) {
@@ -64,6 +66,7 @@ function GenerateInvoiceButton({
           // Force UI refresh — smart merge in firebaseSync preserves local invoices
           await utils.invoice.list.refetch();
           reloadFromStorage();
+          setTick((t) => t + 1); // Force re-render with fresh data
           alert("Invoice " + invNum + " created and synced!");
         } else {
           alert("Invoice generation is busy. Please wait and try again.");
@@ -871,7 +874,6 @@ export default function OrdersPage() {
                             {isAdmin && (
                               <GenerateInvoiceButton
                                 orderId={order.id}
-                                invoices={invoices}
                               />
                             )}
                           </div>

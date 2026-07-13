@@ -379,9 +379,9 @@ export default function InvoicesPage() {
 
   /* ── Statement Print ── */
   async function printStmt() {
-    // Force refresh tRPC data before generating statement — ensures Sage imports are included
-    await refetchInvoices();
-    await utils.invoice.list.invalidate();
+    // Fetch FRESH invoice data directly — do NOT use stale 'invoices' closure variable
+    const freshResult = await utils.invoice.list.fetch();
+    const freshInvoices = freshResult || [];
 
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }
@@ -389,7 +389,7 @@ export default function InvoicesPage() {
 
     // Build invoice list — match by customerId (app + linked Sage) OR by customerCode (unlinked Sage)
     const custCode = cust.customerCode;
-    let list = (invoices || []).filter((i: any) => {
+    let list = freshInvoices.filter((i: any) => {
       // Direct customerId match — app invoices and Sage invoices linked during import
       if (i.customerId == stmtCust) return true;
       // Sage invoices with customerId === 0: match by the preserved customerCode

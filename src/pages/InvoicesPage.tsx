@@ -388,14 +388,17 @@ export default function InvoicesPage() {
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
 
     // Build invoice list — match by customerId (app + linked Sage) OR by customerCode (unlinked Sage)
-    const custCode = cust.customerCode;
+    // Uses trimmed lowercase for robust matching across all devices
+    const custCodeLower = cust.customerCode ? String(cust.customerCode).trim().toLowerCase() : null;
     let list = freshInvoices.filter((i: any) => {
       // Direct customerId match — app invoices and Sage invoices linked during import
       if (i.customerId == stmtCust) return true;
       // Sage invoices with customerId === 0: match by the preserved customerCode
-      if (i.source === "sage" && custCode && i.customerCode === custCode) return true;
+      const invCode = i.customerCode;
+      if (i.source === "sage" && custCodeLower && invCode && String(invCode).trim().toLowerCase() === custCodeLower) return true;
       // Fallback: check nested customer object (for already-linked invoices)
-      if (i.source === "sage" && custCode && i.customer && i.customer.customerCode === custCode) return true;
+      const nestedCode = i.customer && i.customer.customerCode;
+      if (i.source === "sage" && custCodeLower && nestedCode && String(nestedCode).trim().toLowerCase() === custCodeLower) return true;
       return false;
     });
     if (stmtFrom) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) >= new Date(stmtFrom));

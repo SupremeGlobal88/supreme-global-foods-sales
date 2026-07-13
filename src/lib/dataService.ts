@@ -136,6 +136,52 @@ function load() {
 
   // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
   deduplicateAll();
+
+  // AUTO-LINK: Match Sage invoices to customers by customerCode.
+  // This runs on every startup so ALL devices get linked Sage invoices
+  // without needing to click "Re-link" button in Settings.
+  try { autoLinkSageInvoices(); } catch { /* ignore */ }
+}
+
+/** Auto-link Sage invoices to customers on every app startup.
+ *  Silent version — no Firebase push, just local fix.
+ *  This ensures ALL devices have matched Sage invoices. */
+function autoLinkSageInvoices(): void {
+  let changed = false;
+  for (const inv of invoices) {
+    // Only process Sage invoices with no customerId
+    if (inv.source !== "sage" || (inv.customerId && inv.customerId !== 0)) continue;
+
+    // Try exact match by customerCode
+    const sageCode = (inv as any).customerCode || (inv as any).sageCustomerCode;
+    if (sageCode) {
+      const matched = customers.find((c) =>
+        c.customerCode && String(c.customerCode).trim().toLowerCase() === String(sageCode).trim().toLowerCase()
+      );
+      if (matched) {
+        inv.customerId = matched.id;
+        inv.customer = matched;
+        inv.customerCode = matched.customerCode;
+        changed = true;
+        continue;
+      }
+    }
+
+    // Fallback: match by customer name in notes or items
+    const customerName = (inv as any).customerName || (inv.notes || "").replace(/Historical import from Sage/g, "").trim();
+    if (customerName) {
+      const fuzzyMatch = customers.find((c) =>
+        c.name && c.name.toLowerCase().includes(customerName.toLowerCase().slice(0, 8))
+      );
+      if (fuzzyMatch) {
+        inv.customerId = fuzzyMatch.id;
+        inv.customer = fuzzyMatch;
+        inv.customerCode = fuzzyMatch.customerCode;
+        changed = true;
+      }
+    }
+  }
+  if (changed) saveItem("sgf_invoices", invoices);
 }
 
 /** Deduplicate orders by orderNumber and invoices by invoiceNumber.
@@ -1564,11 +1610,15 @@ export const dataService = {
       const customer = customers.find((c) => c.id == customerId);
       const custCode = customer?.customerCode;
       // Match by customerId (app + linked Sage) OR by customerCode (unlinked Sage)
+      // Uses trimmed lowercase comparison for robust matching
+      const custCodeLower = custCode ? String(custCode).trim().toLowerCase() : null;
       const custInvoices = invoices
         .filter((i) => {
           if (i.customerId == customerId) return true;
-          if (i.source === "sage" && custCode && (i as any).customerCode === custCode) return true;
-          if (i.source === "sage" && custCode && i.customer && (i.customer as any).customerCode === custCode) return true;
+          const invCode = (i as any).customerCode;
+          if (i.source === "sage" && custCodeLower && invCode && String(invCode).trim().toLowerCase() === custCodeLower) return true;
+          const nestedCode = i.customer && (i.customer as any).customerCode;
+          if (i.source === "sage" && custCodeLower && nestedCode && String(nestedCode).trim().toLowerCase() === custCodeLower) return true;
           return false;
         })
         .filter((i) => !fromDate || new Date(i.invoiceDate || i.createdAt) >= new Date(fromDate))

@@ -379,9 +379,11 @@ export default function InvoicesPage() {
 
   /* ── Statement Print ── */
   async function printStmt() {
-    // Fetch FRESH invoice data directly — do NOT use stale 'invoices' closure variable
-    const freshResult = await utils.invoice.list.fetch();
-    const freshInvoices = freshResult || [];
+    // Read DIRECTLY from dataService — bypass tRPC cache entirely
+    // This guarantees we see the ACTUAL current invoice data including
+    // Sage invoices that were auto-linked by autoLinkSageInvoices()
+    const { dataService } = await import("@/lib/dataService");
+    const freshInvoices = dataService.invoice.list();
 
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }

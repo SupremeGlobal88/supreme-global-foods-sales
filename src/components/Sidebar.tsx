@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Package, Users, ShoppingCart, FileText,
   Calendar, UserCog, CreditCard, Settings, LogOut, Globe,
   Bell, FlaskConical, ShieldAlert, Archive, X, Wallet,
+  FileSpreadsheet,
 } from "lucide-react";
 
 const allNavItems = [
@@ -13,6 +14,7 @@ const allNavItems = [
   { path: "/customers", label: "Customers", icon: Users },
   { path: "/orders", label: "Orders", icon: ShoppingCart },
   { path: "/invoices", label: "Invoices", icon: FileText },
+  { path: "/customer-statement", label: "Statement", icon: FileSpreadsheet },
   { path: "/my-invoices", label: "My Invoices", icon: Wallet },
   { path: "/appointments", label: "Appointments", icon: Calendar },
   { path: "/sales-reps", label: "Sales Reps", icon: UserCog },

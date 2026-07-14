@@ -25,6 +25,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/users":         ["super_admin"],
   "/historical-import": ["admin", "super_admin"],
   "/my-invoices": ["sales_rep", "admin", "super_admin"],
+  "/customer-statement": ["admin", "super_admin"],
 };
 
 /** Page-level action permissions */

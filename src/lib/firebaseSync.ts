@@ -211,12 +211,13 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   if (!isFirebaseReady()) return {};
   const counts: Record<string, number> = {};
 
-  const pullType = async (path: string, storageKey: string) => {
+  const pullType = async (path: string, storageKey: string, postProcess?: (items: any[]) => any[]) => {
     try {
       const snapshot = await get(ref(db, path));
       const data = fbToArray(snapshot.val());
       if (data.length > 0) {
-        const merged = mergeWithCloudData(storageKey, data);
+        let merged = mergeWithCloudData(storageKey, data);
+        if (postProcess) merged = postProcess(merged);
         localStorage.setItem(storageKey, JSON.stringify(merged));
       }
       counts[path] = data.length;
@@ -228,11 +229,25 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
     }
   };
 
+  // Customer dedup post-process: same customer from different devices may have different IDs
+  const dedupCustomers = (items: any[]) => {
+    const custMap = new Map<string, any>();
+    for (const c of items) {
+      const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+      if (!key) continue;
+      const existing = custMap.get(key);
+      if (!existing || ((c.updatedAt || c.createdAt || 0) > (existing.updatedAt || existing.createdAt || 0))) {
+        custMap.set(key, c);
+      }
+    }
+    return Array.from(custMap.values());
+  };
+
   await pullType("orders", "sgf_orders");
   await pullType("appointments", "sgf_appointments");
   await pullType("checkins", "sgf_checkins");
   await pullType("invoices", "sgf_invoices");
-  await pullType("customers", "sgf_customers");
+  await pullType("customers", "sgf_customers", dedupCustomers);
   await pullType("stock", "sgf_products");
   await pullType("followUpActions", "sgf_followUpActions");
 
@@ -315,10 +330,22 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
     const data = snapshot.val();
     const customers = fbToArray(data);
     if (customers.length > 0) {
-      const merged = mergeWithCloudData("sgf_customers", customers);
+      let merged = mergeWithCloudData("sgf_customers", customers);
+      // Deduplicate customers by normalized name after merge.
+      // Same customer from different devices may have different IDs.
+      const custMap = new Map<string, any>();
+      for (const c of merged) {
+        const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+        if (!key) continue;
+        const existing = custMap.get(key);
+        if (!existing || ((c.updatedAt || c.createdAt || 0) > (existing.updatedAt || existing.createdAt || 0))) {
+          custMap.set(key, c);
+        }
+      }
+      merged = Array.from(custMap.values());
       try {
         localStorage.setItem("sgf_customers", JSON.stringify(merged));
-        console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud");
+        console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud, deduped to", merged.length);
       } catch { /* ignore */ }
     }
     if (onData) onData(customers);

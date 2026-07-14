@@ -187,9 +187,10 @@ function autoLinkSageInvoices(): void {
 /** Deduplicate orders by orderNumber and invoices by invoiceNumber.
  *  Keeps the most recent record (by updatedAt > createdAt > id).
  *  This fixes duplicates created when Firebase sync treated number/string IDs as different keys. */
-function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number } {
+function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; customersRemoved: number } {
   const beforeOrders = orders.length;
   const beforeInvoices = invoices.length;
+  const beforeCustomers = customers.length;
 
   // Deduplicate orders: group by orderNumber, keep most recent
   const orderMap = new Map<string, any>();
@@ -213,15 +214,29 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number } {
   }
   invoices = Array.from(invMap.values());
 
+  // Deduplicate customers: group by normalized name, keep most recent
+  const custMap = new Map<string, any>();
+  for (const c of customers) {
+    const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+    if (!key) continue; // skip customers with no name
+    const existing = custMap.get(key);
+    if (!existing || isMoreRecent(c, existing)) {
+      custMap.set(key, c);
+    }
+  }
+  customers = Array.from(custMap.values());
+
   const result = {
     ordersRemoved: beforeOrders - orders.length,
     invoicesRemoved: beforeInvoices - invoices.length,
+    customersRemoved: beforeCustomers - customers.length,
   };
 
-  if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
-    console.log(`[DEDUPLICATE] Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices`);
+  if (result.ordersRemoved > 0 || result.invoicesRemoved > 0 || result.customersRemoved > 0) {
+    console.log(`[DEDUPLICATE] Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers`);
     saveItem("sgf_orders", orders);
     saveItem("sgf_invoices", invoices);
+    saveItem("sgf_customers", customers);
   }
 
   return result;
@@ -609,8 +624,8 @@ export function generateMissingInvoices(): { created: number; details: string[] 
   return { created, details };
 }
 
-/** Remove duplicate orders and invoices. Call after Firebase sync or on demand. */
-export function deduplicateData(): { ordersRemoved: number; invoicesRemoved: number } {
+/** Remove duplicate orders, invoices, and customers. Call after Firebase sync or on demand. */
+export function deduplicateData(): { ordersRemoved: number; invoicesRemoved: number; customersRemoved: number } {
   load();
   const result = deduplicateAll();
   return result;
@@ -844,6 +859,25 @@ export const dataService = {
     search: ({ query }: { query: string }) => searchItems(customers, query),
     getById: (id: number) => customers.find((c) => c.id === id) || null,
     create: (data: any) => {
+      const normName = (data.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+      // Prevent duplicate: check if customer with same normalized name already exists
+      const existingIdx = customers.findIndex((c) =>
+        (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase() === normName
+      );
+      if (existingIdx >= 0) {
+        // Update existing customer instead of creating duplicate
+        const existing = customers[existingIdx];
+        customers[existingIdx] = {
+          ...existing,
+          ...data,
+          id: existing.id, // keep original id
+          customerCode: data.customerCode || existing.customerCode,
+          updatedAt: new Date().toISOString(),
+        };
+        saveItem("sgf_customers", customers);
+        logAudit("UPDATE", "customer", existing.id, `Updated existing customer (duplicate prevented): ${existing.name}`, data.salesRepName);
+        return customers[existingIdx];
+      }
       const newItem = {
         ...data,
         id: Date.now(),

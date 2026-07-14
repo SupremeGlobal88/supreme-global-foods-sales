@@ -49,25 +49,27 @@ function isValidArray(data: any, minLength: number, requiredKey?: string): boole
 
 function load() {
   try {
-    // CUSTOMERS: load from localStorage if valid, else reset to static defaults
+    // CUSTOMERS: load from localStorage if it's a valid array.
+    // NEVER discard synced data due to length checks or missing keys.
+    // Only fall back to static if localStorage is empty or corrupted.
     const c = localStorage.getItem("sgf_customers");
     if (c) {
       const parsed = JSON.parse(c);
-      if (isValidArray(parsed, 100, "name")) customers = parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) customers = parsed;
       else customers = getStaticCustomers();
     } else {
       customers = getStaticCustomers();
     }
-    // PRODUCTS: load from localStorage if valid, else reset to static defaults
+    // PRODUCTS: same approach — trust localStorage if it's a valid array
     const p = localStorage.getItem("sgf_products");
     if (p) {
       const parsed = JSON.parse(p);
-      if (isValidArray(parsed, 50, "productName")) products = parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) products = parsed;
       else products = getStaticProducts();
     } else {
       products = getStaticProducts();
     }
-    // TRANSACTION DATA: always load if present (these are user-generated)
+    // TRANSACTION DATA: always load if present (user-generated, never replace with static)
     const o = localStorage.getItem("sgf_orders");
     if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
     const i = localStorage.getItem("sgf_invoices");

@@ -753,11 +753,13 @@ function updateInvoiceFromOrder(order: any) {
 
 /** When order status changes to ready/delivered, upgrade invoice from draft to sent */
 function activateInvoiceFromOrder(orderId: number) {
-  const idx = invoices.findIndex((i) => i.orderId === orderId);
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const idx = invoices.findIndex((i) => i.orderId == orderId);
   if (idx >= 0 && invoices[idx].status === "draft") {
     invoices[idx].status = "sent";
     invoices[idx].updatedAt = new Date().toISOString();
     saveItem("sgf_invoices", invoices);
+    console.log(`[Invoice] Activated invoice ${invoices[idx].invoiceNumber} for delivered order ${orderId}`);
   }
 }
 

@@ -783,7 +783,9 @@ export function generateMissingInvoices(): { created: number; details: string[] 
 
 /** Remove duplicate orders, invoices, and customers. Call after Firebase sync or on demand. */
 export function deduplicateData(): { ordersRemoved: number; invoicesRemoved: number; customersRemoved: number } {
-  load();
+  // Do NOT call load() here — it has isValidArray() checks that can discard
+  // legitimately deduplicated data and load static defaults instead.
+  // The arrays are already in memory from reloadFromStorage().
   const result = deduplicateAll();
   return result;
 }

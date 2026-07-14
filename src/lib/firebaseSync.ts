@@ -279,9 +279,9 @@ function fbToArray(data: any): any[] {
 /** Get the stable key for an item based on its data type */
 function getStableKey(item: any, storageKey: string): string | null {
   if (!item) return null;
-  // Use invoiceNumber for invoices, orderNumber for orders, id for everything else
-  if (storageKey === "sgf_invoices") return item.invoiceNumber != null ? String(item.invoiceNumber) : null;
-  if (storageKey === "sgf_orders") return item.orderNumber != null ? String(item.orderNumber) : null;
+  // Use invoiceNumber for invoices (fallback to id), orderNumber for orders (fallback to id), id for everything else
+  if (storageKey === "sgf_invoices") return item.invoiceNumber != null ? String(item.invoiceNumber) : (item.id != null ? String(item.id) : null);
+  if (storageKey === "sgf_orders") return item.orderNumber != null ? String(item.orderNumber) : (item.id != null ? String(item.id) : null);
   return item.id != null ? String(item.id) : null;
 }
 

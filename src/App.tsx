@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -83,6 +83,16 @@ export default function App() {
     // Initialize Firebase from saved config (if any), then start auto-sync
     initFirebase();
     const unsub = initAutoSync();
+    // Auto-pull from Firebase on first load if localStorage is empty (e.g. after clear)
+    const hasData = localStorage.getItem("sgf_orders") || localStorage.getItem("sgf_invoices");
+    if (!hasData && isFirebaseReady()) {
+      setTimeout(() => {
+        pullFromCloud().then((counts) => {
+          reloadFromStorage();
+          console.log("[AutoSync] Initial pull complete:", counts);
+        }).catch((e) => console.warn("[AutoSync] Initial pull failed:", e));
+      }, 2000);
+    }
     return () => { unsub(); };
   }, []);
 

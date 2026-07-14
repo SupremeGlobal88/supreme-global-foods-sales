@@ -14,10 +14,11 @@ import {
   Hash,
   FileText,
   Link,
+  RefreshCw,
 } from "lucide-react";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
-import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData } from "@/lib/firebaseSync";
+import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData, pullFromCloud } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
 import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
 
@@ -165,6 +166,21 @@ export default function SettingsPage() {
     }, 100);
   }
 
+  // Force Sync from Cloud
+  async function handleForceSync() {
+    setForceSyncStatus("Pulling data from cloud...");
+    try {
+      const counts = await pullFromCloud();
+      reloadFromStorage();
+      const parts = Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(", ");
+      setForceSyncStatus(`Sync complete! ${parts || "No data found"}`);
+      setTimeout(() => setForceSyncStatus(""), 8000);
+    } catch (e: any) {
+      setForceSyncStatus("Sync failed: " + (e.message || "Unknown error"));
+      setTimeout(() => setForceSyncStatus(""), 8000);
+    }
+  }
+
   // Cloud Sync
   const [syncStatus, setSyncStatus] = useState(getFirebaseConfig());
   const [firebaseJson, setFirebaseJson] = useState("");
@@ -172,6 +188,7 @@ export default function SettingsPage() {
   const [syncError, setSyncError] = useState("");
   const [shareUrl, setShareUrl] = useState("");
   const [clearStatus, setClearStatus] = useState("");
+  const [forceSyncStatus, setForceSyncStatus] = useState("");
 
   useEffect(() => {
     try {
@@ -444,6 +461,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex gap-2 flex-wrap">
               <button onClick={handleSyncToCloud} className="btn-secondary text-sm"><Cloud className="w-4 h-4" /> Sync to Cloud</button>
+              <button onClick={handleForceSync} className="btn-secondary text-sm"><RefreshCw className="w-4 h-4" /> Force Sync from Cloud</button>
               <button onClick={handleCopyShareLink} className="btn-secondary text-sm"><Copy className="w-4 h-4" /> Copy Share Link</button>
               <button onClick={() => { clearFirebaseConfig(); setSyncStatus(getFirebaseConfig()); }} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#222324", color: "#EF4444" }}>Disconnect</button>
               {isSuperAdmin && (
@@ -457,6 +475,7 @@ export default function SettingsPage() {
             )}
             {syncError && <div className="mt-2 text-xs text-[#EF4444]"><AlertTriangle className="w-3 h-3 inline mr-1" />{syncError}</div>}
             {syncMessage && <div className="mt-2 text-xs text-[#4ADE80]"><CheckCircle className="w-3 h-3 inline mr-1" />{syncMessage}</div>}
+            {forceSyncStatus && <div className="mt-2 text-xs text-[#D4A843]"><RefreshCw className="w-3 h-3 inline mr-1" />{forceSyncStatus}</div>}
           </>
         )}
       </div>

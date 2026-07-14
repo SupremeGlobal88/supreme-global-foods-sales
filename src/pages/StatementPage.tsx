@@ -11,10 +11,19 @@ export default function StatementPage() {
   const { data: allCustomers } = trpc.customer.list.useQuery();
 
   const customer = (allCustomers || []).find((c: any) => c.id === cid);
+  const custName = customer?.name || "";
+  const custCode = customer?.customerCode || "";
 
-  // Filter invoices for this customer
+  // Filter invoices for this customer — match by customerId, customer.name, or customerCode
+  // This ensures BOTH Sage invoices (which may have customerId: 0) AND app invoices are included
   const custInvoices = (invoices || [])
-    .filter((i: any) => i.customerId === cid)
+    .filter((i: any) => {
+      if (i.customerId === cid) return true;
+      if (i.customer && i.customer.name === custName) return true;
+      if (i.customerCode === custCode && custCode !== "") return true;
+      if (i.customer && i.customer.customerCode === custCode && custCode !== "") return true;
+      return false;
+    })
     .sort((a: any, b: any) => new Date(a.invoiceDate || a.createdAt).getTime() - new Date(b.invoiceDate || b.createdAt).getTime());
 
   // Build statement lines
@@ -54,6 +63,22 @@ export default function StatementPage() {
 
   const totalDebit = lines.reduce((s: number, l: any) => s + l.debit, 0);
   const totalCredit = lines.reduce((s: number, l: any) => s + l.credit, 0);
+
+  // Aging buckets — calculate from invoices (not payment lines)
+  const now = new Date();
+  const aging = { current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0 };
+  for (const inv of custInvoices) {
+    const bal = Number(inv.balanceDue || inv.total || 0) - Number(inv.amountPaid || 0);
+    if (bal <= 0) continue;
+    const invDate = new Date(inv.invoiceDate || inv.createdAt);
+    const daysDiff = Math.floor((now.getTime() - invDate.getTime()) / 86400000);
+    if (daysDiff <= 30) aging.current += bal;
+    else if (daysDiff <= 60) aging.days30 += bal;
+    else if (daysDiff <= 90) aging.days60 += bal;
+    else if (daysDiff <= 120) aging.days90 += bal;
+    else aging.days90plus += bal;
+  }
+  const totalOutstanding = aging.current + aging.days30 + aging.days60 + aging.days90 + aging.days90plus;
 
   if (!customer) {
     return (
@@ -163,6 +188,41 @@ export default function StatementPage() {
               </span>
             </div>
           </div>
+
+          {/* Aging Summary */}
+          {totalOutstanding > 0 && (
+            <div className="mt-6 rounded-lg overflow-hidden" style={{ border: "1px solid #D4A843" }}>
+              <div className="px-4 py-2 text-xs font-bold text-white uppercase tracking-wider" style={{ backgroundColor: "#D4A843" }}>
+                Outstanding Balance Aging
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ backgroundColor: "#131415" }}>
+                      <th className="p-3 text-left text-[#8A8B8C]">Current (0-30d)</th>
+                      <th className="p-3 text-right text-[#8A8B8C]">30 Days</th>
+                      <th className="p-3 text-right text-[#8A8B8C]">60 Days</th>
+                      <th className="p-3 text-right text-[#8A8B8C]">90 Days</th>
+                      <th className="p-3 text-right text-[#8A8B8C]" style={{ color: "#EF4444" }}>90+ Days</th>
+                      <th className="p-3 text-right text-white" style={{ backgroundColor: "rgba(212,168,67,0.2)" }}>Total Outstanding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderTop: "1px solid #222324" }}>
+                      <td className="p-3 text-white font-semibold">R {aging.current.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-right text-white">R {aging.days30.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-right text-white">R {aging.days60.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-right text-white">R {aging.days90.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-right font-semibold" style={{ color: "#EF4444" }}>R {aging.days90plus.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-right font-bold text-[#D4A843]" style={{ backgroundColor: "rgba(212,168,67,0.08)" }}>
+                        R {totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
 

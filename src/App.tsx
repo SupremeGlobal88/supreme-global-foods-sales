@@ -96,69 +96,68 @@ export default function App() {
     return () => { unsub(); };
   }, []);
 
-  // When Firebase data changes, invalidate tRPC queries so UI refreshes automatically
+  // When Firebase data changes, REFETCH tRPC queries immediately so UI refreshes.
+  // invalidate() only marks as stale — refetch() forces immediate update.
   useEffect(() => {
     const handler = (e: any) => {
       const type = e.detail?.type;
-      // Invoices: orders page GenerateInvoiceButton + invoices page
+      // Invoices
       if (type === "invoices") {
-        utils.invoice.list.invalidate();
-        utils.invoice.getStats.invalidate();
-        utils.invoice.getCustomerStatement.invalidate();
+        utils.invoice.list.refetch();
+        utils.invoice.getStats.refetch();
+        utils.invoice.getCustomerStatement.refetch();
+        utils.invoice.getReceipts.refetch();
       }
-      // Orders: orders page list + dashboard stats
+      // Orders
       if (type === "orders") {
-        utils.order.list.invalidate();
-        utils.order.getStats.invalidate();
-        utils.dashboard.stats.invalidate();
+        utils.order.list.refetch();
+        utils.order.getStats.refetch();
+        utils.dashboard.stats.refetch();
+        utils.sampleReport.getAll.refetch();
+        utils.followUp.list.refetch();
+        utils.followUp.getStats.refetch();
       }
-      // Checkins: appointments page
+      // Checkins
       if (type === "checkins") {
-        utils.checkIn.list.invalidate();
-        utils.checkIn.getStats.invalidate();
+        utils.checkIn.list.refetch();
+        utils.checkIn.getStats.refetch();
       }
-      // Appointments: appointments page
+      // Appointments
       if (type === "appointments") {
-        utils.appointment.list.invalidate();
-        utils.appointment.getStats.invalidate();
+        utils.appointment.list.refetch();
+        utils.appointment.getStats.refetch();
       }
-      // Customers: customers page + orders page
+      // Customers
       if (type === "customers") {
-        utils.customer.search.invalidate();
-        utils.customer.list.invalidate();
-        utils.customer.getStats.invalidate();
+        utils.customer.search.refetch();
+        utils.customer.list.refetch();
+        utils.customer.getStats.refetch();
       }
-      // Stock: stock page
+      // Stock
       if (type === "stock") {
-        utils.stock.list.invalidate();
-        utils.stock.search.invalidate();
-        utils.stock.getStats.invalidate();
+        utils.stock.list.refetch();
+        utils.stock.search.refetch();
+        utils.stock.getStats.refetch();
       }
-      // Follow-up actions: follow-ups page
+      // Follow-up actions
       if (type === "followUpActions") {
-        utils.followUpAction.list.invalidate();
-        utils.followUpAction.getStats.invalidate();
-        utils.followUp.list.invalidate();
-        utils.followUp.getStats.invalidate();
-        utils.sampleReport.getAll.invalidate();
+        utils.followUpAction.list.refetch();
+        utils.followUpAction.getStats.refetch();
+        utils.followUp.list.refetch();
+        utils.followUp.getStats.refetch();
+        utils.sampleReport.getAll.refetch();
       }
-      // Orders: also refresh sample reports since samples create orders
-      if (type === "orders") {
-        utils.sampleReport.getAll.invalidate();
-        utils.followUp.list.invalidate();
-        utils.followUp.getStats.invalidate();
-      }
-      // Follow-ups: follow-ups page + sample reports
+      // Follow-ups
       if (type === "followUps") {
-        utils.followUp.list.invalidate();
-        utils.followUp.getStats.invalidate();
-        utils.sampleReport.getAll.invalidate();
+        utils.followUp.list.refetch();
+        utils.followUp.getStats.refetch();
+        utils.sampleReport.getAll.refetch();
       }
-      // Receipts: invoices page receipts
+      // Receipts
       if (type === "receipts") {
-        utils.invoice.getReceipts.invalidate();
-        utils.invoice.getReceiptsByInvoice.invalidate();
-        utils.invoice.getReceiptsByCustomer.invalidate();
+        utils.invoice.getReceipts.refetch();
+        utils.invoice.getReceiptsByInvoice.refetch();
+        utils.invoice.getReceiptsByCustomer.refetch();
       }
     };
     window.addEventListener("firebaseDataReceived", handler);

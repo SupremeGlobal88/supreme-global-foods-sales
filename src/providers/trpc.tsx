@@ -6,7 +6,17 @@ import { createLocalLink } from "@/lib/localLink";
 
 export const trpc = createTRPCReact<AppRouter>();
 
-export const queryClient = new QueryClient();
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Auto-refetch every 5 seconds — ensures admin users see updates
+      // from other devices without needing to navigate or click
+      refetchInterval: 5000,
+      refetchOnWindowFocus: true,
+      staleTime: 0,
+    },
+  },
+});
 const trpcClient = trpc.createClient({
   links: [createLocalLink()],
 });

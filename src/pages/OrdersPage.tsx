@@ -289,8 +289,14 @@ export default function OrdersPage() {
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [productPickerIndex, setProductPickerIndex] = useState<number>(0);
 
-  const { data: orders } = trpc.order.list.useQuery();
-  const { data: invoices } = trpc.invoice.list.useQuery();
+  const { data: orders } = trpc.order.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+  });
+  const { data: invoices } = trpc.invoice.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+  });
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: stats } = trpc.order.getStats.useQuery();

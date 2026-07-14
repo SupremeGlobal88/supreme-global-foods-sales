@@ -141,6 +141,40 @@ function load() {
   // This runs on every startup so ALL devices get linked Sage invoices
   // without needing to click "Re-link" button in Settings.
   try { autoLinkSageInvoices(); } catch { /* ignore */ }
+
+  // FIX: Assign proper numeric codes to customers with "AUTO", blank, or missing codes
+  try { fixMissingCustomerCodes(); } catch { /* ignore */ }
+}
+
+/** Fix customers with missing/invalid codes. Assigns next sequential numeric code. */
+function fixMissingCustomerCodes(): void {
+  let changed = false;
+  // Get current max numeric code
+  const numericCodes = customers
+    .map((c) => c.customerCode)
+    .filter((code): code is string => !!code && code !== "AUTO")
+    .map((code) => {
+      if (/^\d+$/.test(code)) return parseInt(code);
+      const match = code.match(/^CUST(\d+)$/);
+      if (match) return parseInt(match[1]);
+      return 0;
+    })
+    .filter((n) => n > 0);
+  let nextCode = (numericCodes.length > 0 ? Math.max(...numericCodes) : 10000) + 1;
+
+  for (const c of customers) {
+    const code = (c.customerCode || "").toString().trim();
+    if (!code || code === "AUTO" || code === "undefined" || code === "null") {
+      c.customerCode = String(nextCode);
+      nextCode++;
+      changed = true;
+      console.log(`[CustomerCode] Assigned ${c.customerCode} to ${c.name}`);
+    }
+  }
+  if (changed) {
+    saveItem("sgf_customers", customers);
+    console.log(`[CustomerCode] Fixed ${changed} customer(s) with missing codes`);
+  }
 }
 
 /** Auto-link Sage invoices to customers on every app startup.
@@ -323,12 +357,21 @@ function hasExistingSample(customerId: number, stockItemId: number): boolean {
 }
 
 function generateNextCustomerCode(): string {
-  const codes = customers
+  // Collect all numeric customer codes (both new format "10001" and old "CUST0001")
+  const numericCodes = customers
     .map((c) => c.customerCode)
-    .filter((code) => code && /^CUST\d+$/.test(code))
-    .map((code) => parseInt(code.replace("CUST", "")));
-  const max = codes.length > 0 ? Math.max(...codes) : 0;
-  return `CUST${String(max + 1).padStart(4, "0")}`;
+    .filter((code): code is string => !!code && code !== "AUTO")
+    .map((code) => {
+      // Try new format: plain number like "10001"
+      if (/^\d+$/.test(code)) return parseInt(code);
+      // Try old format: "CUST0001"
+      const match = code.match(/^CUST(\d+)$/);
+      if (match) return parseInt(match[1]);
+      return 0;
+    })
+    .filter((n) => n > 0);
+  const max = numericCodes.length > 0 ? Math.max(...numericCodes) : 10000;
+  return String(max + 1);
 }
 
 load();
@@ -900,7 +943,7 @@ export const dataService = {
       const newItem = {
         ...data,
         id: Date.now(),
-        customerCode: data.customerCode || generateNextCustomerCode(),
+        customerCode: (data.customerCode && data.customerCode !== "AUTO") ? data.customerCode : generateNextCustomerCode(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

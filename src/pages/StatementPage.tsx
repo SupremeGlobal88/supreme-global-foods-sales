@@ -208,16 +208,24 @@ export default function StatementPage() {
   const [stmtFrom, setStmtFrom] = useState("2020-01-01");
   const [stmtTo, setStmtTo] = useState(new Date().toISOString().slice(0, 10));
 
-  // Filter invoices for this customer — match by customerId, customer.name, or customerCode
-  // Handles both new format (10001) and legacy format (CUST0001) for backward compatibility
-  const legacyCustCode = custCode ? "CUST" + custCode.padStart(4, "0") : "";
+  // Filter invoices for this customer
+  // Uses SAME approach as invoice page: match by customerId OR customer.name
+  const cNameLower = custName.toLowerCase();
   let custInvoices = (invoices || []).filter((i: any) => {
+    // 1. Match by customerId (catches linked Sage invoices + app invoices)
     if (i.customerId === cid) return true;
-    if (i.customer && i.customer.name === custName) return true;
-    if (i.customerCode === custCode && custCode !== "") return true;
-    if (i.customerCode === legacyCustCode && legacyCustCode !== "") return true;
-    if (i.customer && i.customer.customerCode === custCode && custCode !== "")
-      return true;
+    // 2. Match by nested customer.name (same as invoice page search!)
+    const invName = (i.customer?.name || "").toLowerCase().trim();
+    if (invName && invName === cNameLower) return true;
+    // 3. Fuzzy name match: invoice name contains customer name (or vice versa)
+    // This catches "Helens Casings CC" matching "Helens Casings"
+    if (invName && (invName.includes(cNameLower) || cNameLower.includes(invName))) return true;
+    // 4. Match by customerCode (new numeric format)
+    const invCode = (i.customerCode || "").toString().trim();
+    if (invCode && invCode === custCode) return true;
+    // 5. Match by legacy CUST code format
+    const legacyCode = custCode ? "CUST" + custCode.padStart(4, "0") : "";
+    if (invCode && invCode === legacyCode) return true;
     return false;
   });
 

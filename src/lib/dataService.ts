@@ -405,8 +405,75 @@ function generateNextCustomerCode(): string {
 load();
 
 /** Re-read all data from localStorage — call after cloud sync writes new data */
+/** Reload ALL data from localStorage into memory — NO validation.
+ *  Called after Firebase sync to ensure synced data is loaded.
+ *  The isValidArray checks in load() can discard legitimately deduplicated data,
+ *  so this function bypasses them and loads directly. */
 export function reloadFromStorage(): void {
-  load();
+  try {
+    const c = localStorage.getItem("sgf_customers");
+    if (c) { const d = JSON.parse(c); if (Array.isArray(d) && d.length > 0) customers = d; }
+  } catch { /* keep current */ }
+  try {
+    const p = localStorage.getItem("sgf_products");
+    if (p) { const d = JSON.parse(p); if (Array.isArray(d) && d.length > 0) products = d; }
+  } catch { /* keep current */ }
+  try {
+    const o = localStorage.getItem("sgf_orders");
+    if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
+  } catch { /* keep current */ }
+  try {
+    const i = localStorage.getItem("sgf_invoices");
+    if (i) { const d = JSON.parse(i); if (Array.isArray(d)) invoices = d; }
+  } catch { /* keep current */ }
+  try {
+    const a = localStorage.getItem("sgf_appointments");
+    if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
+  } catch { /* keep current */ }
+  try {
+    const ci = localStorage.getItem("sgf_checkins");
+    if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
+  } catch { /* keep current */ }
+  try {
+    const s = localStorage.getItem("sgf_specialPrices");
+    if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
+  } catch { /* keep current */ }
+  try {
+    const log = localStorage.getItem("sgf_auditLog");
+    if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
+  } catch { /* keep current */ }
+  try {
+    const fu = localStorage.getItem("sgf_followUps");
+    if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
+  } catch { /* keep current */ }
+  try {
+    const fa = localStorage.getItem("sgf_followUpActions");
+    if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
+  } catch { /* keep current */ }
+  try {
+    const cn = localStorage.getItem("sgf_collectionNotes");
+    if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
+  } catch { /* keep current */ }
+  try {
+    const cp = localStorage.getItem("sgf_collectionPromises");
+    if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
+  } catch { /* keep current */ }
+  try {
+    const ah = localStorage.getItem("sgf_accountHolds");
+    if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
+  } catch { /* keep current */ }
+  try {
+    const rc = localStorage.getItem("sgf_receipts");
+    if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
+  } catch { /* keep current */ }
+  try {
+    const crn = localStorage.getItem("sgf_creditNotes");
+    if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
+  } catch { /* keep current */ }
+  try {
+    const u = localStorage.getItem("sgf_users");
+    if (u) { const d = JSON.parse(u); if (Array.isArray(d) && d.length > 0) users = d; }
+  } catch { /* keep current */ }
 }
 
 /** Fix duplicate SGF invoice numbers. Renames duplicates to next available number.

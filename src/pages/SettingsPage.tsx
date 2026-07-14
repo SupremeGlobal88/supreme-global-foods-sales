@@ -172,8 +172,22 @@ export default function SettingsPage() {
     try {
       const counts = await pullFromCloud();
       reloadFromStorage();
+      // Invalidate ALL tRPC queries so UI refreshes with new data
+      await utils.invoice.list.invalidate();
+      await utils.invoice.getStats.invalidate();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.customer.search.invalidate();
+      await utils.customer.list.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.appointment.list.invalidate();
+      await utils.checkIn.list.invalidate();
+      await utils.followUp.list.invalidate();
+      await utils.followUpAction.list.invalidate();
+      await utils.sampleReport.getAll.invalidate();
+      await utils.dashboard.stats.invalidate();
       const parts = Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(", ");
-      setForceSyncStatus(`Sync complete! ${parts || "No data found"}`);
+      setForceSyncStatus(`Sync complete! ${parts || "No data found"} — pages refreshed`);
       setTimeout(() => setForceSyncStatus(""), 8000);
     } catch (e: any) {
       setForceSyncStatus("Sync failed: " + (e.message || "Unknown error"));

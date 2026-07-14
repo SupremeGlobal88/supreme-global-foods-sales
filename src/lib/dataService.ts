@@ -142,6 +142,10 @@ function load() {
   // without needing to click "Re-link" button in Settings.
   try { autoLinkSageInvoices(); } catch { /* ignore */ }
 
+  // FIX: Activate invoices stuck in draft for delivered/ready orders.
+  // This fixes the bug where === vs == caused activateInvoiceFromOrder to fail.
+  try { fixDraftInvoicesForDeliveredOrders(); } catch { /* ignore */ }
+
   // FIX: Assign proper numeric codes to customers with "AUTO", blank, or missing codes
   try { fixMissingCustomerCodes(); } catch { /* ignore */ }
 }
@@ -760,6 +764,26 @@ function activateInvoiceFromOrder(orderId: number) {
     invoices[idx].updatedAt = new Date().toISOString();
     saveItem("sgf_invoices", invoices);
     console.log(`[Invoice] Activated invoice ${invoices[idx].invoiceNumber} for delivered order ${orderId}`);
+  }
+}
+
+/** Fix invoices stuck in "draft" whose orders are already delivered/ready.
+ *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder. */
+function fixDraftInvoicesForDeliveredOrders(): void {
+  let changed = 0;
+  for (const inv of invoices) {
+    if (inv.status !== "draft") continue;
+    // Use loose equality (==) because Firebase may convert number IDs to strings
+    const order = orders.find((o) => o.id == inv.orderId);
+    if (order && (order.status === "delivered" || order.status === "ready")) {
+      inv.status = "sent";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+    }
+  }
+  if (changed > 0) {
+    saveItem("sgf_invoices", invoices);
+    console.log(`[Invoice] Fixed ${changed} invoice(s) stuck in draft for delivered/ready orders`);
   }
 }
 

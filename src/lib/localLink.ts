@@ -64,7 +64,7 @@ export function createLocalLink() {
               case "order.list": result = dataService.order.list(); break;
               case "order.getById": result = dataService.order.getById(input); break;
               case "order.create": result = dataService.order.create(input); await fbPush("order", result); if (input?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
-              case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); await fbPush("order", result); break; }
+              case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); await fbPush("order", result); if (data?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break; }
               case "order.updateStatus": result = dataService.order.updateStatus(input); await fbPush("order", result); break;
               case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
               case "order.getStats": result = dataService.order.getStats(); break;

@@ -461,8 +461,9 @@ export default function OrdersPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // When editing as admin, skip stock check — admin can update prices/qty regardless of stock display
-    const check = editingOrder && isAdmin ? canEditOrderBasic() : canPlaceOrder();
+    // When editing ANY order, use basic validation (no stock check, no duplicate checks)
+    // Stock was already deducted when order was created; we're just updating details
+    const check = editingOrder ? canEditOrderBasic() : canPlaceOrder();
     if (!check.valid) { alert(check.error); return; }
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
     const payload: any = { customerId: formData.customerId, orderType: formData.orderType, paymentTerms: formData.paymentTerms, priceTier: formData.priceTier, deliveryAddress: formData.deliveryAddress, notes: formData.notes, items: validItems.map((item) => ({ stockItemId: item.stockItemId, quantity: formData.orderType === "sample" ? 1 : item.quantity, unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined) })) };

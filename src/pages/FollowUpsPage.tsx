@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, dataService } from "@/lib/dataService";
 import { Bell, CheckCircle, Clock, AlertTriangle, MessageSquare, Calendar } from "lucide-react";
 
 export default function FollowUpsPage() {
@@ -10,8 +10,24 @@ export default function FollowUpsPage() {
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
-  const { data: followUps } = trpc.followUp.list.useQuery();
-  const { data: stats } = trpc.followUp.getStats.useQuery();
+  const { data: followUpsRpc } = trpc.followUp.list.useQuery(undefined, { refetchInterval: 5000 });
+  const { data: statsRpc } = trpc.followUp.getStats.useQuery(undefined, { refetchInterval: 5000 });
+
+  // Direct dataService check — bypasses tRPC cache
+  const [liveFollowUps, setLiveFollowUps] = useState<any[]>([]);
+  useEffect(() => {
+    function refresh() {
+      setLiveFollowUps(dataService.followUp.list() || []);
+    }
+    refresh();
+    const interval = setInterval(refresh, 3000);
+    window.addEventListener("firebaseDataReceived", refresh);
+    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
+  }, []);
+
+  // Use live data if available, fall back to tRPC
+  const followUps = liveFollowUps.length > 0 ? liveFollowUps : (followUpsRpc || []);
+  const stats = statsRpc;
 
   const [showForm, setShowForm] = useState<number | null>(null);
   const [reason, setReason] = useState("");

@@ -301,6 +301,20 @@ export default function OrdersPage() {
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: stats } = trpc.order.getStats.useQuery();
 
+  // Direct dataService check — bypasses tRPC cache for "NO INVOICE" detection
+  const [liveInvoiceOrderIds, setLiveInvoiceOrderIds] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    function refresh() {
+      const allInv = dataService.invoice.list();
+      const ids = new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF")).map((i: any) => Number(i.orderId)));
+      setLiveInvoiceOrderIds(ids);
+    }
+    refresh();
+    const interval = setInterval(refresh, 3000);
+    window.addEventListener("firebaseDataReceived", refresh);
+    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
+  }, []);
+
   const { data: customerSpecialPrices } = trpc.specialPrice.listByCustomer.useQuery(
     { customerId: formData.customerId }, { enabled: formData.customerId > 0 }
   );
@@ -811,7 +825,7 @@ export default function OrdersPage() {
                     <td className="p-4 font-mono-data text-xs text-[#D4A843] cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderNumber}
                       {order.orderType === "sample" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>}
-                      {isAdmin && !(invoices || []).some((i: any) => i.orderId == order.id && i.invoiceNumber?.startsWith("SGF")) && (
+                      {isAdmin && !liveInvoiceOrderIds.has(Number(order.id)) && (
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
                     </td>

@@ -178,6 +178,11 @@ export async function pushFollowUp(followUp: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
+export async function pushReceipts(receipts: any[]): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, "receipts"), receipts); } catch { /* ignore */ }
+}
+
 export async function pushAppointmentDelete(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, `appointments/${id}`), null); } catch { /* ignore */ }
@@ -258,6 +263,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("stock", "sgf_products");
   await pullType("followUpActions", "sgf_followUpActions");
   await pullType("followUps", "sgf_followUps");
+  await pullType("receipts", "sgf_receipts");
 
   dataServiceRefresh?.();
   return counts;
@@ -481,6 +487,21 @@ export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () =>
   return unsub;
 }
 
+export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const receiptsRef = ref(db, "receipts");
+  const unsub = onValue(receiptsRef, (snapshot) => {
+    const data = snapshot.val();
+    const receipts = fbToArray(data);
+    if (receipts.length > 0) {
+      try { localStorage.setItem("sgf_receipts", JSON.stringify(receipts)); } catch { /* ignore */ }
+    }
+    if (onData) onData(receipts);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
 // =============================================================================
 // INITIAL SYNC: Push all local data to Firebase
 // =============================================================================
@@ -634,7 +655,7 @@ export function initAutoSync(): () => void {
       // Dispatch firebaseDataReceived event for ALL data types.
       // This ensures tRPC cache invalidates on every device when ANY
       // user creates/updates data — not just when the count increases.
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps"].includes(type)) {
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;
@@ -657,6 +678,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToInvoices(handleReceived("invoices", "sgf_invoices")));
   unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions", "sgf_followUpActions")));
   unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
+  unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

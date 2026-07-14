@@ -1,6 +1,6 @@
 import { dataService } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushFollowUp, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
+import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushFollowUp, pushReceipts, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
 
 /** Push data to Firebase after local write. All pushes are awaited with error logging. */
 async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
@@ -75,9 +75,9 @@ export function createLocalLink() {
               case "invoice.create": result = dataService.invoice.create(input); await fbPush("invoice", result); break;
               case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); await fbPush("invoice", result); break;
               case "invoice.update": result = dataService.invoice.updateInvoice(input); await fbPush("invoice", result); break;
-              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
-              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
-              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
+              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); await pushReceipts(dataService.invoice.getReceipts()); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
+              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); await pushReceipts(dataService.invoice.getReceipts()); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
+              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); await pushReceipts(dataService.invoice.getReceipts()); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
               case "invoice.getCustomerStatement": result = dataService.invoice.getCustomerStatement(input); break;
               case "invoice.getStats": result = dataService.invoice.getStats(); break;
               case "invoice.getReceipts": result = dataService.invoice.getReceipts(); break;

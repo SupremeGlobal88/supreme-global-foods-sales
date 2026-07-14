@@ -78,12 +78,15 @@ export default function InvoicesPage() {
       // Show the receipt immediately
       if (data?.receipt) setShowReceipt(data.receipt);
     },
+    onError: (err: any) => { alert("Payment failed: " + (err.message || "Unknown error")); },
   });
   const editPay = trpc.invoice.editPayment.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); closePay(); },
+    onError: (err: any) => { alert("Edit payment failed: " + (err.message || "Unknown error")); closePay(); },
   });
   const delPay = trpc.invoice.deletePayment.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+    onError: (err: any) => { alert("Delete payment failed: " + (err.message || "Unknown error")); },
   });
   const createCreditNote = trpc.invoice.createCreditNote.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowCreditNote(false); setCnInvId(0); setCnAmount(""); setCnReason(""); },

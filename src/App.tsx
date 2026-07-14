@@ -142,6 +142,12 @@ export default function App() {
         utils.followUp.getStats.invalidate();
         utils.sampleReport.getAll.invalidate();
       }
+      // Receipts: invoices page receipts
+      if (type === "receipts") {
+        utils.invoice.getReceipts.invalidate();
+        utils.invoice.getReceiptsByInvoice.invalidate();
+        utils.invoice.getReceiptsByCustomer.invalidate();
+      }
     };
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);

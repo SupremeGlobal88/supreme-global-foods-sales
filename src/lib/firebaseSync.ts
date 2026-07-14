@@ -171,6 +171,13 @@ export async function pushFollowUpAction(action: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
+export async function pushFollowUp(followUp: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    await set(ref(db, `followUps/${followUp.id}`), { ...followUp, _syncedAt: Date.now() });
+  } catch { /* ignore */ }
+}
+
 export async function pushAppointmentDelete(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, `appointments/${id}`), null); } catch { /* ignore */ }
@@ -250,6 +257,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("customers", "sgf_customers", dedupCustomers);
   await pullType("stock", "sgf_products");
   await pullType("followUpActions", "sgf_followUpActions");
+  await pullType("followUps", "sgf_followUps");
 
   dataServiceRefresh?.();
   return counts;
@@ -457,6 +465,22 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
   return unsub;
 }
 
+export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const followUpsRef = ref(db, "followUps");
+  const unsub = onValue(followUpsRef, (snapshot) => {
+    const data = snapshot.val();
+    const followUps = fbToArray(data);
+    if (followUps.length > 0) {
+      const merged = mergeWithCloudData("sgf_followUps", followUps);
+      try { localStorage.setItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    if (onData) onData(followUps);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
 // =============================================================================
 // INITIAL SYNC: Push all local data to Firebase
 // =============================================================================
@@ -610,7 +634,7 @@ export function initAutoSync(): () => void {
       // Dispatch firebaseDataReceived event for ALL data types.
       // This ensures tRPC cache invalidates on every device when ANY
       // user creates/updates data — not just when the count increases.
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions"].includes(type)) {
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;
@@ -632,6 +656,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToCheckins(handleReceived("checkins", "sgf_checkins")));
   unsubs.push(subscribeToInvoices(handleReceived("invoices", "sgf_invoices")));
   unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions", "sgf_followUpActions")));
+  unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

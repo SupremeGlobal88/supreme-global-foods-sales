@@ -1,6 +1,6 @@
 import { dataService } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
+import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushFollowUp, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady } from "./firebaseSync";
 
 /** Push data to Firebase after local write. All pushes are awaited with error logging. */
 async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
@@ -63,7 +63,7 @@ export function createLocalLink() {
               case "customer.getCustomersNeedingFollowUp": result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
               case "order.list": result = dataService.order.list(); break;
               case "order.getById": result = dataService.order.getById(input); break;
-              case "order.create": result = dataService.order.create(input); await fbPush("order", result); break;
+              case "order.create": result = dataService.order.create(input); await fbPush("order", result); if (input?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); await fbPush("order", result); break; }
               case "order.updateStatus": result = dataService.order.updateStatus(input); await fbPush("order", result); break;
               case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
@@ -122,7 +122,7 @@ export function createLocalLink() {
               case "checkIn.getStats": result = dataService.checkin.getStats(); break;
               case "followUpAction.list": result = dataService.followUpAction.list(); break;
               case "followUpAction.listByCustomer": result = dataService.followUpAction.listByCustomer(input); break;
-              case "followUpAction.create": result = dataService.followUpAction.create(input); pushFollowUpAction(result); break;
+              case "followUpAction.create": result = dataService.followUpAction.create(input); pushFollowUpAction(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); break;
               case "followUpAction.getStats": result = dataService.followUpAction.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
@@ -135,7 +135,7 @@ export function createLocalLink() {
               case "audit.getCustomerDeletions": result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": result = dataService.audit.getAddressChanges(); break;
               case "followUp.list": result = dataService.followUp.list(); break;
-              case "followUp.update": result = dataService.followUp.update(input); break;
+              case "followUp.update": result = dataService.followUp.update(input); if (result) { await pushFollowUp(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "followUp.getStats": result = dataService.followUp.getStats(); break;
               case "sampleReport.getByCustomer": result = dataService.sampleReport.getByCustomer(input); break;
               case "sampleReport.getAll": result = dataService.sampleReport.getAll(); break;

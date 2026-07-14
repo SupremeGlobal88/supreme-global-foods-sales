@@ -126,6 +126,21 @@ export default function App() {
       if (type === "followUpActions") {
         utils.followUpAction.list.invalidate();
         utils.followUpAction.getStats.invalidate();
+        utils.followUp.list.invalidate();
+        utils.followUp.getStats.invalidate();
+        utils.sampleReport.getAll.invalidate();
+      }
+      // Orders: also refresh sample reports since samples create orders
+      if (type === "orders") {
+        utils.sampleReport.getAll.invalidate();
+        utils.followUp.list.invalidate();
+        utils.followUp.getStats.invalidate();
+      }
+      // Follow-ups: follow-ups page + sample reports
+      if (type === "followUps") {
+        utils.followUp.list.invalidate();
+        utils.followUp.getStats.invalidate();
+        utils.sampleReport.getAll.invalidate();
       }
     };
     window.addEventListener("firebaseDataReceived", handler);

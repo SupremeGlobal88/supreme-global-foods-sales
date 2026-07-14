@@ -146,16 +146,18 @@ function load() {
   try { fixMissingCustomerCodes(); } catch { /* ignore */ }
 }
 
-/** Fix customers with missing/invalid codes. Assigns next sequential numeric code. */
+/** Fix customers with missing/invalid codes. Also converts remaining CUST codes to numeric.
+ *  Preserves intentionally assigned custom alphanumeric codes (RHB001, etc.)
+ *  Runs on every app startup to clean up legacy data. */
 function fixMissingCustomerCodes(): void {
   let changed = false;
-  // Get current max numeric code
+  // Get current max numeric code (from both plain numbers and CUST codes)
   const numericCodes = customers
     .map((c) => c.customerCode)
     .filter((code): code is string => !!code && code !== "AUTO")
     .map((code) => {
       if (/^\d+$/.test(code)) return parseInt(code);
-      const match = code.match(/^CUST(\d+)$/);
+      const match = code.match(/^CUST(\d+)$/i);
       if (match) return parseInt(match[1]);
       return 0;
     })
@@ -164,16 +166,38 @@ function fixMissingCustomerCodes(): void {
 
   for (const c of customers) {
     const code = (c.customerCode || "").toString().trim();
+    // 1. Fix blank, AUTO, null, undefined
     if (!code || code === "AUTO" || code === "undefined" || code === "null") {
       c.customerCode = String(nextCode);
       nextCode++;
       changed = true;
       console.log(`[CustomerCode] Assigned ${c.customerCode} to ${c.name}`);
+      continue;
     }
+    // 2. Convert remaining CUST codes (CUST0384 → 10384)
+    const custMatch = code.match(/^CUST(\d+)$/i);
+    if (custMatch) {
+      const oldNum = parseInt(custMatch[1]);
+      // Only convert if the number doesn't conflict with an existing numeric code
+      const wouldConflict = customers.some((other) =>
+        other !== c && String(other.customerCode) === String(oldNum)
+      );
+      if (wouldConflict) {
+        // Use next available to avoid conflict
+        c.customerCode = String(nextCode);
+        nextCode++;
+      } else {
+        c.customerCode = String(oldNum);
+      }
+      changed = true;
+      console.log(`[CustomerCode] Converted ${code} → ${c.customerCode} for ${c.name}`);
+      continue;
+    }
+    // 3. Custom alphanumeric codes (RHB001, etc.) — leave as-is, they're intentional
   }
   if (changed) {
     saveItem("sgf_customers", customers);
-    console.log(`[CustomerCode] Fixed ${changed} customer(s) with missing codes`);
+    console.log(`[CustomerCode] Fixed customers with missing/legacy codes`);
   }
 }
 

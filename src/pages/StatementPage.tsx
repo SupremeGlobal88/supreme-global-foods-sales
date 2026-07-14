@@ -208,11 +208,14 @@ export default function StatementPage() {
   const [stmtFrom, setStmtFrom] = useState("2020-01-01");
   const [stmtTo, setStmtTo] = useState(new Date().toISOString().slice(0, 10));
 
-  // Filter invoices for this customer
+  // Filter invoices for this customer — match by customerId, customer.name, or customerCode
+  // Handles both new format (10001) and legacy format (CUST0001) for backward compatibility
+  const legacyCustCode = custCode ? "CUST" + custCode.padStart(4, "0") : "";
   let custInvoices = (invoices || []).filter((i: any) => {
     if (i.customerId === cid) return true;
     if (i.customer && i.customer.name === custName) return true;
     if (i.customerCode === custCode && custCode !== "") return true;
+    if (i.customerCode === legacyCustCode && legacyCustCode !== "") return true;
     if (i.customer && i.customer.customerCode === custCode && custCode !== "")
       return true;
     return false;

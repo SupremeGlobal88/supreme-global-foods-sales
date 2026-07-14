@@ -145,7 +145,8 @@ function load() {
 
 /** Auto-link Sage invoices to customers on every app startup.
  *  Silent version — no Firebase push, just local fix.
- *  This ensures ALL devices have matched Sage invoices. */
+ *  This ensures ALL devices have matched Sage invoices.
+ *  Handles both old CUST0001 format and new 10001 format. */
 function autoLinkSageInvoices(): void {
   let changed = false;
   for (const inv of invoices) {
@@ -162,6 +163,24 @@ function autoLinkSageInvoices(): void {
         inv.customerId = matched.id;
         inv.customer = matched;
         inv.customerCode = matched.customerCode;
+        changed = true;
+        continue;
+      }
+      // BACKWARD COMPAT: Sage invoices may have old CUST0001 format while
+      // customers now have 10001 format. Try matching by converting.
+      const sageCodeStr = String(sageCode).trim().toLowerCase();
+      const legacyMatch = customers.find((c) => {
+        if (!c.customerCode) return false;
+        const custCode = String(c.customerCode).trim();
+        // Match "10001" to "CUST0001" (strip CUST, compare number)
+        const sageNum = sageCodeStr.replace(/^cust0*/, "");
+        const custNum = custCode.replace(/^cust0*/, "");
+        return sageNum === custNum && sageNum.length > 0;
+      });
+      if (legacyMatch) {
+        inv.customerId = legacyMatch.id;
+        inv.customer = legacyMatch;
+        inv.customerCode = legacyMatch.customerCode;
         changed = true;
         continue;
       }

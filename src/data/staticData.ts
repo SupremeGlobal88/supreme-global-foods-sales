@@ -1,6 +1,6 @@
 export const STATIC_CUSTOMERS = [
   {
-    "customerCode": "CUST0001",
+    "customerCode": "10001",
     "name": "Superspar Robert Broom",
     "businessName": "Superspar Robert Broom",
     "contactPerson": null,
@@ -23,7 +23,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0002",
+    "customerCode": "10002",
     "name": "Parkrand Butchery",
     "businessName": "Parkrand Butchery",
     "contactPerson": null,
@@ -46,7 +46,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0003",
+    "customerCode": "10003",
     "name": "Rooots Eyethu Mall",
     "businessName": "Rooots Eyethu Mall",
     "contactPerson": null,
@@ -69,7 +69,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0004",
+    "customerCode": "10004",
     "name": "Jay Jay Butchery",
     "businessName": "Jay Jay Butchery",
     "contactPerson": "Jose",
@@ -92,7 +92,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0005",
+    "customerCode": "10005",
     "name": "BiBi Cash & Carry",
     "businessName": "BiBi Cash & Carry",
     "contactPerson": null,
@@ -115,7 +115,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0006",
+    "customerCode": "10006",
     "name": "De Jagers Wildsvleis",
     "businessName": "De Jagers Wildsvleis",
     "contactPerson": "Frans",
@@ -138,7 +138,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0007",
+    "customerCode": "10007",
     "name": "Yound Expo Casings",
     "businessName": "Yound Expo Casings",
     "contactPerson": "Alfredo Sitoe",
@@ -161,7 +161,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0008",
+    "customerCode": "10008",
     "name": "River Rock Meat",
     "businessName": "River Rock Meat",
     "contactPerson": "Henre",
@@ -184,7 +184,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0009",
+    "customerCode": "10009",
     "name": "Hokkai Vleis Roodeplaat",
     "businessName": "Hokkai Vleis Roodeplaat",
     "contactPerson": null,
@@ -207,7 +207,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0010",
+    "customerCode": "10",
     "name": "OBC Zandspruit",
     "businessName": "OBC Zandspruit",
     "contactPerson": null,
@@ -230,7 +230,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0011",
+    "customerCode": "11",
     "name": "Meat Solution Butchery",
     "businessName": "Meat Solution Butchery",
     "contactPerson": null,
@@ -253,7 +253,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0012",
+    "customerCode": "12",
     "name": "MultiMeats",
     "businessName": "MultiMeats",
     "contactPerson": null,
@@ -276,7 +276,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0013",
+    "customerCode": "13",
     "name": "Marble Hospitality Investments",
     "businessName": "Marble Hospitality Investments",
     "contactPerson": null,
@@ -299,7 +299,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0014",
+    "customerCode": "14",
     "name": "SuperSpar Silver Oaks",
     "businessName": "SuperSpar Silver Oaks",
     "contactPerson": null,
@@ -322,7 +322,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0015",
+    "customerCode": "15",
     "name": "SuperSpar Glenfair",
     "businessName": "SuperSpar Glenfair",
     "contactPerson": null,
@@ -345,7 +345,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0016",
+    "customerCode": "16",
     "name": "Evergreen Kempton Park",
     "businessName": "Evergreen Kempton Park",
     "contactPerson": null,
@@ -368,7 +368,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0017",
+    "customerCode": "17",
     "name": "Afribeef Meat Deli",
     "businessName": "Afribeef Meat Deli",
     "contactPerson": null,
@@ -391,7 +391,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0018",
+    "customerCode": "18",
     "name": "Craighall Meat Centre",
     "businessName": "Craighall Meat Centre",
     "contactPerson": null,
@@ -414,7 +414,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0019",
+    "customerCode": "19",
     "name": "Hashtag Butchery",
     "businessName": "Hashtag Butchery",
     "contactPerson": "Billy",
@@ -437,7 +437,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0020",
+    "customerCode": "20",
     "name": "Don Amare Slaghuis",
     "businessName": "Don Amare Slaghuis",
     "contactPerson": null,
@@ -460,7 +460,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0021",
+    "customerCode": "21",
     "name": "Eugene Gomes",
     "businessName": "Eugene Gomes",
     "contactPerson": null,
@@ -483,7 +483,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0022",
+    "customerCode": "22",
     "name": "Queenswood Butchery",
     "businessName": "Queenswood Butchery",
     "contactPerson": null,
@@ -506,7 +506,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0023",
+    "customerCode": "23",
     "name": "Big Save",
     "businessName": "Big Save",
     "contactPerson": null,
@@ -529,7 +529,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0024",
+    "customerCode": "24",
     "name": "EMT Butchery Group",
     "businessName": "EMT Butchery Group",
     "contactPerson": null,
@@ -552,7 +552,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0025",
+    "customerCode": "25",
     "name": "OBC Steeldale",
     "businessName": "OBC Steeldale",
     "contactPerson": null,
@@ -575,7 +575,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0026",
+    "customerCode": "26",
     "name": "Padstal Slaghuis",
     "businessName": "Padstal Slaghuis",
     "contactPerson": null,
@@ -598,7 +598,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0027",
+    "customerCode": "27",
     "name": "The Meat Contact",
     "businessName": "The Meat Contact",
     "contactPerson": null,
@@ -621,7 +621,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0028",
+    "customerCode": "28",
     "name": "Alma Butchery",
     "businessName": "Alma Butchery",
     "contactPerson": null,
@@ -644,7 +644,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0029",
+    "customerCode": "29",
     "name": "The Knife's Edge On Penzance",
     "businessName": "The Knife's Edge On Penzance",
     "contactPerson": null,
@@ -667,7 +667,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0030",
+    "customerCode": "30",
     "name": "Hokaai Meat Market",
     "businessName": "Hokaai Meat Market",
     "contactPerson": null,
@@ -690,7 +690,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0031",
+    "customerCode": "31",
     "name": "Bush Nyama",
     "businessName": "Bush Nyama",
     "contactPerson": "arita",
@@ -713,7 +713,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0032",
+    "customerCode": "32",
     "name": "Biltong & Nut Hut",
     "businessName": "Biltong & Nut Hut",
     "contactPerson": null,
@@ -736,7 +736,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0033",
+    "customerCode": "33",
     "name": "SuperSpar Moreleta",
     "businessName": "SuperSpar Moreleta",
     "contactPerson": null,
@@ -759,7 +759,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0034",
+    "customerCode": "34",
     "name": "Agade Holdings",
     "businessName": "Agade Holdings",
     "contactPerson": "Merry",
@@ -782,7 +782,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0035",
+    "customerCode": "35",
     "name": "Roots Hebron Mall",
     "businessName": "Roots Hebron Mall",
     "contactPerson": null,
@@ -805,7 +805,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0036",
+    "customerCode": "36",
     "name": "Superspar Hebron",
     "businessName": "Superspar Hebron",
     "contactPerson": null,
@@ -828,7 +828,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0037",
+    "customerCode": "37",
     "name": "Meat 2 Ocean",
     "businessName": "Meat 2 Ocean",
     "contactPerson": null,
@@ -851,7 +851,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0038",
+    "customerCode": "38",
     "name": "Meat House",
     "businessName": "Meat House",
     "contactPerson": "Gordon",
@@ -874,7 +874,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0039",
+    "customerCode": "39",
     "name": "Evergreens The Fresh Market Pretoria West",
     "businessName": "Evergreens The Fresh Market Pretoria West",
     "contactPerson": null,
@@ -897,7 +897,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0040",
+    "customerCode": "40",
     "name": "Evergreens The Fresh Market Kempton Park",
     "businessName": "Evergreens The Fresh Market Kempton Park",
     "contactPerson": null,
@@ -920,7 +920,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0041",
+    "customerCode": "41",
     "name": "Roots Silverton",
     "businessName": "Roots Silverton",
     "contactPerson": null,
@@ -943,7 +943,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0042",
+    "customerCode": "42",
     "name": "Soutpansbergweg Slaghuis",
     "businessName": "Soutpansbergweg Slaghuis",
     "contactPerson": null,
@@ -966,7 +966,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0043",
+    "customerCode": "43",
     "name": "Bom Braai Meat & Deli",
     "businessName": "Bom Braai Meat & Deli",
     "contactPerson": null,
@@ -989,7 +989,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0044",
+    "customerCode": "44",
     "name": "Roots Montana",
     "businessName": "Roots Montana",
     "contactPerson": null,
@@ -1012,7 +1012,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0045",
+    "customerCode": "45",
     "name": "Vleishuis Riviera 14",
     "businessName": "Vleishuis Riviera 14",
     "contactPerson": null,
@@ -1035,7 +1035,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0046",
+    "customerCode": "46",
     "name": "Madars Slaghuis",
     "businessName": "Madars Slaghuis",
     "contactPerson": null,
@@ -1058,7 +1058,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0047",
+    "customerCode": "47",
     "name": "Food Lover's Market Jabulani Mall",
     "businessName": "Food Lover's Market Jabulani Mall",
     "contactPerson": null,
@@ -1081,7 +1081,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0048",
+    "customerCode": "48",
     "name": "Roots Sunnyside",
     "businessName": "Roots Sunnyside",
     "contactPerson": "daniel",
@@ -1104,7 +1104,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0049",
+    "customerCode": "49",
     "name": "Roots Factory Hercules",
     "businessName": "Roots Factory Hercules",
     "contactPerson": null,
@@ -1127,7 +1127,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0050",
+    "customerCode": "50",
     "name": "Food Lover's Market Greenstone",
     "businessName": "Food Lover's Market Greenstone",
     "contactPerson": null,
@@ -1150,7 +1150,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0051",
+    "customerCode": "51",
     "name": "Superspar Birchacres",
     "businessName": "Superspar Birchacres",
     "contactPerson": null,
@@ -1173,7 +1173,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0052",
+    "customerCode": "52",
     "name": "Superspar Ebony",
     "businessName": "Superspar Ebony",
     "contactPerson": null,
@@ -1196,7 +1196,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0053",
+    "customerCode": "53",
     "name": "Roots Birchacres",
     "businessName": "Roots Birchacres",
     "contactPerson": null,
@@ -1219,7 +1219,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0054",
+    "customerCode": "54",
     "name": "Roots Alex Mall",
     "businessName": "Roots Alex Mall",
     "contactPerson": null,
@@ -1242,7 +1242,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0055",
+    "customerCode": "55",
     "name": "Roots Newton",
     "businessName": "Roots Newton",
     "contactPerson": null,
@@ -1265,7 +1265,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0056",
+    "customerCode": "56",
     "name": "Roots Primrose",
     "businessName": "Roots Primrose",
     "contactPerson": null,
@@ -1288,7 +1288,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0057",
+    "customerCode": "57",
     "name": "OBC Primrose",
     "businessName": "OBC Primrose",
     "contactPerson": null,
@@ -1311,7 +1311,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0058",
+    "customerCode": "58",
     "name": "Food Lover's Market Sunward Park",
     "businessName": "Food Lover's Market Sunward Park",
     "contactPerson": null,
@@ -1334,7 +1334,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0059",
+    "customerCode": "59",
     "name": "Roots Factory Krugersdorp",
     "businessName": "Roots Factory Krugersdorp",
     "contactPerson": null,
@@ -1357,7 +1357,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0060",
+    "customerCode": "60",
     "name": "Food Lover's Market Boksburg",
     "businessName": "Food Lover's Market Boksburg",
     "contactPerson": null,
@@ -1380,7 +1380,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.171Z"
   },
   {
-    "customerCode": "CUST0061",
+    "customerCode": "61",
     "name": "Roots Diepkloof",
     "businessName": "Roots Diepkloof",
     "contactPerson": null,
@@ -1403,7 +1403,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0062",
+    "customerCode": "62",
     "name": "Roots Baramall",
     "businessName": "Roots Baramall",
     "contactPerson": null,
@@ -1426,7 +1426,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0063",
+    "customerCode": "63",
     "name": "Prime Meat Market Randburg",
     "businessName": "Prime Meat Market Randburg",
     "contactPerson": null,
@@ -1449,7 +1449,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0064",
+    "customerCode": "64",
     "name": "Mojo Meat Randburg",
     "businessName": "Mojo Meat Randburg",
     "contactPerson": null,
@@ -1472,7 +1472,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0065",
+    "customerCode": "65",
     "name": "Roots - Cloverdene",
     "businessName": "Roots - Cloverdene",
     "contactPerson": "Martin",
@@ -1495,7 +1495,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0066",
+    "customerCode": "66",
     "name": "Roots Factory - Roodepoort",
     "businessName": "Roots Factory - Roodepoort",
     "contactPerson": null,
@@ -1518,7 +1518,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0067",
+    "customerCode": "67",
     "name": "Roots Mall Of Thembisa",
     "businessName": "Roots Mall Of Thembisa",
     "contactPerson": null,
@@ -1541,7 +1541,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0068",
+    "customerCode": "68",
     "name": "Roots Factory - kempton park",
     "businessName": "Roots Factory - kempton park",
     "contactPerson": null,
@@ -1564,7 +1564,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0069",
+    "customerCode": "69",
     "name": "Favoured Food Butchery",
     "businessName": "Favoured Food Butchery",
     "contactPerson": null,
@@ -1587,7 +1587,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0070",
+    "customerCode": "70",
     "name": "Seemann's Butchery",
     "businessName": "Seemann's Butchery",
     "contactPerson": null,
@@ -1610,7 +1610,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0071",
+    "customerCode": "71",
     "name": "Jumbo Goodmann's Butchery",
     "businessName": "Jumbo Goodmann's Butchery",
     "contactPerson": null,
@@ -1633,7 +1633,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0072",
+    "customerCode": "72",
     "name": "Superspar Walkerville",
     "businessName": "Superspar Walkerville",
     "contactPerson": null,
@@ -1656,7 +1656,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0073",
+    "customerCode": "73",
     "name": "Spar Family Save",
     "businessName": "Spar Family Save",
     "contactPerson": null,
@@ -1679,7 +1679,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0074",
+    "customerCode": "74",
     "name": "Greenhills Spar",
     "businessName": "Greenhills Spar",
     "contactPerson": null,
@@ -1702,7 +1702,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0075",
+    "customerCode": "75",
     "name": "Spar Randgate",
     "businessName": "Spar Randgate",
     "contactPerson": null,
@@ -1725,7 +1725,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0076",
+    "customerCode": "76",
     "name": "Superspar Mall @55",
     "businessName": "Superspar Mall @55",
     "contactPerson": null,
@@ -1748,7 +1748,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0077",
+    "customerCode": "77",
     "name": "BB Best Brand",
     "businessName": "BB Best Brand",
     "contactPerson": "Bianca",
@@ -1771,7 +1771,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0078",
+    "customerCode": "78",
     "name": "OBC Bambanani mall",
     "businessName": "OBC Bambanani mall",
     "contactPerson": null,
@@ -1794,7 +1794,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0079",
+    "customerCode": "79",
     "name": "OBC Mall @55",
     "businessName": "OBC Mall @55",
     "contactPerson": null,
@@ -1817,7 +1817,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0080",
+    "customerCode": "80",
     "name": "OBC Senaoane",
     "businessName": "OBC Senaoane",
     "contactPerson": "TBA",
@@ -1840,7 +1840,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0081",
+    "customerCode": "81",
     "name": "OBC New Sky",
     "businessName": "OBC New Sky",
     "contactPerson": "083 383 2964",
@@ -1863,7 +1863,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0082",
+    "customerCode": "82",
     "name": "Kwiksave Katlehong",
     "businessName": "Kwiksave Katlehong",
     "contactPerson": "Bennie",
@@ -1886,7 +1886,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0083",
+    "customerCode": "83",
     "name": "OBC Westgate",
     "businessName": "OBC Westgate",
     "contactPerson": "nicolas",
@@ -1909,7 +1909,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0084",
+    "customerCode": "84",
     "name": "OBC Vosloorus",
     "businessName": "OBC Vosloorus",
     "contactPerson": null,
@@ -1932,7 +1932,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0085",
+    "customerCode": "85",
     "name": "The Butcher Brother Krugersdorp",
     "businessName": "The Butcher Brother Krugersdorp",
     "contactPerson": "Diego",
@@ -1955,7 +1955,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0086",
+    "customerCode": "86",
     "name": "Joe's Butchery",
     "businessName": "Joe's Butchery",
     "contactPerson": "willem",
@@ -1978,7 +1978,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0087",
+    "customerCode": "87",
     "name": "Kwiksper & Tops-Choose N Pay",
     "businessName": "Kwiksper & Tops-Choose N Pay",
     "contactPerson": null,
@@ -2001,7 +2001,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0088",
+    "customerCode": "88",
     "name": "SuperSpar Menlo",
     "businessName": "SuperSpar Menlo",
     "contactPerson": null,
@@ -2024,7 +2024,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0089",
+    "customerCode": "89",
     "name": "SuperSpar Willow Way",
     "businessName": "SuperSpar Willow Way",
     "contactPerson": null,
@@ -2047,7 +2047,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0090",
+    "customerCode": "90",
     "name": "Carlo's Meat City",
     "businessName": "Carlo's Meat City",
     "contactPerson": "giel",
@@ -2070,7 +2070,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0091",
+    "customerCode": "91",
     "name": "Rant En Dal  Slaghuis/Butchery",
     "businessName": "Rant En Dal  Slaghuis/Butchery",
     "contactPerson": "elias",
@@ -2093,7 +2093,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0092",
+    "customerCode": "92",
     "name": "SuperSpar Rant en Dal",
     "businessName": "SuperSpar Rant en Dal",
     "contactPerson": "elias",
@@ -2116,7 +2116,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0093",
+    "customerCode": "93",
     "name": "SuperSpar Kilner Park",
     "businessName": "SuperSpar Kilner Park",
     "contactPerson": null,
@@ -2139,7 +2139,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0094",
+    "customerCode": "94",
     "name": "SuperSpar Queenswood",
     "businessName": "SuperSpar Queenswood",
     "contactPerson": null,
@@ -2162,7 +2162,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0095",
+    "customerCode": "95",
     "name": "SuperSpar Wonderbloom",
     "businessName": "SuperSpar Wonderbloom",
     "contactPerson": null,
@@ -2185,7 +2185,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0096",
+    "customerCode": "96",
     "name": "SuperSpar Montana",
     "businessName": "SuperSpar Montana",
     "contactPerson": null,
@@ -2208,7 +2208,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0097",
+    "customerCode": "97",
     "name": "Feinschmecker",
     "businessName": "Feinschmecker",
     "contactPerson": "Greg Mitchel",
@@ -2231,7 +2231,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0098",
+    "customerCode": "98",
     "name": "SuperSpar Nina Park",
     "businessName": "SuperSpar Nina Park",
     "contactPerson": null,
@@ -2254,7 +2254,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0099",
+    "customerCode": "99",
     "name": "Spar Les Marais",
     "businessName": "Spar Les Marais",
     "contactPerson": null,
@@ -2277,7 +2277,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0100",
+    "customerCode": "10100",
     "name": "Spar Mountain view",
     "businessName": "Spar Mountain view",
     "contactPerson": null,
@@ -2300,7 +2300,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0101",
+    "customerCode": "10101",
     "name": "SuperSpar Hercules",
     "businessName": "SuperSpar Hercules",
     "contactPerson": null,
@@ -2323,7 +2323,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0102",
+    "customerCode": "10102",
     "name": "Spar Danville",
     "businessName": "Spar Danville",
     "contactPerson": null,
@@ -2346,7 +2346,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0103",
+    "customerCode": "10103",
     "name": "SuperSpar The Market West Park",
     "businessName": "SuperSpar The Market West Park",
     "contactPerson": null,
@@ -2369,7 +2369,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0104",
+    "customerCode": "10104",
     "name": "Spar The Reeds",
     "businessName": "Spar The Reeds",
     "contactPerson": null,
@@ -2392,7 +2392,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0105",
+    "customerCode": "10105",
     "name": "SuperSpar  Lyttelton",
     "businessName": "SuperSpar  Lyttelton",
     "contactPerson": null,
@@ -2415,7 +2415,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0106",
+    "customerCode": "10106",
     "name": "SPAR Clubview",
     "businessName": "SPAR Clubview",
     "contactPerson": "ernest",
@@ -2438,7 +2438,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0107",
+    "customerCode": "10107",
     "name": "SuperSpar Saxby",
     "businessName": "SuperSpar Saxby",
     "contactPerson": "kopane",
@@ -2461,7 +2461,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0108",
+    "customerCode": "10108",
     "name": "SuperSpar Hobart",
     "businessName": "SuperSpar Hobart",
     "contactPerson": null,
@@ -2484,7 +2484,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0109",
+    "customerCode": "10109",
     "name": "SuperSpar Sutherland",
     "businessName": "SuperSpar Sutherland",
     "contactPerson": null,
@@ -2507,7 +2507,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0110",
+    "customerCode": "10110",
     "name": "Spar Jean Avenue",
     "businessName": "Spar Jean Avenue",
     "contactPerson": null,
@@ -2530,7 +2530,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0111",
+    "customerCode": "10111",
     "name": "SPAR Centurion - Highveld",
     "businessName": "SPAR Centurion - Highveld",
     "contactPerson": null,
@@ -2553,7 +2553,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0112",
+    "customerCode": "10112",
     "name": "SuperSpar Fontana The Wedge",
     "businessName": "SuperSpar Fontana The Wedge",
     "contactPerson": "busani",
@@ -2576,7 +2576,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0113",
+    "customerCode": "10113",
     "name": "SuperSpar Midstream",
     "businessName": "SuperSpar Midstream",
     "contactPerson": null,
@@ -2599,7 +2599,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0114",
+    "customerCode": "10114",
     "name": "Spar Delta",
     "businessName": "Spar Delta",
     "contactPerson": null,
@@ -2622,7 +2622,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0115",
+    "customerCode": "10115",
     "name": "SUPERSPAR ATLAS MALL",
     "businessName": "SUPERSPAR ATLAS MALL",
     "contactPerson": null,
@@ -2645,7 +2645,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0116",
+    "customerCode": "10116",
     "name": "SPAR RIDGEWAY",
     "businessName": "SPAR RIDGEWAY",
     "contactPerson": null,
@@ -2668,7 +2668,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0117",
+    "customerCode": "10117",
     "name": "OBC DLAMINI JUNCTION",
     "businessName": "OBC DLAMINI JUNCTION",
     "contactPerson": null,
@@ -2691,7 +2691,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0118",
+    "customerCode": "10118",
     "name": "SPAR KIBLER PARK",
     "businessName": "SPAR KIBLER PARK",
     "contactPerson": null,
@@ -2714,7 +2714,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0119",
+    "customerCode": "10119",
     "name": "PICK n PAY HEAD OFFICE",
     "businessName": "PICK n PAY HEAD OFFICE",
     "contactPerson": null,
@@ -2737,7 +2737,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0120",
+    "customerCode": "10120",
     "name": "Superspar Kenilworth",
     "businessName": "Superspar Kenilworth",
     "contactPerson": null,
@@ -2760,7 +2760,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0121",
+    "customerCode": "10121",
     "name": "Spar Craighall",
     "businessName": "Spar Craighall",
     "contactPerson": null,
@@ -2783,7 +2783,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0122",
+    "customerCode": "10122",
     "name": "Superspar Rosebank",
     "businessName": "Superspar Rosebank",
     "contactPerson": null,
@@ -2806,7 +2806,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0123",
+    "customerCode": "10123",
     "name": "Terence Armand Mostert",
     "businessName": "Terence Armand Mostert",
     "contactPerson": "Terence Armand Mostert",
@@ -2829,7 +2829,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.172Z"
   },
   {
-    "customerCode": "CUST0124",
+    "customerCode": "10124",
     "name": "Spar Norkem",
     "businessName": "Spar Norkem",
     "contactPerson": null,
@@ -2852,7 +2852,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0125",
+    "customerCode": "10125",
     "name": "Superspar Randjiespark",
     "businessName": "Superspar Randjiespark",
     "contactPerson": null,
@@ -2875,7 +2875,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0126",
+    "customerCode": "10126",
     "name": "Superspar Noordwyk",
     "businessName": "Superspar Noordwyk",
     "contactPerson": null,
@@ -2898,7 +2898,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0127",
+    "customerCode": "10127",
     "name": "Superspar Crowthorne",
     "businessName": "Superspar Crowthorne",
     "contactPerson": null,
@@ -2921,7 +2921,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0128",
+    "customerCode": "10128",
     "name": "Superspar Ouklip",
     "businessName": "Superspar Ouklip",
     "contactPerson": "Pray",
@@ -2944,7 +2944,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0129",
+    "customerCode": "10129",
     "name": "Superspar Eagle Canyon",
     "businessName": "Superspar Eagle Canyon",
     "contactPerson": null,
@@ -2967,7 +2967,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0130",
+    "customerCode": "10130",
     "name": "Superspar Carlswald",
     "businessName": "Superspar Carlswald",
     "contactPerson": null,
@@ -2990,7 +2990,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0131",
+    "customerCode": "10131",
     "name": "Superspar Midrand",
     "businessName": "Superspar Midrand",
     "contactPerson": null,
@@ -3013,7 +3013,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0132",
+    "customerCode": "10132",
     "name": "Superspar Vorna Valley",
     "businessName": "Superspar Vorna Valley",
     "contactPerson": null,
@@ -3036,7 +3036,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0133",
+    "customerCode": "10133",
     "name": "Superspar Parkview",
     "businessName": "Superspar Parkview",
     "contactPerson": null,
@@ -3059,7 +3059,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0134",
+    "customerCode": "10134",
     "name": "Superspar Sunninghill",
     "businessName": "Superspar Sunninghill",
     "contactPerson": null,
@@ -3082,7 +3082,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0135",
+    "customerCode": "10135",
     "name": "Superspar Robindale",
     "businessName": "Superspar Robindale",
     "contactPerson": null,
@@ -3105,7 +3105,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0136",
+    "customerCode": "10136",
     "name": "Superspar Randpark Ridge",
     "businessName": "Superspar Randpark Ridge",
     "contactPerson": null,
@@ -3128,7 +3128,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0137",
+    "customerCode": "10137",
     "name": "Superspar Northcliff",
     "businessName": "Superspar Northcliff",
     "contactPerson": null,
@@ -3151,7 +3151,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0138",
+    "customerCode": "10138",
     "name": "Superspar Fairland",
     "businessName": "Superspar Fairland",
     "contactPerson": null,
@@ -3174,7 +3174,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0139",
+    "customerCode": "10139",
     "name": "Superspar Polofields",
     "businessName": "Superspar Polofields",
     "contactPerson": null,
@@ -3197,7 +3197,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0140",
+    "customerCode": "10140",
     "name": "Superspar Strubensvalley",
     "businessName": "Superspar Strubensvalley",
     "contactPerson": null,
@@ -3220,7 +3220,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0141",
+    "customerCode": "10141",
     "name": "Superspar Retail Crossing",
     "businessName": "Superspar Retail Crossing",
     "contactPerson": null,
@@ -3243,7 +3243,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0142",
+    "customerCode": "10142",
     "name": "Superspar Radiokop",
     "businessName": "Superspar Radiokop",
     "contactPerson": null,
@@ -3266,7 +3266,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0143",
+    "customerCode": "10143",
     "name": "Superspar Ruimsig",
     "businessName": "Superspar Ruimsig",
     "contactPerson": null,
@@ -3289,7 +3289,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0144",
+    "customerCode": "10144",
     "name": "Superspar Boksburg",
     "businessName": "Superspar Boksburg",
     "contactPerson": null,
@@ -3312,7 +3312,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0145",
+    "customerCode": "10145",
     "name": "Superspar Parkrand",
     "businessName": "Superspar Parkrand",
     "contactPerson": null,
@@ -3335,7 +3335,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0146",
+    "customerCode": "10146",
     "name": "Kwikspar Rensburg",
     "businessName": "Kwikspar Rensburg",
     "contactPerson": null,
@@ -3358,7 +3358,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0147",
+    "customerCode": "10147",
     "name": "Superspar Bromhof",
     "businessName": "Superspar Bromhof",
     "contactPerson": null,
@@ -3381,7 +3381,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0148",
+    "customerCode": "10148",
     "name": "Superspar Benmore Centre",
     "businessName": "Superspar Benmore Centre",
     "contactPerson": null,
@@ -3404,7 +3404,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0149",
+    "customerCode": "10149",
     "name": "Superspar Olivedale",
     "businessName": "Superspar Olivedale",
     "contactPerson": null,
@@ -3427,7 +3427,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0150",
+    "customerCode": "10150",
     "name": "Superspar Kathorus",
     "businessName": "Superspar Kathorus",
     "contactPerson": null,
@@ -3450,7 +3450,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0151",
+    "customerCode": "10151",
     "name": "Kwiksave Butchery",
     "businessName": "Kwiksave Butchery",
     "contactPerson": null,
@@ -3473,7 +3473,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0152",
+    "customerCode": "10152",
     "name": "Superspar Leondale",
     "businessName": "Superspar Leondale",
     "contactPerson": null,
@@ -3496,7 +3496,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0153",
+    "customerCode": "10153",
     "name": "My Kwikspar Dowerglen",
     "businessName": "My Kwikspar Dowerglen",
     "contactPerson": null,
@@ -3519,7 +3519,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0154",
+    "customerCode": "10154",
     "name": "Superspar Florida Market",
     "businessName": "Superspar Florida Market",
     "contactPerson": "francious",
@@ -3542,7 +3542,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0155",
+    "customerCode": "10155",
     "name": "Superspar Evaton",
     "businessName": "Superspar Evaton",
     "contactPerson": null,
@@ -3565,7 +3565,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0156",
+    "customerCode": "10156",
     "name": "Superspar The palmcourt",
     "businessName": "Superspar The palmcourt",
     "contactPerson": null,
@@ -3588,7 +3588,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0157",
+    "customerCode": "10157",
     "name": "Superspar Fourways Gardens",
     "businessName": "Superspar Fourways Gardens",
     "contactPerson": null,
@@ -3611,7 +3611,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0158",
+    "customerCode": "10158",
     "name": "Superspar Kingfisher",
     "businessName": "Superspar Kingfisher",
     "contactPerson": null,
@@ -3634,7 +3634,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0159",
+    "customerCode": "10159",
     "name": "Superspar Diaz",
     "businessName": "Superspar Diaz",
     "contactPerson": null,
@@ -3657,7 +3657,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0160",
+    "customerCode": "10160",
     "name": "Superspar The falls",
     "businessName": "Superspar The falls",
     "contactPerson": null,
@@ -3680,7 +3680,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0161",
+    "customerCode": "10161",
     "name": "Superspar Springbok",
     "businessName": "Superspar Springbok",
     "contactPerson": null,
@@ -3703,7 +3703,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0162",
+    "customerCode": "10162",
     "name": "Kwikspar Brenthurst",
     "businessName": "Kwikspar Brenthurst",
     "contactPerson": null,
@@ -3726,7 +3726,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0163",
+    "customerCode": "10163",
     "name": "Superspar North Point",
     "businessName": "Superspar North Point",
     "contactPerson": null,
@@ -3749,7 +3749,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0164",
+    "customerCode": "10164",
     "name": "Superspar Ferndale",
     "businessName": "Superspar Ferndale",
     "contactPerson": null,
@@ -3772,7 +3772,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.173Z"
   },
   {
-    "customerCode": "CUST0165",
+    "customerCode": "10165",
     "name": "Superspar Selcourt",
     "businessName": "Superspar Selcourt",
     "contactPerson": null,
@@ -3795,7 +3795,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0166",
+    "customerCode": "10166",
     "name": "Superspar Ferryvale",
     "businessName": "Superspar Ferryvale",
     "contactPerson": null,
@@ -3818,7 +3818,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0167",
+    "customerCode": "10167",
     "name": "Superspar Strubensvale",
     "businessName": "Superspar Strubensvale",
     "contactPerson": null,
@@ -3841,7 +3841,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0168",
+    "customerCode": "10168",
     "name": "Superspar Gordon Road",
     "businessName": "Superspar Gordon Road",
     "contactPerson": null,
@@ -3864,7 +3864,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0169",
+    "customerCode": "10169",
     "name": "Superspar Sandringham",
     "businessName": "Superspar Sandringham",
     "contactPerson": null,
@@ -3887,7 +3887,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0170",
+    "customerCode": "10170",
     "name": "Superspar VC",
     "businessName": "Superspar VC",
     "contactPerson": null,
@@ -3910,7 +3910,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0171",
+    "customerCode": "10171",
     "name": "Meat & Chicken Junction",
     "businessName": "Meat & Chicken Junction",
     "contactPerson": null,
@@ -3933,7 +3933,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0172",
+    "customerCode": "10172",
     "name": "Superspar The Market",
     "businessName": "Superspar The Market",
     "contactPerson": null,
@@ -3956,7 +3956,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0173",
+    "customerCode": "10173",
     "name": "N3 Fresh Meat",
     "businessName": "N3 Fresh Meat",
     "contactPerson": null,
@@ -3979,7 +3979,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0174",
+    "customerCode": "10174",
     "name": "Superspar Ghandi Square",
     "businessName": "Superspar Ghandi Square",
     "contactPerson": null,
@@ -4002,7 +4002,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0175",
+    "customerCode": "10175",
     "name": "Superspar Newtown",
     "businessName": "Superspar Newtown",
     "contactPerson": null,
@@ -4025,7 +4025,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0176",
+    "customerCode": "10176",
     "name": "Superspar Macy's",
     "businessName": "Superspar Macy's",
     "contactPerson": null,
@@ -4048,7 +4048,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0177",
+    "customerCode": "10177",
     "name": "Superspar Malvern",
     "businessName": "Superspar Malvern",
     "contactPerson": "charles",
@@ -4071,7 +4071,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0178",
+    "customerCode": "10178",
     "name": "Superspar Lyndhurst",
     "businessName": "Superspar Lyndhurst",
     "contactPerson": null,
@@ -4094,7 +4094,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0179",
+    "customerCode": "10179",
     "name": "Superspar Bloemenmarket bedfordview)",
     "businessName": "Superspar Bloemenmarket bedfordview)",
     "contactPerson": null,
@@ -4117,7 +4117,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0180",
+    "customerCode": "10180",
     "name": "Superspar Witfield",
     "businessName": "Superspar Witfield",
     "contactPerson": "Johnny",
@@ -4140,7 +4140,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0181",
+    "customerCode": "10181",
     "name": "Superspar Klopperpark",
     "businessName": "Superspar Klopperpark",
     "contactPerson": null,
@@ -4163,7 +4163,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0182",
+    "customerCode": "10182",
     "name": "Alex Metro butchery 2",
     "businessName": "Alex Metro butchery 2",
     "contactPerson": null,
@@ -4186,7 +4186,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0183",
+    "customerCode": "10183",
     "name": "SPAR Mathambo",
     "businessName": "SPAR Mathambo",
     "contactPerson": null,
@@ -4209,7 +4209,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0184",
+    "customerCode": "10184",
     "name": "Southern Super Spar",
     "businessName": "Southern Super Spar",
     "contactPerson": null,
@@ -4232,7 +4232,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0185",
+    "customerCode": "10185",
     "name": "Economic Slaghuis",
     "businessName": "Economic Slaghuis",
     "contactPerson": "Riaan Groenewald",
@@ -4255,7 +4255,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0186",
+    "customerCode": "10186",
     "name": "Helens Casings",
     "businessName": "Helens Casings",
     "contactPerson": "Helen Boyce",
@@ -4278,7 +4278,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0187",
+    "customerCode": "10187",
     "name": "Forbes Foods",
     "businessName": "Forbes Foods",
     "contactPerson": "Cathrine Forbes",
@@ -4301,7 +4301,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0188",
+    "customerCode": "10188",
     "name": "Superspar Diepkloof",
     "businessName": "Superspar Diepkloof",
     "contactPerson": "Khanyie",
@@ -4324,7 +4324,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.174Z"
   },
   {
-    "customerCode": "CUST0189",
+    "customerCode": "10189",
     "name": "Superspar Primrose",
     "businessName": "Superspar Primrose",
     "contactPerson": null,
@@ -4347,7 +4347,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0190",
+    "customerCode": "10190",
     "name": "Superspar Blackheath",
     "businessName": "Superspar Blackheath",
     "contactPerson": null,
@@ -4370,7 +4370,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0191",
+    "customerCode": "10191",
     "name": "SPAR Blairgowrie",
     "businessName": "SPAR Blairgowrie",
     "contactPerson": null,
@@ -4393,7 +4393,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0192",
+    "customerCode": "10192",
     "name": "Palmcourt Investments T/A Glen Acres Superspar",
     "businessName": "Palmcourt Investments T/A Glen Acres Superspar",
     "contactPerson": "DEON",
@@ -4416,7 +4416,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0193",
+    "customerCode": "10193",
     "name": "Flexitrade 115 T/A /Pineslopes Spar",
     "businessName": "Flexitrade 115 T/A /Pineslopes Spar",
     "contactPerson": null,
@@ -4439,7 +4439,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0194",
+    "customerCode": "10194",
     "name": "C&E Groothandel",
     "businessName": "C&E Groothandel",
     "contactPerson": null,
@@ -4462,7 +4462,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0195",
+    "customerCode": "10195",
     "name": "Armour Bull Spices",
     "businessName": "Armour Bull Spices",
     "contactPerson": "Jerry Bouwer",
@@ -4485,7 +4485,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0196",
+    "customerCode": "10196",
     "name": "Big Six Boutique T/A Best End Slaghuis",
     "businessName": "Big Six Boutique T/A Best End Slaghuis",
     "contactPerson": "Karel",
@@ -4508,7 +4508,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0197",
+    "customerCode": "10197",
     "name": "Obc RIDGEWAY",
     "businessName": "Obc RIDGEWAY",
     "contactPerson": null,
@@ -4531,7 +4531,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0198",
+    "customerCode": "10198",
     "name": "Grootplaas biltong & braai",
     "businessName": "Grootplaas biltong & braai",
     "contactPerson": null,
@@ -4554,7 +4554,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0199",
+    "customerCode": "10199",
     "name": "Kruinsig Slaghuis",
     "businessName": "Kruinsig Slaghuis",
     "contactPerson": null,
@@ -4577,7 +4577,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0200",
+    "customerCode": "10200",
     "name": "Prime Cut Butcheries",
     "businessName": "Prime Cut Butcheries",
     "contactPerson": null,
@@ -4600,7 +4600,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0201",
+    "customerCode": "10201",
     "name": "Jannie First CNC",
     "businessName": "Jannie First CNC",
     "contactPerson": null,
@@ -4623,7 +4623,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0202",
+    "customerCode": "10202",
     "name": "Majitas Meats",
     "businessName": "Majitas Meats",
     "contactPerson": null,
@@ -4646,7 +4646,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0203",
+    "customerCode": "10203",
     "name": "City Meat",
     "businessName": "City Meat",
     "contactPerson": null,
@@ -4669,7 +4669,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0204",
+    "customerCode": "10204",
     "name": "Beefmaster Kimberly",
     "businessName": "Beefmaster Kimberly",
     "contactPerson": null,
@@ -4692,7 +4692,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0205",
+    "customerCode": "10205",
     "name": "MGM Prime Butchery",
     "businessName": "MGM Prime Butchery",
     "contactPerson": "Carlos",
@@ -4715,7 +4715,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0206",
+    "customerCode": "10206",
     "name": "Russian Boss",
     "businessName": "Russian Boss",
     "contactPerson": "nokwanda",
@@ -4738,7 +4738,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0207",
+    "customerCode": "10207",
     "name": "Jumbo Meat Randburg",
     "businessName": "Jumbo Meat Randburg",
     "contactPerson": null,
@@ -4761,7 +4761,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0208",
+    "customerCode": "10208",
     "name": "Dexters Hyper Meat Market Thokoza",
     "businessName": "Dexters Hyper Meat Market Thokoza",
     "contactPerson": null,
@@ -4784,7 +4784,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0209",
+    "customerCode": "10209",
     "name": "Arlindo Trading CC T/A Big Save Supermarket",
     "businessName": "Arlindo Trading CC T/A Big Save Supermarket",
     "contactPerson": null,
@@ -4807,7 +4807,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0210",
+    "customerCode": "10210",
     "name": "Jr Legacies Meat Market",
     "businessName": "Jr Legacies Meat Market",
     "contactPerson": null,
@@ -4830,7 +4830,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0211",
+    "customerCode": "10211",
     "name": "Sircles Meat Market",
     "businessName": "Sircles Meat Market",
     "contactPerson": null,
@@ -4853,7 +4853,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0212",
+    "customerCode": "10212",
     "name": "Rooikraal Butchery",
     "businessName": "Rooikraal Butchery",
     "contactPerson": null,
@@ -4876,7 +4876,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0213",
+    "customerCode": "10213",
     "name": "Dankbaar",
     "businessName": "Dankbaar",
     "contactPerson": null,
@@ -4899,7 +4899,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0214",
+    "customerCode": "10214",
     "name": "Venters Meat PTY Ltd",
     "businessName": "Venters Meat PTY Ltd",
     "contactPerson": null,
@@ -4922,7 +4922,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0215",
+    "customerCode": "10215",
     "name": "Dexters Hyper Meat Market",
     "businessName": "Dexters Hyper Meat Market",
     "contactPerson": null,
@@ -4945,7 +4945,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0216",
+    "customerCode": "10216",
     "name": "Waltloo Meat & Chicken RTB NO2",
     "businessName": "Waltloo Meat & Chicken RTB NO2",
     "contactPerson": null,
@@ -4968,7 +4968,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0217",
+    "customerCode": "10217",
     "name": "N1 Restuarant Supplies",
     "businessName": "N1 Restuarant Supplies",
     "contactPerson": null,
@@ -4991,7 +4991,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0218",
+    "customerCode": "10218",
     "name": "Waltloo Meat & Chicken Pretoria Ce...",
     "businessName": "Waltloo Meat & Chicken Pretoria Ce...",
     "contactPerson": null,
@@ -5014,7 +5014,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0219",
+    "customerCode": "10219",
     "name": "Nelsons Chicken and Meat Market",
     "businessName": "Nelsons Chicken and Meat Market",
     "contactPerson": "Julian",
@@ -5037,7 +5037,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0220",
+    "customerCode": "10220",
     "name": "Gabbys convenience",
     "businessName": "Gabbys convenience",
     "contactPerson": "Luciuno",
@@ -5060,7 +5060,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0221",
+    "customerCode": "10221",
     "name": "The Meaty Place Butchery",
     "businessName": "The Meaty Place Butchery",
     "contactPerson": "Charl",
@@ -5083,7 +5083,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0222",
+    "customerCode": "10222",
     "name": "Lanseria food zone",
     "businessName": "Lanseria food zone",
     "contactPerson": "Dean",
@@ -5106,7 +5106,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0223",
+    "customerCode": "10223",
     "name": "N1 Butchery",
     "businessName": "N1 Butchery",
     "contactPerson": "Banele/Francious",
@@ -5129,7 +5129,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0224",
+    "customerCode": "10224",
     "name": "Alex Metro Butchery 1",
     "businessName": "Alex Metro Butchery 1",
     "contactPerson": "Victot",
@@ -5152,7 +5152,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0225",
+    "customerCode": "10225",
     "name": "Dynarama Cash and Carry",
     "businessName": "Dynarama Cash and Carry",
     "contactPerson": "mike",
@@ -5175,7 +5175,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.175Z"
   },
   {
-    "customerCode": "CUST0226",
+    "customerCode": "10226",
     "name": "Roots - Tsakane",
     "businessName": "Roots - Tsakane",
     "contactPerson": null,
@@ -5198,7 +5198,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0227",
+    "customerCode": "10227",
     "name": "Plus Thokoza Pty Ltd",
     "businessName": "Plus Thokoza Pty Ltd",
     "contactPerson": "David",
@@ -5221,7 +5221,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0228",
+    "customerCode": "10228",
     "name": "Fortified Foods",
     "businessName": "Fortified Foods",
     "contactPerson": "Lynne",
@@ -5244,7 +5244,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0229",
+    "customerCode": "10229",
     "name": "T&N Butchery",
     "businessName": "T&N Butchery",
     "contactPerson": "Tony",
@@ -5267,7 +5267,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0230",
+    "customerCode": "10230",
     "name": "Rainbow Meats Mollie",
     "businessName": "Rainbow Meats Mollie",
     "contactPerson": null,
@@ -5290,7 +5290,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0231",
+    "customerCode": "10231",
     "name": "Columbine OK Foods",
     "businessName": "Columbine OK Foods",
     "contactPerson": null,
@@ -5313,7 +5313,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0232",
+    "customerCode": "10232",
     "name": "Rortified foods Marketing",
     "businessName": "Rortified foods Marketing",
     "contactPerson": null,
@@ -5336,7 +5336,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0233",
+    "customerCode": "10233",
     "name": "WMC Mega",
     "businessName": "WMC Mega",
     "contactPerson": "Rashed",
@@ -5359,7 +5359,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0234",
+    "customerCode": "10234",
     "name": "Obc Tembisa Kaylan Foods CC",
     "businessName": "Obc Tembisa Kaylan Foods CC",
     "contactPerson": null,
@@ -5382,7 +5382,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0235",
+    "customerCode": "10235",
     "name": "Fatchop Butchery T/A Steves Hyper ..",
     "businessName": "Fatchop Butchery T/A Steves Hyper ..",
     "contactPerson": "Martin",
@@ -5405,7 +5405,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0236",
+    "customerCode": "10236",
     "name": "Dexter's Natalspruit",
     "businessName": "Dexter's Natalspruit",
     "contactPerson": null,
@@ -5428,7 +5428,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0237",
+    "customerCode": "10237",
     "name": "Dexter's Katlehong",
     "businessName": "Dexter's Katlehong",
     "contactPerson": "Dexter",
@@ -5451,7 +5451,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0238",
+    "customerCode": "10238",
     "name": "24 Jumbo Randburg",
     "businessName": "24 Jumbo Randburg",
     "contactPerson": null,
@@ -5474,7 +5474,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0239",
+    "customerCode": "10239",
     "name": "Obc Katlehong",
     "businessName": "Obc Katlehong",
     "contactPerson": "lucas",
@@ -5497,7 +5497,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0240",
+    "customerCode": "10240",
     "name": "Meat Box Distributions T/A Meat Exp...",
     "businessName": "Meat Box Distributions T/A Meat Exp...",
     "contactPerson": "Hani",
@@ -5520,7 +5520,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0241",
+    "customerCode": "10241",
     "name": "Meat Express Jeppe",
     "businessName": "Meat Express Jeppe",
     "contactPerson": null,
@@ -5543,7 +5543,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0242",
+    "customerCode": "10242",
     "name": "Alpha Meat (Pty) Ltd",
     "businessName": "Alpha Meat (Pty) Ltd",
     "contactPerson": null,
@@ -5566,7 +5566,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0243",
+    "customerCode": "10243",
     "name": "Meatarama No 2",
     "businessName": "Meatarama No 2",
     "contactPerson": null,
@@ -5589,7 +5589,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0244",
+    "customerCode": "10244",
     "name": "Mamba",
     "businessName": "Mamba",
     "contactPerson": "Mamba",
@@ -5612,7 +5612,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0245",
+    "customerCode": "10245",
     "name": "5 Star Butchery",
     "businessName": "5 Star Butchery",
     "contactPerson": "Thuli",
@@ -5635,7 +5635,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0246",
+    "customerCode": "10246",
     "name": "Siesta Butchery",
     "businessName": "Siesta Butchery",
     "contactPerson": null,
@@ -5658,7 +5658,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0247",
+    "customerCode": "10247",
     "name": "Jorgo",
     "businessName": "Jorgo",
     "contactPerson": "Jorge",
@@ -5681,7 +5681,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0248",
+    "customerCode": "10248",
     "name": "Aceplan Trading",
     "businessName": "Aceplan Trading",
     "contactPerson": "Martin Cloverden",
@@ -5704,7 +5704,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0249",
+    "customerCode": "10249",
     "name": "Mamashes Butchery",
     "businessName": "Mamashes Butchery",
     "contactPerson": "Marco Mamashes",
@@ -5727,7 +5727,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0250",
+    "customerCode": "10250",
     "name": "FD Product Sourcing",
     "businessName": "FD Product Sourcing",
     "contactPerson": "Francois Dippenaar",
@@ -5750,7 +5750,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0251",
+    "customerCode": "10251",
     "name": "Meat Express Katlehong",
     "businessName": "Meat Express Katlehong",
     "contactPerson": "Mike",
@@ -5773,7 +5773,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0252",
+    "customerCode": "10252",
     "name": "Metro Cash Butchery",
     "businessName": "Metro Cash Butchery",
     "contactPerson": null,
@@ -5796,7 +5796,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0253",
+    "customerCode": "10253",
     "name": "Africa Butchery",
     "businessName": "Africa Butchery",
     "contactPerson": "Dean Gabbys",
@@ -5819,7 +5819,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0254",
+    "customerCode": "10254",
     "name": "Mr Cold Meats",
     "businessName": "Mr Cold Meats",
     "contactPerson": "David",
@@ -5842,7 +5842,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0255",
+    "customerCode": "10255",
     "name": "Plus M3 Monate Mnandi",
     "businessName": "Plus M3 Monate Mnandi",
     "contactPerson": "Radebe",
@@ -5865,7 +5865,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0256",
+    "customerCode": "10256",
     "name": "Plus Butchery Cosmo City",
     "businessName": "Plus Butchery Cosmo City",
     "contactPerson": "Johnny",
@@ -5888,7 +5888,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0257",
+    "customerCode": "10257",
     "name": "Jozi Express",
     "businessName": "Jozi Express",
     "contactPerson": null,
@@ -5911,7 +5911,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0258",
+    "customerCode": "10258",
     "name": "Comptonville Butchery",
     "businessName": "Comptonville Butchery",
     "contactPerson": "Luis",
@@ -5934,7 +5934,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0259",
+    "customerCode": "10259",
     "name": "Obc Eyethu",
     "businessName": "Obc Eyethu",
     "contactPerson": "Zibora",
@@ -5957,7 +5957,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0260",
+    "customerCode": "10260",
     "name": "Nelson Big Save",
     "businessName": "Nelson Big Save",
     "contactPerson": "Thulani",
@@ -5980,7 +5980,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0261",
+    "customerCode": "10261",
     "name": "Station Meat - Co Shop N 6 First st",
     "businessName": "Station Meat - Co Shop N 6 First st",
     "contactPerson": "Natasha",
@@ -6003,7 +6003,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0262",
+    "customerCode": "10262",
     "name": "Malvern meat market",
     "businessName": "Malvern meat market",
     "contactPerson": "Phillip",
@@ -6026,7 +6026,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0263",
+    "customerCode": "10263",
     "name": "Mr. Mbongeni Masuku",
     "businessName": "Mr. Mbongeni Masuku",
     "contactPerson": "Mbongeni Masuku",
@@ -6049,7 +6049,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0264",
+    "customerCode": "10264",
     "name": "Blessing Casings",
     "businessName": "Blessing Casings",
     "contactPerson": "Blessing Murenga",
@@ -6072,7 +6072,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0265",
+    "customerCode": "10265",
     "name": "Bernard Howesho",
     "businessName": "Bernard Howesho",
     "contactPerson": "Bernard Howesho",
@@ -6095,7 +6095,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0266",
+    "customerCode": "10266",
     "name": "Wildsbewerking",
     "businessName": "Wildsbewerking",
     "contactPerson": "Andre",
@@ -6118,7 +6118,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0267",
+    "customerCode": "10267",
     "name": "Rainbow meat supply",
     "businessName": "Rainbow meat supply",
     "contactPerson": "Ntando",
@@ -6141,7 +6141,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0268",
+    "customerCode": "10268",
     "name": "Bulk Pack Meat",
     "businessName": "Bulk Pack Meat",
     "contactPerson": null,
@@ -6164,7 +6164,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0269",
+    "customerCode": "10269",
     "name": "Windmill park Butchery",
     "businessName": "Windmill park Butchery",
     "contactPerson": "Isaacs Chetty",
@@ -6187,7 +6187,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0270",
+    "customerCode": "10270",
     "name": "Prime Game",
     "businessName": "Prime Game",
     "contactPerson": "Thiza",
@@ -6210,7 +6210,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0271",
+    "customerCode": "10271",
     "name": "Witbank Casings",
     "businessName": "Witbank Casings",
     "contactPerson": "Dean Majola",
@@ -6233,7 +6233,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0272",
+    "customerCode": "10272",
     "name": "Midvaal slaghuis",
     "businessName": "Midvaal slaghuis",
     "contactPerson": null,
@@ -6256,7 +6256,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0273",
+    "customerCode": "10273",
     "name": "Butcher Boys",
     "businessName": "Butcher Boys",
     "contactPerson": "Gregory",
@@ -6279,7 +6279,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0274",
+    "customerCode": "10274",
     "name": "Price Rite Spices - Nelspruit",
     "businessName": "Price Rite Spices - Nelspruit",
     "contactPerson": "Charles Arendse",
@@ -6302,7 +6302,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0275",
+    "customerCode": "10275",
     "name": "Price Rite Spices - East London",
     "businessName": "Price Rite Spices - East London",
     "contactPerson": "Charles Arendse",
@@ -6325,7 +6325,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0276",
+    "customerCode": "10276",
     "name": "Heriotdale butchery - Germiston",
     "businessName": "Heriotdale butchery - Germiston",
     "contactPerson": "Samantha",
@@ -6348,7 +6348,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0277",
+    "customerCode": "10277",
     "name": "Rush hour",
     "businessName": "Rush hour",
     "contactPerson": "Tony",
@@ -6371,7 +6371,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0278",
+    "customerCode": "10278",
     "name": "Mandla Ndaba",
     "businessName": "Mandla Ndaba",
     "contactPerson": "Mandla Ndaba",
@@ -6394,7 +6394,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.176Z"
   },
   {
-    "customerCode": "CUST0279",
+    "customerCode": "10279",
     "name": "Primrose Heuwel Butchery",
     "businessName": "Primrose Heuwel Butchery",
     "contactPerson": null,
@@ -6417,7 +6417,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0280",
+    "customerCode": "10280",
     "name": "me",
     "businessName": "me",
     "contactPerson": "Mike",
@@ -6440,7 +6440,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0281",
+    "customerCode": "10281",
     "name": "1A Tubing department Client",
     "businessName": "1A Tubing department Client",
     "contactPerson": null,
@@ -6463,7 +6463,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0282",
+    "customerCode": "10282",
     "name": "1A Sample Account",
     "businessName": "1A Sample Account",
     "contactPerson": null,
@@ -6486,7 +6486,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0283",
+    "customerCode": "10283",
     "name": "Alfredo Sitoe",
     "businessName": "Alfredo Sitoe",
     "contactPerson": "Alfredo Sitoe",
@@ -6509,7 +6509,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0284",
+    "customerCode": "10284",
     "name": "AVI",
     "businessName": "AVI",
     "contactPerson": null,
@@ -6532,7 +6532,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0285",
+    "customerCode": "10285",
     "name": "Butcher & Packer",
     "businessName": "Butcher & Packer",
     "contactPerson": "Conroy",
@@ -6555,7 +6555,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0286",
+    "customerCode": "10286",
     "name": "Cattleman and Hunter",
     "businessName": "Cattleman and Hunter",
     "contactPerson": "Mariana",
@@ -6578,7 +6578,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0287",
+    "customerCode": "10287",
     "name": "Cooper Casings & Spice",
     "businessName": "Cooper Casings & Spice",
     "contactPerson": "Bruce",
@@ -6601,7 +6601,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0288",
+    "customerCode": "10288",
     "name": "Delheim Meat & Deli",
     "businessName": "Delheim Meat & Deli",
     "contactPerson": "Eugene Wagenaar",
@@ -6624,7 +6624,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0289",
+    "customerCode": "10289",
     "name": "Deli Spices",
     "businessName": "Deli Spices",
     "contactPerson": "Anton",
@@ -6647,7 +6647,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0290",
+    "customerCode": "10290",
     "name": "Draken Casing",
     "businessName": "Draken Casing",
     "contactPerson": null,
@@ -6670,7 +6670,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0291",
+    "customerCode": "10291",
     "name": "Esihlahleni Butchery",
     "businessName": "Esihlahleni Butchery",
     "contactPerson": "Victoria",
@@ -6693,7 +6693,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0292",
+    "customerCode": "10292",
     "name": "Four Oceans lmport and Export CC",
     "businessName": "Four Oceans lmport and Export CC",
     "contactPerson": null,
@@ -6716,7 +6716,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0293",
+    "customerCode": "10293",
     "name": "Groenkloof Butchery",
     "businessName": "Groenkloof Butchery",
     "contactPerson": null,
@@ -6739,7 +6739,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0294",
+    "customerCode": "10294",
     "name": "Gute Casings",
     "businessName": "Gute Casings",
     "contactPerson": "Annamarie",
@@ -6762,7 +6762,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0295",
+    "customerCode": "10295",
     "name": "Holistic Life Institute",
     "businessName": "Holistic Life Institute",
     "contactPerson": "Johan",
@@ -6785,7 +6785,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0296",
+    "customerCode": "10296",
     "name": "Ixolo Trading T/A WholesalMeat & Chicken",
     "businessName": "Ixolo Trading T/A WholesalMeat & Chicken",
     "contactPerson": "Jose",
@@ -6808,7 +6808,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0297",
+    "customerCode": "10297",
     "name": "Kasi Casing Supplies",
     "businessName": "Kasi Casing Supplies",
     "contactPerson": "Daniel",
@@ -6831,7 +6831,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0298",
+    "customerCode": "10298",
     "name": "Kitsipart",
     "businessName": "Kitsipart",
     "contactPerson": null,
@@ -6854,7 +6854,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0299",
+    "customerCode": "10299",
     "name": "Matts Meat Market",
     "businessName": "Matts Meat Market",
     "contactPerson": "Martin",
@@ -6877,7 +6877,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0300",
+    "customerCode": "10300",
     "name": "Meat Spot Food (Pty) Ltd",
     "businessName": "Meat Spot Food (Pty) Ltd",
     "contactPerson": "Tony",
@@ -6900,7 +6900,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0301",
+    "customerCode": "10301",
     "name": "Member Butchery",
     "businessName": "Member Butchery",
     "contactPerson": "Member",
@@ -6923,7 +6923,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0302",
+    "customerCode": "10302",
     "name": "Moholwane Buy & Braai",
     "businessName": "Moholwane Buy & Braai",
     "contactPerson": "Moholwane",
@@ -6946,7 +6946,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0303",
+    "customerCode": "10303",
     "name": "Mr W Meat Treat",
     "businessName": "Mr W Meat Treat",
     "contactPerson": "Willie",
@@ -6969,7 +6969,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0304",
+    "customerCode": "10304",
     "name": "Nicks Butchery Shop",
     "businessName": "Nicks Butchery Shop",
     "contactPerson": "Nick",
@@ -6992,7 +6992,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0305",
+    "customerCode": "10305",
     "name": "Phambili Meat Wholesalers",
     "businessName": "Phambili Meat Wholesalers",
     "contactPerson": "Leandro Francisco",
@@ -7015,7 +7015,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0306",
+    "customerCode": "10306",
     "name": "Porrill Casings T/A Porrkie Pty Ltd",
     "businessName": "Porrill Casings T/A Porrkie Pty Ltd",
     "contactPerson": "Shane",
@@ -7038,7 +7038,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0307",
+    "customerCode": "10307",
     "name": "Premium Casing Supplies T/A Braytech Electrical & Projects",
     "businessName": "Premium Casing Supplies T/A Braytech Electrical & Projects",
     "contactPerson": "Qhubekani Brian Mhlongo",
@@ -7061,7 +7061,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0308",
+    "customerCode": "10308",
     "name": "Roots - Benoni",
     "businessName": "Roots - Benoni",
     "contactPerson": "Enzo",
@@ -7084,7 +7084,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0309",
+    "customerCode": "10309",
     "name": "Roots - Daveyton",
     "businessName": "Roots - Daveyton",
     "contactPerson": "Paul",
@@ -7107,7 +7107,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0310",
+    "customerCode": "10310",
     "name": "Obc daveyton",
     "businessName": "Obc daveyton",
     "contactPerson": null,
@@ -7130,7 +7130,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0311",
+    "customerCode": "10311",
     "name": "RV Meat Trading as RS Meat",
     "businessName": "RV Meat Trading as RS Meat",
     "contactPerson": "Theo Saunders",
@@ -7153,7 +7153,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0312",
+    "customerCode": "10312",
     "name": "Telmark Butchery",
     "businessName": "Telmark Butchery",
     "contactPerson": "Eddie",
@@ -7176,7 +7176,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0313",
+    "customerCode": "10313",
     "name": "The Biltong Deli & Water Drop (Pty) Ltd",
     "businessName": "The Biltong Deli & Water Drop (Pty) Ltd",
     "contactPerson": "Pieter Visagie",
@@ -7199,7 +7199,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0314",
+    "customerCode": "10314",
     "name": "Waltloo Meat & Chicken - Spruitview",
     "businessName": "Waltloo Meat & Chicken - Spruitview",
     "contactPerson": null,
@@ -7222,7 +7222,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0315",
+    "customerCode": "10315",
     "name": "Workman's Warehouse T/A Meat Express",
     "businessName": "Workman's Warehouse T/A Meat Express",
     "contactPerson": "Mike",
@@ -7245,7 +7245,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0316",
+    "customerCode": "10316",
     "name": "SuperSpar 2nd Ave",
     "businessName": "SuperSpar 2nd Ave",
     "contactPerson": null,
@@ -7268,7 +7268,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0317",
+    "customerCode": "10317",
     "name": "Superspar Angelo",
     "businessName": "Superspar Angelo",
     "contactPerson": null,
@@ -7291,7 +7291,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0318",
+    "customerCode": "10318",
     "name": "Ben Swart Slaghuis",
     "businessName": "Ben Swart Slaghuis",
     "contactPerson": null,
@@ -7314,7 +7314,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0319",
+    "customerCode": "10319",
     "name": "Cash Sale Acc",
     "businessName": "Cash Sale Acc",
     "contactPerson": "Mike",
@@ -7337,7 +7337,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0320",
+    "customerCode": "10320",
     "name": "Superspar Broadacres",
     "businessName": "Superspar Broadacres",
     "contactPerson": null,
@@ -7360,7 +7360,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0321",
+    "customerCode": "10321",
     "name": "Butcher Guys",
     "businessName": "Butcher Guys",
     "contactPerson": null,
@@ -7383,7 +7383,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0322",
+    "customerCode": "10322",
     "name": "Country Choice Meats",
     "businessName": "Country Choice Meats",
     "contactPerson": "Pamela Murenjekwa",
@@ -7406,7 +7406,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0323",
+    "customerCode": "10323",
     "name": "Euro Meats",
     "businessName": "Euro Meats",
     "contactPerson": null,
@@ -7429,7 +7429,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0324",
+    "customerCode": "10324",
     "name": "Farm Fresh Meat",
     "businessName": "Farm Fresh Meat",
     "contactPerson": null,
@@ -7452,7 +7452,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0325",
+    "customerCode": "10325",
     "name": "Farmers Meat Market",
     "businessName": "Farmers Meat Market",
     "contactPerson": "Quinton",
@@ -7475,7 +7475,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0326",
+    "customerCode": "10326",
     "name": "Gabbys Regent Park",
     "businessName": "Gabbys Regent Park",
     "contactPerson": null,
@@ -7498,7 +7498,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0327",
+    "customerCode": "10327",
     "name": "Hardekool Slaghuis",
     "businessName": "Hardekool Slaghuis",
     "contactPerson": null,
@@ -7521,7 +7521,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0328",
+    "customerCode": "10328",
     "name": "Superspar Hillbrow",
     "businessName": "Superspar Hillbrow",
     "contactPerson": null,
@@ -7544,7 +7544,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0329",
+    "customerCode": "10329",
     "name": "Impendhulo Hlophe Butchery",
     "businessName": "Impendhulo Hlophe Butchery",
     "contactPerson": null,
@@ -7567,7 +7567,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0330",
+    "customerCode": "10330",
     "name": "Kings Meat Deli Lynnwood Bridge",
     "businessName": "Kings Meat Deli Lynnwood Bridge",
     "contactPerson": null,
@@ -7590,7 +7590,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0331",
+    "customerCode": "10331",
     "name": "Krugersdorp Hyper Butchery",
     "businessName": "Krugersdorp Hyper Butchery",
     "contactPerson": null,
@@ -7613,7 +7613,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0332",
+    "customerCode": "10332",
     "name": "Main Butchery",
     "businessName": "Main Butchery",
     "contactPerson": "Claudio Nunes",
@@ -7636,7 +7636,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0333",
+    "customerCode": "10333",
     "name": "Meat Choice Roodekop",
     "businessName": "Meat Choice Roodekop",
     "contactPerson": null,
@@ -7659,7 +7659,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0334",
+    "customerCode": "10334",
     "name": "Meat Express Eloff Str 2 14",
     "businessName": "Meat Express Eloff Str 2 14",
     "contactPerson": null,
@@ -7682,7 +7682,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0335",
+    "customerCode": "10335",
     "name": "Meat express Enoch Sotonga Mall",
     "businessName": "Meat express Enoch Sotonga Mall",
     "contactPerson": null,
@@ -7705,7 +7705,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0336",
+    "customerCode": "10336",
     "name": "Meat Express Primrose",
     "businessName": "Meat Express Primrose",
     "contactPerson": null,
@@ -7728,7 +7728,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0337",
+    "customerCode": "10337",
     "name": "Meat For Africa",
     "businessName": "Meat For Africa",
     "contactPerson": null,
@@ -7751,7 +7751,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0338",
+    "customerCode": "10338",
     "name": "Meat Way Butchery",
     "businessName": "Meat Way Butchery",
     "contactPerson": "Thandekile",
@@ -7774,7 +7774,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0339",
+    "customerCode": "10339",
     "name": "Meat World Alberton Apple Tree",
     "businessName": "Meat World Alberton Apple Tree",
     "contactPerson": null,
@@ -7797,7 +7797,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0340",
+    "customerCode": "10340",
     "name": "Meat World Katlehong",
     "businessName": "Meat World Katlehong",
     "contactPerson": "Gabriel",
@@ -7820,7 +7820,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0341",
+    "customerCode": "10341",
     "name": "Southern Butchery",
     "businessName": "Southern Butchery",
     "contactPerson": null,
@@ -7843,7 +7843,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0342",
+    "customerCode": "10342",
     "name": "Moses Chicken and Fresh Meat",
     "businessName": "Moses Chicken and Fresh Meat",
     "contactPerson": null,
@@ -7866,7 +7866,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0343",
+    "customerCode": "10343",
     "name": "Superspar Norwood",
     "businessName": "Superspar Norwood",
     "contactPerson": null,
@@ -7889,7 +7889,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0344",
+    "customerCode": "10344",
     "name": "OBC Benoni",
     "businessName": "OBC Benoni",
     "contactPerson": null,
@@ -7912,7 +7912,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0345",
+    "customerCode": "10345",
     "name": "Park City Butchery",
     "businessName": "Park City Butchery",
     "contactPerson": "Jose",
@@ -7935,7 +7935,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0346",
+    "customerCode": "10346",
     "name": "Pheseki Enterprise",
     "businessName": "Pheseki Enterprise",
     "contactPerson": null,
@@ -7958,7 +7958,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0347",
+    "customerCode": "10347",
     "name": "Plantation Butchery Germiston",
     "businessName": "Plantation Butchery Germiston",
     "contactPerson": null,
@@ -7981,7 +7981,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0348",
+    "customerCode": "10348",
     "name": "Plantation Farm Stall",
     "businessName": "Plantation Farm Stall",
     "contactPerson": null,
@@ -8004,7 +8004,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0349",
+    "customerCode": "10349",
     "name": "Randvaal Butchery",
     "businessName": "Randvaal Butchery",
     "contactPerson": null,
@@ -8027,7 +8027,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0350",
+    "customerCode": "10350",
     "name": "Rynfield Superspar",
     "businessName": "Rynfield Superspar",
     "contactPerson": null,
@@ -8050,7 +8050,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0351",
+    "customerCode": "10351",
     "name": "Waverley Slaghuis",
     "businessName": "Waverley Slaghuis",
     "contactPerson": null,
@@ -8073,7 +8073,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0352",
+    "customerCode": "10352",
     "name": "Silvinos Butchery",
     "businessName": "Silvinos Butchery",
     "contactPerson": null,
@@ -8096,7 +8096,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0353",
+    "customerCode": "10353",
     "name": "Simunye Butchery",
     "businessName": "Simunye Butchery",
     "contactPerson": null,
@@ -8119,7 +8119,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0354",
+    "customerCode": "10354",
     "name": "Station Cash Butchery",
     "businessName": "Station Cash Butchery",
     "contactPerson": null,
@@ -8142,7 +8142,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0355",
+    "customerCode": "10355",
     "name": "Stevie's Butchery",
     "businessName": "Stevie's Butchery",
     "contactPerson": "gavin",
@@ -8165,7 +8165,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0356",
+    "customerCode": "10356",
     "name": "Superspar Sunward Park",
     "businessName": "Superspar Sunward Park",
     "contactPerson": null,
@@ -8188,7 +8188,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0357",
+    "customerCode": "10357",
     "name": "Super Spar Robert Broom",
     "businessName": "Super Spar Robert Broom",
     "contactPerson": null,
@@ -8211,7 +8211,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0358",
+    "customerCode": "10358",
     "name": "Superspar Bertrams",
     "businessName": "Superspar Bertrams",
     "contactPerson": null,
@@ -8234,7 +8234,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0359",
+    "customerCode": "10359",
     "name": "SuperSpar Brackengate",
     "businessName": "SuperSpar Brackengate",
     "contactPerson": null,
@@ -8257,7 +8257,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0360",
+    "customerCode": "10360",
     "name": "Superspar Clayville",
     "businessName": "Superspar Clayville",
     "contactPerson": null,
@@ -8280,7 +8280,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0361",
+    "customerCode": "10361",
     "name": "Superspar The Palms",
     "businessName": "Superspar The Palms",
     "contactPerson": null,
@@ -8303,7 +8303,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0362",
+    "customerCode": "10362",
     "name": "Superspar Westwood",
     "businessName": "Superspar Westwood",
     "contactPerson": null,
@@ -8326,7 +8326,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0363",
+    "customerCode": "10363",
     "name": "The Legendary Butcher",
     "businessName": "The Legendary Butcher",
     "contactPerson": null,
@@ -8349,7 +8349,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0364",
+    "customerCode": "10364",
     "name": "The Meat Boss butchery",
     "businessName": "The Meat Boss butchery",
     "contactPerson": null,
@@ -8372,7 +8372,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0365",
+    "customerCode": "10365",
     "name": "Superspar The square  (14)",
     "businessName": "Superspar The square  (14)",
     "contactPerson": null,
@@ -8395,7 +8395,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0366",
+    "customerCode": "10366",
     "name": "Tileba Vleismark(COD)",
     "businessName": "Tileba Vleismark(COD)",
     "contactPerson": null,
@@ -8418,7 +8418,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0367",
+    "customerCode": "10367",
     "name": "Uncle Dans Butchery",
     "businessName": "Uncle Dans Butchery",
     "contactPerson": null,
@@ -8441,7 +8441,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0368",
+    "customerCode": "10368",
     "name": "Waltloo Meat & Chicken Rustenburg (14 D...",
     "businessName": "Waltloo Meat & Chicken Rustenburg (14 D...",
     "contactPerson": null,
@@ -8464,7 +8464,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0369",
+    "customerCode": "10369",
     "name": "Waltoo meat and Chicken Rustenburg 2",
     "businessName": "Waltoo meat and Chicken Rustenburg 2",
     "contactPerson": null,
@@ -8487,7 +8487,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0370",
+    "customerCode": "10370",
     "name": "The Meat Specialist",
     "businessName": "The Meat Specialist",
     "contactPerson": "Michael",
@@ -8510,7 +8510,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0371",
+    "customerCode": "10371",
     "name": "Westgate Meat Market COD",
     "businessName": "Westgate Meat Market COD",
     "contactPerson": "Corne",
@@ -8533,7 +8533,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.177Z"
   },
   {
-    "customerCode": "CUST0372",
+    "customerCode": "10372",
     "name": "Elands Butchery",
     "businessName": "Elands Butchery",
     "contactPerson": "Basie",
@@ -8556,7 +8556,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0373",
+    "customerCode": "10373",
     "name": "Venters Wholesale Meat",
     "businessName": "Venters Wholesale Meat",
     "contactPerson": "Owner",
@@ -8579,7 +8579,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0374",
+    "customerCode": "10374",
     "name": "High Road Butchery",
     "businessName": "High Road Butchery",
     "contactPerson": "Mariska",
@@ -8602,7 +8602,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0375",
+    "customerCode": "10375",
     "name": "Vleisfabriek  Meatfactory Bredell",
     "businessName": "Vleisfabriek  Meatfactory Bredell",
     "contactPerson": null,
@@ -8625,7 +8625,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0376",
+    "customerCode": "10376",
     "name": "Thabelo Butchery",
     "businessName": "Thabelo Butchery",
     "contactPerson": "Mr Masilo",
@@ -8648,7 +8648,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0377",
+    "customerCode": "10377",
     "name": "BRUCHS BUTCHER & DELI",
     "businessName": "BRUCHS BUTCHER & DELI",
     "contactPerson": "Jan",
@@ -8671,7 +8671,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0378",
+    "customerCode": "10378",
     "name": "Obc cosmo city",
     "businessName": "Obc cosmo city",
     "contactPerson": "Carlos",
@@ -8694,7 +8694,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0379",
+    "customerCode": "10379",
     "name": "Waltloo Soshanguve",
     "businessName": "Waltloo Soshanguve",
     "contactPerson": null,
@@ -8717,7 +8717,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0380",
+    "customerCode": "10380",
     "name": "Moyoyo molelwa butchery",
     "businessName": "Moyoyo molelwa butchery",
     "contactPerson": null,
@@ -8740,7 +8740,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0381",
+    "customerCode": "10381",
     "name": "Ouma se oond en slaghuis",
     "businessName": "Ouma se oond en slaghuis",
     "contactPerson": null,
@@ -8763,7 +8763,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0382",
+    "customerCode": "10382",
     "name": "SUPERSPAR RANDFONTEIN",
     "businessName": "SUPERSPAR RANDFONTEIN",
     "contactPerson": null,
@@ -8786,7 +8786,7 @@ export const STATIC_CUSTOMERS = [
     "updatedAt": "2026-06-19T12:29:55.178Z"
   },
   {
-    "customerCode": "CUST0383",
+    "customerCode": "10383",
     "name": "OBC PROTEA GARDENS",
     "businessName": "OBC PROTEA GARDENS",
     "contactPerson": null,

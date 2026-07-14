@@ -4,7 +4,7 @@ import { useRole } from "@/hooks/useRole";
 import {
   LayoutDashboard, Package, Users, ShoppingCart, FileText,
   Calendar, UserCog, CreditCard, Settings, LogOut, Globe,
-  Bell, FlaskConical, ShieldAlert, Archive, X,
+  Bell, FlaskConical, ShieldAlert, Archive, X, Wallet,
 } from "lucide-react";
 
 const allNavItems = [
@@ -13,6 +13,7 @@ const allNavItems = [
   { path: "/customers", label: "Customers", icon: Users },
   { path: "/orders", label: "Orders", icon: ShoppingCart },
   { path: "/invoices", label: "Invoices", icon: FileText },
+  { path: "/my-invoices", label: "My Invoices", icon: Wallet },
   { path: "/appointments", label: "Appointments", icon: Calendar },
   { path: "/sales-reps", label: "Sales Reps", icon: UserCog },
   { path: "/collections", label: "Collections", icon: CreditCard },

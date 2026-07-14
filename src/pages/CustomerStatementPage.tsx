@@ -26,22 +26,32 @@ export default function CustomerStatementPage() {
     return (customers || []).find((c: any) => c.id === selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
 
-  // Filtered invoices for selected customer — SAME approach as InvoicesPage search
+  // Filtered invoices for selected customer
   const custInvoices = useMemo(() => {
     if (!selectedCustomer || !invoices) return [];
     const cName = (selectedCustomer.name || "").toLowerCase().trim();
     const cCode = (selectedCustomer.customerCode || "").toString().trim();
+    // Legacy CUST code conversion: "10001" → "CUST0001" for matching old Sage invoices
+    const legacyCode = cCode ? "CUST" + cCode.padStart(4, "0") : "";
 
     return invoices
       .filter((inv: any) => {
-        // Match by customerId
+        // 1. Match by customerId
         if (inv.customerId === selectedCustomer.id) return true;
-        // Match by customer.name (this catches Sage invoices!)
+        // 2. Match by nested customer.name
         const invCustName = (inv.customer?.name || "").toLowerCase().trim();
         if (invCustName && invCustName === cName) return true;
-        // Match by customerCode on the invoice
+        // 3. Match by customerCode (new format: 10001)
         const invCode = (inv.customerCode || "").toString().trim();
         if (invCode && invCode === cCode) return true;
+        // 4. Match by legacy customerCode (old format: CUST0001)
+        if (invCode && invCode === legacyCode) return true;
+        // 5. Match by top-level customerName field (Sage invoices store it here)
+        const invTopName = (inv.customerName || "").toLowerCase().trim();
+        if (invTopName && invTopName === cName) return true;
+        // 6. Match by fuzzy name from notes (Sage notes: "Historical import from Sage <name>")
+        const invNotes = (inv.notes || "").toLowerCase();
+        if (invNotes.includes(cName.slice(0, 12))) return true;
         return false;
       })
       .filter((inv: any) => {

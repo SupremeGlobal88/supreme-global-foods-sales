@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGF Customer Statement</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;background:#0C0D0E;color:#E8E8E9;padding:20px;min-height:100vh}
+  .container{max-width:1200px;margin:0 auto}
+  .header-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+  h1{font-size:22px;color:#D4A843}
+  .subtitle{color:#8A8B8C;font-size:12px}
+  .card{background:#131415;border:1px solid #222324;border-radius:12px;padding:20px;margin-bottom:20px}
+  .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .form-group{display:flex;flex-direction:column;gap:4px}
+  .form-group label{font-size:11px;color:#8A8B8C;text-transform:uppercase;letter-spacing:0.5px}
+  input,select{background:#18191A;border:1px solid #222324;color:#E8E8E9;padding:10px 12px;border-radius:8px;font-size:14px;min-width:200px}
+  input:focus,select:focus{outline:none;border-color:#D4A843}
+  button{cursor:pointer;padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+  .btn-primary{background:#D4A843;color:#0A0A0B}
+  .btn-primary:hover{background:#c49a3b}
+  .btn-secondary{background:#18191A;color:#E8E8E9;border:1px solid #222324}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{background:#131415;color:#8A8B8C;padding:12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #D4A843}
+  tbody td{padding:10px 12px;border-bottom:1px solid #18191A}
+  .num{text-align:right}
+  .sage-tag{color:#818CF8;font-size:10px;background:rgba(99,102,241,0.1);padding:2px 6px;border-radius:3px;margin-left:4px}
+  .summary-box{background:#0A0A0B;padding:16px;border-radius:8px;margin-top:16px}
+  .summary-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #222324}
+  .summary-row:last-child{border-bottom:none}
+  .total-row{font-weight:700;border-top:2px solid #D4A843;margin-top:8px;padding-top:12px;font-size:15px}
+  .aging-box{border:1px solid #D4A843;border-radius:8px;overflow:hidden;margin-top:16px}
+  .aging-header{background:#D4A843;color:#fff;padding:10px 16px;font-size:12px;font-weight:700;text-transform:uppercase}
+  .aging-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:8px;padding:12px 16px;text-align:center;font-size:13px}
+  .aging-label{color:#8A8B8C;font-size:11px;margin-bottom:4px}
+  .aging-val{font-weight:600}
+  .over90{color:#EF4444}
+  .print-only{display:none}
+  @media print{
+    body{background:#fff;color:#333;padding:0}
+    .no-print{display:none!important}
+    .print-only{display:block}
+    .card{background:none;border:none;padding:0}
+    table{font-size:12px}
+    thead th{background:#D4A843!important;color:#fff!important;-webkit-print-color-adjust:exact}
+    .aging-header{background:#D4A843!important;color:#fff!important;-webkit-print-color-adjust:exact}
+    .summary-box{background:#f9f9f9!important}
+    tbody td{border-bottom:1px solid #e5e5e5}
+  }
+  .empty{text-align:center;padding:40px;color:#8A8B8C}
+  .ref{color:#D4A843;font-family:monospace;font-size:12px}
+  .debit{color:#E8E8E9}
+  .credit{color:#4ADE80}
+  .bal{font-weight:600;color:#D4A843}
+  .bal-paid{color:#4ADE80}
+  .print-header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:20px;margin-bottom:30px}
+  .print-header h1{font-size:24px;margin-bottom:8px}
+  .print-header .co-info{font-size:11px;color:#666;line-height:1.6}
+  .print-customer{display:flex;justify-content:space-between;margin-bottom:30px;font-size:13px}
+  .print-footer{text-align:center;font-size:10px;color:#999;margin-top:30px;border-top:1px solid #ddd;padding-top:10px}
+  #debug-info{font-size:11px;color:#666;margin-top:20px;padding:10px;background:#0A0A0B;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header-bar no-print">
+    <div>
+      <h1>Customer Statement</h1>
+      <div class="subtitle">Select a customer to generate a printable statement</div>
+    </div>
+    <button class="btn-secondary" onclick="window.location.href='/invoices'">Back to Invoices</button>
+  </div>
+
+  <div class="card no-print">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Customer</label>
+        <select id="customerSelect" onchange="generateStatement()">
+          <option value="">-- Select Customer --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>From</label>
+        <input type="date" id="fromDate" value="2020-01-01" onchange="generateStatement()">
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <input type="date" id="toDate" onchange="generateStatement()">
+      </div>
+      <button class="btn-primary" onclick="printStatement()" id="printBtn" style="display:none">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+        Print Statement
+      </button>
+    </div>
+  </div>
+
+  <div id="statementArea"></div>
+  <div id="debugInfo" class="no-print" style="display:none"></div>
+</div>
+
+<script>
+// ─── Load data from localStorage (same as the app) ───
+let customers = [];
+let invoices = [];
+
+try {
+  const c = localStorage.getItem('sgf_customers');
+  if (c) customers = JSON.parse(c);
+} catch(e) {}
+
+try {
+  const i = localStorage.getItem('sgf_invoices');
+  if (i) invoices = JSON.parse(i);
+} catch(e) {}
+
+// Set default to date
+const toDateInput = document.getElementById('toDate');
+const today = new Date().toISOString().split('T')[0];
+if (!toDateInput.value) toDateInput.value = today;
+
+// ─── Populate customer dropdown ───
+const select = document.getElementById('customerSelect');
+customers.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+customers.forEach(c => {
+  const opt = document.createElement('option');
+  opt.value = c.id;
+  opt.textContent = `${c.name} (${c.customerCode || 'N/A'})`;
+  select.appendChild(opt);
+});
+
+// ─── Get URL param for pre-selected customer ───
+const params = new URLSearchParams(window.location.search);
+const preselectId = params.get('customer');
+if (preselectId) {
+  select.value = preselectId;
+  generateStatement();
+}
+
+function generateStatement() {
+  const customerId = parseInt(select.value) || 0;
+  const fromDate = document.getElementById('fromDate').value;
+  const toDate = document.getElementById('toDate').value;
+  const area = document.getElementById('statementArea');
+  const debugArea = document.getElementById('debugInfo');
+
+  if (!customerId) {
+    area.innerHTML = '';
+    document.getElementById('printBtn').style.display = 'none';
+    return;
+  }
+
+  const customer = customers.find(c => c.id === customerId);
+  if (!customer) {
+    area.innerHTML = '<div class="empty">Customer not found</div>';
+    return;
+  }
+
+  const cName = (customer.name || '').toLowerCase().trim();
+  const cCode = (customer.customerCode || '').toString().trim();
+
+  // Filter invoices — SAME approach as invoice page: customerId OR customer.name
+  let custInvoices = invoices.filter(inv => {
+    // 1. By customerId
+    if (inv.customerId && inv.customerId === customerId) return true;
+    // 2. By nested customer.name
+    const invName = (inv.customer?.name || '').toLowerCase().trim();
+    if (invName && invName === cName) return true;
+    // 3. By top-level customerName
+    const invTopName = (inv.customerName || '').toLowerCase().trim();
+    if (invTopName && invTopName === cName) return true;
+    // 4. By customerCode
+    const invCode = (inv.customerCode || '').toString().trim();
+    if (invCode && invCode === cCode) return true;
+    return false;
+  });
+
+  // Date filter
+  if (fromDate) {
+    custInvoices = custInvoices.filter(inv => new Date(inv.invoiceDate || inv.createdAt) >= new Date(fromDate));
+  }
+  if (toDate) {
+    custInvoices = custInvoices.filter(inv => new Date(inv.invoiceDate || inv.createdAt) <= new Date(toDate + 'T23:59:59'));
+  }
+
+  // Sort by date
+  custInvoices.sort((a, b) => new Date(a.invoiceDate || a.createdAt) - new Date(b.invoiceDate || b.createdAt));
+
+  // Debug info
+  const sageCount = custInvoices.filter(i => i.source === 'sage').length;
+  const appCount = custInvoices.filter(i => i.source !== 'sage').length;
+  debugArea.style.display = 'block';
+  debugArea.innerHTML = `<strong>Debug:</strong> ${custInvoices.length} invoices total (${sageCount} Sage, ${appCount} app) for ${customer.name}`;
+
+  if (custInvoices.length === 0) {
+    area.innerHTML = '<div class="empty"><div style="font-size:40px;margin-bottom:12px">📄</div><div style="color:#E8E8E9;font-size:16px">No invoices found</div><div style="color:#8A8B8C;font-size:13px;margin-top:4px">Try adjusting the date range</div></div>';
+    document.getElementById('printBtn').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('printBtn').style.display = 'inline-flex';
+
+  // Build running balance lines
+  let balance = 0;
+  const lines = [];
+  for (const inv of custInvoices) {
+    const debit = Number(inv.total || 0);
+    const credit = Number(inv.amountPaid || 0);
+    balance += debit;
+    lines.push({
+      date: inv.invoiceDate || inv.createdAt,
+      ref: inv.invoiceNumber || inv.orderNumber || '-',
+      desc: inv.source === 'sage' ? 'Sage Historical Invoice' : (inv.notes || 'Invoice'),
+      debit,
+      credit: 0,
+      balance,
+      source: inv.source || 'app',
+      terms: inv.paymentTerms || 'cod'
+    });
+    if (credit > 0) {
+      balance -= credit;
+      lines.push({
+        date: inv.updatedAt || inv.invoiceDate || inv.createdAt,
+        ref: 'Payment',
+        desc: 'Payment Received',
+        debit: 0,
+        credit,
+        balance,
+        source: 'app',
+        terms: ''
+      });
+    }
+  }
+
+  const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+
+  // Aging
+  const now = new Date();
+  const aging = { current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0 };
+  for (const inv of custInvoices) {
+    const bal = Number(inv.balanceDue || inv.total || 0) - Number(inv.amountPaid || 0);
+    if (bal <= 0) continue;
+    const days = Math.floor((now - new Date(inv.invoiceDate || inv.createdAt)) / 86400000);
+    if (days <= 30) aging.current += bal;
+    else if (days <= 60) aging.days30 += bal;
+    else if (days <= 90) aging.days60 += bal;
+    else if (days <= 120) aging.days90 += bal;
+    else aging.days90plus += bal;
+  }
+  const totalOutstanding = aging.current + aging.days30 + aging.days60 + aging.days90 + aging.days90plus;
+  const closingBal = totalDebit - totalCredit;
+
+  // Build HTML
+  let html = '';
+
+  // Print header (hidden on screen)
+  html += `<div class="print-only print-header">
+    <h1 style="color:#D4A843">Supreme Global Foods</h1>
+    <div class="co-info">
+      28 Nagington Road, Wadeville, Germiston, 1422<br>
+      sales@supremeglobalfoods.co.za | Tel: 083 293 0644<br>
+      VAT Reg: 4120123456 | Reg No: 2015/123456/07
+    </div>
+    <h2 style="margin-top:15px;font-size:20px;color:#333">Statement of Account</h2>
+    <div style="font-size:12px;color:#666;margin-top:5px">Period: ${new Date(fromDate).toLocaleDateString('en-ZA')} to ${new Date(toDate).toLocaleDateString('en-ZA')}</div>
+  </div>`;
+
+  html += `<div class="print-only print-customer">
+    <div><strong style="font-size:15px">${customer.name}</strong><br>${customer.contactPerson || ''}<br>${customer.physicalAddress || ''}${customer.city ? ', ' + customer.city : ''}<br>Tel: ${customer.phone || 'N/A'}</div>
+    <div style="text-align:right">Code: <strong>${customer.customerCode || 'N/A'}</strong><br>Total Debit: <strong>R ${totalDebit.toFixed(2)}</strong><br>Total Credit: <strong>R ${totalCredit.toFixed(2)}</strong><br><strong style="color:${closingBal > 0 ? '#c00' : '#2E7D32'};font-size:15px">${closingBal > 0 ? 'BALANCE DUE: R ' + closingBal.toFixed(2) : 'ACCOUNT SETTLED'}</strong></div>
+  </div>`;
+
+  // Screen header
+  html += `<div class="card">
+    <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #D4A843;padding-bottom:15px">
+      <h2 style="color:#D4A843;margin-bottom:5px">Statement of Account</h2>
+      <div style="font-size:14px;color:#E8E8E9"><strong>${customer.name}</strong></div>
+      <div style="font-size:12px;color:#8A8B8C">Code: ${customer.customerCode || 'N/A'} | Tel: ${customer.phone || 'N/A'}</div>
+      <div style="font-size:12px;color:#8A8B8C;margin-top:4px">${new Date(fromDate).toLocaleDateString('en-ZA')} — ${new Date(toDate).toLocaleDateString('en-ZA')}</div>
+    </div>
+
+    <div style="margin-bottom:12px;font-size:12px;color:#8A8B8C">Showing ${custInvoices.length} invoice${custInvoices.length !== 1 ? 's' : ''} (${sageCount} Sage, ${appCount} app)</div>
+
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr>
+          <th style="width:12%">Date</th>
+          <th style="width:16%">Reference</th>
+          <th>Description</th>
+          <th class="num" style="width:14%">Debit (R)</th>
+          <th class="num" style="width:14%">Credit (R)</th>
+          <th class="num" style="width:14%">Balance (R)</th>
+        </tr></thead>
+        <tbody>`;
+
+  for (const l of lines) {
+    const isSage = l.source === 'sage';
+    html += `<tr>
+      <td>${new Date(l.date).toLocaleDateString('en-ZA')}</td>
+      <td class="ref">${l.ref}</td>
+      <td>${l.desc}${isSage ? '<span class="sage-tag">SAGE</span>' : ''} <span style="color:#666;font-size:11px">(${(l.terms || 'cod').replace('_', ' ')})</span></td>
+      <td class="num">${l.debit > 0 ? l.debit.toLocaleString('en-ZA', {minimumFractionDigits: 2}) : '-'}</td>
+      <td class="num credit">${l.credit > 0 ? l.credit.toLocaleString('en-ZA', {minimumFractionDigits: 2}) : '-'}</td>
+      <td class="num ${l.balance > 0 ? 'bal' : 'bal-paid'}">${l.balance.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</td>
+    </tr>`;
+  }
+
+  html += `</tbody>
+      <tfoot><tr style="border-top:2px solid #D4A843">
+        <td colspan="3" style="text-align:right;font-weight:600;padding:12px">TOTALS</td>
+        <td class="num" style="font-weight:600">${totalDebit.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</td>
+        <td class="num credit" style="font-weight:600">${totalCredit.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</td>
+        <td class="num" style="font-weight:700;color:${closingBal > 0 ? '#D4A843' : '#4ADE80'}">${closingBal.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</td>
+      </tr></tfoot>
+    </table></div>
+
+    <div class="summary-box">
+      <div class="summary-row"><span style="color:#8A8B8C">Total Invoices</span><span style="color:#E8E8E9;font-weight:600">${custInvoices.length}</span></div>
+      <div class="summary-row"><span style="color:#8A8B8C">Total Debit</span><span style="color:#E8E8E9;font-weight:600">R ${totalDebit.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</span></div>
+      <div class="summary-row"><span style="color:#8A8B8C">Total Credit</span><span style="color:#4ADE80;font-weight:600">R ${totalCredit.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</span></div>
+      <div class="summary-row total-row"><span style="color:#E8E8E9">${closingBal > 0 ? 'Balance Due' : 'Account Balance'}</span><span style="color:${closingBal > 0 ? '#D4A843' : '#4ADE80'}">R ${Math.abs(closingBal).toLocaleString('en-ZA', {minimumFractionDigits: 2})}</span></div>
+    </div>`;
+
+  // Aging
+  if (totalOutstanding > 0) {
+    html += `<div class="aging-box">
+      <div class="aging-header">Outstanding Balance Aging</div>
+      <div class="aging-row">
+        <div><div class="aging-label">Current (0-30d)</div><div class="aging-val">R ${aging.current.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</div></div>
+        <div><div class="aging-label">30 Days</div><div class="aging-val">R ${aging.days30.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</div></div>
+        <div><div class="aging-label">60 Days</div><div class="aging-val">R ${aging.days60.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</div></div>
+        <div><div class="aging-label">90 Days</div><div class="aging-val">R ${aging.days90.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</div></div>
+        <div><div class="aging-label over90">90+ Days</div><div class="aging-val over90">R ${aging.days90plus.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</div></div>
+        <div><div class="aging-label" style="color:#D4A843">Total Outstanding</div><div class="aging-val" style="color:#D4A843">R ${totalOutstanding.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</div></div>
+      </div>
+    </div>`;
+  }
+
+  html += `</div>`;
+
+  // Print footer
+  html += `<div class="print-only print-footer">
+    Supreme Global Foods | 28 Nagington Road, Wadeville, Germiston, 1422 | 083 293 0644<br>
+    Banking: FNB | Acc: 62001234567 | Branch: 250655 | Quote customer code with payment<br>
+    ${closingBal > 0 ? 'Please arrange payment within your agreed terms.' : 'Thank you for your business.'}
+  </div>`;
+
+  area.innerHTML = html;
+}
+
+function printStatement() {
+  window.print();
+}
+</script>
+</body>
+</html>

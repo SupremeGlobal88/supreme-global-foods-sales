@@ -15,6 +15,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/customers":     ["sales_rep", "admin", "super_admin"],
   "/orders":        ["sales_rep", "admin", "super_admin"],
   "/invoices":      ["admin", "super_admin"],
+  "/statement/:customerId": ["admin", "super_admin"],
   "/appointments":  ["sales_rep", "admin", "super_admin"],
   "/sales-reps":    ["admin", "super_admin"],
   "/collections":   ["admin", "super_admin"],
@@ -82,9 +83,19 @@ export function useRole() {
 
   /** Check if current user can access a route */
   const canAccess = (path: string) => {
+    // Exact match first
     const allowed = ROUTE_PERMISSIONS[path];
-    if (!allowed) return false;
-    return allowed.includes(role);
+    if (allowed) return allowed.includes(role);
+    // Handle dynamic routes like /statement/:customerId
+    for (const route of Object.keys(ROUTE_PERMISSIONS)) {
+      if (route.includes(":")) {
+        const regex = new RegExp("^" + route.replace(/:[^/]+/g, "[^/]+") + "$");
+        if (regex.test(path)) {
+          return ROUTE_PERMISSIONS[route].includes(role);
+        }
+      }
+    }
+    return false;
   };
 
   /** Check if current user has a specific action permission */

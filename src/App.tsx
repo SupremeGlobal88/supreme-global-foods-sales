@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
-import { trpc } from "@/providers/trpc";
+import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/Layout";
@@ -96,68 +96,41 @@ export default function App() {
     return () => { unsub(); };
   }, []);
 
-  // When Firebase data changes, REFETCH tRPC queries immediately so UI refreshes.
-  // invalidate() only marks as stale — refetch() forces immediate update.
+  // When Firebase data changes, force ALL tRPC queries to refetch immediately.
+  // queryClient.invalidateQueries({ refetchType: 'all' }) forces every active
+  // query to refetch from dataService — this is the nuclear option that works.
   useEffect(() => {
     const handler = (e: any) => {
       const type = e.detail?.type;
-      // Invoices
+      console.log("[Sync] firebaseDataReceived:", type, "- forcing all queries to refetch");
+      // Nuclear option: invalidate ALL queries with forced refetch
+      queryClient.invalidateQueries({ refetchType: "all" });
+      // Also do targeted refetches for the specific data type
       if (type === "invoices") {
         utils.invoice.list.refetch();
         utils.invoice.getStats.refetch();
-        utils.invoice.getCustomerStatement.refetch();
-        utils.invoice.getReceipts.refetch();
       }
-      // Orders
       if (type === "orders") {
         utils.order.list.refetch();
         utils.order.getStats.refetch();
         utils.dashboard.stats.refetch();
-        utils.sampleReport.getAll.refetch();
-        utils.followUp.list.refetch();
-        utils.followUp.getStats.refetch();
       }
-      // Checkins
-      if (type === "checkins") {
-        utils.checkIn.list.refetch();
-        utils.checkIn.getStats.refetch();
-      }
-      // Appointments
-      if (type === "appointments") {
-        utils.appointment.list.refetch();
-        utils.appointment.getStats.refetch();
-      }
-      // Customers
       if (type === "customers") {
         utils.customer.search.refetch();
         utils.customer.list.refetch();
-        utils.customer.getStats.refetch();
       }
-      // Stock
+      if (type === "appointments") {
+        utils.appointment.list.refetch();
+      }
+      if (type === "checkins") {
+        utils.checkIn.list.refetch();
+      }
       if (type === "stock") {
         utils.stock.list.refetch();
-        utils.stock.search.refetch();
-        utils.stock.getStats.refetch();
       }
-      // Follow-up actions
-      if (type === "followUpActions") {
+      if (type === "followUps" || type === "followUpActions") {
+        utils.followUp.list.refetch();
         utils.followUpAction.list.refetch();
-        utils.followUpAction.getStats.refetch();
-        utils.followUp.list.refetch();
-        utils.followUp.getStats.refetch();
-        utils.sampleReport.getAll.refetch();
-      }
-      // Follow-ups
-      if (type === "followUps") {
-        utils.followUp.list.refetch();
-        utils.followUp.getStats.refetch();
-        utils.sampleReport.getAll.refetch();
-      }
-      // Receipts
-      if (type === "receipts") {
-        utils.invoice.getReceipts.refetch();
-        utils.invoice.getReceiptsByInvoice.refetch();
-        utils.invoice.getReceiptsByCustomer.refetch();
       }
     };
     window.addEventListener("firebaseDataReceived", handler);

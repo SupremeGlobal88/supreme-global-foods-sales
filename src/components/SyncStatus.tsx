@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Cloud, CloudOff, CheckCircle, AlertTriangle, Copy, Save, X, Trash2 } from "lucide-react";
-import { getFirebaseConfig, saveFirebaseConfig, isFirebaseReady, disconnectFirebase } from "@/lib/firebaseSync";
+import { Cloud, CloudOff, CheckCircle, AlertTriangle, Copy, Save, X, Trash2, RefreshCw } from "lucide-react";
+import { getFirebaseConfig, saveFirebaseConfig, isFirebaseReady, disconnectFirebase, pullFromCloud } from "@/lib/firebaseSync";
+import { reloadFromStorage } from "@/lib/dataService";
+import { queryClient } from "@/providers/trpc";
 
 interface SyncStatusProps {
   isMobile?: boolean;
@@ -33,6 +35,26 @@ export default function SyncStatus({ isMobile = false }: SyncStatusProps) {
     clearLocalData();
     setMessage("Device cleared. Reloading...");
     setTimeout(() => window.location.reload(), 1000);
+  }
+
+  async function handleForceRefresh() {
+    setMessage("Pulling from cloud...");
+    try {
+      // 1. Pull latest from Firebase
+      const counts = await pullFromCloud();
+      // 2. Reload into memory
+      reloadFromStorage();
+      // 3. Clear ALL tRPC caches
+      queryClient.clear();
+      // 4. Show result
+      const parts = Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(", ");
+      setMessage(`Synced! ${parts}. Reloading page...`);
+      // 5. Full page reload to guarantee fresh state
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e: any) {
+      setError("Sync failed: " + (e.message || "Unknown"));
+      setTimeout(() => setError(""), 5000);
+    }
   }
 
   // Floating trigger button - positioned top-right to avoid Kimi Agent
@@ -85,21 +107,30 @@ export default function SyncStatus({ isMobile = false }: SyncStatusProps) {
               <span>Connected to {status.projectId}</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               <button
-                onClick={handleDisconnect}
-                className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium"
-                style={{ background: "#222324", border: "1px solid #EF4444", color: "#EF4444" }}
+                onClick={handleForceRefresh}
+                className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: "#D4A843", color: "#000" }}
               >
-                <CloudOff className="w-3.5 h-3.5" /> Disconnect
+                <RefreshCw className="w-3.5 h-3.5" /> Force Refresh All Data
               </button>
-              <button
-                onClick={handleClearDevice}
-                className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium"
-                style={{ background: "#222324", border: "1px solid #F59E0B", color: "#F59E0B" }}
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Clear Device
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleDisconnect}
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium"
+                  style={{ background: "#222324", border: "1px solid #EF4444", color: "#EF4444" }}
+                >
+                  <CloudOff className="w-3.5 h-3.5" /> Disconnect
+                </button>
+                <button
+                  onClick={handleClearDevice}
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium"
+                  style={{ background: "#222324", border: "1px solid #F59E0B", color: "#F59E0B" }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Clear Device
+                </button>
+              </div>
             </div>
             <p className="text-[10px] text-[#8A8B8C]">
               Disconnect stops sync. Clear Device removes all data from this phone.

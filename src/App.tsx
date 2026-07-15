@@ -83,25 +83,33 @@ export default function App() {
     // Initialize Firebase from saved config (if any), then start auto-sync
     initFirebase();
     const unsub = initAutoSync();
-    // Auto-pull from Firebase on first load if this is a new user device.
-    // A "new" device has < 5 orders AND < 5 invoices (static defaults have 0).
-    // Existing users with real data will have more and skip this.
+    // CLOUD-FIRST: Clear stale localStorage and pull ALL data from Firebase.
+    // This ensures NO stale device data — every load starts with pure cloud data.
     try {
-      const orderCount = JSON.parse(localStorage.getItem("sgf_orders") || "[]").length;
-      const invCount = JSON.parse(localStorage.getItem("sgf_invoices") || "[]").length;
-      const isNewDevice = orderCount < 5 && invCount < 5;
-      if (isNewDevice && isFirebaseReady()) {
-        console.log("[AutoSync] New device detected (orders:", orderCount, ", invoices:", invCount, ") — pulling from cloud...");
+      if (isFirebaseReady()) {
+        // Keep only Firebase config and user auth — clear ALL app data
+        const fbConfig = localStorage.getItem("sgf_firebase_config");
+        const user = localStorage.getItem("sgf_current_user");
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("sgf_") && key !== "sgf_firebase_config" && key !== "sgf_current_user") {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+        console.log("[CloudFirst] Cleared", keysToRemove.length, "stale localStorage keys");
+
+        // Pull ALL fresh data from Firebase
         setTimeout(() => {
           pullFromCloud().then((counts) => {
             reloadFromStorage();
-            // Force all queries to refetch with new data
             queryClient.invalidateQueries({ refetchType: "all" });
-            console.log("[AutoSync] Initial pull complete:", counts);
-          }).catch((e) => console.warn("[AutoSync] Initial pull failed:", e));
-        }, 3000);
+            console.log("[CloudFirst] Fresh cloud data loaded:", counts);
+          }).catch((e) => console.warn("[CloudFirst] Pull failed:", e));
+        }, 2000);
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn("[CloudFirst] Setup error:", e); }
     return () => { unsub(); };
   }, []);
 

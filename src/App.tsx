@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from "react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady } from "@/lib/firebaseSync";
@@ -24,7 +24,7 @@ import UsersPage from "./pages/UsersPage";
 import HistoricalImportPage from "./pages/HistoricalImportPage";
 import SalesRepInvoicesPage from "./pages/SalesRepInvoicesPage";
 import CustomerStatementPage from "./pages/CustomerStatementPage";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, Cloud } from "lucide-react";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -75,41 +75,40 @@ function checkUrlForFirebaseConfig() {
 
 export default function App() {
   const utils = trpc.useUtils();
+  const [isCloudReady, setIsCloudReady] = useState(false);
 
   useEffect(() => {
     checkUrlForFirebaseConfig();
-    // Register dataService reload so Firebase can refresh in-memory data after cloud download
     registerDataServiceRefresh(reloadFromStorage);
-    // Initialize Firebase from saved config (if any), then start auto-sync
     initFirebase();
     const unsub = initAutoSync();
-    // CLOUD-FIRST: Clear stale localStorage and pull ALL data from Firebase.
-    // This ensures NO stale device data — every load starts with pure cloud data.
-    try {
-      if (isFirebaseReady()) {
-        // Keep only Firebase config and user auth — clear ALL app data
-        const fbConfig = localStorage.getItem("sgf_firebase_config");
-        const user = localStorage.getItem("sgf_current_user");
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith("sgf_") && key !== "sgf_firebase_config" && key !== "sgf_current_user") {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach((k) => localStorage.removeItem(k));
-        console.log("[CloudFirst] Cleared", keysToRemove.length, "stale localStorage keys");
 
-        // Pull ALL fresh data from Firebase
-        setTimeout(() => {
-          pullFromCloud().then((counts) => {
-            reloadFromStorage();
-            queryClient.invalidateQueries({ refetchType: "all" });
-            console.log("[CloudFirst] Fresh cloud data loaded:", counts);
-          }).catch((e) => console.warn("[CloudFirst] Pull failed:", e));
-        }, 2000);
+    async function loadFromCloud() {
+      try {
+        if (isFirebaseReady()) {
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith("sgf_") && key !== "sgf_firebase_config" && key !== "sgf_current_user") {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach((k) => localStorage.removeItem(k));
+          console.log("[CloudFirst] Cleared", keysToRemove.length, "keys");
+
+          const counts = await pullFromCloud();
+          reloadFromStorage();
+          queryClient.clear();
+          console.log("[CloudFirst] Loaded:", counts);
+        }
+      } catch (e) {
+        console.warn("[CloudFirst] Error:", e);
+      } finally {
+        setIsCloudReady(true);
       }
-    } catch (e) { console.warn("[CloudFirst] Setup error:", e); }
+    }
+
+    loadFromCloud();
     return () => { unsub(); };
   }, []);
 
@@ -153,6 +152,17 @@ export default function App() {
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);
   }, [utils]);
+
+  // Show loading screen until fresh cloud data is loaded
+  if (!isCloudReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>
+        <Cloud className="w-16 h-16 mb-4 animate-pulse" style={{ color: "#D4A843" }} />
+        <p className="text-white font-display text-lg">Loading from cloud...</p>
+        <p className="text-[#8A8B8C] text-sm mt-2">Please wait while we fetch the latest data</p>
+      </div>
+    );
+  }
 
   return (
     <Routes>

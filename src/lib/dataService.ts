@@ -740,9 +740,6 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const order = orders.find((o) => o.id == orderId);
   if (!order) return null;
-  // Check if invoice already exists
-  const existing = invoices.find((i) => i.orderId == orderId);
-  if (existing) return existing.invoiceNumber;
   // Detect sample orders
   const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
   // Calculate totals: samples are always zero-value
@@ -750,6 +747,30 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
   const vatAmount = isSample ? 0 : subtotal * 0.15;
   const total = isSample ? 0 : subtotal + vatAmount;
+  // Check if invoice already exists — UPDATE it with new order data
+  const existingIdx = invoices.findIndex((i) => i.orderId == orderId);
+  if (existingIdx >= 0) {
+    const existing = invoices[existingIdx];
+    invoices[existingIdx] = {
+      ...existing,
+      items: items.map((item: any) => ({
+        stockItemId: item.stockItemId,
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        lineTotal: item.lineTotal,
+      })),
+      subtotal,
+      vatAmount,
+      total,
+      balanceDue: total,
+      updatedAt: new Date().toISOString(),
+      notes: isSample ? `Sample order ${order.orderNumber || ""}` : `Invoice for ${order.orderNumber || ""}`,
+    };
+    saveItem("sgf_invoices", invoices);
+    logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId}`, order.salesRepName);
+    return existing.invoiceNumber;
+  }
   return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
 }
 

@@ -183,6 +183,41 @@ export async function pushReceipts(receipts: any[]): Promise<void> {
   try { await set(ref(db, "receipts"), receipts); } catch { /* ignore */ }
 }
 
+// =============================================================================
+// READ: Read directly from Firebase — CLOUD FIRST approach
+// Every query handler in localLink.ts calls this to get LATEST Firebase data
+// before returning results. This ensures all users see live cloud data.
+// =============================================================================
+
+const FB_PATHS: Record<string, string> = {
+  orders: "orders",
+  invoices: "invoices",
+  customers: "customers",
+  stock: "stock",
+  appointments: "appointments",
+  checkins: "checkins",
+  followUps: "followUps",
+  followUpActions: "followUpActions",
+  receipts: "receipts",
+};
+
+/** Read data directly from Firebase. Returns array of items or empty array.
+ *  This is the CLOUD FIRST read — every query goes to Firebase first. */
+export async function readFromFirebase(path: string): Promise<any[]> {
+  if (!isFirebaseReady()) return [];
+  try {
+    const snapshot = await get(ref(db, FB_PATHS[path] || path));
+    const val = snapshot.val();
+    if (!val) return [];
+    // Handle both array and object formats
+    if (Array.isArray(val)) return val.filter((x) => x != null);
+    return Object.values(val).filter((x) => x != null);
+  } catch (e: any) {
+    console.warn(`[FirebaseSync] read ${path} failed:`, e.message);
+    return [];
+  }
+}
+
 export async function pushAppointmentDelete(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, `appointments/${id}`), null); } catch { /* ignore */ }
@@ -289,7 +324,7 @@ function getStableKey(item: any, storageKey: string): string | null {
  *  For items in BOTH, local properties win over null/missing Firebase properties.
  *  This preserves local enrichment (customerCode matching, status updates)
  *  without losing Firebase updates. */
-function mergeWithCloudData(key: string, incoming: any[]): any[] {
+export function mergeWithCloudData(key: string, incoming: any[]): any[] {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return incoming;

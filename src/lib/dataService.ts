@@ -1344,8 +1344,11 @@ export const dataService = {
         const oldStatus = orders[idx].status;
         const order = orders[idx];
         order.status = status;
-        // RESTORE STOCK when order is delivered or cancelled
-        if ((status === "delivered" || status === "cancelled") && oldStatus !== "delivered" && oldStatus !== "cancelled") {
+        // RESTORE STOCK only when order is CANCELLED (not delivered).
+        // Stock is deducted at order creation and stays deducted through the
+        // entire lifecycle (pending → ready → delivered). Only cancelled orders
+        // return stock to inventory.
+        if (status === "cancelled" && oldStatus !== "cancelled" && oldStatus !== "delivered") {
           for (const item of (order.items || [])) {
             const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
             if (prodIdx >= 0) {

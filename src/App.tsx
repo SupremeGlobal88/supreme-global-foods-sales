@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady, syncAllLocalData } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -86,23 +86,25 @@ export default function App() {
     async function loadFromCloud() {
       try {
         if (isFirebaseReady()) {
-          const keysToRemove = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith("sgf_") && key !== "sgf_firebase_config" && key !== "sgf_current_user") {
-              keysToRemove.push(key);
-            }
-          }
-          keysToRemove.forEach((k) => localStorage.removeItem(k));
-          console.log("[CloudFirst] Cleared", keysToRemove.length, "keys");
+          // SAFE SYNC: Load local data FIRST, then merge with cloud.
+          // This preserves user's fresh data (like Collin's week's work)
+          // and only adds missing data from other devices.
+          reloadFromStorage();
+          console.log("[Sync] Local data loaded first");
 
+          // Pull from cloud and MERGE (never replace)
           const counts = await pullFromCloud();
           reloadFromStorage();
           queryClient.clear();
-          console.log("[CloudFirst] Loaded:", counts);
+          console.log("[Sync] Merged with cloud:", counts);
+
+          // Push any NEW local data back to cloud
+          // (so other devices can see Collin's latest work)
+          await syncAllLocalData();
+          console.log("[Sync] Pushed local data to cloud");
         }
       } catch (e) {
-        console.warn("[CloudFirst] Error:", e);
+        console.warn("[Sync] Error:", e);
       } finally {
         setIsCloudReady(true);
       }

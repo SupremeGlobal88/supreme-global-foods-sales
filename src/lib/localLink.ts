@@ -2,16 +2,17 @@ import { dataService, reloadFromStorage } from "./dataService";
 import { observable } from "@trpc/server/observable";
 import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushFollowUp, pushReceipts, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady, readFromFirebase, mergeWithCloudData } from "./firebaseSync";
 
-/** CLOUD FIRST: Read latest data from Firebase, REPLACE local, reload dataService.
+/** SAFE SYNC: Read latest data from Firebase, MERGE with local, reload dataService.
  *  Every query handler calls this to ensure users see LIVE cloud data.
- *  REPLACES localStorage with Firebase data — does NOT merge with stale local data. */
+ *  MERGES Firebase data with local data — local changes are PRESERVED.
+ *  This prevents data loss when a user has fresh local data. */
 async function syncFromCloud(type: string, storageKey: string): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
     const cloudData = await readFromFirebase(type);
     if (cloudData.length > 0) {
-      // REPLACE localStorage with pure Firebase data (no merge with stale local)
-      localStorage.setItem(storageKey, JSON.stringify(cloudData));
+      // MERGE with local data — never replace. Local changes are preserved.
+      mergeWithCloudData(storageKey, cloudData);
       reloadFromStorage();
     }
   } catch (e) { /* ignore — fall back to local data */ }

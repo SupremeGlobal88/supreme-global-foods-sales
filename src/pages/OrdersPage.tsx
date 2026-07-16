@@ -825,7 +825,7 @@ export default function OrdersPage() {
                     <td className="p-4 font-mono-data text-xs text-[#D4A843] cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderNumber}
                       {order.orderType === "sample" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>}
-                      {isAdmin && !liveInvoiceOrderIds.has(Number(order.id)) && (
+                      {isAdmin && !(invoices || []).some((inv: any) => inv.orderId == order.id && inv.invoiceNumber?.startsWith("SGF")) && (
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
                     </td>

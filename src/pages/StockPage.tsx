@@ -5,7 +5,7 @@ import { useRole } from "@/hooks/useRole";
 import { reloadFromStorage } from "@/lib/dataService";
 import {
   Search, Upload, Plus, Pencil, Trash2, X, Package, AlertTriangle, CheckCircle,
-  FileText, Calendar, Printer, Tag,
+  FileText, Calendar, Printer, Tag, BarChart3,
 } from "lucide-react";
 
 export default function StockPage() {
@@ -18,6 +18,15 @@ export default function StockPage() {
   const [reportFrom, setReportFrom] = useState(todayStr);
   const [reportTo, setReportTo] = useState(todayStr);
   const [showReport, setShowReport] = useState(false);
+
+  // Stock Reconciliation
+  const [reconcileFrom, setReconcileFrom] = useState(todayStr);
+  const [reconcileTo, setReconcileTo] = useState(todayStr);
+  const [showReconcile, setShowReconcile] = useState(false);
+  const reconcileQuery = trpc.stock.reconcileStock.useQuery(
+    { from: reconcileFrom, to: reconcileTo },
+    { enabled: showReconcile }
+  );
   const { data: dailyReport } = trpc.stock.getDailyInvoicedStock.useQuery(
     { from: reportFrom, to: reportTo },
     { enabled: isAdmin && showReport },
@@ -568,6 +577,78 @@ export default function StockPage() {
           )}
         </div>
       )}
+
+      {/* Stock Reconciliation */}
+      <div className="card-surface">
+        <button onClick={() => setShowReconcile(!showReconcile)} className="flex items-center gap-2 mb-4">
+          <BarChart3 className="w-5 h-5" style={{ color: "#D4A843" }} />
+          <h2 className="text-lg font-display font-semibold text-white">Stock Reconciliation</h2>
+          <span className="text-xs text-[#8A8B8C] ml-2">(Stock vs Orders)</span>
+        </button>
+        {showReconcile && (
+          <>
+            <div className="flex gap-3 mb-4 flex-wrap">
+              <input type="date" value={reconcileFrom} onChange={(e) => setReconcileFrom(e.target.value)} className="input-field text-sm py-2" />
+              <input type="date" value={reconcileTo} onChange={(e) => setReconcileTo(e.target.value)} className="input-field text-sm py-2" />
+              <button onClick={() => reconcileQuery.refetch()} className="btn-primary text-sm">Generate Report</button>
+            </div>
+            {reconcileQuery.data && (
+              <>
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="p-3 rounded-lg text-center" style={{ backgroundColor: "#0A0A0B" }}>
+                    <div className="text-xs text-[#8A8B8C]">Products</div>
+                    <div className="text-lg font-bold text-white">{(reconcileQuery.data as any).totalProducts}</div>
+                  </div>
+                  <div className="p-3 rounded-lg text-center" style={{ backgroundColor: "#0A0A0B" }}>
+                    <div className="text-xs text-[#8A8B8C]">Current Stock</div>
+                    <div className="text-lg font-bold text-[#D4A843]">{(reconcileQuery.data as any).totalCurrentStock}</div>
+                  </div>
+                  <div className="p-3 rounded-lg text-center" style={{ backgroundColor: "#0A0A0B" }}>
+                    <div className="text-xs text-[#8A8B8C]">Total Ordered</div>
+                    <div className="text-lg font-bold text-[#EF4444]">{(reconcileQuery.data as any).totalOrdered}</div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ backgroundColor: "#131415" }}>
+                        <th className="text-left p-3 label-text">Product</th>
+                        <th className="text-right p-3 label-text">Starting SOH</th>
+                        <th className="text-right p-3 label-text">Ordered</th>
+                        <th className="text-right p-3 label-text">Current SOH</th>
+                        <th className="text-center p-3 label-text">Status</th>
+                        <th className="text-left p-3 label-text">Orders</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {((reconcileQuery.data as any).items || []).map((item: any, idx: number) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #18191A" }}>
+                          <td className="p-3 text-white">{item.productName} <span className="text-[#8A8B8C] text-xs">({item.productCode})</span></td>
+                          <td className="p-3 text-right text-white font-mono-data">{item.startingStock}</td>
+                          <td className="p-3 text-right font-semibold" style={{ color: "#EF4444" }}>{item.totalOrdered}</td>
+                          <td className="p-3 text-right font-semibold" style={{ color: "#D4A843" }}>{item.currentStock}</td>
+                          <td className="p-3 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-xs capitalize" style={{
+                              backgroundColor: item.status === "out_of_stock" ? "rgba(239,68,68,0.12)" : item.status === "low_stock" ? "rgba(245,158,11,0.12)" : "rgba(74,222,128,0.12)",
+                              color: item.status === "out_of_stock" ? "#EF4444" : item.status === "low_stock" ? "#F59E0B" : "#4ADE80"
+                            }}>{item.status}</span>
+                          </td>
+                          <td className="p-3 text-xs text-[#8A8B8C]">
+                            {item.orderDetails.slice(0, 3).map((o: any, i: number) => (
+                              <div key={i}>{o.orderNumber}: {o.quantity} ({o.customer})</div>
+                            ))}
+                            {item.orderDetails.length > 3 && <div className="text-[#D4A843]">+{item.orderDetails.length - 3} more</div>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ export const appRouter = t.router({
     getCategories: t.procedure.query(() => [] as string[]),
     getStats: t.procedure.query(() => ({} as any)),
     getDailyInvoicedStock: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
+    reconcileStock: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
     create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
     delete: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),

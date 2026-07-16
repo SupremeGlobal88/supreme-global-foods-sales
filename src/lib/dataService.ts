@@ -1056,6 +1056,67 @@ export const dataService = {
         items: results.sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()),
       };
     },
+
+    /** Stock Reconciliation — shows current SOH vs total ordered vs starting SOH.
+     *  Helps verify that uploaded stock minus orders equals current stock. */
+    reconcileStock: ({ from, to }: { from?: string; to?: string } = {}) => {
+      const fromDate = from || new Date().toISOString().slice(0, 10);
+      const toDate = to || fromDate;
+      const fromTs = new Date(fromDate + "T00:00:00").getTime();
+      const toTs = new Date(toDate + "T23:59:59").getTime();
+
+      const results: any[] = [];
+
+      for (const product of products) {
+        // Count total quantity ordered for this product in the date range
+        let totalOrdered = 0;
+        const orderDetails: any[] = [];
+
+        for (const order of orders) {
+          const orderTs = new Date(order.createdAt || order.orderDate).getTime();
+          if (orderTs < fromTs || orderTs > toTs) continue;
+          if (order.status === "cancelled") continue;
+
+          for (const item of (order.items || [])) {
+            if (item.stockItemId == product.id) {
+              totalOrdered += Number(item.quantity || 0);
+              orderDetails.push({
+                orderNumber: order.orderNumber,
+                customer: order.customerName || (order.customer?.name) || "Unknown",
+                quantity: item.quantity,
+                orderDate: order.createdAt,
+              });
+            }
+          }
+        }
+
+        // Only include products that had orders OR have current stock
+        if (totalOrdered > 0 || (product.quantity || 0) > 0) {
+          results.push({
+            productId: product.id,
+            productCode: product.productCode || "",
+            productName: product.productName || "",
+            category: product.category || "",
+            currentStock: product.quantity || 0,
+            totalOrdered,
+            startingStock: (product.quantity || 0) + totalOrdered,
+            unit: product.unit || "",
+            status: product.status || "unknown",
+            orderDetails: orderDetails.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()),
+          });
+        }
+      }
+
+      return {
+        from: fromDate,
+        to: toDate,
+        generatedAt: new Date().toISOString(),
+        totalProducts: results.length,
+        totalCurrentStock: results.reduce((s, r) => s + r.currentStock, 0),
+        totalOrdered: results.reduce((s, r) => s + r.totalOrdered, 0),
+        items: results.sort((a, b) => b.totalOrdered - a.totalOrdered),
+      };
+    },
   },
 
   customer: {

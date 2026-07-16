@@ -63,6 +63,7 @@ export function createLocalLink() {
               case "stock.getCategories": result = dataService.stock.getCategories(); break;
               case "stock.getStats": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.getStats(); break;
               case "stock.getDailyInvoicedStock": result = dataService.stock.getDailyInvoicedStock(input || {}); break;
+              case "stock.reconcileStock": result = dataService.stock.reconcileStock(input || {}); break;
               case "stock.create": result = dataService.stock.create(input); pushStock(dataService.stock.list()); break;
               case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); pushStock(dataService.stock.list()); break; }
               case "stock.delete": result = dataService.stock.delete(input); pushStock(dataService.stock.list()); break;

@@ -76,6 +76,7 @@ function checkUrlForFirebaseConfig() {
 export default function App() {
   const utils = trpc.useUtils();
   const [isCloudReady, setIsCloudReady] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     checkUrlForFirebaseConfig();
@@ -87,19 +88,14 @@ export default function App() {
       try {
         if (isFirebaseReady()) {
           // SAFE SYNC: Load local data FIRST, then merge with cloud.
-          // This preserves user's fresh data (like Collin's week's work)
-          // and only adds missing data from other devices.
           reloadFromStorage();
           console.log("[Sync] Local data loaded first");
 
-          // Pull from cloud and MERGE (never replace)
           const counts = await pullFromCloud();
           reloadFromStorage();
           queryClient.clear();
           console.log("[Sync] Merged with cloud:", counts);
 
-          // Push any NEW local data back to cloud
-          // (so other devices can see Collin's latest work)
           await syncAllLocalData();
           console.log("[Sync] Pushed local data to cloud");
         }
@@ -113,6 +109,50 @@ export default function App() {
     loadFromCloud();
     return () => { unsub(); };
   }, []);
+
+  // POST-LOGIN SYNC: Re-sync after user logs in.
+  useEffect(() => {
+    if (isAuthenticated && isCloudReady) {
+      console.log("[Sync] Post-login sync for admin/super_admin");
+      async function postLoginSync() {
+        try {
+          if (isFirebaseReady()) {
+            reloadFromStorage();
+            const counts = await pullFromCloud();
+            reloadFromStorage();
+            queryClient.clear();
+            console.log("[Sync] Post-login merged:", counts);
+          }
+        } catch (e) {
+          console.warn("[Sync] Post-login error:", e);
+        }
+      }
+      postLoginSync();
+    }
+  }, [isAuthenticated, isCloudReady]);
+
+  // POST-LOGIN SYNC: Re-sync after user logs in.
+  // The mount sync may have run before Firebase was ready or before login.
+  // This ensures fresh data is loaded AFTER authentication.
+  useEffect(() => {
+    if (isAuthenticated && isCloudReady) {
+      console.log("[Sync] Post-login sync triggered");
+      async function postLoginSync() {
+        try {
+          if (isFirebaseReady()) {
+            reloadFromStorage();
+            const counts = await pullFromCloud();
+            reloadFromStorage();
+            queryClient.clear();
+            console.log("[Sync] Post-login merged:", counts);
+          }
+        } catch (e) {
+          console.warn("[Sync] Post-login error:", e);
+        }
+      }
+      postLoginSync();
+    }
+  }, [isAuthenticated, isCloudReady]);
 
   // When Firebase data changes, force ALL tRPC queries to refetch immediately.
   // queryClient.invalidateQueries({ refetchType: 'all' }) forces every active

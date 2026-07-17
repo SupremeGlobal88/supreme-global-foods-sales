@@ -111,27 +111,6 @@ export default function App() {
   }, []);
 
   // POST-LOGIN SYNC: Re-sync after user logs in.
-  useEffect(() => {
-    if (isAuthenticated && isCloudReady) {
-      console.log("[Sync] Post-login sync for admin/super_admin");
-      async function postLoginSync() {
-        try {
-          if (isFirebaseReady()) {
-            reloadFromStorage();
-            const counts = await pullFromCloud();
-            reloadFromStorage();
-            queryClient.clear();
-            console.log("[Sync] Post-login merged:", counts);
-          }
-        } catch (e) {
-          console.warn("[Sync] Post-login error:", e);
-        }
-      }
-      postLoginSync();
-    }
-  }, [isAuthenticated, isCloudReady]);
-
-  // POST-LOGIN SYNC: Re-sync after user logs in.
   // The mount sync may have run before Firebase was ready or before login.
   // This ensures fresh data is loaded AFTER authentication.
   useEffect(() => {

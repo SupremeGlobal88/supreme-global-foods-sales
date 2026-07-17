@@ -108,7 +108,21 @@ export function createLocalLink() {
               case "order.create": result = dataService.order.create(input); await fbPush("order", result); if (input?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); await fbPush("order", result); if (data?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break; }
               case "order.updateStatus": result = dataService.order.updateStatus(input); await fbPush("order", result); break;
-              case "order.generateInvoice": result = dataService.generateInvoiceForOrder(input?.orderId); break;
+              case "order.generateInvoice": {
+                // CRITICAL FIX: generateInvoiceForOrder creates the invoice locally
+                // but does NOT push to Firebase. We must find the created invoice
+                // and push it so all users can see it.
+                result = dataService.generateInvoiceForOrder(input?.orderId);
+                if (result && input?.orderId) {
+                  const inv = dataService.invoice.list().find((i: any) => i.orderId == input.orderId);
+                  if (inv) {
+                    await pushInvoice(inv);
+                    console.log("[generateInvoice] Pushed invoice", inv.invoiceNumber, "to Firebase for order", input.orderId);
+                    window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                  }
+                }
+                break;
+              }
               case "order.getStats": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
               case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { await pushInvoice(inv); } break;

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
-import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData, pullFromCloud } from "@/lib/firebaseSync";
+import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData, pullFromCloud, forcePushAllLocalData, forcePullAllFromCloud, diagnoseSync } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
 import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
 
@@ -203,6 +203,9 @@ export default function SettingsPage() {
   const [shareUrl, setShareUrl] = useState("");
   const [clearStatus, setClearStatus] = useState("");
   const [forceSyncStatus, setForceSyncStatus] = useState("");
+  const [forcePushStatus, setForcePushStatus] = useState("");
+  const [forcePullStatus, setForcePullStatus] = useState("");
+  const [diagnoseResult, setDiagnoseResult] = useState("");
 
   useEffect(() => {
     try {
@@ -236,6 +239,66 @@ export default function SettingsPage() {
         setSyncError("Copy blocked. Select and copy the URL below manually.");
         setTimeout(() => setSyncError(""), 8000);
       }
+    }
+  }
+
+  // FORCE PUSH ALL: Push every item from localStorage to Firebase individually
+  // Use this when Collin's data needs to be safely pushed to cloud
+  async function handleForcePushAll() {
+    setForcePushStatus("Reading all local data and pushing to Firebase...");
+    try {
+      const result = await forcePushAllLocalData();
+      setForcePushStatus(
+        `PUSHED: ${result.orders} orders, ${result.invoices} invoices, ${result.customers} customers, ${result.stock} stock items. ` +
+        (result.errors.length > 0 ? `Errors: ${result.errors.slice(0, 3).join("; ")}` : "All done!")
+      );
+      setTimeout(() => setForcePushStatus(""), 15000);
+    } catch (e: any) {
+      setForcePushStatus("Force push failed: " + (e.message || "Unknown error"));
+      setTimeout(() => setForcePushStatus(""), 10000);
+    }
+  }
+
+  // FORCE PULL ALL: Pull every item from Firebase and merge into localStorage
+  // Use this when a user's device has stale data and needs fresh data from cloud
+  async function handleForcePullAll() {
+    setForcePullStatus("Pulling all data from Firebase...");
+    try {
+      const result = await forcePullAllFromCloud();
+      // Invalidate all queries so UI refreshes
+      await utils.invoice.list.invalidate();
+      await utils.invoice.getStats.invalidate();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.customer.search.invalidate();
+      await utils.customer.list.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.appointment.list.invalidate();
+      await utils.checkIn.list.invalidate();
+      await utils.followUp.list.invalidate();
+      await utils.followUpAction.list.invalidate();
+      await utils.dashboard.stats.invalidate();
+      setForcePullStatus(
+        `PULLED: ${result.orders} orders, ${result.invoices} invoices, ${result.customers} customers, ${result.stock} stock from cloud. ` +
+        (result.errors.length > 0 ? `Errors: ${result.errors.slice(0, 3).join("; ")}` : "All pages refreshed!")
+      );
+      setTimeout(() => setForcePullStatus(""), 15000);
+    } catch (e: any) {
+      setForcePullStatus("Force pull failed: " + (e.message || "Unknown error"));
+      setTimeout(() => setForcePullStatus(""), 10000);
+    }
+  }
+
+  // DIAGNOSE: Show what's in Firebase vs localStorage
+  async function handleDiagnose() {
+    setDiagnoseResult("Checking...");
+    try {
+      const result = await diagnoseSync();
+      const fb = Object.entries(result.firebase).map(([k, v]) => `${k}: ${v}`).join(", ");
+      const ls = Object.entries(result.localStorage).map(([k, v]) => `${k}: ${v}`).join(", ");
+      setDiagnoseResult(`Firebase: ${fb} | localStorage: ${ls}`);
+    } catch (e: any) {
+      setDiagnoseResult("Diagnose failed: " + (e.message || "Unknown error"));
     }
   }
 
@@ -481,6 +544,29 @@ export default function SettingsPage() {
               {isSuperAdmin && (
                 <button onClick={async () => { if (!window.confirm("WARNING: This will WIPE all data from Firebase cloud for ALL devices. Sales reps will lose unsynced data. Are you sure?")) return; setSyncMessage("Clearing cloud data..."); const ok = await clearCloudData(); if (ok) { setSyncMessage("Cloud data cleared! Tell sales reps to disconnect and reconnect."); } else { setSyncError("Failed to clear cloud data."); } setTimeout(() => { setSyncMessage(""); setSyncError(""); }, 5000); }} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#EF4444", color: "#fff" }}>Clear Cloud Data</button>
               )}
+            </div>
+            {/* Emergency Sync Buttons */}
+            <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: "rgba(212, 168, 67, 0.05)", border: "1px solid rgba(212, 168, 67, 0.2)" }}>
+              <div className="text-xs font-semibold text-[#D4A843] mb-2">Emergency Sync Tools</div>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={handleForcePushAll} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843", border: "1px solid rgba(212, 168, 67, 0.3)" }}>
+                  <Cloud className="w-4 h-4 inline mr-1" /> Force Push ALL My Data
+                </button>
+                <button onClick={handleForcePullAll} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.15)", color: "#6366F1", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
+                  <RefreshCw className="w-4 h-4 inline mr-1" /> Force Pull ALL from Cloud
+                </button>
+                <button onClick={handleDiagnose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: "rgba(74, 222, 128, 0.1)", color: "#4ADE80", border: "1px solid rgba(74, 222, 128, 0.3)" }}>
+                  Diagnose Sync
+                </button>
+              </div>
+              {forcePushStatus && <div className="mt-2 text-xs text-[#D4A843]"><Cloud className="w-3 h-3 inline mr-1" />{forcePushStatus}</div>}
+              {forcePullStatus && <div className="mt-2 text-xs text-[#6366F1]"><RefreshCw className="w-3 h-3 inline mr-1" />{forcePullStatus}</div>}
+              {diagnoseResult && <div className="mt-2 text-xs text-[#4ADE80] break-all">{diagnoseResult}</div>}
+              <div className="mt-2 text-[10px] text-[#8A8B8C]">
+                <strong>Force Push</strong>: Sends every item from this device to Firebase. Use if other users can't see your data.<br />
+                <strong>Force Pull</strong>: Downloads all data from Firebase to this device. Use if you're seeing stale data.<br />
+                <strong>Diagnose</strong>: Shows item counts in Firebase vs this device. Use to check if sync is working.
+              </div>
             </div>
             {syncStatus.configured && shareUrl && (
               <div className="mt-2 p-2 rounded text-xs break-all select-all" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324", color: "#8A8B8C" }} onClick={(e) => { const range = document.createRange(); range.selectNodeContents(e.currentTarget); const sel = window.getSelection()!; sel.removeAllRanges(); sel.addRange(range); }}>

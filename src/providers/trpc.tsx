@@ -9,11 +9,13 @@ export const trpc = createTRPCReact<AppRouter>();
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Auto-refetch every 5 seconds — ensures admin users see updates
-      // from other devices without needing to navigate or click
-      refetchInterval: 5000,
+      // Auto-refetch every 2 seconds — aggressive sync so users see
+      // updates from other devices as fast as possible
+      refetchInterval: 2000,
       refetchOnWindowFocus: true,
+      refetchOnMount: "always",
       staleTime: 0,
+      gcTime: 1000 * 60 * 5, // 5 minutes cache
     },
   },
 });

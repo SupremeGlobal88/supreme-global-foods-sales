@@ -11,19 +11,31 @@ import {
 /** SAFE SYNC: Read latest data from Firebase, MERGE with local, save, reload.
  *  Every query handler calls this to ensure users see LIVE cloud data.
  *  CRITICAL: mergeWithCloudData returns merged array but does NOT write to
- *  localStorage. We must save the result before calling reloadFromStorage(). */
+ *  localStorage. We must save the result before calling reloadFromStorage().
+ *  
+ *  ERROR LOGGING: Every error is logged to console so we can diagnose sync issues.
+ *  Previously errors were silently swallowed, making it impossible to debug. */
 async function syncFromCloud(type: string, storageKey: string): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { console.warn("[syncFromCloud] Firebase not ready for", type); return; }
   try {
+    console.log("[syncFromCloud] Reading", type, "from Firebase...");
     const cloudData = await readFromFirebase(type);
+    console.log("[syncFromCloud] Firebase returned", cloudData.length, type);
     if (cloudData.length > 0) {
-      // MERGE with local data — local changes are preserved
+      const before = JSON.parse(localStorage.getItem(storageKey) || "[]").length;
       const merged = mergeWithCloudData(storageKey, cloudData);
-      // SAVE merged result to localStorage (mergeWithCloudData does NOT do this)
+      const after = merged.length;
       localStorage.setItem(storageKey, JSON.stringify(merged));
       reloadFromStorage();
+      if (after !== before) {
+        console.log(`[syncFromCloud] ${type}: ${before} local → merged ${after} items (${after - before > 0 ? '+' : ''}${after - before} from cloud)`);
+      }
+    } else {
+      console.warn("[syncFromCloud] Firebase returned 0", type, "— cloud may be empty or path wrong");
     }
-  } catch (e) { /* ignore — fall back to local data */ }
+  } catch (e: any) {
+    console.error("[syncFromCloud] FAILED for", type, ":", e.message || e);
+  }
 }
 
 /** Push data to Firebase after local write. All pushes are awaited with error logging. */

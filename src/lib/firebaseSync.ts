@@ -620,6 +620,134 @@ export async function syncAllLocalData(localData: {
 }
 
 // =============================================================================
+// FORCE PUSH: Push ALL local data to Firebase (for Collin/super_admin to ensure
+// their data is safely in the cloud). Reads directly from localStorage and
+// pushes every item individually — safe, never overwrites other users' data.
+// =============================================================================
+
+export async function forcePushAllLocalData(): Promise<{
+  orders: number; invoices: number; customers: number; stock: number;
+  appointments: number; checkins: number; followUps: number; receipts: number;
+  errors: string[];
+}> {
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
+  if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
+
+  const pushList = async (storageKey: string, fbPath: string, counter: keyof typeof result) => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const items = JSON.parse(raw);
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        if (!item) continue;
+        try {
+          const id = item.id || item._id || Date.now() + Math.random();
+          await set(ref(db, `${fbPath}/${id}`), { ...item, _syncedAt: Date.now() });
+          (result[counter] as number)++;
+        } catch (e: any) {
+          result.errors.push(`${fbPath}/${item.id}: ${e.message}`);
+        }
+      }
+      console.log(`[forcePush] Pushed ${result[counter]} items to ${fbPath}`);
+    } catch (e: any) {
+      result.errors.push(`${fbPath}: ${e.message}`);
+    }
+  };
+
+  await pushList("sgf_orders", "orders", "orders");
+  await pushList("sgf_invoices", "invoices", "invoices");
+  await pushList("sgf_customers", "customers", "customers");
+  await pushList("sgf_products", "stock", "stock");
+  await pushList("sgf_appointments", "appointments", "appointments");
+  await pushList("sgf_checkins", "checkins", "checkins");
+  await pushList("sgf_followUps", "followUps", "followUps");
+  await pushList("sgf_receipts", "receipts", "receipts");
+
+  console.log("[forcePush] COMPLETE:", result);
+  return result;
+}
+
+// =============================================================================
+// FORCE PULL: Pull ALL data from Firebase and MERGE into localStorage.
+// For users who need to force-get the latest data from cloud.
+// =============================================================================
+
+export async function forcePullAllFromCloud(): Promise<{
+  orders: number; invoices: number; customers: number; stock: number;
+  appointments: number; checkins: number; followUps: number; receipts: number;
+  errors: string[];
+}> {
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
+  if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
+
+  const pullList = async (fbPath: string, storageKey: string, counter: keyof typeof result) => {
+    try {
+      const snapshot = await get(ref(db, fbPath));
+      const data = fbToArray(snapshot.val());
+      if (data.length === 0) return;
+      const merged = mergeWithCloudData(storageKey, data);
+      localStorage.setItem(storageKey, JSON.stringify(merged));
+      (result[counter] as number) = data.length;
+      console.log(`[forcePull] Pulled ${data.length} items from ${fbPath}, merged to ${merged.length}`);
+    } catch (e: any) {
+      result.errors.push(`${fbPath}: ${e.message}`);
+    }
+  };
+
+  await pullList("orders", "sgf_orders", "orders");
+  await pullList("invoices", "sgf_invoices", "invoices");
+  await pullList("customers", "sgf_customers", "customers");
+  await pullList("stock", "sgf_products", "stock");
+  await pullList("appointments", "sgf_appointments", "appointments");
+  await pullList("checkins", "sgf_checkins", "checkins");
+  await pullList("followUps", "sgf_followUps", "followUps");
+  await pullList("receipts", "sgf_receipts", "receipts");
+
+  dataServiceRefresh?.();
+  console.log("[forcePull] COMPLETE:", result);
+  return result;
+}
+
+// =============================================================================
+// DIAGNOSE: Show what's in Firebase vs localStorage (for debugging)
+// =============================================================================
+
+export async function diagnoseSync(): Promise<{
+  firebase: Record<string, number>;
+  localStorage: Record<string, number>;
+}> {
+  const firebase: Record<string, number> = {};
+  const localStorageCounts: Record<string, number> = {};
+
+  // Check Firebase
+  if (isFirebaseReady()) {
+    const paths = ["orders", "invoices", "customers", "stock", "appointments", "checkins", "followUps", "receipts"];
+    for (const p of paths) {
+      try {
+        const snapshot = await get(ref(db, p));
+        firebase[p] = fbToArray(snapshot.val()).length;
+      } catch { firebase[p] = -1; }
+    }
+  }
+
+  // Check localStorage
+  const localKeys = ["sgf_orders", "sgf_invoices", "sgf_customers", "sgf_products", "sgf_appointments", "sgf_checkins", "sgf_followUps", "sgf_receipts"];
+  for (const k of localKeys) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) { localStorageCounts[k] = 0; continue; }
+      const parsed = JSON.parse(raw);
+      localStorageCounts[k] = Array.isArray(parsed) ? parsed.length : 0;
+    } catch { localStorageCounts[k] = -1; }
+  }
+
+  console.log("[diagnoseSync] Firebase:", firebase);
+  console.log("[diagnoseSync] localStorage:", localStorageCounts);
+  return { firebase, localStorage: localStorageCounts };
+}
+
+// =============================================================================
 // CLEAR CLOUD DATA
 // =============================================================================
 

@@ -157,7 +157,7 @@ export function createLocalLink() {
               case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
               case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
               // USERS
-              case "user.list": result = dataService.user.list(); break;
+              case "user.list": await syncFromCloud("users", "sgf_users"); result = dataService.user.list(); break;
               case "user.getById": result = dataService.user.getById(input); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
               case "user.create": result = dataService.user.create(input); await fbPush("user", result); break;

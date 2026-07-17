@@ -583,6 +583,22 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
   return unsub;
 }
 
+export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const usersRef = ref(db, "users");
+  const unsub = onValue(usersRef, (snapshot) => {
+    const data = snapshot.val();
+    const users = fbToArray(data);
+    if (users.length > 0) {
+      const merged = mergeWithCloudData("sgf_users", users);
+      try { localStorage.setItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    if (onData) onData(users);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
 // =============================================================================
 // INITIAL SYNC: Push all local data to Firebase
 // =============================================================================
@@ -888,6 +904,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions", "sgf_followUpActions")));
   unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
   unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
+  unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

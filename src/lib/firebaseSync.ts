@@ -178,6 +178,16 @@ export async function pushFollowUp(followUp: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
+/** Push a single receipt to Firebase (safe — won't overwrite other users' receipts).
+ *  Use this for individual payment recording operations.
+ *  Only use pushReceiptsFullList for explicit bulk operations. */
+export async function pushOneReceipt(receipt: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `receipts/${receipt.id}`), { ...receipt, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+
+/** ⚠️ DANGER: Replaces ENTIRE receipts list in Firebase.
+ *  Only use for explicit bulk operations. */
 export async function pushReceipts(receipts: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, "receipts"), receipts); } catch { /* ignore */ }
@@ -229,11 +239,45 @@ export async function pushCheckinDelete(id: number): Promise<void> {
 }
 
 // Customer and Stock sync — admin pushes, sales reps pull
+/** Push a single customer to Firebase (safe — won't overwrite other users' data).
+ *  Use this for individual create/update/delete operations.
+ *  Only use pushCustomersFullList for explicit bulk operations. */
+export async function pushOneCustomer(customer: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `customers/${customer.id}`), { ...customer, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+
+/** Remove a single customer from Firebase by ID */
+export async function removeOneCustomer(customerId: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `customers/${customerId}`), null); } catch { /* ignore */ }
+}
+
+/** Push a single stock item to Firebase (safe — won't overwrite other users' data).
+ *  Use this for individual create/update/delete operations.
+ *  Only use pushStockFullList for explicit bulk operations. */
+export async function pushOneStockItem(item: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `stock/${item.id}`), { ...item, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+
+/** Remove a single stock item from Firebase by ID */
+export async function removeOneStockItem(itemId: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `stock/${itemId}`), null); } catch { /* ignore */ }
+}
+
+/** ⚠️ DANGER: Replaces ENTIRE customer list in Firebase.
+ *  Only use for explicit bulk operations (import, initial sync).
+ *  NEVER use after a single create/update — it will delete other users' customers. */
 export async function pushCustomers(customers: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, "customers"), customers); } catch { /* ignore */ }
 }
 
+/** ⚠️ DANGER: Replaces ENTIRE stock list in Firebase.
+ *  Only use for explicit bulk operations (bulk upload, initial sync).
+ *  NEVER use after a single create/update — it will delete other users' stock items. */
 export async function pushStock(stock: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, "stock"), stock); } catch { /* ignore */ }

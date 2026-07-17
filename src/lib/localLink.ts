@@ -1,6 +1,12 @@
 import { dataService, reloadFromStorage } from "./dataService";
 import { observable } from "@trpc/server/observable";
-import { pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices, pushCustomers, pushStock, pushFollowUpAction, pushFollowUp, pushReceipts, pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete, isFirebaseReady, readFromFirebase, mergeWithCloudData } from "./firebaseSync";
+import {
+  pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices,
+  pushOneCustomer, removeOneCustomer, pushOneStockItem, removeOneStockItem,
+  pushFollowUpAction, pushFollowUp, pushOneReceipt, pushReceipts,
+  pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete,
+  isFirebaseReady, readFromFirebase, mergeWithCloudData,
+} from "./firebaseSync";
 
 /** SAFE SYNC: Read latest data from Firebase, MERGE with local, save, reload.
  *  Every query handler calls this to ensure users see LIVE cloud data.
@@ -37,8 +43,10 @@ async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "c
       case "checkin": await pushCheckin(item); break;
       case "invoice": await pushInvoice(item); break;
       case "customer": {
-        const customers = dataService.customer.list();
-        await pushCustomers(customers);
+        // SAFE: push only the individual customer, not the entire list.
+        // This prevents overwriting other users' customers that were created
+        // on other devices between our last pull and this push.
+        await pushOneCustomer(item);
         break;
       }
       case "user": await pushUser(item); break;
@@ -67,17 +75,17 @@ export function createLocalLink() {
               case "stock.getStats": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.getStats(); break;
               case "stock.getDailyInvoicedStock": result = dataService.stock.getDailyInvoicedStock(input || {}); break;
               case "stock.reconcileStock": result = dataService.stock.reconcileStock(input || {}); break;
-              case "stock.create": result = dataService.stock.create(input); pushStock(dataService.stock.list()); break;
-              case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); pushStock(dataService.stock.list()); break; }
-              case "stock.delete": result = dataService.stock.delete(input); pushStock(dataService.stock.list()); break;
+              case "stock.create": { result = dataService.stock.create(input); pushOneStockItem(result); break; }
+              case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); if (result) pushOneStockItem(result); break; }
+              case "stock.delete": result = dataService.stock.delete(input); removeOneStockItem(input); break;
               case "stock.bulkUpload": { const items = input || []; const { created, updated } = dataService.stock.bulkCreate(items); result = { count: created + updated, created, updated }; pushStock(dataService.stock.list()); break; }
               // CUSTOMERS — cloud first
               case "customer.list": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.list(); break;
               case "customer.search": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.search(input || { query: "" }); break;
               case "customer.getById": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getById(input); break;
               case "customer.create": result = dataService.customer.create(input); await fbPush("customer", result); break;
-              case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); await fbPush("customer", result); await pushCustomers(dataService.customer.list()); break; }
-              case "customer.delete": result = dataService.customer.delete(input); await pushCustomers(dataService.customer.list()); break;
+              case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); if (result) await pushOneCustomer(result); break; }
+              case "customer.delete": result = dataService.customer.delete(input); removeOneCustomer(input); break;
               case "customer.getStats": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getStats(); break;
               case "customer.getSalesReps": result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;
@@ -98,9 +106,9 @@ export function createLocalLink() {
               case "invoice.create": result = dataService.invoice.create(input); await fbPush("invoice", result); break;
               case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); await fbPush("invoice", result); break;
               case "invoice.update": result = dataService.invoice.updateInvoice(input); await fbPush("invoice", result); break;
-              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); await pushReceipts(dataService.invoice.getReceipts()); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
-              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); await pushReceipts(dataService.invoice.getReceipts()); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
-              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); await pushReceipts(dataService.invoice.getReceipts()); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
+              case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); if (result?.receipt) await pushOneReceipt(result.receipt); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
+              case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
+              case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
               case "invoice.getCustomerStatement": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.getCustomerStatement(input); break;
               case "invoice.getStats": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.getStats(); break;
               case "invoice.getReceipts": result = dataService.invoice.getReceipts(); break;

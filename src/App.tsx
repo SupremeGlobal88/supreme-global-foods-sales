@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady, syncAllLocalData } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -87,7 +87,10 @@ export default function App() {
     async function loadFromCloud() {
       try {
         if (isFirebaseReady()) {
-          // SAFE SYNC: Load local data FIRST, then merge with cloud.
+          // SAFE SYNC: One-way pull FROM cloud only. NEVER push local data at startup.
+          // Individual mutations push via fbPush() — that's the only way data goes TO cloud.
+          // This prevents a major data-loss bug: if we pushed local data here, a device
+          // with stale data could overwrite fresh data created by another user.
           reloadFromStorage();
           console.log("[Sync] Local data loaded first");
 
@@ -95,9 +98,6 @@ export default function App() {
           reloadFromStorage();
           queryClient.clear();
           console.log("[Sync] Merged with cloud:", counts);
-
-          await syncAllLocalData();
-          console.log("[Sync] Pushed local data to cloud");
         }
       } catch (e) {
         console.warn("[Sync] Error:", e);

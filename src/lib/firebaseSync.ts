@@ -529,7 +529,9 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
     const data = snapshot.val();
     const receipts = fbToArray(data);
     if (receipts.length > 0) {
-      try { localStorage.setItem("sgf_receipts", JSON.stringify(receipts)); } catch { /* ignore */ }
+      // Use mergeWithCloudData to preserve local receipts that haven't been pushed yet
+      const merged = mergeWithCloudData("sgf_receipts", receipts);
+      try { localStorage.setItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     if (onData) onData(receipts);
   });

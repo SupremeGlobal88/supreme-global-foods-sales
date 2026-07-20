@@ -921,7 +921,7 @@ export function initAutoSync(): () => void {
       // Dispatch firebaseDataReceived event for ALL data types.
       // This ensures tRPC cache invalidates on every device when ANY
       // user creates/updates data — not just when the count increases.
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts"].includes(type)) {
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;

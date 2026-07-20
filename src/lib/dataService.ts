@@ -13,6 +13,18 @@ function saveSalesReps() {
   try { localStorage.setItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
 }
 
+/** Read current sales reps from localStorage (includes Firebase-synced reps) */
+function getCurrentSalesReps(): string[] {
+  try {
+    const raw = localStorage.getItem("sgf_salesReps");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* ignore */ }
+  return SALES_REPS;
+}
+
 /** Get fresh static customer data */
 function getStaticCustomers() {
   return [...STATIC_CUSTOMERS.map((c: any) => ({
@@ -1227,19 +1239,7 @@ export const dataService = {
       inactive: customers.filter((c) => c.isActive !== "active").length,
       thisMonth: customers.length,
     }),
-    getSalesReps: () => {
-      // Both local CRUD and Firebase sync write to sgf_salesReps (string array).
-      // subscribeToSalesReps extracts names from Firebase objects and saves them here.
-      // This ensures all devices see the same rep list regardless of where changes originate.
-      try {
-        const raw = localStorage.getItem("sgf_salesReps");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch { /* ignore */ }
-      return SALES_REPS;
-    },
+    getSalesReps: () => getCurrentSalesReps(),
     bulkUpload: (items: any[]) => {
       // Normalize name: trim, collapse multiple spaces, lowercase
       const normalize = (s: string) => (s || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
@@ -2192,9 +2192,14 @@ export const dataService = {
   },
 
   salesRep: {
-    list: () => SALES_REPS.map((name, i) => ({ id: i + 1, name, isActive: true })),
+    list: () => {
+      // Always read fresh from localStorage so Firebase-synced reps appear
+      const reps = getCurrentSalesReps();
+      return reps.map((name, i) => ({ id: i + 1, name, isActive: true }));
+    },
     getStats: () => {
-      const repStats = SALES_REPS.map((name) => {
+      const reps = getCurrentSalesReps();
+      const repStats = reps.map((name) => {
         const repCustomers = customers.filter((c) => c.salesRepName === name);
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id === o.customerId);
@@ -2214,7 +2219,7 @@ export const dataService = {
         }, 0);
         return { name, customerCount: repCustomers.length, orderCount: repOrders.length, sampleCount: repSamples.length, totalSales, sampleCost };
       });
-      return { total: SALES_REPS.length, active: SALES_REPS.length, inactive: 0, repStats };
+      return { total: reps.length, active: reps.length, inactive: 0, repStats };
     },
 
     /** Sales breakdown per rep: today, this week, this month */
@@ -2234,7 +2239,7 @@ export const dataService = {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-      const repSales = SALES_REPS.map((name) => {
+      const repSales = getCurrentSalesReps().map((name) => {
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id === o.customerId);
           return cust?.salesRepName === name && o.orderType !== "sample";
@@ -2276,35 +2281,46 @@ export const dataService = {
 
     // CRUD for sales reps
     create: (data: { name: string }) => {
+      const reps = getCurrentSalesReps();
       const name = (data.name || "").trim();
       if (!name) return null;
-      if (SALES_REPS.includes(name)) return null;
-      SALES_REPS.push(name);
+      if (reps.includes(name)) return null;
+      reps.push(name);
+      // Update both localStorage and in-memory
+      SALES_REPS.length = 0;
+      SALES_REPS.push(...reps);
       saveSalesReps();
-      return { id: SALES_REPS.length, name, isActive: true };
+      return { id: reps.length, name, isActive: true };
     },
     update: ({ id, data }: { id: number; data: { name: string } }) => {
+      const reps = getCurrentSalesReps();
       const idx = id - 1;
-      if (idx < 0 || idx >= SALES_REPS.length) return null;
+      if (idx < 0 || idx >= reps.length) return null;
       const newName = (data.name || "").trim();
       if (!newName) return null;
-      const oldName = SALES_REPS[idx];
+      const oldName = reps[idx];
       // Update customers who had the old rep
       customers.filter(c => c.salesRepName === oldName).forEach(c => c.salesRepName = newName);
-      SALES_REPS[idx] = newName;
+      reps[idx] = newName;
+      SALES_REPS.length = 0;
+      SALES_REPS.push(...reps);
       saveSalesReps();
       saveItem("sgf_customers", customers);
       return { id, name: newName, isActive: true };
     },
     toggleActive: ({ id }: { id: number }) => {
+      const reps = getCurrentSalesReps();
       const idx = id - 1;
-      if (idx < 0 || idx >= SALES_REPS.length) return null;
-      return { id, name: SALES_REPS[idx], isActive: true };
+      if (idx < 0 || idx >= reps.length) return null;
+      return { id, name: reps[idx], isActive: true };
     },
     delete: ({ id }: { id: number }) => {
+      const reps = getCurrentSalesReps();
       const idx = id - 1;
-      if (idx < 0 || idx >= SALES_REPS.length) return null;
-      SALES_REPS.splice(idx, 1);
+      if (idx < 0 || idx >= reps.length) return null;
+      reps.splice(idx, 1);
+      SALES_REPS.length = 0;
+      SALES_REPS.push(...reps);
       saveSalesReps();
       return { success: true };
     },

@@ -356,7 +356,7 @@ export default function StockPage() {
                 <th className="text-right p-3 label-text">Corp</th>
                 <th className="text-right p-3 label-text">Bulk</th>
                 <th className="text-right p-3 label-text">Wholesale</th>
-                {isAdmin && <th className="text-right p-3 label-text">Retail</th>}
+                <th className="text-right p-3 label-text">Retail</th>
                 <th className="text-left p-3 label-text">Status</th>
                 {isAdmin && <th className="text-right p-3 label-text">Actions</th>}
               </tr>
@@ -378,7 +378,7 @@ export default function StockPage() {
                   <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.corporatePrice).toFixed(2)}</td>
                   <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.bulkPrice).toFixed(2)}</td>
                   <td className="p-3 text-right text-sm font-display" style={{ color: "#D4A843" }}>R {Number(item.wholesalePrice).toFixed(2)}</td>
-                  {isAdmin && <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.retailPrice).toFixed(2)}</td>}
+                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.retailPrice).toFixed(2)}</td>
                   <td className="p-3">
                     <span className="status-badge" style={{
                       backgroundColor: item.status === "in_stock" ? "rgba(74, 222, 128, 0.12)" : item.status === "low_stock" ? "rgba(245, 158, 11, 0.12)" : "rgba(239, 68, 68, 0.12)",

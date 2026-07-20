@@ -116,9 +116,16 @@ export function createLocalLink() {
                 if (result && input?.orderId) {
                   const inv = dataService.invoice.list().find((i: any) => i.orderId == input.orderId);
                   if (inv) {
-                    await pushInvoice(inv);
-                    console.log("[generateInvoice] Pushed invoice", inv.invoiceNumber, "to Firebase for order", input.orderId);
+                    const pushResult = await pushInvoice(inv);
+                    if (pushResult.success) {
+                      console.log("[generateInvoice] Pushed invoice", inv.invoiceNumber, "to Firebase");
+                    } else {
+                      console.error("[generateInvoice] PUSH FAILED:", inv.invoiceNumber, pushResult.error);
+                      alert("Warning: Invoice " + inv.invoiceNumber + " created but could not sync to cloud. Please go to Settings and click 'Replace All Invoices in Cloud'.");
+                    }
                     window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                  } else {
+                    console.error("[generateInvoice] Could not find invoice for order", input.orderId);
                   }
                 }
                 break;

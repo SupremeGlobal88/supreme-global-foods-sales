@@ -149,11 +149,16 @@ export async function pushAppointment(appointment: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
-export async function pushInvoice(invoice: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+export async function pushInvoice(invoice: any): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
+  if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
     await set(ref(db, `invoices/${invoice.id}`), { ...invoice, _syncedAt: Date.now() });
-  } catch { /* ignore */ }
+    return { success: true };
+  } catch (e: any) {
+    console.error("[pushInvoice] FAILED:", invoice.invoiceNumber || invoice.id, e.message);
+    return { success: false, error: e.message };
+  }
 }
 
 /** Push all invoices to Firebase (used after bulk historical import) */

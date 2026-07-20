@@ -1228,19 +1228,16 @@ export const dataService = {
       thisMonth: customers.length,
     }),
     getSalesReps: () => {
-      // Try Firebase-synced data first (from subscribeToSalesReps)
+      // Both local CRUD and Firebase sync write to sgf_salesReps (string array).
+      // subscribeToSalesReps extracts names from Firebase objects and saves them here.
+      // This ensures all devices see the same rep list regardless of where changes originate.
       try {
-        const raw = localStorage.getItem("sgf_salesReps_data");
+        const raw = localStorage.getItem("sgf_salesReps");
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            // Extract names from the synced objects
-            const names = parsed.map((r: any) => r.name || r).filter((n: any) => typeof n === "string");
-            if (names.length > 0) return names;
-          }
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
       } catch { /* ignore */ }
-      // Fallback to local SALES_REPS
       return SALES_REPS;
     },
     bulkUpload: (items: any[]) => {

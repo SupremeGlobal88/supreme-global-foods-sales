@@ -633,6 +633,14 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
     if (reps.length > 0) {
       const merged = mergeWithCloudData("sgf_salesReps_data", reps);
       try { localStorage.setItem("sgf_salesReps_data", JSON.stringify(merged)); } catch { /* ignore */ }
+      // CRITICAL: Also update SALES_REPS in dataService so list() and getSalesReps() are in sync
+      try {
+        const names = reps.map((r: any) => r.name).filter((n: any) => typeof n === "string");
+        if (names.length > 0) {
+          // Update dataService's SALES_REPS via the shared localStorage key
+          localStorage.setItem("sgf_salesReps", JSON.stringify(names));
+        }
+      } catch { /* ignore */ }
     }
     if (onData) onData(reps);
   });

@@ -172,6 +172,12 @@ export default function App() {
       if (type === "users") {
         utils.user.list.refetch();
       }
+      if (type === "salesReps") {
+        // Sales reps don't have a dedicated tRPC query, but customer.getSalesReps
+        // reads from localStorage which is updated by subscribeToSalesReps.
+        // Invalidate customer search to refresh any dropdowns using sales reps.
+        utils.customer.search.invalidate();
+      }
     };
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);

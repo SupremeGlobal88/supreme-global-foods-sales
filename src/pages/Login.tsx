@@ -6,6 +6,17 @@ import { directAuthenticate } from "@/lib/dataService";
 import { Globe, Lock, Eye, EyeOff, User, Shield } from "lucide-react";
 import gsap from "gsap";
 
+// Sync users from Firebase on login page load
+// This ensures users created on other devices are available for login
+function useSyncUsersFromCloud() {
+  // This query triggers syncFromCloud("users", "sgf_users") which reads
+  // users from Firebase and updates localStorage before login
+  trpc.user.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    retry: 1,
+  });
+}
+
 const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
 const DEFAULT_ADMINS = ["Collin", "Ryleigh", "Aggie", "Ronald", "Jolene", "David"];
 
@@ -24,6 +35,9 @@ function getAdminUsers(): string[] {
 }
 
 export default function Login() {
+  // Sync users from Firebase on page load — ensures new users from other devices can log in
+  useSyncUsersFromCloud();
+
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [roleTab, setRoleTab] = useState<"sales" | "admin">("sales");

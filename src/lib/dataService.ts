@@ -2539,7 +2539,7 @@ export const dataService = {
       // Try 1: in-memory users array
       let found = users.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
 
-      // Try 2: localStorage direct read
+      // Try 2: localStorage direct read (this now includes users synced from Firebase via syncFromCloud)
       if (!found) {
         try {
           const raw = localStorage.getItem("sgf_users");

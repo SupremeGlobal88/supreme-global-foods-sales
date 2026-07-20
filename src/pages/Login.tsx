@@ -17,8 +17,8 @@ function useSyncUsersFromCloud() {
   });
 }
 
-const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
 const DEFAULT_ADMINS = ["Collin", "Ryleigh", "Aggie", "Ronald", "Jolene", "David"];
+const DEFAULT_SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
 
 function getAdminUsers(): string[] {
   try {
@@ -34,6 +34,20 @@ function getAdminUsers(): string[] {
   return DEFAULT_ADMINS;
 }
 
+function getSalesReps(): string[] {
+  try {
+    const raw = localStorage.getItem("sgf_users");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      const repNames = stored
+        .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
+        .map((u: any) => u.name);
+      if (repNames.length > 0) return repNames;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_SALES_REPS;
+}
+
 export default function Login() {
   // Sync users from Firebase on page load — ensures new users from other devices can log in
   useSyncUsersFromCloud();
@@ -41,7 +55,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [roleTab, setRoleTab] = useState<"sales" | "admin">("sales");
-  const [selectedRep, setSelectedRep] = useState(SALES_REPS[0]);
+  const [selectedRep, setSelectedRep] = useState(getSalesReps()[0] || "Adeli");
   const [selectedAdmin, setSelectedAdmin] = useState("");
   const [adminUsers, setAdminUsers] = useState<string[]>(DEFAULT_ADMINS);
   const [pin, setPin] = useState("");
@@ -56,6 +70,16 @@ export default function Login() {
       setAdminUsers(admins);
       if (!selectedAdmin || !admins.includes(selectedAdmin)) {
         setSelectedAdmin(admins[0] || "");
+      }
+    }
+  }, [roleTab]);
+
+  // Load sales reps from localStorage when sales rep tab is selected
+  useEffect(() => {
+    if (roleTab === "sales_rep") {
+      const reps = getSalesReps();
+      if (!selectedRep || !reps.includes(selectedRep)) {
+        setSelectedRep(reps[0] || "Adeli");
       }
     }
   }, [roleTab]);
@@ -164,7 +188,7 @@ export default function Login() {
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
                 <select value={selectedRep} onChange={(e) => setSelectedRep(e.target.value)} className="input-field pl-11">
-                  {SALES_REPS.map((rep) => <option key={rep} value={rep}>{rep}</option>)}
+                  {getSalesReps().map((rep) => <option key={rep} value={rep}>{rep}</option>)}
                 </select>
               </div>
             </div>

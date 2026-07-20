@@ -300,12 +300,38 @@ export async function pushStock(stock: any[]): Promise<void> {
 
 export async function pushUser(user: any): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `users/${safeFbKey(user.id)}`), { ...user, _syncedAt: Date.now() }); } catch { /* ignore */ }
+  try {
+    await set(ref(db, `users/${safeFbKey(user.id)}`), { ...user, _syncedAt: Date.now() });
+  } catch (e: any) {
+    console.error("[pushUser] FAILED:", user?.name, user?.id, e.message);
+  }
+}
+
+export async function pushSalesRep(rep: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    await set(ref(db, `salesReps/${safeFbKey(rep.id)}`), { ...rep, _syncedAt: Date.now() });
+  } catch (e: any) {
+    console.error("[pushSalesRep] FAILED:", rep?.name, rep?.id, e.message);
+  }
+}
+
+export async function removeSalesRep(repId: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    await set(ref(db, `salesReps/${safeFbKey(repId)}`), null);
+  } catch (e: any) {
+    console.error("[removeSalesRep] FAILED:", repId, e.message);
+  }
 }
 
 export async function pushUserDelete(userId: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `users/${safeFbKey(userId)}`), null); } catch { /* ignore */ }
+  try {
+    await set(ref(db, `users/${safeFbKey(userId)}`), null);
+  } catch (e: any) {
+    console.error("[pushUserDelete] FAILED:", userId, e.message);
+  }
 }
 
 // =============================================================================
@@ -593,6 +619,22 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
       try { localStorage.setItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
     }
     if (onData) onData(receipts);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
+export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const repsRef = ref(db, "salesReps");
+  const unsub = onValue(repsRef, (snapshot) => {
+    const data = snapshot.val();
+    const reps = fbToArray(data);
+    if (reps.length > 0) {
+      const merged = mergeWithCloudData("sgf_salesReps_data", reps);
+      try { localStorage.setItem("sgf_salesReps_data", JSON.stringify(merged)); } catch { /* ignore */ }
+    }
+    if (onData) onData(reps);
   });
   listeners.push(unsub);
   return unsub;
@@ -921,7 +963,7 @@ export function initAutoSync(): () => void {
       // Dispatch firebaseDataReceived event for ALL data types.
       // This ensures tRPC cache invalidates on every device when ANY
       // user creates/updates data — not just when the count increases.
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users"].includes(type)) {
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;
@@ -946,6 +988,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
   unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
   unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
+  unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps_data")));
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

@@ -5,6 +5,7 @@ import {
   pushOneCustomer, removeOneCustomer, pushOneStockItem, removeOneStockItem,
   pushFollowUpAction, pushFollowUp, pushOneReceipt, pushReceipts,
   pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete,
+  pushSalesRep, removeSalesRep,
   isFirebaseReady, readFromFirebase, mergeWithCloudData,
 } from "./firebaseSync";
 
@@ -197,10 +198,10 @@ export function createLocalLink() {
               case "salesRep.list": result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
-              case "salesRep.create": result = dataService.salesRep.create(input); break;
-              case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); break; }
-              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); break;
-              case "salesRep.delete": result = dataService.salesRep.delete(input); break;
+              case "salesRep.create": result = dataService.salesRep.create(input); if (result) pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); if (result) pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break; }
+              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.delete": result = dataService.salesRep.delete(input); removeSalesRep(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               // DASHBOARD — cloud first (orders + invoices)
               case "dashboard.stats": await syncFromCloud("orders", "sgf_orders"); await syncFromCloud("invoices", "sgf_invoices"); result = dataService.dashboard.stats(); break;
               case "audit.list": result = dataService.audit.list(); break;

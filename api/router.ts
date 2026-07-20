@@ -107,6 +107,10 @@ export const appRouter = t.router({
     list: t.procedure.query(() => [] as any[]),
     getStats: t.procedure.query(() => ({} as any)),
     getSalesBreakdown: t.procedure.query(() => ({} as any)),
+    create: t.procedure.input(z.object({ name: z.string() })).mutation(() => ({} as any)),
+    update: t.procedure.input(z.object({ id: z.number(), data: z.object({ name: z.string() }) })).mutation(() => ({} as any)),
+    toggleActive: t.procedure.input(z.object({ id: z.number() })).mutation(() => ({} as any)),
+    delete: t.procedure.input(z.number()).mutation(() => ({} as any)),
   }),
   dashboard: t.router({
     stats: t.procedure.query(() => ({} as any)),

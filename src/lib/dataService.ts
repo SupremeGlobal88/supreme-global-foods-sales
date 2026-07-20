@@ -1,6 +1,17 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 
-const SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
+// Mutable sales reps — loaded from localStorage if available
+let SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
+try {
+  const stored = localStorage.getItem("sgf_salesReps");
+  if (stored) {
+    const parsed = JSON.parse(stored);
+    if (Array.isArray(parsed) && parsed.length > 0) SALES_REPS = parsed;
+  }
+} catch { /* ignore */ }
+function saveSalesReps() {
+  try { localStorage.setItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
+}
 
 /** Get fresh static customer data */
 function getStaticCustomers() {
@@ -2249,6 +2260,41 @@ export const dataService = {
           month: repSales.reduce((s, r) => s + r.monthSales, 0),
         },
       };
+    },
+
+    // CRUD for sales reps
+    create: (data: { name: string }) => {
+      const name = (data.name || "").trim();
+      if (!name) return null;
+      if (SALES_REPS.includes(name)) return null;
+      SALES_REPS.push(name);
+      saveSalesReps();
+      return { id: SALES_REPS.length, name, isActive: true };
+    },
+    update: ({ id, data }: { id: number; data: { name: string } }) => {
+      const idx = id - 1;
+      if (idx < 0 || idx >= SALES_REPS.length) return null;
+      const newName = (data.name || "").trim();
+      if (!newName) return null;
+      const oldName = SALES_REPS[idx];
+      // Update customers who had the old rep
+      customers.filter(c => c.salesRepName === oldName).forEach(c => c.salesRepName = newName);
+      SALES_REPS[idx] = newName;
+      saveSalesReps();
+      saveItem("sgf_customers", customers);
+      return { id, name: newName, isActive: true };
+    },
+    toggleActive: ({ id }: { id: number }) => {
+      const idx = id - 1;
+      if (idx < 0 || idx >= SALES_REPS.length) return null;
+      return { id, name: SALES_REPS[idx], isActive: true };
+    },
+    delete: ({ id }: { id: number }) => {
+      const idx = id - 1;
+      if (idx < 0 || idx >= SALES_REPS.length) return null;
+      SALES_REPS.splice(idx, 1);
+      saveSalesReps();
+      return { success: true };
     },
   },
 

@@ -197,6 +197,10 @@ export function createLocalLink() {
               case "salesRep.list": result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
+              case "salesRep.create": result = dataService.salesRep.create(input); break;
+              case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); break; }
+              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); break;
+              case "salesRep.delete": result = dataService.salesRep.delete(input); break;
               // DASHBOARD — cloud first (orders + invoices)
               case "dashboard.stats": await syncFromCloud("orders", "sgf_orders"); await syncFromCloud("invoices", "sgf_invoices"); result = dataService.dashboard.stats(); break;
               case "audit.list": result = dataService.audit.list(); break;

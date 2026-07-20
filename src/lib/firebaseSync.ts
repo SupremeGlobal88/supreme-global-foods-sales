@@ -26,6 +26,12 @@ import {
 
 const CONFIG_KEY = "sgf_firebase_config";
 
+/** Firebase RTDB keys cannot contain ".", "#", "$", "[", or "]".
+ *  This function sanitizes any ID to be a valid Firebase key. */
+function safeFbKey(id: any): string {
+  return String(id).replace(/[.#$[\]]/g, '_');
+}
+
 // Supreme Global Foods Firebase — auto-connects
 const DEFAULT_CONFIG = {
   apiKey: "AIzaSyAj68G-CmO9ImmBB5MgPwlas389gHWqPu8",
@@ -130,7 +136,7 @@ export function clearFirebaseConfig(): void {
 export async function pushOrder(order: any): Promise<boolean> {
   if (!isFirebaseReady()) return false;
   try {
-    await set(ref(db, `orders/${order.id}`), { ...order, _syncedAt: Date.now() });
+    await set(ref(db, `orders/${safeFbKey(order.id)}`), { ...order, _syncedAt: Date.now() });
     return true;
   } catch (e: any) { console.warn("[FirebaseSync] pushOrder failed:", e.message); return false; }
 }
@@ -138,14 +144,14 @@ export async function pushOrder(order: any): Promise<boolean> {
 export async function pushCheckin(checkin: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `checkins/${checkin.id}`), { ...checkin, _syncedAt: Date.now() });
+    await set(ref(db, `checkins/${safeFbKey(checkin.id)}`), { ...checkin, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
 export async function pushAppointment(appointment: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `appointments/${appointment.id}`), { ...appointment, _syncedAt: Date.now() });
+    await set(ref(db, `appointments/${safeFbKey(appointment.id)}`), { ...appointment, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
@@ -153,7 +159,7 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
   if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
   if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
-    await set(ref(db, `invoices/${invoice.id}`), { ...invoice, _syncedAt: Date.now() });
+    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), { ...invoice, _syncedAt: Date.now() });
     return { success: true };
   } catch (e: any) {
     console.error("[pushInvoice] FAILED:", invoice.invoiceNumber || invoice.id, e.message);
@@ -176,14 +182,14 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
 export async function pushFollowUpAction(action: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `followUpActions/${action.id}`), { ...action, _syncedAt: Date.now() });
+    await set(ref(db, `followUpActions/${safeFbKey(action.id)}`), { ...action, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
 export async function pushFollowUp(followUp: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `followUps/${followUp.id}`), { ...followUp, _syncedAt: Date.now() });
+    await set(ref(db, `followUps/${safeFbKey(followUp.id)}`), { ...followUp, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
@@ -192,7 +198,7 @@ export async function pushFollowUp(followUp: any): Promise<void> {
  *  Only use pushReceiptsFullList for explicit bulk operations. */
 export async function pushOneReceipt(receipt: any): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `receipts/${receipt.id}`), { ...receipt, _syncedAt: Date.now() }); } catch { /* ignore */ }
+  try { await set(ref(db, `receipts/${safeFbKey(receipt.id)}`), { ...receipt, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 
 /** ⚠️ DANGER: Replaces ENTIRE receipts list in Firebase.
@@ -239,12 +245,12 @@ export async function readFromFirebase(path: string): Promise<any[]> {
 
 export async function pushAppointmentDelete(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `appointments/${id}`), null); } catch { /* ignore */ }
+  try { await set(ref(db, `appointments/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 
 export async function pushCheckinDelete(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `checkins/${id}`), null); } catch { /* ignore */ }
+  try { await set(ref(db, `checkins/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 
 // Customer and Stock sync — admin pushes, sales reps pull
@@ -253,13 +259,13 @@ export async function pushCheckinDelete(id: number): Promise<void> {
  *  Only use pushCustomersFullList for explicit bulk operations. */
 export async function pushOneCustomer(customer: any): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `customers/${customer.id}`), { ...customer, _syncedAt: Date.now() }); } catch { /* ignore */ }
+  try { await set(ref(db, `customers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 
 /** Remove a single customer from Firebase by ID */
 export async function removeOneCustomer(customerId: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `customers/${customerId}`), null); } catch { /* ignore */ }
+  try { await set(ref(db, `customers/${safeFbKey(customerId)}`), null); } catch { /* ignore */ }
 }
 
 /** Push a single stock item to Firebase (safe — won't overwrite other users' data).
@@ -267,13 +273,13 @@ export async function removeOneCustomer(customerId: number): Promise<void> {
  *  Only use pushStockFullList for explicit bulk operations. */
 export async function pushOneStockItem(item: any): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `stock/${item.id}`), { ...item, _syncedAt: Date.now() }); } catch { /* ignore */ }
+  try { await set(ref(db, `stock/${safeFbKey(item.id)}`), { ...item, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 
 /** Remove a single stock item from Firebase by ID */
 export async function removeOneStockItem(itemId: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `stock/${itemId}`), null); } catch { /* ignore */ }
+  try { await set(ref(db, `stock/${safeFbKey(itemId)}`), null); } catch { /* ignore */ }
 }
 
 /** ⚠️ DANGER: Replaces ENTIRE customer list in Firebase.
@@ -294,12 +300,12 @@ export async function pushStock(stock: any[]): Promise<void> {
 
 export async function pushUser(user: any): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `users/${user.id}`), { ...user, _syncedAt: Date.now() }); } catch { /* ignore */ }
+  try { await set(ref(db, `users/${safeFbKey(user.id)}`), { ...user, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 
 export async function pushUserDelete(userId: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `users/${userId}`), null); } catch { /* ignore */ }
+  try { await set(ref(db, `users/${safeFbKey(userId)}`), null); } catch { /* ignore */ }
 }
 
 // =============================================================================
@@ -697,8 +703,10 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
         await Promise.all(batch.map(async (item) => {
           if (!item) return;
           try {
-            const id = item.id || item._id || Date.now() + Math.random();
-            await set(ref(db, `${list.fbPath}/${id}`), { ...item, _syncedAt: Date.now() });
+            const rawId = item.id || item._id || Date.now() + Math.random();
+            // Firebase keys cannot contain ".", "#", "$", "[", or "]"
+            const safeId = String(rawId).replace(/[.#$[\]]/g, '_');
+            await set(ref(db, `${list.fbPath}/${safeId}`), { ...item, _syncedAt: Date.now() });
             (result[list.counter] as number)++;
             pushedSoFar++;
           } catch (e: any) {

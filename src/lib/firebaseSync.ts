@@ -162,11 +162,15 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
 }
 
 /** Push all invoices to Firebase (used after bulk historical import) */
-export async function pushInvoices(invoices: any[]): Promise<void> {
-  if (!isFirebaseReady()) return;
+export async function pushInvoices(invoices: any[]): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
   try {
     await set(ref(db, "invoices"), invoices);
-  } catch { /* ignore */ }
+    return { success: true };
+  } catch (e: any) {
+    console.error("[pushInvoices] FAILED:", e.message);
+    return { success: false, error: e.message };
+  }
 }
 
 export async function pushFollowUpAction(action: any): Promise<void> {

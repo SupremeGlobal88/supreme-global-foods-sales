@@ -150,6 +150,10 @@ function load() {
 
   // FIX: Assign proper numeric codes to customers with "AUTO", blank, or missing codes
   try { fixMissingCustomerCodes(); } catch { /* ignore */ }
+
+  // FIX: Repair Sage invoice dates that were corrupted by the old date parser.
+  // The old code did `20${parts[2]}` on 4-digit years, producing dates like "202026-07-06".
+  try { fixSageInvoiceDates(); } catch { /* ignore */ }
 }
 
 /** Fix customers with missing/invalid codes. Also converts remaining CUST codes to numeric.
@@ -204,6 +208,35 @@ function fixMissingCustomerCodes(): void {
   if (changed) {
     saveItem("sgf_customers", customers);
     console.log(`[CustomerCode] Fixed customers with missing/legacy codes`);
+  }
+}
+
+/** Fix Sage invoice dates corrupted by the old date parser.
+ *  The old code did `20${parts[2]}` on 4-digit years, producing "202026-07-06".
+ *  This fixes existing invoices on every startup. */
+function fixSageInvoiceDates(): void {
+  let changed = false;
+  for (const inv of invoices) {
+    if (inv.source !== "sage") continue;
+    const date = inv.invoiceDate;
+    if (!date || typeof date !== "string") continue;
+    // Match corrupted dates like "202026-07-06" (year has 6 digits)
+    const match = date.match(/^(\d{6,})-(\d{2})-(\d{2})/);
+    if (match) {
+      const badYear = match[1];
+      const month = match[2];
+      const day = match[3];
+      // Extract the correct 4-digit year from the corrupted year
+      // "202026" → "2026" (take last 4 digits if length > 4)
+      const correctYear = badYear.length > 4 ? badYear.slice(-4) : badYear;
+      inv.invoiceDate = `${correctYear}-${month}-${day}`;
+      changed = true;
+      console.log(`[SageDate] Fixed ${inv.invoiceNumber}: ${date} → ${inv.invoiceDate}`);
+    }
+  }
+  if (changed) {
+    saveItem("sgf_invoices", invoices);
+    console.log("[SageDate] Repaired corrupted Sage invoice dates");
   }
 }
 

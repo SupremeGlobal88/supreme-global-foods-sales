@@ -169,6 +169,9 @@ export default function App() {
         utils.followUp.list.refetch();
         utils.followUpAction.list.refetch();
       }
+      if (type === "users") {
+        utils.user.list.refetch();
+      }
     };
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);

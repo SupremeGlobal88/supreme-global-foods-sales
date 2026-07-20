@@ -224,6 +224,8 @@ const FB_PATHS: Record<string, string> = {
   followUps: "followUps",
   followUpActions: "followUpActions",
   receipts: "receipts",
+  users: "users",
+  salesReps: "salesReps",
 };
 
 /** Read data directly from Firebase. Returns array of items or empty array.

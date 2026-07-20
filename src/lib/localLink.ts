@@ -195,7 +195,7 @@ export function createLocalLink() {
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
-              case "salesRep.list": result = dataService.salesRep.list(); break;
+              case "salesRep.list": await syncFromCloud("salesReps", "sgf_salesReps"); result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
               case "salesRep.create": result = dataService.salesRep.create(input); if (result) pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;

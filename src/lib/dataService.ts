@@ -532,6 +532,16 @@ export function reloadFromStorage(): void {
     const u = localStorage.getItem("sgf_users");
     if (u) { const d = JSON.parse(u); if (Array.isArray(d) && d.length > 0) users = d; }
   } catch { /* keep current */ }
+  try {
+    const sr = localStorage.getItem("sgf_salesReps");
+    if (sr) {
+      const d = JSON.parse(sr);
+      if (Array.isArray(d) && d.length > 0) {
+        SALES_REPS.length = 0;
+        SALES_REPS.push(...d);
+      }
+    }
+  } catch { /* keep current */ }
 }
 
 /** Fix duplicate SGF invoice numbers. Renames duplicates to next available number.

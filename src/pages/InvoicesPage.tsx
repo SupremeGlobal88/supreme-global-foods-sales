@@ -1173,7 +1173,10 @@ export default function InvoicesPage() {
               </div>
               <button
                 onClick={() => {
-                  if (!editInvCustomerId) return;
+                  // FIX: Allow saving Sage invoices with customerId=0.
+                  // Previously: if (!editInvCustomerId) blocked all Sage invoices
+                  // that had no matched customer (customerId=0 evaluates to falsy).
+                  if (editInvCustomerId === undefined || editInvCustomerId === null) return;
                   const payload: any = {
                     id: editInvId,
                     data: {

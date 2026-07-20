@@ -1816,10 +1816,12 @@ export const dataService = {
         // Parse historical date
         let invoiceDate = hist.invoiceDate;
         if (!invoiceDate && hist.date) {
-          // Try DD/MM/YYYY format
+          // Try DD/MM/YYYY or DD/MM/YY format
           const parts = hist.date.split("/");
           if (parts.length === 3) {
-            invoiceDate = `20${parts[2]}-${parts[1]}-${parts[0]}`;
+            // Handle both 2-digit year (26 → 2026) and 4-digit year (2026 → 2026)
+            const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+            invoiceDate = `${year}-${parts[1]}-${parts[0]}`;
           }
         }
 

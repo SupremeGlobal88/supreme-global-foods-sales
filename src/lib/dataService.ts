@@ -1227,7 +1227,22 @@ export const dataService = {
       inactive: customers.filter((c) => c.isActive !== "active").length,
       thisMonth: customers.length,
     }),
-    getSalesReps: () => SALES_REPS,
+    getSalesReps: () => {
+      // Try Firebase-synced data first (from subscribeToSalesReps)
+      try {
+        const raw = localStorage.getItem("sgf_salesReps_data");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // Extract names from the synced objects
+            const names = parsed.map((r: any) => r.name || r).filter((n: any) => typeof n === "string");
+            if (names.length > 0) return names;
+          }
+        }
+      } catch { /* ignore */ }
+      // Fallback to local SALES_REPS
+      return SALES_REPS;
+    },
     bulkUpload: (items: any[]) => {
       // Normalize name: trim, collapse multiple spaces, lowercase
       const normalize = (s: string) => (s || "").toString().trim().replace(/\s+/g, " ").toLowerCase();

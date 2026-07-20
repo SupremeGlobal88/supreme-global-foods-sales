@@ -650,7 +650,7 @@ export async function syncAllLocalData(localData: {
 // pushes every item individually — safe, never overwrites other users' data.
 // =============================================================================
 
-export async function forcePushAllLocalData(): Promise<{
+export async function forcePushAllLocalData(onProgress?: (done: number, total: number, currentType: string) => void): Promise<{
   orders: number; invoices: number; customers: number; stock: number;
   appointments: number; checkins: number; followUps: number; receipts: number;
   errors: string[];
@@ -658,36 +658,60 @@ export async function forcePushAllLocalData(): Promise<{
   const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
-  const pushList = async (storageKey: string, fbPath: string, counter: keyof typeof result) => {
+  // Count total items first for progress reporting
+  const lists = [
+    { storageKey: "sgf_orders", fbPath: "orders", counter: "orders" as const, label: "Orders" },
+    { storageKey: "sgf_invoices", fbPath: "invoices", counter: "invoices" as const, label: "Invoices" },
+    { storageKey: "sgf_customers", fbPath: "customers", counter: "customers" as const, label: "Customers" },
+    { storageKey: "sgf_products", fbPath: "stock", counter: "stock" as const, label: "Stock" },
+    { storageKey: "sgf_appointments", fbPath: "appointments", counter: "appointments" as const, label: "Appointments" },
+    { storageKey: "sgf_checkins", fbPath: "checkins", counter: "checkins" as const, label: "Check-ins" },
+    { storageKey: "sgf_followUps", fbPath: "followUps", counter: "followUps" as const, label: "Follow-ups" },
+    { storageKey: "sgf_receipts", fbPath: "receipts", counter: "receipts" as const, label: "Receipts" },
+  ];
+  let totalItems = 0;
+  for (const list of lists) {
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) return;
-      const items = JSON.parse(raw);
-      if (!Array.isArray(items)) return;
-      for (const item of items) {
-        if (!item) continue;
-        try {
-          const id = item.id || item._id || Date.now() + Math.random();
-          await set(ref(db, `${fbPath}/${id}`), { ...item, _syncedAt: Date.now() });
-          (result[counter] as number)++;
-        } catch (e: any) {
-          result.errors.push(`${fbPath}/${item.id}: ${e.message}`);
-        }
+      const raw = localStorage.getItem(list.storageKey);
+      if (raw) {
+        const items = JSON.parse(raw);
+        if (Array.isArray(items)) totalItems += items.filter(x => x != null).length;
       }
-      console.log(`[forcePush] Pushed ${result[counter]} items to ${fbPath}`);
-    } catch (e: any) {
-      result.errors.push(`${fbPath}: ${e.message}`);
-    }
-  };
+    } catch { /* ignore */ }
+  }
 
-  await pushList("sgf_orders", "orders", "orders");
-  await pushList("sgf_invoices", "invoices", "invoices");
-  await pushList("sgf_customers", "customers", "customers");
-  await pushList("sgf_products", "stock", "stock");
-  await pushList("sgf_appointments", "appointments", "appointments");
-  await pushList("sgf_checkins", "checkins", "checkins");
-  await pushList("sgf_followUps", "followUps", "followUps");
-  await pushList("sgf_receipts", "receipts", "receipts");
+  let pushedSoFar = 0;
+
+  for (const list of lists) {
+    try {
+      const raw = localStorage.getItem(list.storageKey);
+      if (!raw) continue;
+      const items = JSON.parse(raw);
+      if (!Array.isArray(items)) continue;
+
+      // Push in batches of 10 for speed (parallel instead of sequential)
+      const validItems = items.filter(x => x != null);
+      const batchSize = 10;
+      for (let i = 0; i < validItems.length; i += batchSize) {
+        const batch = validItems.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (item) => {
+          if (!item) return;
+          try {
+            const id = item.id || item._id || Date.now() + Math.random();
+            await set(ref(db, `${list.fbPath}/${id}`), { ...item, _syncedAt: Date.now() });
+            (result[list.counter] as number)++;
+            pushedSoFar++;
+          } catch (e: any) {
+            result.errors.push(`${list.fbPath}/${item.id || 'unknown'}: ${e.message}`);
+          }
+        }));
+        if (onProgress) onProgress(pushedSoFar, totalItems, list.label);
+      }
+      console.log(`[forcePush] Pushed ${result[list.counter]} ${list.label}`);
+    } catch (e: any) {
+      result.errors.push(`${list.fbPath}: ${e.message}`);
+    }
+  }
 
   console.log("[forcePush] COMPLETE:", result);
   return result;

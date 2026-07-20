@@ -245,9 +245,11 @@ export default function SettingsPage() {
   // FORCE PUSH ALL: Push every item from localStorage to Firebase individually
   // Use this when Collin's data needs to be safely pushed to cloud
   async function handleForcePushAll() {
-    setForcePushStatus("Reading all local data and pushing to Firebase...");
+    setForcePushStatus("Counting items...");
     try {
-      const result = await forcePushAllLocalData();
+      const result = await forcePushAllLocalData((done, total, currentType) => {
+        setForcePushStatus(`${done}/${total} items pushed (${currentType})... Please wait.`);
+      });
       setForcePushStatus(
         `PUSHED: ${result.orders} orders, ${result.invoices} invoices, ${result.customers} customers, ${result.stock} stock items. ` +
         (result.errors.length > 0 ? `Errors: ${result.errors.slice(0, 3).join("; ")}` : "All done!")

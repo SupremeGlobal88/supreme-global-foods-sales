@@ -6,7 +6,7 @@ import { reloadFromStorage } from "@/lib/dataService";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
-  Database,
+  Database, Zap,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -96,6 +96,9 @@ export default function InvoicesPage() {
   });
   const updateInvoice = trpc.invoice.update.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowEditInv(false); },
+  });
+  const activateInvoice = trpc.invoice.updateStatus.useMutation({
+    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
   });
 
   function closePay() {
@@ -719,6 +722,17 @@ export default function InvoicesPage() {
                       <td className="p-3 text-center">{badge(inv.status)}</td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          {/* Activate draft invoice */}
+                          {isAdmin && inv.status === "draft" && (
+                            <button
+                              onClick={() => { if (confirm(`Activate invoice ${inv.invoiceNumber}? This will change status from Draft to Sent and allow payment recording.`)) activateInvoice.mutate({ id: inv.id, status: "sent" }); }}
+                              className="p-1.5 rounded hover:bg-[#222324]"
+                              title="Activate Invoice"
+                              style={{ color: "#F59E0B" }}
+                            >
+                              <Zap className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button onClick={() => printDoc(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Print Invoice & Delivery Note"><Printer className="w-3.5 h-3.5 text-[#8A8B8C]" /></button>
                           {isAdmin && (
                             <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>

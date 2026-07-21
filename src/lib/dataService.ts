@@ -238,7 +238,7 @@ function fixMissingCustomerCodes(): void {
  *  The old code did `20${parts[2]}` on 4-digit years, producing "202026-07-06".
  *  This fixes existing invoices on every startup AND returns changed invoices
  *  so callers can push to Firebase (cloud-first). */
-function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
+export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
   let changed = 0;
   const changedInvs: any[] = [];
   for (const inv of invoices) {
@@ -934,7 +934,7 @@ function activateInvoiceFromOrder(orderId: number) {
 /** Fix invoices stuck in "draft" whose orders are already delivered/ready.
  *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder.
  *  Returns changed invoices so caller can push to Firebase (cloud-first). */
-function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoices: any[] } {
+export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoices: any[] } {
   let changed = 0;
   const changedInvs: any[] = [];
   for (const inv of invoices) {

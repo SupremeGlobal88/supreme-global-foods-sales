@@ -89,9 +89,11 @@ export default function HistoricalImportPage() {
       if (!docNo.startsWith("INV") && !docNo.startsWith("SGF") && !docNo.startsWith("CRN")) continue;
 
       const parts = date.split("/");
-      const dateStr = parts.length === 3 ? `20${parts[2]}-${parts[1]}-${parts[0]}` : date;
+      const year = parts.length === 3 ? (parts[2].length === 2 ? `20${parts[2]}` : parts[2]) : "";
+      const dateStr = parts.length === 3 ? `${year}-${parts[1]}-${parts[0]}` : date;
       const dueParts = dueDate.split("/");
-      const dueDateStr = dueParts.length === 3 ? `20${dueParts[2]}-${dueParts[1]}-${dueParts[0]}` : dueDate;
+      const dueYear = dueParts.length === 3 ? (dueParts[2].length === 2 ? `20${dueParts[2]}` : dueParts[2]) : "";
+      const dueDateStr = dueParts.length === 3 ? `${dueYear}-${dueParts[1]}-${dueParts[0]}` : dueDate;
 
       const isCreditNote = docNo.startsWith("CRN");
 

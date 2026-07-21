@@ -100,7 +100,7 @@ export function createLocalLink() {
               case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); if (result) await pushOneCustomer(result); break; }
               case "customer.delete": result = dataService.customer.delete(input); removeOneCustomer(input); break;
               case "customer.getStats": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getStats(); break;
-              case "customer.getSalesReps": result = dataService.customer.getSalesReps(); break;
+              case "customer.getSalesReps": await syncFromCloud("salesReps", "sgf_salesReps"); result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;
               case "customer.getCustomersNeedingFollowUp": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
               // ORDERS — cloud first

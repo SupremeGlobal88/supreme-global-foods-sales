@@ -2678,7 +2678,7 @@ export const dataService = {
     getAll: () => {
       const sampleOrders = orders.filter((o) => o.orderType === "sample");
       const report = [] as any[];
-      for (const customer of customers) {
+      for (const customer of [...customers].sort((a, b) => (a.name || "").localeCompare(b.name || ""))) {
         const custSamples = sampleOrders.filter((o) => o.customerId === customer.id);
         if (custSamples.length === 0) continue;
         const items = custSamples.flatMap((o) =>

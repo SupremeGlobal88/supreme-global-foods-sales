@@ -318,7 +318,7 @@ export default function CustomersPage() {
             <input type="text" placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="input-field pl-10 w-full" />
           </div>
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-            {(customers || []).map((cust) => (
+            {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((cust) => (
               <div key={cust.id} onClick={() => setSelectedCustomer(cust.id)} className="card-surface p-4 cursor-pointer transition-all" style={{ borderLeft: selectedCustomer === cust.id ? "3px solid #D4A843" : "3px solid transparent", backgroundColor: selectedCustomer === cust.id ? "rgba(212, 168, 67, 0.08)" : undefined }}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">

@@ -870,7 +870,7 @@ export default function AppointmentsPage() {
                   <label className="label-text block mb-1.5">Customer *</label>
                   <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
                     <option value={0}>Select customer...</option>
-                    {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / First visit" /></div>
@@ -949,7 +949,7 @@ export default function AppointmentsPage() {
                 <label className="label-text block mb-1.5">Customer</label>
                 <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
                   <option value={0}>Select customer...</option>
-                  {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / Follow-up visit" /></div>

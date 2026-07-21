@@ -104,7 +104,7 @@ export default function SampleReportsPage() {
                 className="input-field pl-10 w-full"
               >
                 <option value="">All customers with samples</option>
-                {(report?.customers || []).map((cust: any) => (
+                {(report?.customers || []).sort((a: any, b: any) => a.customerName?.localeCompare(b.customerName || "") || 0).map((cust: any) => (
                   <option key={cust.customerId} value={cust.customerId}>
                     {cust.customerName} ({cust.sampleCount} samples) — R {cust.totalCost.toFixed(2)}
                   </option>
@@ -132,7 +132,7 @@ export default function SampleReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {(report?.customers || []).map((cust: any) => (
+              {(report?.customers || []).sort((a: any, b: any) => a.customerName?.localeCompare(b.customerName || "") || 0).map((cust: any) => (
                 <tr
                   key={cust.customerId}
                   className="cursor-pointer transition-colors hover:bg-[#131415]"

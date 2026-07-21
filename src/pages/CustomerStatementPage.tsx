@@ -120,9 +120,10 @@ export default function CustomerStatementPage() {
   // Customer dropdown list (filtered by search)
   const filteredCustomers = useMemo(() => {
     if (!customers) return [];
+    const sorted = [...customers].sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
     const q = searchTerm.toLowerCase().trim();
-    if (!q) return customers;
-    return customers.filter((c: any) =>
+    if (!q) return sorted;
+    return sorted.filter((c: any) =>
       (c.name || "").toLowerCase().includes(q) ||
       (c.customerCode || "").toString().toLowerCase().includes(q)
     );

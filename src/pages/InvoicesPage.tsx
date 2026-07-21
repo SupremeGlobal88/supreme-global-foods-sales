@@ -986,7 +986,7 @@ export default function InvoicesPage() {
                 <label className="label-text block mb-1.5">Customer *</label>
                 <select value={stmtCust} onChange={(e) => setStmtCust(parseInt(e.target.value))} className="input-field">
                   <option value={0}>Select customer...</option>
-                  {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.customerCode || ""})</option>)}
+                  {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.customerCode || ""})</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1153,7 +1153,7 @@ export default function InvoicesPage() {
                 <label className="label-text block mb-1.5">Customer *</label>
                 <select value={editInvCustomerId} onChange={(e) => setEditInvCustomerId(parseInt(e.target.value))} className="input-field">
                   <option value={0}>Select customer...</option>
-                  {(customers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.customerCode || ""})</option>)}
+                  {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.customerCode || ""})</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">

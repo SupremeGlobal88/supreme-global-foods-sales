@@ -8,7 +8,7 @@ export default function SelectCustomerPage() {
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const [search, setSearch] = useState("");
 
-  const filtered = (customers || []).filter((c) => {
+  const filtered = (customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).filter((c) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (

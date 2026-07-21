@@ -20,9 +20,10 @@ export default function CustomerSearchDropdown({ customers, value, onChange, pla
   const selected = customers.find((c) => c.id === value);
 
   const list = useMemo(() => {
+    const sorted = [...customers].sort((a, b) => a.name?.localeCompare(b.name || "") || 0);
     const q = filter.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) => c.name?.toLowerCase().includes(q) || c.businessName?.toLowerCase().includes(q));
+    if (!q) return sorted;
+    return sorted.filter((c) => c.name?.toLowerCase().includes(q) || c.businessName?.toLowerCase().includes(q));
   }, [customers, filter]);
 
   return (

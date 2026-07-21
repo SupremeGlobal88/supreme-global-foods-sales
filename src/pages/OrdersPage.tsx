@@ -428,10 +428,11 @@ export default function OrdersPage() {
   }
 
   const filteredCustomers = useMemo(() => {
+    const list = (customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
     if (!showCustomerDropdown) return [];
     const q = customerSearch.toLowerCase().trim();
-    if (!q || q.length < 1) return customers || [];
-    return (customers || []).filter((c) =>
+    if (!q || q.length < 1) return list;
+    return list.filter((c) =>
       c.name?.toLowerCase().includes(q) ||
       c.customerCode?.toLowerCase().includes(q) ||
       c.city?.toLowerCase().includes(q)

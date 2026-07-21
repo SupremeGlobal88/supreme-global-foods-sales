@@ -159,6 +159,16 @@ export function createLocalLink() {
                 }
                 break;
               }
+              case "invoice.fixDraftInvoices": {
+                result = fixDraftInvoicesForDeliveredOrders();
+                if (result?.invoices && result.invoices.length > 0) {
+                  for (const inv of result.invoices) {
+                    try { await pushInvoice(inv); } catch (e) { console.warn("[fixDraft] push failed for", inv.invoiceNumber, e); }
+                  }
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.invoices.length } }));
+                }
+                break;
+              }
               case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;

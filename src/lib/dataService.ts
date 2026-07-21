@@ -926,9 +926,11 @@ function activateInvoiceFromOrder(orderId: number) {
 }
 
 /** Fix invoices stuck in "draft" whose orders are already delivered/ready.
- *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder. */
-function fixDraftInvoicesForDeliveredOrders(): void {
+ *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder.
+ *  Returns changed invoices so caller can push to Firebase (cloud-first). */
+function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoices: any[] } {
   let changed = 0;
+  const changedInvs: any[] = [];
   for (const inv of invoices) {
     if (inv.status !== "draft") continue;
     // Use loose equality (==) because Firebase may convert number IDs to strings
@@ -937,12 +939,14 @@ function fixDraftInvoicesForDeliveredOrders(): void {
       inv.status = "sent";
       inv.updatedAt = new Date().toISOString();
       changed++;
+      changedInvs.push(inv);
     }
   }
   if (changed > 0) {
     saveItem("sgf_invoices", invoices);
     console.log(`[Invoice] Fixed ${changed} invoice(s) stuck in draft for delivered/ready orders`);
   }
+  return { changed, invoices: changedInvs };
 }
 
 function searchItems(items: any[], query: string) {

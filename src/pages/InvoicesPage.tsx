@@ -273,7 +273,7 @@ export default function InvoicesPage() {
         </div>
         `}
         <div style="text-align:center; font-size:9px; color:#999; margin-top:12px; border-top:1px solid #ddd; padding-top:6px; line-height:1.5;">
-          Banking: {banking.bankName} | Acc: {banking.accountNumber} | Branch: {banking.branchCode} | Quote invoice number with payment<br/>
+          Banking: ${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode} | Quote invoice number with payment<br/>
           E&nbsp;&amp;&nbsp;OE. Thank you for your business!
         </div>
       </div>`;
@@ -545,7 +545,7 @@ export default function InvoicesPage() {
         ${closingBal > 0 ? `<div class="overdue-note">Please arrange payment within your agreed terms. Outstanding balance must be settled to avoid account hold.</div>` : ""}
         <div class="footer">
           Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>
-          Banking: {banking.bankName} | Acc: {banking.accountNumber} | Branch: {banking.branchCode} | Quote customer code with payment
+          Banking: ${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode} | Quote customer code with payment
         </div>
       <script>
         (function(){

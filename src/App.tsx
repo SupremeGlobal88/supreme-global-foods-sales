@@ -172,6 +172,7 @@ export default function App() {
       }
       if (type === "users") {
         utils.user.list.refetch();
+        utils.customer.getSalesReps.refetch();
       }
       if (type === "salesReps") {
         // Sales reps don't have a dedicated tRPC query, but customer.getSalesReps

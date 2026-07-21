@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-import { dataService } from "./dataService";
+import { dataService, reloadFromStorage } from "./dataService";
 import { initializeApp, getApps } from "firebase/app";
 import {
   getDatabase,
@@ -643,6 +643,7 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
           localStorage.setItem("sgf_salesReps", JSON.stringify(names));
         }
       } catch { /* ignore */ }
+      reloadFromStorage(); // Update in-memory SALES_REPS array
     }
     if (onData) onData(reps);
   });
@@ -659,6 +660,7 @@ export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
     if (users.length > 0) {
       const merged = mergeWithCloudData("sgf_users", users);
       try { localStorage.setItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
+      reloadFromStorage(); // Update in-memory users array
     }
     if (onData) onData(users);
   });

@@ -236,9 +236,11 @@ function fixMissingCustomerCodes(): void {
 
 /** Fix Sage invoice dates corrupted by the old date parser.
  *  The old code did `20${parts[2]}` on 4-digit years, producing "202026-07-06".
- *  This fixes existing invoices on every startup. */
-function fixSageInvoiceDates(): void {
-  let changed = false;
+ *  This fixes existing invoices on every startup AND returns changed invoices
+ *  so callers can push to Firebase (cloud-first). */
+function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
+  let changed = 0;
+  const changedInvs: any[] = [];
   for (const inv of invoices) {
     if (inv.source !== "sage") continue;
     const date = inv.invoiceDate;
@@ -254,14 +256,17 @@ function fixSageInvoiceDates(): void {
       // "202026" → "2026" (take last 4 digits if length > 4)
       const correctYear = badYear.length > 4 ? badYear.slice(-4) : badYear;
       inv.invoiceDate = `${correctYear}-${month}-${day}`;
-      changed = true;
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
       console.log(`[SageDate] Fixed ${inv.invoiceNumber}: ${date} → ${inv.invoiceDate}`);
     }
   }
-  if (changed) {
+  if (changed > 0) {
     saveItem("sgf_invoices", invoices);
-    console.log("[SageDate] Repaired corrupted Sage invoice dates");
+    console.log(`[SageDate] Repaired ${changed} corrupted Sage invoice date(s)`);
   }
+  return { changed, invoices: changedInvs };
 }
 
 /** Auto-link Sage invoices to customers on every app startup.

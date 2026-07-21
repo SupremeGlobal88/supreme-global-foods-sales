@@ -16,6 +16,7 @@ import {
   Link,
   RefreshCw,
   Zap,
+  Calendar,
 } from "lucide-react";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
@@ -106,6 +107,23 @@ export default function SettingsPage() {
         setSyncMessage(`Activated ${result.changed} draft invoice(s) for delivered/ready orders. All changes synced to cloud.`);
       } else {
         setSyncMessage("No draft invoices needed activation. All invoices are clean.");
+      }
+      setTimeout(() => setSyncMessage(""), 10000);
+    },
+    onError: (e) => {
+      setSyncMessage("Error: " + e.message);
+      setTimeout(() => setSyncMessage(""), 5000);
+    },
+  });
+  const fixSageDates = trpc.invoice.fixSageDates.useMutation({
+    onSuccess: async (result: any) => {
+      reloadFromStorage();
+      await utils.invoice.list.refetch();
+      await utils.invoice.getStats.invalidate();
+      if (result?.changed > 0) {
+        setSyncMessage(`Fixed ${result.changed} Sage invoice date(s). Corrupted dates repaired and synced to cloud. Run again if needed.`);
+      } else {
+        setSyncMessage("No corrupted Sage dates found. All invoice dates are clean.");
       }
       setTimeout(() => setSyncMessage(""), 10000);
     },
@@ -675,6 +693,15 @@ export default function SettingsPage() {
             >
               <Zap className="w-4 h-4" /> Activate Draft Invoices for Delivered Orders
             </button>
+            <button
+              onClick={() => {
+                setSyncMessage("Scanning for corrupted Sage invoice dates...");
+                fixSageDates.mutate();
+              }}
+              className="btn-secondary text-sm w-full mt-3"
+            >
+              <Calendar className="w-4 h-4" /> Fix Corrupted Sage Invoice Dates
+            </button>
             <p className="text-[10px] text-[#8A8B8C] mt-1">
               Scans all orders and creates SGF invoices for any missing ones. Results are pushed to the cloud automatically.
             </p>
@@ -683,6 +710,9 @@ export default function SettingsPage() {
             </p>
             <p className="text-[10px] text-[#8A8B8C]">
               Finds draft invoices whose orders are already delivered/ready, activates them to "Sent" status. Safe to run anytime — does nothing if all invoices are already active.
+            </p>
+            <p className="text-[10px] text-[#8A8B8C]">
+              Repairs Sage dates corrupted by the old import (e.g. 202026/07/06 → 2026-07/06). Pushes fixes to cloud so all devices sync. Safe to run anytime — does nothing if all dates are clean.
             </p>
             <p className="text-[10px] text-[#8A8B8C]">
               Safety net: scans all invoices. Only fixes if duplicates are found. Safe to run anytime — does nothing if all invoices are clean.

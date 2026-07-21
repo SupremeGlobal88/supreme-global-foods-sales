@@ -192,7 +192,8 @@ export function createLocalLink() {
               case "invoice.allocateBankPayments": {
                 result = allocateBankPayments(input || []);
                 if (result?.processed > 0) {
-                  const changedInvs = invoices.filter((i: any) => (input || []).some((a: any) => a.invoiceId === i.id));
+                  const allInvs = dataService.invoice.list();
+                  const changedInvs = allInvs.filter((i: any) => (input || []).some((a: any) => a.invoiceId === i.id));
                   await Promise.all(changedInvs.map((inv: any) =>
                     pushInvoice(inv).catch((e: any) => console.warn("[bankAlloc] push failed for", inv.invoiceNumber, e))
                   ));

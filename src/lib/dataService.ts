@@ -269,6 +269,16 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
   return { changed, invoices: changedInvs };
 }
 
+/** Read banking details from settings. Used by invoice print, statements, emails. */
+export function getBankingDetails(): { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string } {
+  const defaults = { bankName: "First National Bank (FNB)", accountName: "Supreme Global Foods", accountNumber: "62001234567", branchCode: "250655", swiftCode: "FIRNZAJJ" };
+  try {
+    const raw = localStorage.getItem("sgf_settings_banking");
+    if (raw) return { ...defaults, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return defaults;
+}
+
 /* ─── BANK STATEMENT IMPORT & PAYMENT ALLOCATION ─── */
 
 export interface BankStatementRow {

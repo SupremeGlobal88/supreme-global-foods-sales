@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
 import CustomerSearchDropdown from "@/components/CustomerSearchDropdown";
 import DatePicker from "@/components/DatePicker";
 import {
@@ -23,19 +23,19 @@ const BUCKET_CONFIG: Record<string, { label: string; color: string; bg: string; 
 const REMINDER_TEMPLATES: Record<string, { subject: string; body: string }> = {
   pre_due: {
     subject: "Payment Reminder - Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nThis is a friendly reminder that your invoice {invoiceNumber} for R {amount} is due on {dueDate}.\n\nPlease ensure payment is arranged to avoid any inconvenience.\n\nBanking Details:\nFNB | Account: 62001234567 | Branch: 250655\nQuote: {invoiceNumber}\n\nThank you for your continued business.\n\nSupreme Global Foods`,
+    body: `Dear {customerName},\n\nThis is a friendly reminder that your invoice {invoiceNumber} for R {amount} is due on {dueDate}.\n\nPlease ensure payment is arranged to avoid any inconvenience.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nThank you for your continued business.\n\nSupreme Global Foods`,
   },
   days_1_2: {
     subject: "Friendly Reminder - Outstanding Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nWe noticed that invoice {invoiceNumber} for R {amount} is now {daysOverdue} day(s) overdue.\n\nIf payment has already been made, please disregard this notice and send us proof of payment.\n\nBanking Details:\nFNB | Account: 62001234567 | Branch: 250655\nQuote: {invoiceNumber}\n\nPlease contact us if you need to discuss payment arrangements.\n\nSupreme Global Foods`,
+    body: `Dear {customerName},\n\nWe noticed that invoice {invoiceNumber} for R {amount} is now {daysOverdue} day(s) overdue.\n\nIf payment has already been made, please disregard this notice and send us proof of payment.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact us if you need to discuss payment arrangements.\n\nSupreme Global Foods`,
   },
   days_3_5: {
     subject: "Urgent: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\nFNB | Account: 62001234567 | Branch: 250655\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on 083 293 0644 to discuss.\n\nSupreme Global Foods`,
+    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on 083 293 0644 to discuss.\n\nSupreme Global Foods`,
   },
   days_6_10: {
     subject: "FINAL NOTICE - Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-    body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nUnless payment is received or a satisfactory arrangement is made within 48 hours, we will regrettably have to place your account on hold, which will prevent future deliveries.\n\nBanking Details:\nFNB | Account: 62001234567 | Branch: 250655\nQuote: {invoiceNumber}\n\nContact: 083 293 0644\n\nSupreme Global Foods`,
+    body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nUnless payment is received or a satisfactory arrangement is made within 48 hours, we will regrettably have to place your account on hold, which will prevent future deliveries.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: 083 293 0644\n\nSupreme Global Foods`,
   },
   days_11_20: {
     subject: "ACCOUNT HOLD PENDING - Invoice {invoiceNumber}",
@@ -86,6 +86,8 @@ export default function CollectionsPage() {
   }
 
   function generateReminderText(invoice: any, bucket: string) {
+    const banking = getBankingDetails();
+    const bankingStr = `${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode}`;
     const template = REMINDER_TEMPLATES[bucket] || REMINDER_TEMPLATES.days_1_2;
     return template.body
       .replace(/{customerName}/g, invoice.customer?.name || "Valued Customer")
@@ -94,7 +96,8 @@ export default function CollectionsPage() {
       .replace(/{balanceDue}/g, Number(invoice.balanceDue).toFixed(2))
       .replace(/{daysOverdue}/g, String(invoice.daysOverdue))
       .replace(/{dueDate}/g, invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-ZA") : "N/A")
-      .replace(/{salesRep}/g, invoice.salesRepName || invoice.customer?.salesRepName || "");
+      .replace(/{salesRep}/g, invoice.salesRepName || invoice.customer?.salesRepName || "")
+      .replace(/{bankingDetails}/g, bankingStr);
   }
 
   return (

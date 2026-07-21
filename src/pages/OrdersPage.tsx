@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { reloadFromStorage, generateInvoiceForOrder, dataService } from "@/lib/dataService";
+import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDetails } from "@/lib/dataService";
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
@@ -266,6 +266,7 @@ export default function OrdersPage() {
   const { user } = useAuth();
   const { isAdmin, isSalesRep, role } = useRole();
   const myRepName = user?.name || "";
+  const banking = getBankingDetails();
   const utils = trpc.useUtils();
 
   const [activeTab, setActiveTab] = useState("all");
@@ -691,7 +692,7 @@ export default function OrdersPage() {
     <div style="font-size:12px;color:#666;"><strong>Delivery Note:</strong> Goods received in good order. Returns accepted within 7 days.</div>
   </div>
   <div class="footer">
-    <p>Banking: FNB | Acc: 62001234567 | Branch: 250655 | Quote invoice number with payment</p>
+    <p>Banking: {banking.bankName} | Acc: {banking.accountNumber} | Branch: {banking.branchCode} | Quote invoice number with payment</p>
     <p style="font-size:10px;color:#999;">E&amp;OE. Thank you for your business!</p>
   </div>
 

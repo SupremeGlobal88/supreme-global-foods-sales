@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { getBankingDetails } from "@/lib/dataService";
 import { Printer, Calendar, User, FileText, ArrowLeft, Search } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -12,6 +13,7 @@ export default function CustomerStatementPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const banking = getBankingDetails();
 
   const { data: invoices } = trpc.invoice.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
@@ -234,7 +236,7 @@ export default function CustomerStatementPage() {
       ${closingBal > 0 ? `<div class="overdue-note">Please arrange payment within your agreed terms. Outstanding balance must be settled to avoid account hold.</div>` : ""}
       <div class="footer">
         Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>
-        Banking: FNB | Acc: 62001234567 | Branch: 250655 | Quote customer code with payment
+        Banking: ${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode} | Quote customer code with payment
       </div>
       <script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print()},200)}}if(document.readyState==="complete")p();else window.onload=p;setTimeout(p,2000)})()</script>
     </body></html>`);

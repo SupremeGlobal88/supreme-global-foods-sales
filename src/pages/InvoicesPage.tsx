@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
@@ -14,6 +14,7 @@ export default function InvoicesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const banking = getBankingDetails();
   const utils = trpc.useUtils();
 
   /* Search & filter */
@@ -272,7 +273,7 @@ export default function InvoicesPage() {
         </div>
         `}
         <div style="text-align:center; font-size:9px; color:#999; margin-top:12px; border-top:1px solid #ddd; padding-top:6px; line-height:1.5;">
-          Banking: FNB | Account: 62001234567 | Branch Code: 250655 | Quote invoice number with payment<br/>
+          Banking: {banking.bankName} | Acc: {banking.accountNumber} | Branch: {banking.branchCode} | Quote invoice number with payment<br/>
           E&nbsp;&amp;&nbsp;OE. Thank you for your business!
         </div>
       </div>`;
@@ -544,7 +545,7 @@ export default function InvoicesPage() {
         ${closingBal > 0 ? `<div class="overdue-note">Please arrange payment within your agreed terms. Outstanding balance must be settled to avoid account hold.</div>` : ""}
         <div class="footer">
           Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>
-          Banking: FNB | Acc: 62001234567 | Branch: 250655 | Quote customer code with payment
+          Banking: {banking.bankName} | Acc: {banking.accountNumber} | Branch: {banking.branchCode} | Quote customer code with payment
         </div>
       <script>
         (function(){
@@ -569,7 +570,7 @@ export default function InvoicesPage() {
       `Invoice Date: ${new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}\n` +
       `Total Amount: R ${Number(inv.total || 0).toFixed(2)}\n` +
       `Payment Terms: ${(inv.paymentTerms || "cod").replace("_", " ").toUpperCase()}\n\n` +
-      `Banking Details:\nFNB | Account: 62001234567 | Branch Code: 250655\n` +
+      `Banking Details:\n${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode}\n` +
       `Please quote your invoice number with payment.\n\n` +
       `PLEASE NOTE: NO EXCHANGES OR RETURNS AFTER 7 DAYS FROM INVOICE DATE.\n\n` +
       `Kind regards,\nSupreme Global Foods Team\nTel: 083 293 0644`

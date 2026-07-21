@@ -106,8 +106,28 @@ export function createLocalLink() {
               // ORDERS — cloud first
               case "order.list": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.list(); break;
               case "order.getById": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.getById(input); break;
-              case "order.create": result = dataService.order.create(input); await fbPush("order", result); if (input?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
-              case "order.update": { const { id, ...data } = input; result = dataService.order.update({ id, data }); await fbPush("order", result); if (data?.orderType === "sample") { window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break; }
+              case "order.create": {
+                result = dataService.order.create(input);
+                await fbPush("order", result);
+                // If sample order: push the follow-up to Firebase so all devices see it
+                if (input?.orderType === "sample" && result?.id) {
+                  const fu = dataService.followUp.list().find((f: any) => f.orderId === result.id);
+                  if (fu) await pushFollowUp(fu);
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUps", count: 1 } }));
+                }
+                break;
+              }
+              case "order.update": {
+                const { id, ...data } = input;
+                result = dataService.order.update({ id, data });
+                await fbPush("order", result);
+                if (data?.orderType === "sample" && result?.id) {
+                  const fu = dataService.followUp.list().find((f: any) => f.orderId === result.id);
+                  if (fu) await pushFollowUp(fu);
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUps", count: 1 } }));
+                }
+                break;
+              }
               case "order.updateStatus": result = dataService.order.updateStatus(input); await fbPush("order", result); break;
               case "order.generateInvoice": {
                 // CRITICAL FIX: generateInvoiceForOrder creates the invoice locally

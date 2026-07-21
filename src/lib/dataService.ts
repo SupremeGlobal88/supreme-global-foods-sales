@@ -1429,7 +1429,15 @@ export const dataService = {
       inactive: customers.filter((c) => c.isActive !== "active").length,
       thisMonth: customers.length,
     }),
-    getSalesReps: () => getCurrentSalesReps(),
+    getSalesReps: () => {
+      // Return active users with sales_rep role from the synced users array
+      // This ensures new sales reps added via user management appear automatically
+      const reps = users
+        .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
+        .map((u: any) => u.name)
+        .sort((a: string, b: string) => a.localeCompare(b));
+      return reps.length > 0 ? reps : getCurrentSalesReps();
+    },
     bulkUpload: (items: any[]) => {
       // Normalize name: trim, collapse multiple spaces, lowercase
       const normalize = (s: string) => (s || "").toString().trim().replace(/\s+/g, " ").toLowerCase();

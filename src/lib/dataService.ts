@@ -269,6 +269,176 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
   return { changed, invoices: changedInvs };
 }
 
+/* ─── BANK STATEMENT IMPORT & PAYMENT ALLOCATION ─── */
+
+export interface BankStatementRow {
+  rowIndex: number;
+  invoiceDate: string;
+  customerName: string;
+  invoiceNumber: string;
+  amountDue: number;
+  amountPaid: number;
+  paidDate: string | null;
+}
+
+export interface PaymentMatchResult {
+  row: BankStatementRow;
+  matchStatus: "ready_full" | "partial" | "overpayment" | "name_mismatch" | "invoice_not_found" | "fuzzy_name";
+  invoice: any | null;
+  appCustomer: any | null;
+  nameSimilarity: number;
+  message: string;
+}
+
+/** Parse raw Excel rows (header + data) into structured bank statement rows.
+ *  Only extracts rows with SGF invoice numbers. */
+export function parseBankStatement(rawRows: any[][]): BankStatementRow[] {
+  if (!rawRows || rawRows.length < 2) return [];
+  const headers = rawRows[0];
+  // Find column indices by header name (case-insensitive)
+  const findIdx = (names: string[]) => {
+    for (const n of names) {
+      const idx = headers.findIndex((h: any) => String(h).toLowerCase().trim() === n.toLowerCase());
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+  const colInvoiceDate = findIdx(["invoice date"]);
+  const colCustomer = findIdx(["customer"]);
+  const colInvoiceNo = findIdx(["invoice no", "invoice no.", "invoice number"]);
+  const colAmountDue = findIdx(["amount due", "cs"]);
+  const colAmountPaid = findIdx(["amount paid", "amount paid", "over payment"]);
+  const colPaidDate = findIdx(["paid date"]);
+
+  const parsed: BankStatementRow[] = [];
+  for (let i = 1; i < rawRows.length; i++) {
+    const r = rawRows[i];
+    if (!r || r.length === 0) continue;
+    const invoiceNumber = String(r[colInvoiceNo] || "").trim();
+    // Only process SGF invoices
+    if (!invoiceNumber || !/^SGF\d+$/i.test(invoiceNumber)) continue;
+    const amountPaidRaw = r[colAmountPaid];
+    const amountPaid = typeof amountPaidRaw === "number" ? amountPaidRaw : parseFloat(String(amountPaidRaw || "0").replace(/,/g, "")) || 0;
+    // Skip rows with zero amount paid (nothing to allocate)
+    if (amountPaid <= 0) continue;
+    parsed.push({
+      rowIndex: i,
+      invoiceDate: String(r[colInvoiceDate] || "").trim(),
+      customerName: String(r[colCustomer] || "").trim(),
+      invoiceNumber,
+      amountDue: typeof r[colAmountDue] === "number" ? r[colAmountDue] : parseFloat(String(r[colAmountDue] || "0").replace(/,/g, "")) || 0,
+      amountPaid,
+      paidDate: r[colPaidDate] ? String(r[colPaidDate]).trim() : null,
+    });
+  }
+  return parsed;
+}
+
+/** Simple string similarity (0-100). 100 = exact match. */
+function stringSimilarity(a: string, b: string): number {
+  const s1 = a.toLowerCase().trim();
+  const s2 = b.toLowerCase().trim();
+  if (s1 === s2) return 100;
+  // Levenshtein distance
+  const len = Math.max(s1.length, s2.length);
+  if (len === 0) return 100;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= s1.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= s2.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= s1.length; i++) {
+    for (let j = 1; j <= s2.length; j++) {
+      matrix[i][j] = s1[i - 1] === s2[j - 1]
+        ? matrix[i - 1][j - 1]
+        : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+    }
+  }
+  const dist = matrix[s1.length][s2.length];
+  return Math.round(((len - dist) / len) * 100);
+}
+
+/** Match bank payment rows to app invoices. Returns categorized results. */
+export function matchBankPayments(rows: BankStatementRow[]): PaymentMatchResult[] {
+  const results: PaymentMatchResult[] = [];
+  for (const row of rows) {
+    // Find invoice by number
+    const inv = invoices.find((i) => i.invoiceNumber?.toLowerCase() === row.invoiceNumber.toLowerCase());
+    if (!inv) {
+      results.push({
+        row,
+        matchStatus: "invoice_not_found",
+        invoice: null,
+        appCustomer: null,
+        nameSimilarity: 0,
+        message: `Invoice ${row.invoiceNumber} not found in app`,
+      });
+      continue;
+    }
+    // Get customer from invoice
+    const cust = inv.customer;
+    const appCustName = cust?.name || "";
+    const similarity = stringSimilarity(row.customerName, appCustName);
+    // Determine name match level
+    if (similarity >= 90) {
+      // Name matches well — check amount
+      const invTotal = Number(inv.total || inv.totalAmount || 0);
+      const alreadyPaid = Number(inv.amountPaid || 0);
+      const remaining = Math.max(0, invTotal - alreadyPaid);
+      if (row.amountPaid >= remaining * 0.995 && row.amountPaid <= remaining * 1.005) {
+        results.push({ row, matchStatus: "ready_full", invoice: inv, appCustomer: cust, nameSimilarity: similarity, message: `Full payment match: R ${row.amountPaid.toFixed(2)} = balance R ${remaining.toFixed(2)}` });
+      } else if (row.amountPaid < remaining) {
+        results.push({ row, matchStatus: "partial", invoice: inv, appCustomer: cust, nameSimilarity: similarity, message: `Partial payment: R ${row.amountPaid.toFixed(2)} of R ${remaining.toFixed(2)} balance` });
+      } else {
+        const over = row.amountPaid - remaining;
+        results.push({ row, matchStatus: "overpayment", invoice: inv, appCustomer: cust, nameSimilarity: similarity, message: `Overpayment by R ${over.toFixed(2)}. Can allocate as credit.` });
+      }
+    } else if (similarity >= 60) {
+      results.push({ row, matchStatus: "fuzzy_name", invoice: inv, appCustomer: cust, nameSimilarity: similarity, message: `Fuzzy name match (${similarity}%): "${row.customerName}" vs "${appCustName}". Please verify.` });
+    } else {
+      results.push({ row, matchStatus: "name_mismatch", invoice: inv, appCustomer: cust, nameSimilarity: similarity, message: `Name mismatch: "${row.customerName}" does not match app customer "${appCustName}"` });
+    }
+  }
+  return results;
+}
+
+/** Process approved payment allocations using existing recordPayment logic.
+ *  Each allocation pushes to Firebase via the standard mutation path. */
+export function allocateBankPayments(allocations: any[]): { processed: number; errors: string[] } {
+  const errors: string[] = [];
+  let processed = 0;
+  for (const alloc of allocations) {
+    try {
+      const { invoiceId, amount, paidDate, customerName, invoiceNumber } = alloc;
+      const idx = invoices.findIndex((i) => i.id === invoiceId);
+      if (idx < 0) { errors.push(`Invoice ${invoiceNumber} not found`); continue; }
+      const inv = invoices[idx];
+      // Auto-activate draft invoices
+      if (inv.status === "draft") { inv.status = "sent"; inv.updatedAt = new Date().toISOString(); }
+      const currentPaid = Number(inv.amountPaid || 0);
+      const newPaid = currentPaid + amount;
+      const total = Number(inv.total || inv.totalAmount || 0);
+      inv.amountPaid = newPaid;
+      inv.balanceDue = Math.max(0, total - newPaid);
+      if (newPaid >= total) inv.status = "paid";
+      else if (newPaid > 0) inv.status = "partially_paid";
+      if (!inv.payments) inv.payments = [];
+      inv.payments.push({
+        id: Date.now() + Math.random(),
+        amount,
+        paymentMethod: "bank_transfer",
+        paymentDate: paidDate || new Date().toISOString().slice(0, 10),
+        referenceNumber: `BANK-IMPORT-${invoiceNumber}`,
+        notes: `Bank statement import — ${customerName}`,
+        createdAt: new Date().toISOString(),
+      });
+      processed++;
+    } catch (e: any) {
+      errors.push(`Failed to process ${alloc.invoiceNumber}: ${e.message}`);
+    }
+  }
+  if (processed > 0) saveItem("sgf_invoices", invoices);
+  return { processed, errors };
+}
+
 /** Auto-link Sage invoices to customers on every app startup.
  *  Silent version — no Firebase push, just local fix.
  *  This ensures ALL devices have matched Sage invoices.

@@ -1,4 +1,4 @@
-import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates } from "./dataService";
+import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments } from "./dataService";
 import { observable } from "@trpc/server/observable";
 import {
   pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices,
@@ -178,6 +178,25 @@ export function createLocalLink() {
                     pushInvoice(inv).catch((e: any) => console.warn("[fixSageDate] push failed for", inv.invoiceNumber, e))
                   ));
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.invoices.length } }));
+                }
+                break;
+              }
+              case "invoice.parseBankStatement": {
+                result = parseBankStatement(input || []);
+                break;
+              }
+              case "invoice.matchBankPayments": {
+                result = matchBankPayments(input || []);
+                break;
+              }
+              case "invoice.allocateBankPayments": {
+                result = allocateBankPayments(input || []);
+                if (result?.processed > 0) {
+                  const changedInvs = invoices.filter((i: any) => (input || []).some((a: any) => a.invoiceId === i.id));
+                  await Promise.all(changedInvs.map((inv: any) =>
+                    pushInvoice(inv).catch((e: any) => console.warn("[bankAlloc] push failed for", inv.invoiceNumber, e))
+                  ));
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: changedInvs.length } }));
                 }
                 break;
               }

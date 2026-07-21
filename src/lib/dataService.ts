@@ -243,8 +243,9 @@ function fixSageInvoiceDates(): void {
     if (inv.source !== "sage") continue;
     const date = inv.invoiceDate;
     if (!date || typeof date !== "string") continue;
-    // Match corrupted dates like "202026-07-06" (year has 6 digits)
-    const match = date.match(/^(\d{6,})-(\d{2})-(\d{2})/);
+    // Match corrupted dates like "202026-07-06" or "202026/07/06" (year has 6 digits)
+    // Handles both dash and slash separators from different Sage export formats
+    const match = date.match(/^(\d{6,})[-/](\d{2})[-/](\d{2})/);
     if (match) {
       const badYear = match[1];
       const month = match[2];

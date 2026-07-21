@@ -162,9 +162,10 @@ export function createLocalLink() {
               case "invoice.fixDraftInvoices": {
                 result = fixDraftInvoicesForDeliveredOrders();
                 if (result?.invoices && result.invoices.length > 0) {
-                  for (const inv of result.invoices) {
-                    try { await pushInvoice(inv); } catch (e) { console.warn("[fixDraft] push failed for", inv.invoiceNumber, e); }
-                  }
+                  // Push all fixes concurrently — much faster than sequential await
+                  await Promise.all(result.invoices.map((inv) =>
+                    pushInvoice(inv).catch((e: any) => console.warn("[fixDraft] push failed for", inv.invoiceNumber, e))
+                  ));
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.invoices.length } }));
                 }
                 break;
@@ -172,9 +173,10 @@ export function createLocalLink() {
               case "invoice.fixSageDates": {
                 result = fixSageInvoiceDates();
                 if (result?.invoices && result.invoices.length > 0) {
-                  for (const inv of result.invoices) {
-                    try { await pushInvoice(inv); } catch (e) { console.warn("[fixSageDate] push failed for", inv.invoiceNumber, e); }
-                  }
+                  // Push all fixes concurrently — much faster than sequential await
+                  await Promise.all(result.invoices.map((inv) =>
+                    pushInvoice(inv).catch((e: any) => console.warn("[fixSageDate] push failed for", inv.invoiceNumber, e))
+                  ));
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.invoices.length } }));
                 }
                 break;

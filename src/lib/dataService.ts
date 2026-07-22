@@ -1552,6 +1552,25 @@ export const dataService = {
     },
     create: (data: any) => {
       const isSample = data.orderType === "sample";
+      
+      // STOCK VALIDATION: Check availability before creating order
+      const requestedItems = data.items || [];
+      for (const item of requestedItems) {
+        const product = products.find((p) => p.id === item.stockItemId);
+        if (!product) continue;
+        // Calculate committed stock (non-delivered/cancelled orders)
+        const committed = orders
+          .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
+          .flatMap((o) => o.items || [])
+          .filter((it: any) => it.stockItemId === item.stockItemId)
+          .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
+        const available = Math.max(0, (product.quantity || 0) - committed);
+        const requestedQty = isSample ? 1 : (item.quantity || 0);
+        if (requestedQty > available) {
+          throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
+        }
+      }
+      
       const orderNumber = `${isSample ? "SMP" : "ORD"}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(orders.filter((o) => (isSample ? o.orderType === "sample" : o.orderType !== "sample")).length + 1).padStart(4, "0")}`;
       
       const items = (data.items || []).map((item: any) => {

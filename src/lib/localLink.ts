@@ -134,7 +134,14 @@ export function createLocalLink() {
                 }
                 break;
               }
-              case "order.updateStatus": result = dataService.order.updateStatus(input); await fbPush("order", result); break;
+              case "order.updateStatus": {
+                result = dataService.order.updateStatus(input);
+                await fbPush("order", result);
+                // Push updated stock to Firebase (cancelled orders restore stock)
+                await pushStock(dataService.stock.list());
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
+                break;
+              }
               case "order.generateInvoice": {
                 // CRITICAL FIX: generateInvoiceForOrder creates the invoice locally
                 // but does NOT push to Firebase. We must find the created invoice

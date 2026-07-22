@@ -371,15 +371,17 @@ export default function OrdersPage() {
     return map;
   }, [orders]);
 
-  // Available = current SOH minus what's already committed to active orders
+  // Available = current SOH (stock already deducted at order creation).
+  // Stock is physically deducted in order.create and stays deducted through
+  // the entire lifecycle. Only cancelled orders restore stock.
+  // committedStock is used for display/info only, NOT for availability calc.
   const availableStock = useMemo(() => {
     const map: Record<number, number> = {};
     (stockItems || []).forEach((s) => {
-      const committed = committedStock[s.id] || 0;
-      map[s.id] = Math.max(0, (s.quantity || 0) - committed);
+      map[s.id] = s.quantity || 0;
     });
     return map;
-  }, [stockItems, committedStock]);
+  }, [stockItems]);
 
   // For each product, get the active order statuses consuming that stock
   const productOrderStatuses = useMemo(() => {

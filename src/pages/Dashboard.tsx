@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
@@ -20,6 +20,7 @@ import {
   BarChart3,
   CloudDownload,
   History,
+  ChevronDown,
 } from "lucide-react";
 import {
   XAxis,
@@ -46,6 +47,26 @@ const revenueData = [
 
 function formatCurrency(value: number) {
   return `R ${value.toLocaleString("en-ZA")}`;
+}
+
+/** Generate last N months for dropdown: ["2026-07", "2026-06", ...] */
+function generateMonthOptions(count: number): { value: string; label: string }[] {
+  const opts: { value: string; label: string }[] = [{ value: "", label: "All Time" }];
+  const now = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const monthName = d.toLocaleString("en-ZA", { month: "long", year: "numeric" });
+    opts.push({ value: `${y}-${m}`, label: monthName });
+  }
+  return opts;
+}
+
+/** Check if a date string falls within the selected month (YYYY-MM) */
+function isInMonth(dateStr: string | undefined | null, month: string): boolean {
+  if (!month || !dateStr) return true; // All time
+  return (dateStr || "").startsWith(month);
 }
 
 function StatCard({
@@ -123,7 +144,58 @@ export default function Dashboard() {
   const perfRef = useRef<HTMLDivElement>(null);
   const salesRef = useRef<HTMLDivElement>(null);
   const [pullStatus, setPullStatus] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(""); // "" = All Time, "YYYY-MM" = specific month
   const utils = trpc.useUtils();
+
+  // Generate month dropdown options
+  const monthOptions = useMemo(() => generateMonthOptions(18), []);
+
+  // Filter invoices and orders by selected month
+  const filteredInvoices = useMemo(() => {
+    if (!selectedMonth) return allInvoices || [];
+    return (allInvoices || []).filter((i: any) => isInMonth(i.invoiceDate || i.createdAt, selectedMonth));
+  }, [allInvoices, selectedMonth]);
+
+  const filteredOrders = useMemo(() => {
+    if (!selectedMonth) return recentOrders || [];
+    return (recentOrders || []).filter((o: any) => isInMonth(o.createdAt, selectedMonth));
+  }, [recentOrders, selectedMonth]);
+
+  // Recompute dashboard stats from filtered data
+  const filteredRevenue = useMemo(() =>
+    filteredInvoices.filter((i: any) => !i.notes?.includes("Sample")).reduce((s: number, i: any) => s + Number(i.total || i.totalAmount || 0), 0),
+  [filteredInvoices]);
+
+  const filteredOutstanding = useMemo(() =>
+    filteredInvoices.filter((i: any) => i.status !== "draft" && i.status !== "paid").reduce((s: number, i: any) => s + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0),
+  [filteredInvoices]);
+
+  const filteredOrderCount = useMemo(() =>
+    filteredOrders.filter((o: any) => o.orderType !== "sample").length,
+  [filteredOrders]);
+
+  // Sales by rep filtered by month (recalculated client-side from filtered orders)
+  const filteredSalesBreakdown = useMemo(() => {
+    if (!selectedMonth) return salesBreakdown; // Use server-calculated data for All Time
+    const repNames = ((salesRepStats as any)?.repStats || []).map((r: any) => r.name);
+    const now = new Date();
+    const monthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
+    const repSales = repNames.map((name: string) => {
+      const repOrders = filteredOrders.filter((o: any) => {
+        const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer;
+        return cust?.salesRepName === name && o.orderType !== "sample";
+      });
+      const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+      return { name, todaySales: 0, weekSales: 0, monthSales };
+    });
+    return {
+      today: "",
+      weekRange: "",
+      month: monthLabel,
+      repSales,
+      totals: { today: 0, week: 0, month: repSales.reduce((s: number, r: any) => s + r.monthSales, 0) },
+    };
+  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -188,8 +260,22 @@ export default function Dashboard() {
             {isAdmin ? "Admin Overview" : `Sales Rep: ${myRepName}`} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {/* Month Selector */}
+          <div className="relative">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="input-field text-sm pr-8 appearance-none cursor-pointer"
+              style={{ backgroundColor: "#131415", borderColor: "#222324", color: "#E8E8E9" }}
+            >
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-[#8A8B8C] pointer-events-none" />
+          </div>
+          {isAdmin && (
             <button
               onClick={async () => {
                 setPullStatus("Pulling...");
@@ -211,14 +297,14 @@ export default function Dashboard() {
             >
               <CloudDownload className="w-4 h-4" /> {pullStatus || "Pull from Cloud"}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Stat Cards - Admin sees revenue, sales reps don't */}
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? "xl:grid-cols-4" : "xl:grid-cols-3"} gap-4`}>
         {isAdmin && (
-          <StatCard label="TOTAL REVENUE" value={formatCurrency(invoiceStats?.totalValue || 0)} change={12.5} icon={DollarSign} accent="#D4A843" delay={0} />
+          <StatCard label={selectedMonth ? "MONTH REVENUE" : "TOTAL REVENUE"} value={formatCurrency(filteredRevenue)} change={12.5} icon={DollarSign} accent="#D4A843" delay={0} />
         )}
         {!isAdmin && myStats && (
           <StatCard label="MY SALES" value={formatCurrency(myStats.totalSales || 0)} change={8.2} icon={TrendingUp} accent="#D4A843" delay={0} />
@@ -226,7 +312,7 @@ export default function Dashboard() {
         {!isAdmin && !myStats && (
           <StatCard label="MY SALES" value="R 0.00" change={0} icon={TrendingUp} accent="#D4A843" delay={0} />
         )}
-        <StatCard label="TOTAL ORDERS" value={(orderStats?.total || 0).toString()} change={8.2} icon={ShoppingCart} accent="#4ADE80" delay={0.08} />
+        <StatCard label={selectedMonth ? "MONTH ORDERS" : "TOTAL ORDERS"} value={(selectedMonth ? filteredOrderCount : (orderStats?.total || 0)).toString()} change={8.2} icon={ShoppingCart} accent="#4ADE80" delay={0.08} />
         <StatCard label="CUSTOMERS" value={(customerStats?.total || 0).toString()} change={5.1} icon={Users} accent="#6366F1" delay={0.16} />
         <StatCard label="LOW STOCK ITEMS" value={(stockStats?.lowStock || 0).toString()} change={-2.4} icon={AlertTriangle} accent="#F59E0B" delay={0.24} />
       </div>
@@ -291,7 +377,7 @@ export default function Dashboard() {
                 <AlertTriangle className="w-4 h-4" style={{ color: "#EF4444" }} />
                 <h2 className="font-display font-semibold text-white text-lg">Outstanding Invoices - Payment Due</h2>
               </div>
-              <span className="text-xs font-mono-data text-[#8A8B8C]">{((allInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length} invoices</span>
+              <span className="text-xs font-mono-data text-[#8A8B8C]">{((filteredInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length} invoices{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -305,7 +391,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {((allInvoices || [])
+                  {((filteredInvoices || [])
                     .filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")
                     .sort((a: any, b: any) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime())
                     .slice(0, 20)
@@ -325,8 +411,8 @@ export default function Dashboard() {
                       </tr>
                     );
                   })}
-                  {((allInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length === 0 && (
-                    <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">No outstanding invoices - all paid!</td></tr>
+                  {((filteredInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length === 0 && (
+                    <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">{selectedMonth ? "No outstanding invoices for this month" : "No outstanding invoices - all paid!"}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -336,7 +422,7 @@ export default function Dashboard() {
           <div className="card-surface p-6">
             <h2 className="font-display font-semibold text-white text-lg mb-4">Recent Orders</h2>
             <div className="space-y-3">
-              {(recentOrders || []).slice(0, 5).map((order) => (
+              {(filteredOrders || []).slice(0, 5).map((order: any) => (
                 <div key={order.id} className="flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-[#131415]">
                   <div className="flex-1 min-w-0">
                     <div className="font-mono-data text-xs text-[#D4A843]">{order.orderNumber}</div>
@@ -350,8 +436,8 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-              {(!recentOrders || recentOrders.length === 0) && (
-                <div className="text-center py-8 text-[#8A8B8C] font-body text-sm">No orders yet</div>
+              {(!filteredOrders || filteredOrders.length === 0) && (
+                <div className="text-center py-8 text-[#8A8B8C] font-body text-sm">{selectedMonth ? "No orders for this month" : "No orders yet"}</div>
               )}
             </div>
           </div>
@@ -359,48 +445,56 @@ export default function Dashboard() {
       )}
 
       {/* Sales Rep Sales Breakdown - Admin only */}
-      {isAdmin && salesBreakdown && (
+      {isAdmin && (filteredSalesBreakdown || salesBreakdown) && (
         <div ref={salesRef} className="card-surface p-6">
-          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-[#D4A843]" /> Sales by Rep</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-            <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-              <div className="flex items-center gap-2 mb-2"><Sun className="w-4 h-4 text-[#F59E0B]" /><span className="label-text">TODAY</span></div>
-              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number(salesBreakdown.totals.today).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-              <div className="text-xs text-[#8A8B8C] mt-1">{salesBreakdown.today}</div>
+          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-[#D4A843]" /> Sales by Rep{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</h2>
+          {!selectedMonth && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+                <div className="flex items-center gap-2 mb-2"><Sun className="w-4 h-4 text-[#F59E0B]" /><span className="label-text">TODAY</span></div>
+                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.today || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                <div className="text-xs text-[#8A8B8C] mt-1">{(filteredSalesBreakdown || salesBreakdown)?.today || ""}</div>
+              </div>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+                <div className="flex items-center gap-2 mb-2"><Calendar className="w-4 h-4 text-[#6366F1]" /><span className="label-text">THIS WEEK</span></div>
+                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.week || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                <div className="text-xs text-[#8A8B8C] mt-1">{(filteredSalesBreakdown || salesBreakdown)?.weekRange || ""}</div>
+              </div>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+                <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-[#4ADE80]" /><span className="label-text">THIS MONTH</span></div>
+                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.month || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                <div className="text-xs text-[#8A8B8C] mt-1">{(filteredSalesBreakdown || salesBreakdown)?.month || ""}</div>
+              </div>
             </div>
-            <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-              <div className="flex items-center gap-2 mb-2"><Calendar className="w-4 h-4 text-[#6366F1]" /><span className="label-text">THIS WEEK</span></div>
-              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number(salesBreakdown.totals.week).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-              <div className="text-xs text-[#8A8B8C] mt-1">{salesBreakdown.weekRange}</div>
+          )}
+          {selectedMonth && (
+            <div className="p-4 rounded-lg mb-4" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
+              <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-[#D4A843]" /><span className="label-text">TOTAL</span></div>
+              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.month || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
             </div>
-            <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-              <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-[#4ADE80]" /><span className="label-text">THIS MONTH</span></div>
-              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number(salesBreakdown.totals.month).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-              <div className="text-xs text-[#8A8B8C] mt-1">{salesBreakdown.month}</div>
-            </div>
-          </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr style={{ backgroundColor: "#131415", borderBottom: "1px solid #222324" }}>
                   <th className="text-left p-3 label-text">Sales Rep</th>
-                  <th className="text-right p-3 label-text">Today</th>
-                  <th className="text-right p-3 label-text">This Week</th>
-                  <th className="text-right p-3 label-text">This Month</th>
+                  {!selectedMonth && <th className="text-right p-3 label-text">Today</th>}
+                  {!selectedMonth && <th className="text-right p-3 label-text">This Week</th>}
+                  <th className="text-right p-3 label-text">{selectedMonth ? "Sales" : "This Month"}</th>
                 </tr>
               </thead>
               <tbody>
-                {salesBreakdown.repSales.map((rep: any) => (
+                {((filteredSalesBreakdown || salesBreakdown)?.repSales || []).map((rep: any) => (
                   <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
                     <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
-                    <td className="p-3 text-right text-sm font-display" style={{ color: rep.todaySales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.todaySales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                    <td className="p-3 text-right text-sm font-display" style={{ color: rep.weekSales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.weekSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                    {!selectedMonth && <td className="p-3 text-right text-sm font-display" style={{ color: rep.todaySales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.todaySales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>}
+                    {!selectedMonth && <td className="p-3 text-right text-sm font-display" style={{ color: rep.weekSales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.weekSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>}
                     <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(rep.monthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                   </tr>
                 ))}
-                {salesBreakdown.repSales.length === 0 && (
-                  <tr><td colSpan={4} className="p-8 text-center text-[#8A8B8C] font-body">No sales data available</td></tr>
+                {((filteredSalesBreakdown || salesBreakdown)?.repSales || []).length === 0 && (
+                  <tr><td colSpan={selectedMonth ? 2 : 4} className="p-8 text-center text-[#8A8B8C] font-body">{selectedMonth ? "No sales for this month" : "No sales data available"}</td></tr>
                 )}
               </tbody>
             </table>
@@ -411,7 +505,7 @@ export default function Dashboard() {
       {/* Sales Rep Performance - Admin only */}
       {isAdmin && (
         <div ref={perfRef} className="card-surface p-6">
-          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Overview</h2>
+          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Overview{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</h2>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -419,20 +513,29 @@ export default function Dashboard() {
                   <th className="text-left p-3 label-text">Sales Rep</th>
                   <th className="text-right p-3 label-text">Customers</th>
                   <th className="text-right p-3 label-text">Orders</th>
-                  <th className="text-right p-3 label-text">Total Sales</th>
+                  <th className="text-right p-3 label-text">{selectedMonth ? "Month Sales" : "Total Sales"}</th>
                   <th className="text-left p-3 label-text">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => (
-                  <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
-                    <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
-                    <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{rep.customerCount}</td>
-                    <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{rep.orderCount}</td>
-                    <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(rep.totalSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                    <td className="p-3"><span className="status-badge" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span></td>
-                  </tr>
-                ))}
+                {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
+                  // Calculate month-filtered sales for this rep
+                  const repMonthSales = selectedMonth
+                    ? (filteredOrders || []).filter((o: any) => {
+                        const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer;
+                        return cust?.salesRepName === rep.name && o.orderType !== "sample";
+                      }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
+                    : rep.totalSales;
+                  return (
+                    <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
+                      <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
+                      <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{rep.customerCount}</td>
+                      <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{selectedMonth ? (filteredOrders || []).filter((o: any) => { const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer; return cust?.salesRepName === rep.name && o.orderType !== "sample"; }).length : rep.orderCount}</td>
+                      <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3"><span className="status-badge" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span></td>
+                    </tr>
+                  );
+                })}
                 {(!salesRepStats?.repStats || salesRepStats.repStats.length === 0) && (
                   <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">No sales rep data available</td></tr>
                 )}
@@ -515,7 +618,7 @@ export default function Dashboard() {
               <DollarSign className="w-4 h-4" style={{ color: "#D4A843" }} />
             </div>
           </div>
-          <div className="stat-number" style={{ color: "#D4A843" }}>R {(invoiceStats?.outstanding ?? 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          <div className="stat-number" style={{ color: "#D4A843" }}>R {(selectedMonth ? filteredOutstanding : (invoiceStats?.outstanding ?? 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
           <div className="text-xs text-[#8A8B8C] font-body mt-1">Unpaid invoices</div>
         </div>
       </div>

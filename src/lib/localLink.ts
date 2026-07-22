@@ -2,7 +2,7 @@ import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fix
 import { observable } from "@trpc/server/observable";
 import {
   pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices,
-  pushOneCustomer, removeOneCustomer, pushOneStockItem, removeOneStockItem,
+  pushOneCustomer, removeOneCustomer, pushOneStockItem, removeOneStockItem, pushStock,
   pushFollowUpAction, pushFollowUp, pushOneReceipt, pushReceipts,
   pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete,
   pushSalesRep, removeSalesRep,

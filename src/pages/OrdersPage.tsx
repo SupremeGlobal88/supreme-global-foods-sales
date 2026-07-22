@@ -234,6 +234,8 @@ function ProductPickerModal({
                     <div className="flex items-center gap-3 mt-1 ml-[18px]">
                       <span className="text-xs text-[#8A8B8C] font-mono-data">{s.productCode}</span>
                       <span className="text-xs text-[#8A8B8C]">{s.category}</span>
+                      {s.color && <span className="text-xs" style={{ color: "#D4A843" }}>{s.color}</span>}
+                      {s.description && <span className="text-xs text-[#8A8B8C] truncate max-w-[200px]">{s.description}</span>}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0 ml-3">

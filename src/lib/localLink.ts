@@ -88,10 +88,18 @@ export function createLocalLink() {
               case "stock.getStats": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.getStats(); break;
               case "stock.getDailyInvoicedStock": result = dataService.stock.getDailyInvoicedStock(input || {}); break;
               case "stock.reconcileStock": result = dataService.stock.reconcileStock(input || {}); break;
-              case "stock.create": { result = dataService.stock.create(input); pushOneStockItem(result); break; }
-              case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); if (result) pushOneStockItem(result); break; }
-              case "stock.delete": result = dataService.stock.delete(input); removeOneStockItem(input); break;
-              case "stock.bulkUpload": { const items = input || []; const { created, updated } = dataService.stock.bulkCreate(items); result = { count: created + updated, created, updated }; pushStock(dataService.stock.list()); break; }
+              case "stock.create": { result = dataService.stock.create(input); await pushOneStockItem(result); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } })); break; }
+              case "stock.update": { const { id, ...data } = input; result = dataService.stock.update({ id, data }); if (result) { await pushOneStockItem(result); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } })); } break; }
+              case "stock.delete": { result = dataService.stock.delete(input); await removeOneStockItem(input); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } })); break; }
+              case "stock.bulkUpload": {
+                const items = input || [];
+                const { created, updated } = dataService.stock.bulkCreate(items);
+                result = { count: created + updated, created, updated };
+                await pushStock(dataService.stock.list());
+                reloadFromStorage();
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: created + updated } }));
+                break;
+              }
               // CUSTOMERS — cloud first
               case "customer.list": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.list(); break;
               case "customer.search": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.search(input || { query: "" }); break;

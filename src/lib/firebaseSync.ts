@@ -226,6 +226,7 @@ const FB_PATHS: Record<string, string> = {
   receipts: "receipts",
   users: "users",
   salesReps: "salesReps",
+  creditNotes: "creditNotes",
 };
 
 /** Read data directly from Firebase. Returns array of items or empty array.
@@ -336,6 +337,34 @@ export async function pushUserDelete(userId: number): Promise<void> {
   }
 }
 
+/** Push a single credit note to Firebase */
+export async function pushCreditNote(cn: any): Promise<void> {
+  if (!isFirebaseReady() || !cn || !cn.id) return;
+  try {
+    await set(ref(db, `creditNotes/${safeFbKey(cn.id)}`), cleanForFirebase(cn));
+  } catch (e: any) {
+    console.error("[pushCreditNote] FAILED:", cn.creditNoteNumber, e.message);
+  }
+}
+
+/** Subscribe to real-time credit note updates */
+export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const cnRef = ref(db, "creditNotes");
+  const unsub = onValue(cnRef, (snapshot) => {
+    const data = snapshot.val();
+    const notes = fbToArray(data);
+    if (notes.length > 0) {
+      const merged = mergeWithCloudData("sgf_creditNotes", notes);
+      try { localStorage.setItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
+      dataService.reloadFromStorage();
+    }
+    if (onData) onData(notes);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
 // =============================================================================
 // MANUAL PULL: Force-fetch all data from Firebase into localStorage
 // =============================================================================
@@ -386,6 +415,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("followUpActions", "sgf_followUpActions");
   await pullType("followUps", "sgf_followUps");
   await pullType("receipts", "sgf_receipts");
+  await pullType("creditNotes", "sgf_creditNotes");
 
   dataServiceRefresh?.();
   return counts;
@@ -975,7 +1005,7 @@ export function initAutoSync(): () => void {
       // Dispatch firebaseDataReceived event for ALL data types.
       // This ensures tRPC cache invalidates on every device when ANY
       // user creates/updates data — not just when the count increases.
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps"].includes(type)) {
+      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes"].includes(type)) {
         const prev = lastCounts[type] || 0;
         const curr = data.length;
         lastCounts[type] = curr;
@@ -1001,6 +1031,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
   unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
   unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps_data")));
+  unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

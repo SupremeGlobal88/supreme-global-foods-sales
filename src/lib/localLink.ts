@@ -5,7 +5,7 @@ import {
   pushOneCustomer, removeOneCustomer, pushOneStockItem, removeOneStockItem, pushStock,
   pushFollowUpAction, pushFollowUp, pushOneReceipt, pushReceipts,
   pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete,
-  pushSalesRep, removeSalesRep,
+  pushSalesRep, removeSalesRep, pushCreditNote,
   isFirebaseReady, readFromFirebase, mergeWithCloudData,
 } from "./firebaseSync";
 
@@ -242,23 +242,29 @@ export function createLocalLink() {
                 }
                 break;
               }
-              case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
+              case "invoice.getCreditNotes": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
               case "invoice.createCreditNote": {
                 result = dataService.invoice.createCreditNote(input);
-                if (result?.invoiceId) {
-                  const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
-                  if (inv) await pushInvoice(inv);
+                if (result) {
+                  await pushCreditNote(result);
+                  if (result.invoiceId) {
+                    const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
+                    if (inv) await pushInvoice(inv);
+                  }
                 }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;
               }
               case "invoice.voidCreditNote": {
                 result = dataService.invoice.voidCreditNote(input);
-                if (result?.invoiceId) {
-                  const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
-                  if (inv) await pushInvoice(inv);
+                if (result) {
+                  await pushCreditNote(result);
+                  if (result.invoiceId) {
+                    const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
+                    if (inv) await pushInvoice(inv);
+                  }
                 }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;

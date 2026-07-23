@@ -168,6 +168,10 @@ export default function App() {
         utils.stock.search.refetch();
         utils.stock.getStats.refetch();
       }
+      if (type === "creditNotes") {
+        utils.invoice.getCreditNotes.refetch();
+        utils.invoice.list.refetch();
+      }
       if (type === "followUps" || type === "followUpActions") {
         utils.followUp.list.refetch();
         utils.followUpAction.list.refetch();

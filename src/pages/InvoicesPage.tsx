@@ -90,7 +90,16 @@ export default function InvoicesPage() {
     onError: (err: any) => { alert("Delete payment failed: " + (err.message || "Unknown error")); },
   });
   const createCreditNote = trpc.invoice.createCreditNote.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowCreditNote(false); setCnInvId(0); setCnAmount(""); setCnReason(""); },
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.invoice.list.invalidate();
+      await utils.invoice.getCreditNotes.invalidate();
+      setShowCreditNote(false);
+      setCnInvId(0);
+      setCnAmount("");
+      setCnReason("");
+    },
+    onError: (err: any) => { alert("Credit note failed: " + (err.message || "Unknown error")); },
   });
   const voidCreditNote = trpc.invoice.voidCreditNote.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },

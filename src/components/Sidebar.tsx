@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Users, ShoppingCart, FileText,
   Calendar, UserCog, CreditCard, Settings, LogOut, Globe,
   Bell, FlaskConical, ShieldAlert, Archive, X, Wallet,
-  FileSpreadsheet, Banknote,
+  FileSpreadsheet, Banknote, TrendingUp,
 } from "lucide-react";
 
 const allNavItems = [
@@ -18,6 +18,7 @@ const allNavItems = [
   { path: "/customer-statement", label: "Statement", icon: FileSpreadsheet },
   { path: "/my-invoices", label: "My Invoices", icon: Wallet },
   { path: "/appointments", label: "Appointments", icon: Calendar },
+  { path: "/sales-rep-reports", label: "Rep Reports", icon: TrendingUp },
   { path: "/sales-reps", label: "Sales Reps", icon: UserCog },
   { path: "/collections", label: "Collections", icon: CreditCard },
   { path: "/follow-ups", label: "Follow-ups", icon: Bell },

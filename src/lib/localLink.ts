@@ -1,4 +1,4 @@
-import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments } from "./dataService";
+import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments, getAARate, setAARate } from "./dataService";
 import { observable } from "@trpc/server/observable";
 import {
   pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices,
@@ -292,6 +292,11 @@ export function createLocalLink() {
               case "checkIn.delete": result = dataService.checkin.delete(input); await pushCheckinDelete(input); break;
               case "checkIn.checkout": result = dataService.checkin.checkout(input); await fbPush("checkin", result); break;
               case "checkIn.getStats": await syncFromCloud("checkins", "sgf_checkins"); result = dataService.checkin.getStats(); break;
+              case "checkIn.getDailyReport": await syncFromCloud("checkins", "sgf_checkins"); result = dataService.checkin.getDailyReport(input?.date); break;
+              case "checkIn.getWeeklyReport": await syncFromCloud("checkins", "sgf_checkins"); result = dataService.checkin.getWeeklyReport(input?.year, input?.week); break;
+              case "checkIn.getMonthlyReport": await syncFromCloud("checkins", "sgf_checkins"); result = dataService.checkin.getMonthlyReport(input?.year, input?.month); break;
+              case "checkIn.getAARate": result = getAARate(); break;
+              case "checkIn.setAARate": result = setAARate(input); break;
               // FOLLOW-UPS — cloud first
               case "followUpAction.list": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.list(); break;
               case "followUpAction.listByCustomer": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.listByCustomer(input); break;

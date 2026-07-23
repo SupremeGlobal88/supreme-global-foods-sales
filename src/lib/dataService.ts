@@ -366,6 +366,152 @@ function stringSimilarity(a: string, b: string): number {
   return Math.round(((len - dist) / len) * 100);
 }
 
+/** ═══════════════════════════════════════════════════════════════
+ *  SALES REP REPORTING HELPERS
+ *  ═══════════════════════════════════════════════════════════════ */
+
+/** South African AA travel rate per km (configurable, default R5.50/km) */
+let AA_RATE_PER_KM = 5.50;
+try {
+  const stored = localStorage.getItem("sgf_aaRatePerKm");
+  if (stored) { const v = parseFloat(stored); if (!isNaN(v) && v > 0) AA_RATE_PER_KM = v; }
+} catch { /* keep default */ }
+
+export function getAARate(): number { return AA_RATE_PER_KM; }
+export function setAARate(rate: number): void {
+  AA_RATE_PER_KM = rate;
+  try { localStorage.setItem("sgf_aaRatePerKm", String(rate)); } catch { /* ignore */ }
+}
+
+/** ISO week number */
+function getWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((+date - +yearStart) / 86400000) + 1) / 7);
+}
+
+/** Haversine distance between two lat/lng points in kilometers */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/** Build a report grouped by sales rep from an array of check-ins */
+function buildRepReport(
+  checkinList: any[],
+  periodType: "daily" | "weekly" | "monthly",
+  referenceDate: Date,
+  year?: number,
+  weekOrMonth?: number
+): any {
+  // Group check-ins by sales rep
+  const byRep = new Map<string, any[]>();
+  for (const ci of checkinList) {
+    const repName = ci.salesRepName || "Unknown";
+    if (!byRep.has(repName)) byRep.set(repName, []);
+    byRep.get(repName)!.push(ci);
+  }
+
+  const repReports: any[] = [];
+  let grandTotalKm = 0;
+  let grandTotalCost = 0;
+  let grandTotalVisits = 0;
+  let grandTotalCustomers = 0;
+
+  for (const [repName, repCheckins] of byRep) {
+    // Sort by time for distance calculation
+    repCheckins.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    // Calculate distance between consecutive check-ins
+    let totalKm = 0;
+    const routeSegments: any[] = [];
+    for (let i = 1; i < repCheckins.length; i++) {
+      const prev = repCheckins[i - 1];
+      const curr = repCheckins[i];
+      if (prev.latitude && prev.longitude && curr.latitude && curr.longitude) {
+        const km = haversineKm(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+        totalKm += km;
+        routeSegments.push({
+          from: { location: prev.location || "Unknown", lat: prev.latitude, lng: prev.longitude, time: prev.createdAt },
+          to: { location: curr.location || "Unknown", lat: curr.latitude, lng: curr.longitude, time: curr.createdAt },
+          km: Math.round(km * 100) / 100,
+        });
+      }
+    }
+
+    // Count unique customers visited
+    const uniqueCustomers = new Set(repCheckins.map((ci) => ci.customerId).filter(Boolean));
+    const totalVisits = repCheckins.length;
+    const totalCost = totalKm * AA_RATE_PER_KM;
+
+    // Build per-visit details
+    const visits = repCheckins.map((ci) => ({
+      time: ci.createdAt,
+      customerName: ci.customer?.name || ci.location || "Unknown",
+      customerId: ci.customerId,
+      location: ci.location || "",
+      latitude: ci.latitude,
+      longitude: ci.longitude,
+      outcome: ci.outcome || "visit",
+      notes: ci.notes || "",
+      durationMinutes: ci.durationMinutes || 0,
+      status: ci.status,
+    }));
+
+    repReports.push({
+      salesRep: repName,
+      totalVisits,
+      uniqueCustomersVisited: uniqueCustomers.size,
+      totalKm: Math.round(totalKm * 100) / 100,
+      totalCost: Math.round(totalCost * 100) / 100,
+      aaRatePerKm: AA_RATE_PER_KM,
+      routeSegments,
+      visits,
+    });
+
+    grandTotalKm += totalKm;
+    grandTotalCost += totalCost;
+    grandTotalVisits += totalVisits;
+    grandTotalCustomers += uniqueCustomers.size;
+  }
+
+  // Sort by most visits first
+  repReports.sort((a, b) => b.totalVisits - a.totalVisits);
+
+  // Build period label
+  let periodLabel = "";
+  if (periodType === "daily") {
+    periodLabel = referenceDate.toLocaleDateString("en-ZA", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  } else if (periodType === "weekly") {
+    periodLabel = `Week ${weekOrMonth}, ${year}`;
+  } else {
+    periodLabel = referenceDate.toLocaleDateString("en-ZA", { year: "numeric", month: "long" });
+  }
+
+  return {
+    periodType,
+    periodLabel,
+    generatedAt: new Date().toISOString(),
+    aaRatePerKm: AA_RATE_PER_KM,
+    summary: {
+      totalReps: repReports.length,
+      totalVisits: grandTotalVisits,
+      totalCustomersVisited: grandTotalCustomers,
+      totalKm: Math.round(grandTotalKm * 100) / 100,
+      totalCost: Math.round(grandTotalCost * 100) / 100,
+    },
+    repReports,
+  };
+}
+
 /** Match bank payment rows to app invoices. Returns categorized results. */
 export function matchBankPayments(rows: BankStatementRow[]): PaymentMatchResult[] {
   const results: PaymentMatchResult[] = [];
@@ -2370,6 +2516,45 @@ export const dataService = {
       checkedIn: checkins.filter((ci) => ci.status === "checked_in").length,
       checkedOut: checkins.filter((ci) => ci.status === "checked_out").length,
     }),
+
+    /** ═══════════════════════════════════════════════════════════════
+     *  SALES REP VISIT REPORTS — Daily, Weekly, Monthly
+     *  Uses GPS coordinates from check-ins to calculate distance
+     *  and applies South African AA rates for cost estimation.
+     *  ═══════════════════════════════════════════════════════════════ */
+    getDailyReport: (dateStr?: string) => {
+      const targetDate = dateStr ? new Date(dateStr) : new Date();
+      const dateKey = targetDate.toDateString();
+      const dayCheckins = checkins.filter((ci) =>
+        new Date(ci.createdAt).toDateString() === dateKey &&
+        ci.latitude && ci.longitude
+      );
+      return buildRepReport(dayCheckins, "daily", targetDate);
+    },
+
+    getWeeklyReport: (year?: number, week?: number) => {
+      const now = new Date();
+      const targetYear = year || now.getFullYear();
+      const targetWeek = week || getWeekNumber(now);
+      const weekCheckins = checkins.filter((ci) => {
+        if (!ci.latitude || !ci.longitude) return false;
+        const d = new Date(ci.createdAt);
+        return d.getFullYear() === targetYear && getWeekNumber(d) === targetWeek;
+      });
+      return buildRepReport(weekCheckins, "weekly", now, targetYear, targetWeek);
+    },
+
+    getMonthlyReport: (year?: number, month?: number) => {
+      const now = new Date();
+      const targetYear = year || now.getFullYear();
+      const targetMonth = month !== undefined ? month : now.getMonth();
+      const monthCheckins = checkins.filter((ci) => {
+        if (!ci.latitude || !ci.longitude) return false;
+        const d = new Date(ci.createdAt);
+        return d.getFullYear() === targetYear && d.getMonth() === targetMonth;
+      });
+      return buildRepReport(monthCheckins, "monthly", now, targetYear, targetMonth);
+    },
   },
 
   followUpAction: {

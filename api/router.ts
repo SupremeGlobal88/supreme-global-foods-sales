@@ -91,6 +91,11 @@ export const appRouter = t.router({
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
     delete: t.procedure.input((val: unknown) => val as { id: number }).mutation(() => ({} as any)),
     checkout: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    getDailyReport: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
+    getWeeklyReport: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
+    getMonthlyReport: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
+    getAARate: t.procedure.query(() => 5.50 as number),
+    setAARate: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
   }),
   followUpAction: t.router({
     list: t.procedure.query(() => [] as any[]),

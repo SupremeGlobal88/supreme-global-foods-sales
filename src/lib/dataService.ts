@@ -1923,10 +1923,15 @@ export const dataService = {
       if (data.invoiceId) {
         const inv = invoices.find((i) => i.id === data.invoiceId);
         if (inv) {
-          inv.balanceDue = Math.max(0, (inv.balanceDue || inv.total || 0) - (data.amount || 0));
-          inv.amountPaid = (inv.amountPaid || 0) + (data.amount || 0);
+          // Credit notes reduce balanceDue but do NOT add to amountPaid
+          // This keeps credit notes separate from actual payments received
+          const creditTotal = (data.amount || 0);
+          inv.balanceDue = Math.max(0, (inv.balanceDue || inv.total || 0) - creditTotal);
+          // Track credit notes on the invoice for display purposes
+          if (!inv.creditNotes) inv.creditNotes = [];
+          inv.creditNotes.push(creditNote.id);
           if (inv.balanceDue <= 0.01) inv.status = "paid";
-          else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
+          else if ((inv.amountPaid || 0) > 0 || (inv.creditNotes || []).length > 0) inv.status = "partially_paid";
           saveItem("sgf_invoices", invoices);
         }
       }

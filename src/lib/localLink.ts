@@ -104,7 +104,7 @@ export function createLocalLink() {
               case "customer.list": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.list(); break;
               case "customer.search": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.search(input || { query: "" }); break;
               case "customer.getById": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getById(input); break;
-              case "customer.create": result = dataService.customer.create(input); await fbPush("customer", result); break;
+              case "customer.create": result = dataService.customer.create(input); await fbPush("customers", result); break;
               case "customer.update": { const { id, ...data } = input; result = dataService.customer.update({ id, data }); if (result) await pushOneCustomer(result); break; }
               case "customer.delete": result = dataService.customer.delete(input); removeOneCustomer(input); break;
               case "customer.getStats": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getStats(); break;
@@ -116,7 +116,7 @@ export function createLocalLink() {
               case "order.getById": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.getById(input); break;
               case "order.create": {
                 result = dataService.order.create(input);
-                await fbPush("order", result);
+                await fbPush("orders", result);
                 // Push updated stock to Firebase so all devices see deducted quantities
                 await pushStock(dataService.stock.list());
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
@@ -131,7 +131,7 @@ export function createLocalLink() {
               case "order.update": {
                 const { id, ...data } = input;
                 result = dataService.order.update({ id, data });
-                await fbPush("order", result);
+                await fbPush("orders", result);
                 // Push updated stock to Firebase so all devices see updated quantities
                 await pushStock(dataService.stock.list());
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
@@ -144,7 +144,7 @@ export function createLocalLink() {
               }
               case "order.updateStatus": {
                 result = dataService.order.updateStatus(input);
-                await fbPush("order", result);
+                await fbPush("orders", result);
                 // Push updated stock to Firebase (cancelled orders restore stock)
                 await pushStock(dataService.stock.list());
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));

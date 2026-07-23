@@ -726,8 +726,8 @@ export default function InvoicesPage() {
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>
-                      <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 && inv.status !== "draft" ? "#EF4444" : "#4ADE80" }}>
-                        {inv.status === "draft" ? "-" : `R ${bal.toFixed(2)}`}
+                      <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 ? "#EF4444" : "#4ADE80" }}>
+                        R {bal.toFixed(2)}
                       </td>
                       <td className="p-3 text-center">{badge(inv.status)}</td>
                       <td className="p-3 text-right">
@@ -747,7 +747,7 @@ export default function InvoicesPage() {
                           {isAdmin && (
                             <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
                           )}
-                          {isAdmin && inv.status !== "draft" && bal > 0 && (
+                          {isAdmin && bal > 0 && (
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
                           )}
                           {isAdmin && inv.status !== "draft" && (
@@ -814,7 +814,7 @@ export default function InvoicesPage() {
                                 <span className="text-[#D4A843] font-semibold">Total:</span><span className="text-[#D4A843] font-bold">R {tot.toFixed(2)}</span>
                               </div>
                               {paid > 0 && <div className="flex justify-between"><span className="text-[#8A8B8C]">Paid:</span><span className="text-[#4ADE80]">R {paid.toFixed(2)}</span></div>}
-                              {bal > 0 && inv.status !== "draft" && (
+                              {bal > 0 && (
                                 <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #EF4444" }}>
                                   <span className="text-[#EF4444] font-bold">Balance Due:</span><span className="text-[#EF4444] font-bold">R {bal.toFixed(2)}</span>
                                 </div>
@@ -904,7 +904,7 @@ export default function InvoicesPage() {
                           {/* Action buttons row */}
                           <div className="flex gap-2 flex-wrap pt-3" style={{ borderTop: "1px solid #222324" }}>
                             <button onClick={() => printDoc(inv)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Invoice &amp; DN</button>
-                            {isAdmin && inv.status !== "draft" && bal > 0 && (
+                            {isAdmin && bal > 0 && (
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
                             )}
                             {isAdmin && inv.status !== "draft" && bal > 0 && (

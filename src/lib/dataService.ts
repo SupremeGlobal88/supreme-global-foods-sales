@@ -1791,6 +1791,10 @@ export const dataService = {
       const idx = invoices.findIndex((i) => i.id === invoiceId);
       if (idx < 0) return null;
       const inv = invoices[idx];
+      // Auto-activate draft invoices when payment is recorded
+      if (inv.status === "draft") {
+        inv.status = "sent";
+      }
       const currentPaid = Number(inv.amountPaid || 0);
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);

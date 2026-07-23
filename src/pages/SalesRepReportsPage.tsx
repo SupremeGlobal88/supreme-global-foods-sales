@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import {
   Calendar, CalendarDays, CalendarRange, MapPin, Navigation,
   DollarSign, Users, TrendingUp, Printer, ChevronDown, ChevronUp,
@@ -9,7 +10,8 @@ import {
 
 export default function SalesRepReportsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const { isAdmin } = useRole();
+  const myRepName = user?.name || "";
 
   // Report period selection
   const [activeTab, setActiveTab] = useState<"daily" | "weekly" | "monthly">("daily");
@@ -53,6 +55,27 @@ export default function SalesRepReportsPage() {
 
   const currentReport = activeTab === "daily" ? dailyReport : activeTab === "weekly" ? weeklyReport : monthlyReport;
 
+  // Filter report by role: sales reps see only their own data, admins see all
+  const filteredReport = useMemo(() => {
+    if (!currentReport) return null;
+    if (isAdmin) return currentReport; // Admins see everything
+    // Sales reps see only their own data
+    const myReps = (currentReport.repReports || []).filter(
+      (r: any) => r.salesRep === myRepName
+    );
+    return {
+      ...currentReport,
+      summary: myReps.reduce((s: any, r: any) => ({
+        totalReps: 1,
+        totalVisits: s.totalVisits + r.totalVisits,
+        totalCustomersVisited: s.totalCustomersVisited + r.uniqueCustomersVisited,
+        totalKm: s.totalKm + r.totalKm,
+        totalCost: s.totalCost + r.totalCost,
+      }), { totalReps: myReps.length > 0 ? 1 : 0, totalVisits: 0, totalCustomersVisited: 0, totalKm: 0, totalCost: 0 }),
+      repReports: myReps,
+    };
+  }, [currentReport, isAdmin, myRepName]);
+
   // ─── Helpers ───
   function getWeekNumber(d: Date): number {
     const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -78,11 +101,11 @@ export default function SalesRepReportsPage() {
 
   // ─── Print Report ───
   function printReport() {
-    if (!currentReport) return;
+    if (!filteredReport) return;
     const w = window.open("", "_blank");
     if (!w) return;
 
-    const rows = (currentReport.repReports || []).map((r: any) => `
+    const rows = (filteredReport.repReports || []).map((r: any) => `
       <tr>
         <td style="padding:8px;border-bottom:1px solid #ddd;font-weight:600;">${r.salesRep}</td>
         <td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;">${r.totalVisits}</td>
@@ -108,7 +131,7 @@ export default function SalesRepReportsPage() {
       <body>
         <div class="header">
           <h1>Sales Representative Visit Report</h1>
-          <p>${currentReport.periodLabel} | Generated: ${new Date().toLocaleDateString("en-ZA")} | AA Rate: R ${currentReport.aaRatePerKm?.toFixed(2) || "5.50"}/km</p>
+          <p>${filteredReport.periodLabel} | Generated: ${new Date().toLocaleDateString("en-ZA")} | AA Rate: R ${filteredReport.aaRatePerKm?.toFixed(2) || "5.50"}/km</p>
         </div>
         <table>
           <thead><tr>
@@ -121,13 +144,13 @@ export default function SalesRepReportsPage() {
           <tbody>${rows}</tbody>
         </table>
         <div class="summary">
-          <div class="summary-row"><span><strong>Total Sales Reps</strong></span><span>${currentReport.summary?.totalReps || 0}</span></div>
-          <div class="summary-row"><span><strong>Total Visits</strong></span><span>${currentReport.summary?.totalVisits || 0}</span></div>
-          <div class="summary-row"><span><strong>Total Unique Customers</strong></span><span>${currentReport.summary?.totalCustomersVisited || 0}</span></div>
-          <div class="summary-row"><span><strong>Total Distance</strong></span><span>${(currentReport.summary?.totalKm || 0).toFixed(2)} km</span></div>
+          <div class="summary-row"><span><strong>Total Sales Reps</strong></span><span>${filteredReport.summary?.totalReps || 0}</span></div>
+          <div class="summary-row"><span><strong>Total Visits</strong></span><span>${filteredReport.summary?.totalVisits || 0}</span></div>
+          <div class="summary-row"><span><strong>Total Unique Customers</strong></span><span>${filteredReport.summary?.totalCustomersVisited || 0}</span></div>
+          <div class="summary-row"><span><strong>Total Distance</strong></span><span>${(filteredReport.summary?.totalKm || 0).toFixed(2)} km</span></div>
           <div class="summary-row" style="border-top:2px solid #D4A843;font-weight:800;font-size:14px;">
             <span>Total Travel Cost</span>
-            <span style="color:#D4A843;">R ${(currentReport.summary?.totalCost || 0).toFixed(2)}</span>
+            <span style="color:#D4A843;">R ${(filteredReport.summary?.totalCost || 0).toFixed(2)}</span>
           </div>
         </div>
         <div class="footer">
@@ -177,7 +200,7 @@ export default function SalesRepReportsPage() {
       <body>
         <div class="header">
           <h1>${rep.salesRep} - Visit Detail Report</h1>
-          <p>${currentReport?.periodLabel || ""} | AA Rate: R ${(currentReport?.aaRatePerKm || 5.50).toFixed(2)}/km</p>
+          <p>${filteredReport?.periodLabel || ""} | AA Rate: R ${(filteredReport?.aaRatePerKm || 5.50).toFixed(2)}/km</p>
         </div>
         <div style="display:flex;gap:20px;margin-bottom:20px;">
           <div style="flex:1;padding:10px;background:#f9f9f9;border-radius:6px;">
@@ -303,14 +326,14 @@ export default function SalesRepReportsPage() {
       </div>
 
       {/* Summary Cards */}
-      {currentReport?.summary && (
+      {filteredReport?.summary && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { label: "Sales Reps", value: currentReport.summary.totalReps, icon: Users, color: "#D4A843" },
-            { label: "Total Visits", value: currentReport.summary.totalVisits, icon: MapPin, color: "#3B82F6" },
-            { label: "Customers", value: currentReport.summary.totalCustomersVisited, icon: Users, color: "#4ADE80" },
-            { label: "Total km", value: `${(currentReport.summary.totalKm || 0).toFixed(1)}`, icon: Navigation, color: "#F59E0B" },
-            { label: "Total Cost", value: `R ${(currentReport.summary.totalCost || 0).toFixed(2)}`, icon: DollarSign, color: "#EF4444" },
+            { label: "Sales Reps", value: filteredReport.summary.totalReps, icon: Users, color: "#D4A843" },
+            { label: "Total Visits", value: filteredReport.summary.totalVisits, icon: MapPin, color: "#3B82F6" },
+            { label: "Customers", value: filteredReport.summary.totalCustomersVisited, icon: Users, color: "#4ADE80" },
+            { label: "Total km", value: `${(filteredReport.summary.totalKm || 0).toFixed(1)}`, icon: Navigation, color: "#F59E0B" },
+            { label: "Total Cost", value: `R ${(filteredReport.summary.totalCost || 0).toFixed(2)}`, icon: DollarSign, color: "#EF4444" },
           ].map((s) => (
             <div key={s.label} className="card-surface p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-2">
@@ -338,7 +361,7 @@ export default function SalesRepReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {(!currentReport?.repReports || currentReport.repReports.length === 0) && (
+              {(!filteredReport?.repReports || filteredReport.repReports.length === 0) && (
                 <tr>
                   <td colSpan={6} className="text-center py-8 text-[#8A8B8C] font-body">
                     No check-in data with GPS coordinates for the selected period.
@@ -347,7 +370,7 @@ export default function SalesRepReportsPage() {
                   </td>
                 </tr>
               )}
-              {currentReport?.repReports?.map((rep: any) => {
+              {filteredReport?.repReports?.map((rep: any) => {
                 const isExp = expandedRep === rep.salesRep;
                 return (
                   <>

@@ -8,6 +8,7 @@ import {
   Ban, FileText, Calendar, CheckCircle, Clock, User,
   DollarSign, TrendingUp, ShieldAlert, ClipboardList,
   Printer, X, ChevronDown, ChevronUp, Send, Lock, LockOpen,
+  Users, Filter,
 } from "lucide-react";
 
 const BUCKET_CONFIG: Record<string, { label: string; color: string; bg: string; desc: string }> = {
@@ -51,6 +52,7 @@ export default function CollectionsPage() {
   const utils = trpc.useUtils();
   const [activeTab, setActiveTab] = useState<"pipeline" | "daily" | "history">("pipeline");
   const [selectedBucket, setSelectedBucket] = useState<string>("all");
+  const [selectedSalesRep, setSelectedSalesRep] = useState<string>("");
   const [expandedInvoice, setExpandedInvoice] = useState<number | null>(null);
   const [showActionModal, setShowActionModal] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -61,6 +63,7 @@ export default function CollectionsPage() {
   const { data: dailyReport } = trpc.collections.getDailyReport.useQuery();
   const { data: stats } = trpc.collections.getStats.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
   const { data: customerHistory } = trpc.collections.getCustomerPaymentHistory.useQuery(historyCustomerId, { enabled: historyCustomerId > 0 });
 
   // Mutations
@@ -76,9 +79,19 @@ export default function CollectionsPage() {
   const placeHold = trpc.collections.placeHold.useMutation({ onSuccess: invalidateCollections });
   const releaseHold = trpc.collections.releaseHold.useMutation({ onSuccess: invalidateCollections });
 
-  const filteredInvoices = selectedBucket === "all"
-    ? (overdueInvoices || [])
-    : (overdueInvoices || []).filter((inv: any) => inv.bucket === selectedBucket);
+  const filteredInvoices = (overdueInvoices || [])
+    .filter((inv: any) => selectedBucket === "all" || inv.bucket === selectedBucket)
+    .filter((inv: any) => !selectedSalesRep || inv.salesRepName === selectedSalesRep);
+
+  // Sales rep summary from filtered data
+  const repSummary = (salesReps || []).map((rep: string) => {
+    const repInvs = (overdueInvoices || []).filter((inv: any) => inv.salesRepName === rep);
+    return {
+      name: rep,
+      count: repInvs.length,
+      total: repInvs.reduce((s: number, inv: any) => s + inv.balanceDue, 0),
+    };
+  }).filter((r: any) => r.count > 0).sort((a: any, b: any) => b.total - a.total);
 
   function openAction(action: string, invoice: any) {
     setSelectedInvoice(invoice);
@@ -141,14 +154,62 @@ export default function CollectionsPage() {
         <button onClick={() => setActiveTab("history")} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === "history" ? "#D4A843" : "#18191A", color: activeTab === "history" ? "#0A0A0B" : "#8A8B8C" }}>Customer History</button>
       </div>
 
+      {/* Sales Rep Filter + Summary */}
+      <div className="card-surface p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-[#D4A843]" />
+            <span className="text-sm text-[#8A8B8C]">Filter by Sales Rep:</span>
+          </div>
+          <div className="relative">
+            <select
+              value={selectedSalesRep}
+              onChange={(e) => setSelectedSalesRep(e.target.value)}
+              className="input-field text-sm pr-8 appearance-none cursor-pointer min-w-[200px]"
+              style={{ backgroundColor: "#131415", borderColor: "#222324", color: "#E8E8E9" }}
+            >
+              <option value="">All Sales Reps</option>
+              {(salesReps || []).sort((a: string, b: string) => a.localeCompare(b)).map((rep: string) => (
+                <option key={rep} value={rep}>{rep}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-[#8A8B8C] pointer-events-none" />
+          </div>
+          {selectedSalesRep && (
+            <button onClick={() => setSelectedSalesRep("")} className="text-xs text-[#EF4444] hover:underline">Clear filter</button>
+          )}
+        </div>
+        {/* Per-sales-rep summary cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+          {repSummary.map((rep: any) => (
+            <button
+              key={rep.name}
+              onClick={() => setSelectedSalesRep(selectedSalesRep === rep.name ? "" : rep.name)}
+              className="p-2.5 rounded-lg text-left transition-all hover:brightness-110"
+              style={{
+                backgroundColor: selectedSalesRep === rep.name ? "rgba(212,168,67,0.15)" : "#131415",
+                border: `1px solid ${selectedSalesRep === rep.name ? "#D4A843" : "#222324"}`,
+              }}
+            >
+              <div className="text-[10px] text-[#8A8B8C] uppercase tracking-wide truncate">{rep.name}</div>
+              <div className="text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {rep.total.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="text-[10px] text-[#8A8B8C]">{rep.count} invoice{rep.count !== 1 ? "s" : ""}</div>
+            </button>
+          ))}
+          {repSummary.length === 0 && (
+            <div className="text-xs text-[#8A8B8C] col-span-full">No outstanding invoices</div>
+          )}
+        </div>
+      </div>
+
       {/* PIPELINE VIEW */}
       {activeTab === "pipeline" && (
         <div className="space-y-4">
           {/* Bucket Filter */}
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setSelectedBucket("all")} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === "all" ? "#D4A843" : "#18191A", color: selectedBucket === "all" ? "#0A0A0B" : "#8A8B8C" }}>All ({(overdueInvoices || []).length})</button>
+            <button onClick={() => setSelectedBucket("all")} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === "all" ? "#D4A843" : "#18191A", color: selectedBucket === "all" ? "#0A0A0B" : "#8A8B8C" }}>All ({(overdueInvoices || []).filter((i: any) => !selectedSalesRep || i.salesRepName === selectedSalesRep).length})</button>
             {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => {
-              const count = (overdueInvoices || []).filter((i: any) => i.bucket === key).length;
+              const count = (overdueInvoices || []).filter((i: any) => i.bucket === key && (!selectedSalesRep || i.salesRepName === selectedSalesRep)).length;
               return (
                 <button key={key} onClick={() => setSelectedBucket(key)} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === key ? cfg.color : "#18191A", color: selectedBucket === key ? "#fff" : "#8A8B8C", border: `1px solid ${selectedBucket === key ? cfg.color : "transparent"}` }}>
                   {cfg.label} ({count})

@@ -1440,13 +1440,18 @@ export const dataService = {
       thisMonth: customers.length,
     }),
     getSalesReps: () => {
-      // Return active users with sales_rep role from the synced users array
-      // This ensures new sales reps added via user management appear automatically
-      const reps = users
+      // Merge sales reps from two sources:
+      // 1. Active users with sales_rep role (from Firebase-synced users)
+      // 2. Legacy SALES_REPS array (for backward compatibility)
+      // This ensures all reps appear regardless of how they were added.
+      const fromUsers = users
         .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
-        .map((u: any) => u.name)
+        .map((u: any) => u.name);
+      const fromLegacy = getCurrentSalesReps();
+      // Deduplicate and sort
+      const allReps = Array.from(new Set([...fromUsers, ...fromLegacy]))
         .sort((a: string, b: string) => a.localeCompare(b));
-      return reps.length > 0 ? reps : getCurrentSalesReps();
+      return allReps;
     },
     bulkUpload: (items: any[]) => {
       // Normalize name: trim, collapse multiple spaces, lowercase

@@ -245,8 +245,24 @@ export function createLocalLink() {
               case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
-              case "invoice.createCreditNote": result = dataService.invoice.createCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
-              case "invoice.voidCreditNote": result = dataService.invoice.voidCreditNote(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } break;
+              case "invoice.createCreditNote": {
+                result = dataService.invoice.createCreditNote(input);
+                if (result?.invoiceId) {
+                  const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
+                  if (inv) await pushInvoice(inv);
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                break;
+              }
+              case "invoice.voidCreditNote": {
+                result = dataService.invoice.voidCreditNote(input);
+                if (result?.invoiceId) {
+                  const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
+                  if (inv) await pushInvoice(inv);
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                break;
+              }
               // USERS
               case "user.list": await syncFromCloud("users", "sgf_users"); result = dataService.user.list(); break;
               case "user.getById": result = dataService.user.getById(input); break;

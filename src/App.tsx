@@ -165,6 +165,8 @@ export default function App() {
       }
       if (type === "stock") {
         utils.stock.list.refetch();
+        utils.stock.search.refetch();
+        utils.stock.getStats.refetch();
       }
       if (type === "followUps" || type === "followUpActions") {
         utils.followUp.list.refetch();

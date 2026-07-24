@@ -2075,7 +2075,6 @@ export const dataService = {
     getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId === invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId === customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     createCreditNote: (data: any) => {
-      console.log("[CN] data.invoiceId:", data.invoiceId, "type:", typeof data.invoiceId, "amount:", data.amount);
       const creditNote = {
         id: Date.now() + Math.random(),
         creditNoteNumber: `CN-${String(creditNotes.filter((cn) => !cn.voided).length + 1).padStart(3, "0")}`,
@@ -2086,12 +2085,23 @@ export const dataService = {
       saveItem("sgf_creditNotes", creditNotes);
       let updatedInvoice = null;
       if (data.invoiceId) {
-        const inv = invoices.find((i) => i.id == data.invoiceId);
-        console.log("[CN] Found invoice:", inv ? inv.invoiceNumber : "NOT FOUND", "searchId:", data.invoiceId, "arrayIds:", invoices.slice(0,5).map((i) => i.id));
+        // Try to find invoice by id (loose equality for number/string mismatch)
+        let inv = invoices.find((i) => i.id == data.invoiceId);
+        // Fallback: search by invoiceNumber if id search fails
+        // (the array may have been replaced by subscription/reload)
+        if (!inv && data.invoiceNumber) {
+          inv = invoices.find((i) => i.invoiceNumber === data.invoiceNumber);
+        }
+        // Second fallback: search by customerId + total amount match
+        if (!inv && data.customerId && data.amount) {
+          inv = invoices.find((i) =>
+            i.customerId == data.customerId &&
+            Math.abs((i.total || 0) - (data.invoiceTotal || i.total || 0)) < 0.01
+          );
+        }
         if (inv) {
           const creditTotal = (data.amount || 0);
           const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-          console.log("[CN] Before: balanceDue=", inv.balanceDue, "creditTotal=", creditTotal);
           inv.balanceDue = currentBalance - creditTotal;
           if (!inv.creditNotes) inv.creditNotes = [];
           inv.creditNotes.push(creditNote.id);
@@ -2105,7 +2115,6 @@ export const dataService = {
           inv.updatedAt = new Date().toISOString();
           saveItem("sgf_invoices", invoices);
           updatedInvoice = inv;
-          console.log("[CN] After: balanceDue=", inv.balanceDue, "status=", inv.status);
         }
       }
       logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${data.amount}`);

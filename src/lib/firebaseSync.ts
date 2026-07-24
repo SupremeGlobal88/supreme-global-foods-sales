@@ -477,6 +477,10 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
         const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
         // Use the newer version as the base
+        // Debug: log invoice merge decisions
+        if (key === "sgf_invoices" && item.invoiceNumber) {
+          console.log(`[MERGE] ${item.invoiceNumber}: localBal=${item.balanceDue} localUpd=${localUpdated} fbBal=${fbItem.balanceDue} fbUpd=${fbUpdated} winner=${localUpdated >= fbUpdated ? "LOCAL" : "FB"}`);
+        }
         const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
         // Always enrich with local properties that are missing/null in the winner
         const loser = localUpdated >= fbUpdated ? fbItem : item;

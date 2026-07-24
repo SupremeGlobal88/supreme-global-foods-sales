@@ -246,17 +246,24 @@ export function createLocalLink() {
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
               case "invoice.createCreditNote": {
+                console.log("[CN] Step 1: Calling createCreditNote with input:", JSON.stringify(input));
                 result = dataService.invoice.createCreditNote(input);
+                console.log("[CN] Step 2: createCreditNote returned:", result ? "SUCCESS" : "FAILED", result ? JSON.stringify({ id: result.id, amount: result.amount, invoiceId: result.invoiceId }) : "");
                 if (result) {
+                  console.log("[CN] Step 3: Pushing credit note to Firebase...");
                   await pushCreditNote(result);
+                  console.log("[CN] Step 4: Credit note pushed to Firebase");
                   if (result.invoiceId) {
                     const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
+                    console.log("[CN] Step 5: Found invoice after CN:", inv ? JSON.stringify({ id: inv.id, number: inv.invoiceNumber, balanceDue: inv.balanceDue, status: inv.status, updatedAt: inv.updatedAt }) : "NOT FOUND");
                     if (inv) {
+                      console.log("[CN] Step 6: Pushing updated invoice to Firebase...");
                       const pushResult = await pushInvoice(inv);
-                      if (!pushResult.success) console.error("[creditNote] pushInvoice FAILED:", pushResult.error);
+                      console.log("[CN] Step 7: pushInvoice result:", pushResult.success ? "SUCCESS" : "FAILED", pushResult.error || "");
                     }
                   }
                 }
+                console.log("[CN] Step 8: Dispatching firebaseDataReceived");
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;
               }

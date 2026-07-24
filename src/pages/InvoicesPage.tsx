@@ -106,6 +106,7 @@ export default function InvoicesPage() {
   });
   const updateInvoice = trpc.invoice.update.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowEditInv(false); },
+    onError: (err: any) => { alert("Edit invoice failed: " + (err.message || "Unknown error")); },
   });
   const activateInvoice = trpc.invoice.updateStatus.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
@@ -975,7 +976,9 @@ export default function InvoicesPage() {
               </div>
               <button
                 onClick={() => {
-                  const payload = { invoiceId: payInvId, amount: parseFloat(payAmt), paymentMethod: payMethod, paymentDate: payDate, referenceNumber: payRef, notes: payNotes };
+                  const amount = parseFloat(payAmt);
+                  if (isNaN(amount) || amount <= 0) { alert("Please enter a valid payment amount greater than 0."); return; }
+                  const payload = { invoiceId: payInvId, amount, paymentMethod: payMethod, paymentDate: payDate, referenceNumber: payRef, notes: payNotes };
                   if (editPayId) editPay.mutate({ ...payload, paymentId: editPayId });
                   else recordPay.mutate(payload);
                 }}

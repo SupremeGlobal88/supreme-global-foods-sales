@@ -2615,9 +2615,10 @@ export const dataService = {
     getDailyReport: (dateStr?: string) => {
       const targetDate = dateStr ? new Date(dateStr) : new Date();
       const dateKey = targetDate.toDateString();
+      // Include ALL check-ins for the day — even those without GPS coordinates.
+      // buildRepReport handles missing coords gracefully (counts visit, skips distance).
       const dayCheckins = checkins.filter((ci) =>
-        new Date(ci.createdAt).toDateString() === dateKey &&
-        ci.latitude && ci.longitude
+        new Date(ci.createdAt).toDateString() === dateKey
       );
       return buildRepReport(dayCheckins, "daily", targetDate);
     },
@@ -2627,7 +2628,6 @@ export const dataService = {
       const targetYear = year || now.getFullYear();
       const targetWeek = week || getWeekNumber(now);
       const weekCheckins = checkins.filter((ci) => {
-        if (!ci.latitude || !ci.longitude) return false;
         const d = new Date(ci.createdAt);
         return d.getFullYear() === targetYear && getWeekNumber(d) === targetWeek;
       });
@@ -2639,7 +2639,6 @@ export const dataService = {
       const targetYear = year || now.getFullYear();
       const targetMonth = month !== undefined ? month : now.getMonth();
       const monthCheckins = checkins.filter((ci) => {
-        if (!ci.latitude || !ci.longitude) return false;
         const d = new Date(ci.createdAt);
         return d.getFullYear() === targetYear && d.getMonth() === targetMonth;
       });

@@ -186,23 +186,13 @@ export default function CustomerStatementPage() {
     const toStr = new Date(stmtTo).toLocaleDateString("en-ZA");
     const closingBal = totalDebit - totalCredit;
 
-    const creditNoteRows = custCreditNotes.map((cn: any) =>
-      `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap">${new Date(cn.createdAt).toLocaleDateString("en-ZA")}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:#F59E0B">${cn.creditNoteNumber || "CN"}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px">Credit Note — ${cn.reason || "Adjustment"}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right">-</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:#F59E0B">${Number(cn.amount || 0).toFixed(2)}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right"></td>
-      </tr>`
-    ).join("");
     const ledgerRows = lines.map(l =>
       `<tr>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap">${new Date(l.date).toLocaleDateString("en-ZA")}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:#D4A843">${l.ref}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""} <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span></td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:${l.type === "credit_note" ? "#F59E0B" : "#D4A843"}">${l.ref}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""}${l.terms ? ` <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span>` : ""}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right">${l.debit > 0 ? l.debit.toFixed(2) : "-"}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:#2E7D32">${l.credit > 0 ? l.credit.toFixed(2) : "-"}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:${l.type === "credit_note" ? "#F59E0B" : "#2E7D32"}">${l.credit > 0 ? l.credit.toFixed(2) : "-"}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;font-weight:700;${l.balance > 0 ? "color:#c00" : ""}">${l.balance.toFixed(2)}</td>
       </tr>`
     ).join("");
@@ -279,7 +269,7 @@ export default function CustomerStatementPage() {
       <table class="ledger"><thead><tr>
         <th style="width:12%">Date</th><th style="width:16%">Invoice #</th><th>Description</th><th style="width:12%" class="num">Debit (R)</th><th style="width:12%" class="num">Credit (R)</th><th style="width:12%" class="num">Balance (R)</th>
       </tr></thead><tbody>
-        ${lines.length === 0 && custCreditNotes.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">No transactions for the selected period.</td></tr>` : ledgerRows + creditNoteRows}
+        ${lines.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">No transactions for the selected period.</td></tr>` : ledgerRows}
       </tbody></table>
       <div class="summary"><div class="summary-box">
         <div class="row"><span style="color:#666">Subtotal Debit</span><strong>R ${totalDebit.toFixed(2)}</strong></div>

@@ -48,6 +48,7 @@ export default function InvoicesPage() {
   /* Credit note form */
   const [showCreditNote, setShowCreditNote] = useState(false);
   const [cnInvId, setCnInvId] = useState(0);
+  const [cnInvNumber, setCnInvNumber] = useState("");
   const [cnAmount, setCnAmount] = useState("");
   const [cnReason, setCnReason] = useState("");
 
@@ -750,6 +751,9 @@ export default function InvoicesPage() {
                           )}
                           {isAdmin && bal > 0 && (
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
+                          )}
+                          {isAdmin && inv.status !== "draft" && (
+                            <button onClick={() => { setCnInvId(inv.id); setCnInvNumber(inv.invoiceNumber); setCnAmount(bal > 0 ? String(bal) : ""); setShowCreditNote(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Credit Note"><RotateCcw className="w-3.5 h-3.5 text-[#F59E0B]" /></button>
                           )}
                           {isAdmin && inv.status !== "draft" && (
                             <button onClick={() => sendEmail(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Email Invoice"><Mail className="w-3.5 h-3.5 text-[#3B82F6]" /></button>

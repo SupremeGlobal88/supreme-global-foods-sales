@@ -2075,7 +2075,6 @@ export const dataService = {
     getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId === invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId === customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     createCreditNote: (data: any) => {
-      console.log("[CN-DS] Step 1: createCreditNote called with:", JSON.stringify(data));
       const creditNote = {
         id: Date.now() + Math.random(),
         creditNoteNumber: `CN-${String(creditNotes.filter((cn) => !cn.voided).length + 1).padStart(3, "0")}`,
@@ -2084,14 +2083,12 @@ export const dataService = {
       };
       creditNotes.push(creditNote);
       saveItem("sgf_creditNotes", creditNotes);
-      console.log("[CN-DS] Step 2: Credit note created:", creditNote.creditNoteNumber, "Total CN count:", creditNotes.length);
+      let updatedInvoice = null;
       if (data.invoiceId) {
         const inv = invoices.find((i) => i.id === data.invoiceId);
-        console.log("[CN-DS] Step 3: Found invoice:", inv ? inv.invoiceNumber : "NOT FOUND", "ID:", data.invoiceId);
         if (inv) {
           const creditTotal = (data.amount || 0);
           const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-          console.log("[CN-DS] Step 4: Before CN — balance:", currentBalance, "creditTotal:", creditTotal, "amountPaid:", inv.amountPaid);
           inv.balanceDue = currentBalance - creditTotal;
           if (!inv.creditNotes) inv.creditNotes = [];
           inv.creditNotes.push(creditNote.id);
@@ -2104,11 +2101,11 @@ export const dataService = {
           }
           inv.updatedAt = new Date().toISOString();
           saveItem("sgf_invoices", invoices);
-          console.log("[CN-DS] Step 5: After CN — balance:", inv.balanceDue, "status:", inv.status, "updatedAt:", inv.updatedAt);
+          updatedInvoice = inv;
         }
       }
       logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${data.amount}`);
-      return creditNote;
+      return { creditNote, updatedInvoice };
     },
     voidCreditNote: (id: number) => {
       const idx = creditNotes.findIndex((cn) => cn.id === id);

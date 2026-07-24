@@ -370,6 +370,12 @@ function stringSimilarity(a: string, b: string): number {
  *  SALES REP REPORTING HELPERS
  *  ═══════════════════════════════════════════════════════════════ */
 
+/** SGF Office coordinates — 28 Nagington Rd, Wadeville, Germiston
+ *  All daily routes start and end here. */
+const OFFICE_LAT = -26.2596294;
+const OFFICE_LNG = 28.1858534;
+const OFFICE_NAME = "SGF Office — 28 Nagington Rd, Wadeville";
+
 /** South African AA travel rate per km (configurable, default R5.50/km) */
 let AA_RATE_PER_KM = 5.50;
 try {
@@ -430,21 +436,49 @@ function buildRepReport(
     // Sort by time for distance calculation
     repCheckins.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    // Calculate distance between consecutive check-ins
+    // Calculate distance: Office → Customer 1 → Customer 2 → ... → Last Customer → Office
     let totalKm = 0;
     const routeSegments: any[] = [];
-    for (let i = 1; i < repCheckins.length; i++) {
-      const prev = repCheckins[i - 1];
-      const curr = repCheckins[i];
-      if (prev.latitude && prev.longitude && curr.latitude && curr.longitude) {
-        const km = haversineKm(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+
+    // Helper to add a segment
+    const addSegment = (from: any, to: any) => {
+      if (from.lat && from.lng && to.lat && to.lng) {
+        const km = haversineKm(from.lat, from.lng, to.lat, to.lng);
         totalKm += km;
         routeSegments.push({
-          from: { location: prev.location || "Unknown", lat: prev.latitude, lng: prev.longitude, time: prev.createdAt },
-          to: { location: curr.location || "Unknown", lat: curr.latitude, lng: curr.longitude, time: curr.createdAt },
+          from: { location: from.location, lat: from.lat, lng: from.lng, time: from.time },
+          to: { location: to.location, lat: to.lat, lng: to.lng, time: to.time },
           km: Math.round(km * 100) / 100,
         });
       }
+    };
+
+    // 1. Office → First check-in (start of day)
+    const first = repCheckins[0];
+    if (first) {
+      addSegment(
+        { location: OFFICE_NAME, lat: OFFICE_LAT, lng: OFFICE_LNG, time: null },
+        { location: first.location || "First Visit", lat: first.latitude, lng: first.longitude, time: first.createdAt }
+      );
+    }
+
+    // 2. Between consecutive check-ins
+    for (let i = 1; i < repCheckins.length; i++) {
+      const prev = repCheckins[i - 1];
+      const curr = repCheckins[i];
+      addSegment(
+        { location: prev.location || "Unknown", lat: prev.latitude, lng: prev.longitude, time: prev.createdAt },
+        { location: curr.location || "Unknown", lat: curr.latitude, lng: curr.longitude, time: curr.createdAt }
+      );
+    }
+
+    // 3. Last check-in → Office (end of day)
+    const last = repCheckins[repCheckins.length - 1];
+    if (last) {
+      addSegment(
+        { location: last.location || "Last Visit", lat: last.latitude, lng: last.longitude, time: last.createdAt },
+        { location: OFFICE_NAME, lat: OFFICE_LAT, lng: OFFICE_LNG, time: null }
+      );
     }
 
     // Count unique customers visited

@@ -125,7 +125,7 @@ export default function InvoicesPage() {
   }
 
   function openPay(inv: any) {
-    const bal = Number(inv.balanceDue || inv.total || 0);
+    const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setPayInvId(inv.id);
     setPayInvNumber(inv.invoiceNumber);
     setPayCustName(inv.customer?.name || "N/A");
@@ -708,7 +708,7 @@ export default function InvoicesPage() {
                 const isExp = expanded === inv.id;
                 const tot = Number(inv.total || 0);
                 const paid = Number(inv.amountPaid || 0);
-                const bal = Number(inv.balanceDue || tot - paid);
+                const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (tot - paid);
                 const invReceipts = (allReceipts || []).filter((r: any) => r.invoiceId === inv.id);
                 return (
                   <>

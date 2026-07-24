@@ -1159,6 +1159,14 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   const existingIdx = invoices.findIndex((i) => i.orderId == orderId);
   if (existingIdx >= 0) {
     const existing = invoices[existingIdx];
+    // PRESERVE payments and credit notes when updating invoice from order.
+    // Only recalculate balance if total changed — subtract existing payments.
+    const oldTotal = Number(existing.total || existing.totalAmount || 0);
+    const newTotal = total;
+    const amountPaid = Number(existing.amountPaid || 0);
+    const newBalanceDue = Math.abs(newTotal - oldTotal) > 0.01
+      ? newTotal - amountPaid
+      : (existing.balanceDue !== undefined ? existing.balanceDue : newTotal - amountPaid);
     invoices[existingIdx] = {
       ...existing,
       items: items.map((item: any) => ({
@@ -1170,13 +1178,14 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       })),
       subtotal,
       vatAmount,
-      total,
-      balanceDue: total,
+      total: newTotal,
+      totalAmount: newTotal,
+      balanceDue: newBalanceDue,
       updatedAt: new Date().toISOString(),
       notes: isSample ? `Sample order ${order.orderNumber || ""}` : `Invoice for ${order.orderNumber || ""}`,
     };
     saveItem("sgf_invoices", invoices);
-    logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId}`, order.salesRepName);
+    logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;
   }
   return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);

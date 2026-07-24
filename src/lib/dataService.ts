@@ -2084,40 +2084,74 @@ export const dataService = {
       creditNotes.push(creditNote);
       saveItem("sgf_creditNotes", creditNotes);
       let updatedInvoice = null;
-      if (data.invoiceId) {
-        // Try to find invoice by id (loose equality for number/string mismatch)
-        let inv = invoices.find((i) => i.id == data.invoiceId);
-        // Fallback: search by invoiceNumber if id search fails
-        // (the array may have been replaced by subscription/reload)
-        if (!inv && data.invoiceNumber) {
-          inv = invoices.find((i) => i.invoiceNumber === data.invoiceNumber);
+
+      // Helper: find and update invoice, searching multiple sources
+      const findAndUpdateInvoice = (): any | null => {
+        if (!data.invoiceId) return null;
+
+        // Search 1: Current in-memory array (loose equality)
+        let idx = invoices.findIndex((i) => i.id == data.invoiceId);
+
+        // Search 2: By invoiceNumber
+        if (idx < 0 && data.invoiceNumber) {
+          idx = invoices.findIndex((i) => i.invoiceNumber === data.invoiceNumber);
         }
-        // Second fallback: search by customerId + total amount match
-        if (!inv && data.customerId && data.amount) {
-          inv = invoices.find((i) =>
+
+        // Search 3: By customerId + total
+        if (idx < 0 && data.customerId) {
+          idx = invoices.findIndex((i) =>
             i.customerId == data.customerId &&
             Math.abs((i.total || 0) - (data.invoiceTotal || i.total || 0)) < 0.01
           );
         }
-        if (inv) {
-          const creditTotal = (data.amount || 0);
-          const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-          inv.balanceDue = currentBalance - creditTotal;
-          if (!inv.creditNotes) inv.creditNotes = [];
-          inv.creditNotes.push(creditNote.id);
-          if (inv.balanceDue > 0.01) {
-            inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
-          } else if (inv.balanceDue >= -0.01) {
-            inv.status = "paid";
-          } else {
-            inv.status = "paid";
-          }
-          inv.updatedAt = new Date().toISOString();
-          saveItem("sgf_invoices", invoices);
-          updatedInvoice = inv;
+
+        // Search 4: localStorage direct (in case array was replaced)
+        if (idx < 0) {
+          try {
+            const raw = localStorage.getItem("sgf_invoices");
+            if (raw) {
+              const stored = JSON.parse(raw);
+              if (Array.isArray(stored)) {
+                const storedIdx = stored.findIndex((i: any) =>
+                  i.id == data.invoiceId ||
+                  (data.invoiceNumber && i.invoiceNumber === data.invoiceNumber)
+                );
+                if (storedIdx >= 0) {
+                  // Found in localStorage but not in memory — reload and search again
+                  invoices = stored;
+                  idx = invoices.findIndex((i) => i.id == data.invoiceId);
+                  if (idx < 0 && data.invoiceNumber) {
+                    idx = invoices.findIndex((i) => i.invoiceNumber === data.invoiceNumber);
+                  }
+                }
+              }
+            }
+          } catch { /* ignore */ }
         }
-      }
-      logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${data.amount}`);
+
+        if (idx < 0) return null;
+
+        // Apply credit note to invoice
+        const inv = invoices[idx];
+        const creditTotal = (data.amount || 0);
+        const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+        inv.balanceDue = currentBalance - creditTotal;
+        if (!inv.creditNotes) inv.creditNotes = [];
+        inv.creditNotes.push(creditNote.id);
+        if (inv.balanceDue > 0.01) {
+          inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
+        } else if (inv.balanceDue >= -0.01) {
+          inv.status = "paid";
+        } else {
+          inv.status = "paid";
+        }
+        inv.updatedAt = new Date().toISOString();
+        saveItem("sgf_invoices", invoices);
+        return inv;
+      };
+
+      updatedInvoice = findAndUpdateInvoice();
+      logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${data.amount} invoice=${data.invoiceId} found=${!!updatedInvoice}`);
       return { creditNote, updatedInvoice };
     },
     voidCreditNote: (id: number) => {

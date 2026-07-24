@@ -17,6 +17,7 @@ export default function CustomerStatementPage() {
 
   const { data: invoices } = trpc.invoice.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
   const [stmtFrom, setStmtFrom] = useState("2020-01-01");
@@ -62,13 +63,37 @@ export default function CustomerStatementPage() {
       );
   }, [invoices, selectedCustomer, stmtFrom, stmtTo]);
 
-  // Build running balance ledger lines
+  // Credit notes for this customer
+  const custCreditNotes = useMemo(() => {
+    if (!selectedCustomer || !allCreditNotes) return [];
+    const cName = (selectedCustomer.name || "").toLowerCase().trim();
+    return allCreditNotes.filter((cn: any) => {
+      // Match by invoiceId linked to customer's invoice
+      const matchingInv = (invoices || []).find((i: any) => i.id == cn.invoiceId);
+      if (matchingInv) {
+        const invCustName = (matchingInv.customer?.name || "").toLowerCase().trim();
+        const invTopName = (matchingInv.customerName || "").toLowerCase().trim();
+        if (invCustName === cName || invTopName === cName) return true;
+        if (matchingInv.customerId === selectedCustomer.id) return true;
+      }
+      // Match by customerId on credit note directly
+      if (cn.customerId === selectedCustomer.id) return true;
+      return false;
+    }).filter((cn: any) => {
+      const d = new Date(cn.createdAt);
+      return d >= new Date(stmtFrom) && d <= new Date(stmtTo + "T23:59:59");
+    }).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [allCreditNotes, selectedCustomer, invoices, stmtFrom, stmtTo]);
+
+  // Build running balance ledger lines — includes invoices, payments, AND credit notes
   const lines = useMemo(() => {
     const result: any[] = [];
     let bal = 0;
+
+    // Process invoices
     for (const inv of custInvoices) {
       const debit = Number(inv.total || 0);
-      const credit = Number(inv.amountPaid || 0);
+      const payment = Number(inv.amountPaid || 0);
       bal += debit;
       result.push({
         date: inv.invoiceDate || inv.createdAt,
@@ -79,34 +104,56 @@ export default function CustomerStatementPage() {
         credit: 0,
         balance: bal,
         source: inv.source || "app",
+        type: "invoice",
       });
-      if (credit > 0) {
-        bal -= credit;
+      if (payment > 0) {
+        bal -= payment;
         result.push({
           date: inv.updatedAt || inv.invoiceDate || inv.createdAt,
           ref: "Payment",
           desc: "Payment Received",
           terms: "",
           debit: 0,
-          credit,
+          credit: payment,
           balance: bal,
           source: "app",
+          type: "payment",
         });
       }
     }
+
+    // Add credit notes as credit entries
+    for (const cn of custCreditNotes) {
+      bal -= Number(cn.amount || 0);
+      result.push({
+        date: cn.createdAt,
+        ref: cn.creditNoteNumber || "CN",
+        desc: `Credit Note — ${cn.reason || "Adjustment"}`,
+        terms: "",
+        debit: 0,
+        credit: Number(cn.amount || 0),
+        balance: bal,
+        source: "app",
+        type: "credit_note",
+      });
+    }
+
+    // Sort all lines by date
+    result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
     return result;
-  }, [custInvoices]);
+  }, [custInvoices, custCreditNotes]);
 
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
 
-  // Aging
+  // Aging — uses actual invoice balanceDue (which already reflects payments AND credit notes)
   const aging = useMemo(() => {
     const a = { current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0 };
     const now = new Date();
     for (const inv of custInvoices) {
-      const bal = Number(inv.balanceDue || inv.total || 0) - Number(inv.amountPaid || 0);
-      if (bal <= 0) continue;
+      const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+      if (bal <= 0) continue; // Paid or credit — skip aging
       const dd = Math.floor((now.getTime() - new Date(inv.invoiceDate || inv.createdAt).getTime()) / 86400000);
       if (dd <= 30) a.current += bal;
       else if (dd <= 60) a.days30 += bal;
@@ -139,6 +186,16 @@ export default function CustomerStatementPage() {
     const toStr = new Date(stmtTo).toLocaleDateString("en-ZA");
     const closingBal = totalDebit - totalCredit;
 
+    const creditNoteRows = custCreditNotes.map((cn: any) =>
+      `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap">${new Date(cn.createdAt).toLocaleDateString("en-ZA")}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:#F59E0B">${cn.creditNoteNumber || "CN"}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px">Credit Note — ${cn.reason || "Adjustment"}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right">-</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:#F59E0B">${Number(cn.amount || 0).toFixed(2)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right"></td>
+      </tr>`
+    ).join("");
     const ledgerRows = lines.map(l =>
       `<tr>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap">${new Date(l.date).toLocaleDateString("en-ZA")}</td>
@@ -222,7 +279,7 @@ export default function CustomerStatementPage() {
       <table class="ledger"><thead><tr>
         <th style="width:12%">Date</th><th style="width:16%">Invoice #</th><th>Description</th><th style="width:12%" class="num">Debit (R)</th><th style="width:12%" class="num">Credit (R)</th><th style="width:12%" class="num">Balance (R)</th>
       </tr></thead><tbody>
-        ${lines.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">No invoices for the selected period.</td></tr>` : ledgerRows}
+        ${lines.length === 0 && custCreditNotes.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">No transactions for the selected period.</td></tr>` : ledgerRows + creditNoteRows}
       </tbody></table>
       <div class="summary"><div class="summary-box">
         <div class="row"><span style="color:#666">Subtotal Debit</span><strong>R ${totalDebit.toFixed(2)}</strong></div>
@@ -318,7 +375,7 @@ export default function CustomerStatementPage() {
             <span className="px-3 py-1.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
               {selectedCustomer.name} ({selectedCustomer.customerCode})
             </span>
-            <span className="text-xs text-[#8A8B8C]">{custInvoices.length} invoice{custInvoices.length !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-[#8A8B8C]">{custInvoices.length} invoice{custInvoices.length !== 1 ? "s" : ""}{custCreditNotes.length > 0 ? ` | ${custCreditNotes.length} credit note${custCreditNotes.length !== 1 ? "s" : ""}` : ""}</span>
           </div>
         )}
       </div>
@@ -380,7 +437,7 @@ export default function CustomerStatementPage() {
                             )}
                           </td>
                           <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
-                          <td className="p-3 text-right text-xs" style={{ color: "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
+                          <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
                           <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? "#D4A843" : "#4ADE80" }}>
                             {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
                           </td>

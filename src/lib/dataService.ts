@@ -2073,15 +2073,25 @@ export const dataService = {
       if (data.invoiceId) {
         const inv = invoices.find((i) => i.id === data.invoiceId);
         if (inv) {
-          // Credit notes reduce balanceDue but do NOT add to amountPaid
-          // This keeps credit notes separate from actual payments received
+          // Credit notes reduce balanceDue. If balance goes below zero,
+          // the customer has a credit (can be applied to future invoices).
+          // Credit notes do NOT affect amountPaid — they are separate from payments.
           const creditTotal = (data.amount || 0);
-          inv.balanceDue = Math.max(0, (inv.balanceDue || inv.total || 0) - creditTotal);
+          inv.balanceDue = (inv.balanceDue || inv.total || 0) - creditTotal;
           // Track credit notes on the invoice for display purposes
           if (!inv.creditNotes) inv.creditNotes = [];
           inv.creditNotes.push(creditNote.id);
-          if (inv.balanceDue <= 0.01) inv.status = "paid";
-          else if ((inv.amountPaid || 0) > 0 || (inv.creditNotes || []).length > 0) inv.status = "partially_paid";
+          // Status logic: if balance is positive → partially_paid or sent
+          // if balance is zero → paid
+          // if balance is negative → credit (customer owes them)
+          if (inv.balanceDue > 0.01) {
+            inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
+          } else if (inv.balanceDue >= -0.01) {
+            inv.status = "paid";
+          } else {
+            // Negative balance = customer has credit. Show as paid with credit.
+            inv.status = "paid";
+          }
           saveItem("sgf_invoices", invoices);
         }
       }
@@ -2097,10 +2107,23 @@ export const dataService = {
         if (cn.invoiceId) {
           const inv = invoices.find((i) => i.id === cn.invoiceId);
           if (inv) {
+            // Restore the balance by adding the credit note amount back.
+            // Credit notes NEVER affect amountPaid — only balanceDue.
             inv.balanceDue = (inv.balanceDue || 0) + (cn.amount || 0);
-            inv.amountPaid = Math.max(0, (inv.amountPaid || 0) - (cn.amount || 0));
-            if ((inv.amountPaid || 0) <= 0) inv.status = inv.status === "draft" ? "draft" : "sent";
-            else if ((inv.balanceDue || 0) > 0) inv.status = "partially_paid";
+            // Remove credit note ID from invoice tracking
+            if (inv.creditNotes) {
+              inv.creditNotes = inv.creditNotes.filter((cnId: any) => cnId !== cn.id);
+            }
+            // Recalculate status based on restored balance
+            const total = Number(inv.total || inv.totalAmount || 0);
+            const paid = Number(inv.amountPaid || 0);
+            if (inv.balanceDue >= total - 0.01) {
+              inv.status = "sent"; // No payment, full balance restored
+            } else if (inv.balanceDue > 0.01) {
+              inv.status = "partially_paid"; // Some payment, some balance
+            } else {
+              inv.status = "paid"; // Fully paid or credit
+            }
             saveItem("sgf_invoices", invoices);
           }
         }

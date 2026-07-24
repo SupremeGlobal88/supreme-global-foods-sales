@@ -726,8 +726,8 @@ export default function InvoicesPage() {
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>
-                      <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 ? "#EF4444" : "#4ADE80" }}>
-                        R {bal.toFixed(2)}
+                      <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 ? "#EF4444" : bal < 0 ? "#3B82F6" : "#4ADE80" }}>
+                        {bal < 0 ? "Credit " : "R "}{bal < 0 ? `R ${Math.abs(bal).toFixed(2)}` : `R ${bal.toFixed(2)}`}
                       </td>
                       <td className="p-3 text-center">{badge(inv.status)}</td>
                       <td className="p-3 text-right">
@@ -819,6 +819,11 @@ export default function InvoicesPage() {
                                   <span className="text-[#EF4444] font-bold">Balance Due:</span><span className="text-[#EF4444] font-bold">R {bal.toFixed(2)}</span>
                                 </div>
                               )}
+                              {bal < 0 && (
+                                <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #3B82F6" }}>
+                                  <span className="text-[#3B82F6] font-bold">Customer Credit:</span><span className="text-[#3B82F6] font-bold">R {Math.abs(bal).toFixed(2)}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -907,8 +912,8 @@ export default function InvoicesPage() {
                             {isAdmin && bal > 0 && (
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
                             )}
-                            {isAdmin && inv.status !== "draft" && bal > 0 && (
-                              <button onClick={() => { setCnInvId(inv.id); setCnAmount(String(bal)); setShowCreditNote(true); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
+                            {isAdmin && inv.status !== "draft" && (
+                              <button onClick={() => { setCnInvId(inv.id); setCnInvNumber(inv.invoiceNumber); setCnAmount(bal > 0 ? String(bal) : ""); setShowCreditNote(true); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
                             )}
                             {isAdmin && inv.status !== "draft" && (
                               <button onClick={() => sendEmail(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(59,130,246,0.3)" }}><Mail className="w-3 h-3" /> Email to Customer</button>
@@ -1039,18 +1044,21 @@ export default function InvoicesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-[#F59E0B]" /> Create Credit Note
-              </h2>
+              <div>
+                <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-[#F59E0B]" /> Create Credit Note
+                </h2>
+                <p className="text-xs text-[#8A8B8C] mt-0.5">Invoice: {editInvNumber || cnInvId}</p>
+              </div>
               <button onClick={() => setShowCreditNote(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#F59E0B" }}>
-              A credit note reduces the customer's outstanding balance. The invoice will be updated automatically.
+              Creates a credit note against this invoice. If the invoice is already paid, the customer will have a credit balance that can be applied to future invoices.
             </div>
             <div className="space-y-4">
               <div>
                 <label className="label-text block mb-1.5">Credit Amount (R) *</label>
-                <input type="number" step="0.01" value={cnAmount} onChange={(e) => setCnAmount(e.target.value)} className="input-field" placeholder="0.00" />
+                <input type="number" step="0.01" value={cnAmount} onChange={(e) => setCnAmount(e.target.value)} className="input-field" placeholder="Enter amount..." />
               </div>
               <div>
                 <label className="label-text block mb-1.5">Reason *</label>
@@ -1068,8 +1076,8 @@ export default function InvoicesPage() {
               </div>
               <button
                 onClick={() => {
-                  if (!cnAmount || parseFloat(cnAmount) <= 0) return;
-                  if (!cnReason) return;
+                  if (!cnAmount || parseFloat(cnAmount) <= 0) { alert("Please enter a valid credit amount greater than 0."); return; }
+                  if (!cnReason) { alert("Please select a reason for the credit note."); return; }
                   createCreditNote.mutate({ invoiceId: cnInvId, amount: parseFloat(cnAmount), reason: cnReason });
                 }}
                 className="btn-primary w-full justify-center"

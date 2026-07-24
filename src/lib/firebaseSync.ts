@@ -477,9 +477,9 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
         const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
         // Use the newer version as the base
-        const mergedItem = localUpdated > fbUpdated ? { ...item } : { ...fbItem };
+        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
         // Always enrich with local properties that are missing/null in the winner
-        const loser = localUpdated > fbUpdated ? fbItem : item;
+        const loser = localUpdated >= fbUpdated ? fbItem : item;
         for (const prop of Object.keys(loser)) {
           if (loser[prop] != null && mergedItem[prop] == null) {
             mergedItem[prop] = loser[prop];

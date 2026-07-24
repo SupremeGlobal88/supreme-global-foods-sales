@@ -814,7 +814,17 @@ export function reloadFromStorage(): void {
   } catch { /* keep current */ }
   try {
     const i = localStorage.getItem("sgf_invoices");
-    if (i) { const d = JSON.parse(i); if (Array.isArray(d)) invoices = d; }
+    if (i) {
+      const d = JSON.parse(i);
+      if (Array.isArray(d)) {
+        // Ensure all invoices have updatedAt for timestamp-based merge
+        const now = new Date().toISOString();
+        for (const inv of d) {
+          if (!inv.updatedAt) inv.updatedAt = inv.createdAt || inv.invoiceDate || now;
+        }
+        invoices = d;
+      }
+    }
   } catch { /* keep current */ }
   try {
     const a = localStorage.getItem("sgf_appointments");

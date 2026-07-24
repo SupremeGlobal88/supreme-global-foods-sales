@@ -729,7 +729,7 @@ export default function InvoicesPage() {
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>
                       <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 ? "#EF4444" : bal < 0 ? "#3B82F6" : "#4ADE80" }}>
-                        {bal < 0 ? "Credit " : "R "}{bal < 0 ? `R ${Math.abs(bal).toFixed(2)}` : `R ${bal.toFixed(2)}`}
+                        {bal < 0 ? `Credit R ${Math.abs(bal).toFixed(2)}` : `R ${bal.toFixed(2)}`}
                       </td>
                       <td className="p-3 text-center">{badge(inv.status)}</td>
                       <td className="p-3 text-right">

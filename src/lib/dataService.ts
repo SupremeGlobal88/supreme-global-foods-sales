@@ -1995,6 +1995,7 @@ export const dataService = {
         createdAt: new Date().toISOString(),
       };
       receipts.push(receipt);
+      inv.updatedAt = new Date().toISOString();
       saveItem("sgf_receipts", receipts);
       saveItem("sgf_collectionNotes", collectionNotes);
       saveItem("sgf_invoices", invoices);
@@ -2028,6 +2029,7 @@ export const dataService = {
       } else {
         inv.status = inv.status === "draft" ? "draft" : "sent";
       }
+      inv.updatedAt = new Date().toISOString();
       saveItem("sgf_invoices", invoices);
       return inv;
     },
@@ -2049,6 +2051,7 @@ export const dataService = {
       } else {
         inv.status = inv.status === "draft" ? "draft" : "sent";
       }
+      inv.updatedAt = new Date().toISOString();
       saveItem("sgf_invoices", invoices);
       return inv;
     },
@@ -2095,6 +2098,7 @@ export const dataService = {
             // Negative balance = customer has credit. Show as paid with credit.
             inv.status = "paid";
           }
+          inv.updatedAt = new Date().toISOString();
           saveItem("sgf_invoices", invoices);
         }
       }

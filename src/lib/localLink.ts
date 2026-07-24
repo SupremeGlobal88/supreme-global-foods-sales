@@ -251,7 +251,10 @@ export function createLocalLink() {
                   await pushCreditNote(result);
                   if (result.invoiceId) {
                     const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
-                    if (inv) await pushInvoice(inv);
+                    if (inv) {
+                      const pushResult = await pushInvoice(inv);
+                      if (!pushResult.success) console.error("[creditNote] pushInvoice FAILED:", pushResult.error);
+                    }
                   }
                 }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));

@@ -466,17 +466,23 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    // For items in BOTH: merge local properties into Firebase item.
-    // Local non-null values win over Firebase null/missing values.
-    // This preserves customerCode, customerId updates from relinkSageInvoices().
+    // For items in BOTH: use timestamp-based merge.
+    // If both have updatedAt, the NEWER version wins (prevents stale cloud data
+    // from overwriting recent local changes like credit notes, payment edits).
+    // If no timestamps, fall back to: local non-null values win over Firebase null.
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && incomingMap.has(k)) {
         const fbItem = incomingMap.get(k)!;
-        const mergedItem = { ...fbItem };
-        for (const prop of Object.keys(item)) {
-          if (item[prop] != null && fbItem[prop] == null) {
-            mergedItem[prop] = item[prop]; // Local enrichment wins
+        const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
+        const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
+        // Use the newer version as the base
+        const mergedItem = localUpdated > fbUpdated ? { ...item } : { ...fbItem };
+        // Always enrich with local properties that are missing/null in the winner
+        const loser = localUpdated > fbUpdated ? fbItem : item;
+        for (const prop of Object.keys(loser)) {
+          if (loser[prop] != null && mergedItem[prop] == null) {
+            mergedItem[prop] = loser[prop];
           }
         }
         merged.set(k, mergedItem);

@@ -1114,17 +1114,17 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       deliveryNoteNumber,
       customerId: order.customerId,
       customer: customer || null,
-      subtotal: isSample ? 0 : subtotal,
-      vatAmount: isSample ? 0 : vatAmount,
-      total: isSample ? 0 : total,
-      totalAmount: isSample ? 0 : total,
+      subtotal: isSample ? subtotal : subtotal,
+      vatAmount: isSample ? vatAmount : vatAmount,
+      total: isSample ? total : total,
+      totalAmount: isSample ? total : total,
       balanceDue: isSample ? 0 : total,
       amountPaid: isSample ? 0 : 0,
       status: isSample ? "paid" : status,
       paymentTerms: order.paymentTerms || "cod",
       invoiceDate: now.toISOString(),
       dueDate: dueDate.toISOString(),
-      notes: isSample ? `Sample order - ${order.orderNumber} (No Charge)` : `Invoice for ${order.orderNumber}`,
+      notes: isSample ? `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}` : `Invoice for ${order.orderNumber}`,
       items: (order.items || []).map((item: any) => ({
         description: `${item.productCode} - ${item.productName}`,
         quantity: item.quantity,
@@ -2985,7 +2985,9 @@ export const dataService = {
           const product = products.find((p) => p.id === item.stockItemId);
           const invoice = invoices.find((i) => i.orderId === o.id);
           const unitCost = Number(item.unitPrice || product?.corporatePrice || 0);
-          const cost = unitCost * item.quantity;
+          const lineSubtotal = unitCost * item.quantity;
+          const lineVat = lineSubtotal * 0.15;
+          const lineTotal = lineSubtotal + lineVat;
           return {
             productCode: product?.productCode || "",
             productName: product?.productName || "Unknown",
@@ -2994,12 +2996,16 @@ export const dataService = {
             invoiceNumber: invoice?.invoiceNumber || "N/A",
             quantity: item.quantity,
             unitCost,
-            totalCost: cost,
+            subtotal: lineSubtotal,
+            vatAmount: lineVat,
+            totalCost: lineTotal,
           };
         })
       );
+      const grandSubtotal = report.reduce((sum, r) => sum + r.subtotal, 0);
+      const grandVat = report.reduce((sum, r) => sum + r.vatAmount, 0);
       const grandTotal = report.reduce((sum, r) => sum + r.totalCost, 0);
-      return { items: report, grandTotal };
+      return { items: report, grandSubtotal, grandVat, grandTotal };
     },
     getAll: () => {
       const sampleOrders = orders.filter((o) => o.orderType === "sample");
@@ -3012,6 +3018,9 @@ export const dataService = {
             const product = products.find((p) => p.id === item.stockItemId);
             const invoice = invoices.find((i) => i.orderId === o.id);
             const unitCost = Number(item.unitPrice || product?.corporatePrice || 0);
+            const lineSubtotal = unitCost * item.quantity;
+            const lineVat = lineSubtotal * 0.15;
+            const lineTotal = lineSubtotal + lineVat;
             return {
               productCode: product?.productCode || "",
               productName: product?.productName || "Unknown",
@@ -3020,10 +3029,14 @@ export const dataService = {
               invoiceNumber: invoice?.invoiceNumber || "N/A",
               quantity: item.quantity,
               unitCost,
-              totalCost: unitCost * item.quantity,
+              subtotal: lineSubtotal,
+              vatAmount: lineVat,
+              totalCost: lineTotal,
             };
           })
         );
+        const totalSubtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+        const totalVat = items.reduce((sum, item) => sum + item.vatAmount, 0);
         const totalCost = items.reduce((sum, item) => sum + item.totalCost, 0);
         report.push({
           customerId: customer.id,
@@ -3031,12 +3044,16 @@ export const dataService = {
           customerCode: customer.customerCode,
           salesRepName: customer.salesRepName || "Unassigned",
           items,
+          totalSubtotal,
+          totalVat,
           totalCost,
           sampleCount: custSamples.length,
         });
       }
+      const grandSubtotal = report.reduce((sum, r) => sum + r.totalSubtotal, 0);
+      const grandVat = report.reduce((sum, r) => sum + r.totalVat, 0);
       const grandTotal = report.reduce((sum, r) => sum + r.totalCost, 0);
-      return { customers: report, grandTotal };
+      return { customers: report, grandSubtotal, grandVat, grandTotal };
     },
   },
 

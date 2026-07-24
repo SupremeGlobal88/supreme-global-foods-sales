@@ -18,7 +18,7 @@ export default function SampleReportsPage() {
 
   const handleExport = () => {
     if (!report) return;
-    const headers = ["Customer Code", "Customer Name", "Sales Rep", "Product Code", "Product Name", "Date Taken", "Order Number", "Invoice Number", "Qty", "Unit Cost", "Total Cost"];
+    const headers = ["Customer Code", "Customer Name", "Sales Rep", "Product Code", "Product Name", "Date Taken", "Order Number", "Invoice Number", "Qty", "Unit Cost", "Subtotal", "VAT (15%)", "Total (incl. VAT)"];
     const rows: any[] = [];
     report.customers.forEach((cust: any) => {
       cust.items.forEach((item: any) => {
@@ -27,7 +27,8 @@ export default function SampleReportsPage() {
           item.productCode, item.productName,
           new Date(item.dateTaken).toLocaleDateString("en-ZA"),
           item.orderNumber, item.invoiceNumber,
-          item.quantity, item.unitCost.toFixed(2), item.totalCost.toFixed(2),
+          item.quantity, item.unitCost.toFixed(2),
+          item.subtotal.toFixed(2), item.vatAmount.toFixed(2), item.totalCost.toFixed(2),
         ]);
       });
     });
@@ -43,12 +44,13 @@ export default function SampleReportsPage() {
   const handleCustomerExport = () => {
     if (!customerReport || !selectedCustomer) return;
     const cust = (customers || []).find((c) => c.id === selectedCustomer);
-    const headers = ["Product Code", "Product Name", "Date Taken", "Order Number", "Invoice Number", "Qty", "Unit Cost", "Total Cost"];
+    const headers = ["Product Code", "Product Name", "Date Taken", "Order Number", "Invoice Number", "Qty", "Unit Cost", "Subtotal", "VAT (15%)", "Total (incl. VAT)"];
     const rows = customerReport.items.map((item: any) => [
       item.productCode, item.productName,
       new Date(item.dateTaken).toLocaleDateString("en-ZA"),
       item.orderNumber, item.invoiceNumber,
-      item.quantity, item.unitCost.toFixed(2), item.totalCost.toFixed(2),
+      item.quantity, item.unitCost.toFixed(2),
+      item.subtotal.toFixed(2), item.vatAmount.toFixed(2), item.totalCost.toFixed(2),
     ]);
     const csv = [headers.join(","), ...rows.map((r: any[]) => r.map((v) => `"${v}"`).join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -74,20 +76,40 @@ export default function SampleReportsPage() {
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Sample Reports</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">
-            {(report?.customers || []).length} customers with samples &middot; Total cost: R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+            {(report?.customers || []).length} customers with samples &middot; Subtotal: R {(report?.grandSubtotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} + VAT (15%): R {(report?.grandVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} = Total: R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
           </p>
         </div>
         <button onClick={handleExport} className="btn-secondary"><Download className="w-4 h-4" /> Export All</button>
       </div>
 
       {/* Grand Total Card */}
-      <div className="card-surface p-6 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
-          <DollarSign className="w-6 h-6 text-[#D4A843]" />
+      <div className="card-surface p-6 grid grid-cols-3 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
+            <DollarSign className="w-5 h-5 text-[#D4A843]" />
+          </div>
+          <div>
+            <div className="label-text text-[10px]">SUBTOTAL</div>
+            <div className="font-display font-semibold text-white">R {(report?.grandSubtotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          </div>
         </div>
-        <div>
-          <div className="label-text">TOTAL SAMPLE COST</div>
-          <div className="stat-number" style={{ color: "#D4A843" }}>R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(139, 92, 246, 0.12)" }}>
+            <DollarSign className="w-5 h-5 text-[#8B5CF6]" />
+          </div>
+          <div>
+            <div className="label-text text-[10px]">VAT (15%)</div>
+            <div className="font-display font-semibold text-white">R {(report?.grandVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)" }}>
+            <DollarSign className="w-5 h-5 text-[#4ADE80]" />
+          </div>
+          <div>
+            <div className="label-text text-[10px]">TOTAL (incl. VAT)</div>
+            <div className="font-display font-semibold" style={{ color: "#4ADE80" }}>R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          </div>
         </div>
       </div>
 
@@ -106,7 +128,7 @@ export default function SampleReportsPage() {
                 <option value="">All customers with samples</option>
                 {(report?.customers || []).sort((a: any, b: any) => a.customerName?.localeCompare(b.customerName || "") || 0).map((cust: any) => (
                   <option key={cust.customerId} value={cust.customerId}>
-                    {cust.customerName} ({cust.sampleCount} samples) — R {cust.totalCost.toFixed(2)}
+                    {cust.customerName} ({cust.sampleCount} samples) — Subtotal: R {cust.totalSubtotal.toFixed(2)} + VAT: R {cust.totalVat.toFixed(2)} = R {cust.totalCost.toFixed(2)}
                   </option>
                 ))}
               </select>
@@ -128,7 +150,9 @@ export default function SampleReportsPage() {
                 <th className="text-left p-4 label-text">Sales Rep</th>
                 <th className="text-right p-4 label-text">Samples</th>
                 <th className="text-right p-4 label-text">Products</th>
-                <th className="text-right p-4 label-text">Total Cost</th>
+                <th className="text-right p-4 label-text">Subtotal</th>
+                <th className="text-right p-4 label-text">VAT (15%)</th>
+                <th className="text-right p-4 label-text">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -146,6 +170,8 @@ export default function SampleReportsPage() {
                   <td className="p-4 text-sm text-[#E8E8E9]">{cust.salesRepName}</td>
                   <td className="p-4 text-right text-sm text-white font-display">{cust.sampleCount}</td>
                   <td className="p-4 text-right text-sm text-white font-display">{cust.items.length}</td>
+                  <td className="p-4 text-right text-sm text-[#8A8B8C] font-display">R {cust.totalSubtotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                  <td className="p-4 text-right text-sm text-[#8B5CF6] font-display">R {cust.totalVat.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                   <td className="p-4 text-right font-display font-semibold" style={{ color: "#D4A843" }}>
                     R {cust.totalCost.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
                   </td>
@@ -153,7 +179,7 @@ export default function SampleReportsPage() {
               ))}
               {(report?.customers || []).length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-12 text-center text-[#8A8B8C] font-body">
+                  <td colSpan={7} className="p-12 text-center text-[#8A8B8C] font-body">
                     <FlaskConical className="w-12 h-12 mx-auto mb-3 opacity-30" />
                     No samples have been sent yet
                   </td>
@@ -180,9 +206,11 @@ export default function SampleReportsPage() {
                 </p>
               </div>
               <div className="text-right">
-                <div className="label-text">TOTAL SAMPLE COST</div>
-                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>
-                  R {customerReport.grandTotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                <div className="label-text text-[10px]">SUBTOTAL / VAT / TOTAL</div>
+                <div className="font-display font-semibold text-white" style={{ fontSize: "1.3rem" }}>
+                  R {customerReport.grandSubtotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                  <span className="text-[#8B5CF6] text-sm"> + R {customerReport.grandVat.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-[#4ADE80] text-lg"> = R {customerReport.grandTotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>
@@ -198,7 +226,9 @@ export default function SampleReportsPage() {
                   <th className="text-left p-3 label-text"><FileText className="w-3 h-3 inline" /> Invoice #</th>
                   <th className="text-right p-3 label-text">Qty</th>
                   <th className="text-right p-3 label-text">Unit Cost</th>
-                  <th className="text-right p-3 label-text">Total Cost</th>
+                  <th className="text-right p-3 label-text">Subtotal</th>
+                  <th className="text-right p-3 label-text">VAT (15%)</th>
+                  <th className="text-right p-3 label-text">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,6 +243,8 @@ export default function SampleReportsPage() {
                     <td className="p-3 text-sm font-mono-data text-[#6366F1]">{item.invoiceNumber}</td>
                     <td className="p-3 text-right text-sm text-white">{item.quantity}</td>
                     <td className="p-3 text-right text-sm text-[#8A8B8C]">R {item.unitCost.toFixed(2)}</td>
+                    <td className="p-3 text-right text-sm text-[#8A8B8C] font-display">R {item.subtotal.toFixed(2)}</td>
+                    <td className="p-3 text-right text-sm text-[#8B5CF6] font-display">R {item.vatAmount.toFixed(2)}</td>
                     <td className="p-3 text-right text-sm font-display font-semibold text-white">R {item.totalCost.toFixed(2)}</td>
                   </tr>
                 ))}

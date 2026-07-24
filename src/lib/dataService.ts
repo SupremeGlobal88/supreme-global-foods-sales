@@ -2077,7 +2077,10 @@ export const dataService = {
           // the customer has a credit (can be applied to future invoices).
           // Credit notes do NOT affect amountPaid — they are separate from payments.
           const creditTotal = (data.amount || 0);
-          inv.balanceDue = (inv.balanceDue || inv.total || 0) - creditTotal;
+          // CRITICAL: Use explicit null check because 0 is falsy in JS.
+          // A paid invoice has balanceDue=0, but (0 || total) would wrongly use total.
+          const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+          inv.balanceDue = currentBalance - creditTotal;
           // Track credit notes on the invoice for display purposes
           if (!inv.creditNotes) inv.creditNotes = [];
           inv.creditNotes.push(creditNote.id);
@@ -2109,7 +2112,9 @@ export const dataService = {
           if (inv) {
             // Restore the balance by adding the credit note amount back.
             // Credit notes NEVER affect amountPaid — only balanceDue.
-            inv.balanceDue = (inv.balanceDue || 0) + (cn.amount || 0);
+            // Use explicit null check because (0 || 0) works but is fragile.
+            const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
+            inv.balanceDue = currentBal + (cn.amount || 0);
             // Remove credit note ID from invoice tracking
             if (inv.creditNotes) {
               inv.creditNotes = inv.creditNotes.filter((cnId: any) => cnId !== cn.id);

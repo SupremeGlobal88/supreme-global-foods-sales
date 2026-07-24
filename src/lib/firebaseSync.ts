@@ -337,6 +337,21 @@ export async function pushUserDelete(userId: number): Promise<void> {
   }
 }
 
+/** Strip undefined values and convert Dates for Firebase RTDB.
+ *  Firebase cannot store undefined values or Date objects. */
+function cleanForFirebase(obj: any): any {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (obj instanceof Date) return obj.toISOString();
+  if (Array.isArray(obj)) return obj.map(cleanForFirebase);
+  const cleaned: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = cleanForFirebase(value);
+    }
+  }
+  return cleaned;
+}
+
 /** Push a single credit note to Firebase */
 export async function pushCreditNote(cn: any): Promise<void> {
   if (!isFirebaseReady() || !cn || !cn.id) return;

@@ -6,7 +6,7 @@ import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
-  Database, Zap,
+  Database, Zap, ShoppingCart,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -116,6 +116,17 @@ export default function InvoicesPage() {
   });
   const activateInvoice = trpc.invoice.updateStatus.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+  });
+  const createOrderFromInvoiceMut = trpc.invoice.createOrderFromInvoice.useMutation({
+    onSuccess: async (data: any) => {
+      if (data && !data.error) {
+        alert(`Linked order created: ${data.orderNumber}`);
+        await utils.invoice.list.invalidate();
+      } else if (data && data.error) {
+        alert(data.error);
+      }
+    },
+    onError: (err: any) => alert("Failed: " + (err.message || "Unknown error")),
   });
 
   function closePay() {
@@ -927,6 +938,9 @@ export default function InvoicesPage() {
                             )}
                             {isAdmin && inv.status !== "draft" && (
                               <button onClick={() => sendEmail(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(59,130,246,0.3)" }}><Mail className="w-3 h-3" /> Email to Customer</button>
+                            )}
+                            {isAdmin && !inv.orderId && (
+                              <button onClick={() => { if (confirm(`Create a linked order for invoice ${inv.invoiceNumber}? This will recreate the missing order.`)) createOrderFromInvoiceMut.mutate(inv.id); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}><ShoppingCart className="w-3 h-3" /> Create Linked Order</button>
                             )}
                           </div>
 

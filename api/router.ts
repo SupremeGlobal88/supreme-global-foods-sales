@@ -75,6 +75,7 @@ export const appRouter = t.router({
     getCreditNotesByCustomer: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),
     createCreditNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     voidCreditNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    createOrderFromInvoice: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
   }),
   appointment: t.router({
     list: t.procedure.query(() => [] as any[]),

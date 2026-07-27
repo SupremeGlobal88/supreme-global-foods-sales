@@ -1936,6 +1936,62 @@ export const dataService = {
     checkExistingSample: ({ customerId, stockItemId }: { customerId: number; stockItemId: number }) => {
       return { exists: hasExistingSample(customerId, stockItemId) };
     },
+    /** Create a new order from an existing invoice that has no linked order.
+     *  This fixes the case where an invoice exists but its order was lost. */
+    createFromInvoice: (invoiceId: number) => {
+      const inv = invoices.find((i) => i.id === invoiceId);
+      if (!inv) return null;
+      // Check if order already exists
+      const existingOrder = orders.find((o) => o.id === inv.orderId);
+      if (existingOrder) return { error: "Order already exists", order: existingOrder };
+
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const now = new Date();
+      const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+      const msCounter = String(Date.now() % 10000).padStart(4, "0");
+      const orderNumber = `ORD-${dateStr}-${hhmm}${msCounter}`;
+
+      const newOrder = {
+        id: Date.now(),
+        orderNumber,
+        customerId: inv.customerId,
+        customerName: inv.customer?.name || "",
+        customer: inv.customer || null,
+        items: (inv.items || []).map((it: any) => ({
+          stockItemId: it.stockItemId || 0,
+          productCode: it.productCode || "",
+          productName: it.productName || it.description || "",
+          quantity: it.quantity || 1,
+          unitPrice: it.unitPrice || 0,
+          lineTotal: it.lineTotal || (it.unitPrice || 0) * (it.quantity || 1),
+        })),
+        subtotal: inv.subtotal || 0,
+        vatAmount: inv.vatAmount || 0,
+        total: inv.total || inv.totalAmount || 0,
+        status: "delivered",
+        orderType: "normal",
+        paymentTerms: inv.paymentTerms || "cod",
+        priceTier: "corporate",
+        deliveryDate: inv.invoiceDate || new Date().toISOString(),
+        deliveryAddress: inv.customer?.physicalAddress || "",
+        notes: `Recreated from invoice ${inv.invoiceNumber}`,
+        salesRepName: inv.customer?.salesRepName || "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      orders.push(newOrder);
+      saveItem("sgf_orders", orders);
+
+      // Link the invoice to the new order
+      inv.orderId = newOrder.id;
+      inv.orderNumber = newOrder.orderNumber;
+      inv.updatedAt = new Date().toISOString();
+      saveItem("sgf_invoices", invoices);
+
+      logAudit("CREATE", "order", newOrder.id, `Order ${orderNumber} recreated from invoice ${inv.invoiceNumber}`);
+      return newOrder;
+    },
   },
 
   invoice: {

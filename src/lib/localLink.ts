@@ -270,6 +270,14 @@ export function createLocalLink() {
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;
               }
+              case "invoice.createOrderFromInvoice": {
+                result = dataService.order.createFromInvoice(input);
+                if (result) {
+                  await fbPush("order", result);
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
+                }
+                break;
+              }
               // USERS
               case "user.list": await syncFromCloud("users", "sgf_users"); result = dataService.user.list(); break;
               case "user.getById": result = dataService.user.getById(input); break;

@@ -65,6 +65,7 @@ export default function InvoicesPage() {
 
   /* Data */
   const { data: invoices, refetch: refetchInvoices } = trpc.invoice.list.useQuery();
+  const { data: allOrders } = trpc.order.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stats } = trpc.invoice.getStats.useQuery();
   const { data: allReceipts } = trpc.invoice.getReceipts.useQuery();
@@ -939,7 +940,7 @@ export default function InvoicesPage() {
                             {isAdmin && inv.status !== "draft" && (
                               <button onClick={() => sendEmail(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(59,130,246,0.3)" }}><Mail className="w-3 h-3" /> Email to Customer</button>
                             )}
-                            {isAdmin && !inv.orderId && (
+                            {isAdmin && (!inv.orderId || !(allOrders || []).find((o: any) => o.id === inv.orderId)) && (
                               <button onClick={() => { if (confirm(`Create a linked order for invoice ${inv.invoiceNumber}? This will recreate the missing order.`)) createOrderFromInvoiceMut.mutate(inv.id); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}><ShoppingCart className="w-3 h-3" /> Create Linked Order</button>
                             )}
                           </div>

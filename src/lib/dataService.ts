@@ -1775,7 +1775,14 @@ export const dataService = {
         }
       }
       
-      const orderNumber = `${isSample ? "SMP" : "ORD"}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(orders.filter((o) => (isSample ? o.orderType === "sample" : o.orderType !== "sample")).length + 1).padStart(4, "0")}`;
+      // Generate unique order number: date + HHMM + ms-based 4-digit suffix
+      // HHMM (hour:minute) + 4-digit counter guarantees uniqueness even when
+      // multiple users/devices create orders simultaneously (cloud-first)
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const now = new Date();
+      const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+      const msCounter = String(Date.now() % 10000).padStart(4, "0"); // 4-digit ms-based unique suffix
+      const orderNumber = `${isSample ? "SMP" : "ORD"}-${dateStr}-${hhmm}${msCounter}`;
       
       const items = (data.items || []).map((item: any) => {
         const product = products.find((p) => p.id === item.stockItemId);

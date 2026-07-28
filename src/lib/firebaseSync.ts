@@ -431,6 +431,8 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("followUps", "sgf_followUps");
   await pullType("receipts", "sgf_receipts");
   await pullType("creditNotes", "sgf_creditNotes");
+  await pullType("users", "sgf_users");
+  await pullType("salesReps", "sgf_salesReps");
 
   dataServiceRefresh?.();
   return counts;
@@ -1051,7 +1053,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
   unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
   unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
-  unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps_data")));
+  unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps")));
   unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
 
   autoSyncCleanup = () => {

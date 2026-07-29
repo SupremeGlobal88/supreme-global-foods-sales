@@ -149,17 +149,39 @@ export default function PackingListPage() {
       </tr>
     `).join("");
 
+    const poDate = po.orderDate ? new Date(po.orderDate).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" }) : new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
+
     w.document.write(`
       <html><head><title>Packing List - ${po.poNumber}</title></head>
       <body style="font-family:Arial,sans-serif;padding:30px;background:#fff;color:#000;">
-        <div style="text-align:center;margin-bottom:15px;">
-          <h1 style="font-size:20px;margin-bottom:3px;color:${cfg.documentColor};">${cfg.legalName}</h1>
-          <p style="font-size:10px;color:#666;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
-          <h2 style="font-size:15px;margin-top:10px;border-bottom:2px solid ${cfg.documentColor};padding-bottom:6px;">PACKING LIST</h2>
+        <div style="text-align:center;margin-bottom:5px;">
+          <h1 style="font-size:18px;margin-bottom:3px;color:${cfg.documentColor};">${cfg.legalName}</h1>
+          <p style="font-size:9px;color:#666;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:15px;font-size:11px;">
-          <div><strong>PO Number:</strong> ${po.poNumber}<br/><strong>Customer:</strong> ${po.corporateCustomerName || "-"}</div>
-          <div style="text-align:right;"><strong>Date:</strong> ${new Date().toLocaleDateString("en-ZA")}<br/><strong>Total Barrels:</strong> ${lines.length}<br/><strong>Total Bundles:</strong> ${totalBundles}</div>
+        <div style="border:2px solid #000;padding:15px;margin-bottom:15px;">
+          <h2 style="font-size:16px;font-weight:bold;margin:0 0 10px 0;text-decoration:underline;">PACKING LIST:</h2>
+          <table style="width:100%;font-size:11px;border-collapse:collapse;">
+            <tr>
+              <td style="padding:3px 0;font-weight:bold;width:35%;">Supplier Name:</td>
+              <td style="padding:3px 0;">${cfg.name}</td>
+            </tr>
+            <tr>
+              <td style="padding:3px 0;font-weight:bold;">Customer Receiving:</td>
+              <td style="padding:3px 0;">${po.corporateCustomerName || "-"}</td>
+            </tr>
+            <tr>
+              <td style="padding:3px 0;font-weight:bold;">Order Number:</td>
+              <td style="padding:3px 0;font-family:monospace;">${po.poNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding:3px 0;font-weight:bold;">Date:</td>
+              <td style="padding:3px 0;">${poDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:3px 0;font-weight:bold;">Product Information:</td>
+              <td style="padding:3px 0;">${lines.length} Barrels (${totalBundles} Bundles)</td>
+            </tr>
+          </table>
         </div>
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="background:${cfg.documentColor};color:#fff;font-size:10px;">

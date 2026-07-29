@@ -1330,107 +1330,6 @@ export function generateMissingInvoices(): { created: number; details: string[] 
  *  Creates an invoice with PO items as line items.
  *  Uses SGFXXXX for SGF or RC0412+ for Recircle SA based on PO company.
  *  Returns the invoice number or null. */
-export function generateInvoiceForPO(poId: number): string | null {
-  // ACQUIRE LOCK: prevent concurrent generation
-  if (invoiceGenerationLock) {
-    console.warn("[generateInvoiceForPO] LOCKED — another invoice is being generated.");
-    return null;
-  }
-  invoiceGenerationLock = true;
-
-  try {
-    load(); // ensure fresh data
-    const po = purchaseOrders.find((p) => p.id == poId);
-    if (!po) return null;
-
-    // Calculate totals from PO line items
-    const items = po.lineItems || [];
-    const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
-    const vatAmount = subtotal * 0.15;
-    const total = subtotal + vatAmount;
-
-    // Check if invoice already exists for this PO
-    const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
-    if (existingIdx >= 0) {
-      const existing = invoices[existingIdx];
-      const amountPaid = Number(existing.amountPaid || 0);
-      const newBalanceDue = total - amountPaid;
-      invoices[existingIdx] = {
-        ...existing,
-        subtotal,
-        vatAmount,
-        total,
-        totalAmount: total,
-        balanceDue: newBalanceDue,
-        items: items.map((item: any) => ({
-          description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          lineTotal: item.quantity * item.unitPrice,
-        })),
-        updatedAt: new Date().toISOString(),
-        notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
-      };
-      saveItem("sgf_invoices", invoices);
-      return existing.invoiceNumber;
-    }
-
-    // Create new invoice
-    const now = new Date();
-    const dueDate = new Date(now);
-    dueDate.setDate(dueDate.getDate() + 30); // corporate: 30 days default
-
-    const invCompany = po.company || "sgf";
-    let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
-    const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
-    let safetyCounter = 0;
-    while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
-      const match = invoiceNumber.match(/(SGF|RC)(\d+)/);
-      if (match) {
-        const prefix = match[1];
-        const n = parseInt(match[2]) + 1;
-        invoiceNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
-      }
-      safetyCounter++;
-    }
-
-    const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
-
-    invoices.push({
-      id: nextInvId,
-      purchaseOrderId: po.id,
-      poNumber: po.poNumber,
-      invoiceNumber,
-      company: invCompany,
-      customerId: po.corporateCustomerId,
-      customer: { name: po.corporateCustomerName || "Corporate Customer" },
-      subtotal,
-      vatAmount,
-      total,
-      totalAmount: total,
-      balanceDue: total,
-      amountPaid: 0,
-      status: "draft",
-      paymentTerms: "30_days",
-      invoiceDate: now.toISOString(),
-      dueDate: dueDate.toISOString(),
-      notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
-      items: items.map((item: any) => ({
-        description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        lineTotal: item.quantity * item.unitPrice,
-      })),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    });
-    saveItem("sgf_invoices", invoices);
-    return invoiceNumber;
-  } finally {
-    invoiceGenerationLock = false;
-  }
-}
-
 /** Remove duplicate orders, invoices, and customers. Call after Firebase sync or on demand. */
 export function deduplicateData(): { ordersRemoved: number; invoicesRemoved: number; customersRemoved: number } {
   // Do NOT call load() here — it has isValidArray() checks that can discard
@@ -3658,6 +3557,109 @@ export const dataService = {
       saveItem("sgf_packingListLines", packingListLines);
       return { success: true };
     },
+  },
+
+  /** Generate an invoice from a Purchase Order (corporate customer).
+   *  Exposed on dataService so localLink can call it via dataService.generateInvoiceForPO */
+  generateInvoiceForPO: (poId: number) => {
+    // ACQUIRE LOCK: prevent concurrent generation
+    if (invoiceGenerationLock) {
+      console.warn("[generateInvoiceForPO] LOCKED — another invoice is being generated.");
+      return null;
+    }
+    invoiceGenerationLock = true;
+
+    try {
+      load(); // ensure fresh data
+      const po = purchaseOrders.find((p) => p.id == poId);
+      if (!po) return null;
+
+      // Calculate totals from PO line items
+      const items = po.lineItems || [];
+      const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
+      const vatAmount = subtotal * 0.15;
+      const total = subtotal + vatAmount;
+
+      // Check if invoice already exists for this PO
+      const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+      if (existingIdx >= 0) {
+        const existing = invoices[existingIdx];
+        const amountPaid = Number(existing.amountPaid || 0);
+        const newBalanceDue = total - amountPaid;
+        invoices[existingIdx] = {
+          ...existing,
+          subtotal,
+          vatAmount,
+          total,
+          totalAmount: total,
+          balanceDue: newBalanceDue,
+          items: items.map((item: any) => ({
+            description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.quantity * item.unitPrice,
+          })),
+          updatedAt: new Date().toISOString(),
+          notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
+        };
+        saveItem("sgf_invoices", invoices);
+        return existing.invoiceNumber;
+      }
+
+      // Create new invoice
+      const now = new Date();
+      const dueDate = new Date(now);
+      dueDate.setDate(dueDate.getDate() + 30); // corporate: 30 days default
+
+      const invCompany = po.company || "sgf";
+      let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
+      const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+      let safetyCounter = 0;
+      while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
+        const match = invoiceNumber.match(/(SGF|RC)(\d+)/);
+        if (match) {
+          const prefix = match[1];
+          const n = parseInt(match[2]) + 1;
+          invoiceNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
+        }
+        safetyCounter++;
+      }
+
+      const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+
+      invoices.push({
+        id: nextInvId,
+        purchaseOrderId: po.id,
+        poNumber: po.poNumber,
+        invoiceNumber,
+        company: invCompany,
+        customerId: po.corporateCustomerId,
+        customer: { name: po.corporateCustomerName || "Corporate Customer" },
+        subtotal,
+        vatAmount,
+        total,
+        totalAmount: total,
+        balanceDue: total,
+        amountPaid: 0,
+        status: "draft",
+        paymentTerms: "30_days",
+        invoiceDate: now.toISOString(),
+        dueDate: dueDate.toISOString(),
+        notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
+        items: items.map((item: any) => ({
+          description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.quantity * item.unitPrice,
+        })),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      });
+      saveItem("sgf_invoices", invoices);
+      return invoiceNumber;
+    } finally {
+      invoiceGenerationLock = false;
+    }
   },
 };
 

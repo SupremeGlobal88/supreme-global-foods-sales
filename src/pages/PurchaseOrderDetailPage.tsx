@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
@@ -6,7 +6,7 @@ import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, Package, Plus, Trash2, X, FileText, Printer, Building2,
   Calendar, Hash, FlaskConical, CheckCircle2, Clock, AlertCircle, ChevronDown,
-  Link2,
+  Link2, Pencil, ClipboardList, Search,
 } from "lucide-react";
 
 const STATUS_FLOW = [
@@ -24,7 +24,20 @@ export default function PurchaseOrderDetailPage() {
   const [showBarrelForm, setShowBarrelForm] = useState(false);
   const [showPackingList, setShowPackingList] = useState(false);
   const [showCOCForm, setShowCOCForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [showRegenPrompt, setShowRegenPrompt] = useState(false);
   const [selectedBarrelId, setSelectedBarrelId] = useState<number | null>(null);
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    poNumber: "", orderDate: "", dueDate: "", memoDate: "",
+    shippingInstructions: "", notes: "",
+    lineItems: [] as Array<{
+      customerStockCode: string; customerDescription: string; dueDate: string;
+      quantity: number; uom: string; unitPrice: number; linkedStockItemId: number | null;
+      linkedProductName: string; linkedProductCode: string;
+    }>,
+  });
 
   // Barrel form state
   const [barrelForm, setBarrelForm] = useState({
@@ -83,6 +96,19 @@ export default function PurchaseOrderDetailPage() {
       }
     },
   });
+  const updatePO = trpc.purchaseOrder.update.useMutation({
+    onSuccess: async (result) => {
+      reloadFromStorage();
+      await utils.purchaseOrder.list.invalidate();
+      setShowEditForm(false);
+      // Check if an invoice exists for this PO — prompt to re-generate
+      const { data: allInvoices } = await utils.invoice.list.ensureQueryData();
+      const hasInvoice = (allInvoices || []).some((i: any) => i.purchaseOrderId === poId || i.poNumber === po?.poNumber);
+      if (hasInvoice) {
+        setShowRegenPrompt(true);
+      }
+    },
+  });
   const createBarrel = trpc.barrel.create.useMutation({
     onSuccess: async (data) => {
       reloadFromStorage();
@@ -132,6 +158,150 @@ export default function PurchaseOrderDetailPage() {
   }
 
   // When user selects a PO line, auto-populate barrel form with linked stock info
+  // ═══ EDIT PO FUNCTIONS ═══
+  function openEditForm() {
+    if (!po) return;
+    setEditForm({
+      poNumber: po.poNumber || "",
+      orderDate: po.orderDate || "",
+      dueDate: po.dueDate || "",
+      memoDate: po.memoDate || "",
+      shippingInstructions: po.shippingInstructions || "",
+      notes: po.notes || "",
+      lineItems: (po.lineItems || []).map((li: any) => ({
+        customerStockCode: li.customerStockCode || "",
+        customerDescription: li.customerDescription || "",
+        dueDate: li.dueDate || "",
+        quantity: li.quantity || 0,
+        uom: li.uom || "BND",
+        unitPrice: li.unitPrice || 0,
+        linkedStockItemId: li.linkedStockItemId || null,
+        linkedProductName: li.linkedProductName || "",
+        linkedProductCode: li.linkedProductCode || "",
+      })),
+    });
+    setShowEditForm(true);
+  }
+
+  function handleUpdateLineItem(index: number, field: string, value: any) {
+    setEditForm(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) => i === index ? { ...item, [field]: value } : item),
+    }));
+  }
+
+  function handleAddEditLineItem() {
+    setEditForm(prev => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { customerStockCode: "", customerDescription: "", dueDate: prev.dueDate, quantity: 0, uom: "BND", unitPrice: 0, linkedStockItemId: null, linkedProductName: "", linkedProductCode: "" }],
+    }));
+  }
+
+  function handleRemoveEditLineItem(index: number) {
+    setEditForm(prev => ({ ...prev, lineItems: prev.lineItems.filter((_, i) => i !== index) }));
+  }
+
+  function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!po) return;
+    const totalExclVat = editForm.lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const vatAmount = totalExclVat * 0.15;
+    updatePO.mutate({
+      id: poId,
+      data: {
+        ...editForm,
+        totalExclVat,
+        vatAmount,
+        totalInclVat: totalExclVat + vatAmount,
+      },
+    });
+  }
+
+  // ═══ PICKING SLIP PRINT ═══
+  function handlePrintPickingSlip() {
+    const cfg = getCompanyConfig(po?.company);
+    const printWindow = window.open("", "_blank");
+    if (!printWindow || !po) return;
+    const lineRows = (po.lineItems || []).map((li: any, idx: number) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #333;text-align:center;">${idx + 1}</td>
+        <td style="padding:8px;border:1px solid #333;font-family:monospace;font-size:11px;">${li.customerStockCode || "-"}</td>
+        <td style="padding:8px;border:1px solid #333;">${li.customerDescription || "-"}</td>
+        <td style="padding:8px;border:1px solid #333;font-family:monospace;font-size:11px;">${li.linkedProductCode || "-"}</td>
+        <td style="padding:8px;border:1px solid #333;">${li.linkedProductName || "-"}</td>
+        <td style="padding:8px;border:1px solid #333;text-align:center;font-weight:bold;">${li.quantity || 0}</td>
+        <td style="padding:8px;border:1px solid #333;text-align:center;">${li.uom || "BND"}</td>
+        <td style="padding:8px;border:1px solid #333;text-align:center;"><div style="border-bottom:1px solid #333;height:20px;"></div></td>
+        <td style="padding:8px;border:1px solid #333;text-align:center;"><div style="border-bottom:1px solid #333;height:20px;"></div></td>
+      </tr>
+    `).join("");
+    printWindow.document.write(`
+      <html><head><title>Picking Slip - ${po.poNumber}</title></head>
+      <body style="font-family:Arial,sans-serif;padding:30px;background:#fff;color:#000;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <h1 style="font-size:22px;margin-bottom:3px;color:${cfg.documentColor};">${cfg.legalName}</h1>
+          <p style="font-size:10px;color:#666;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
+          <h2 style="font-size:16px;margin-top:12px;border-bottom:2px solid ${cfg.documentColor};padding-bottom:8px;">FACTORY PICKING SLIP</h2>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:20px;font-size:12px;">
+          <div>
+            <strong>PO Number:</strong> ${po.poNumber}<br/>
+            <strong>Customer:</strong> ${customer?.name || "-"}<br/>
+            <strong>Customer VAT:</strong> ${customer?.vatNumber || "-"}
+          </div>
+          <div style="text-align:right;">
+            <strong>Print Date:</strong> ${new Date().toLocaleDateString("en-ZA")}<br/>
+            <strong>Due Date:</strong> ${po.dueDate || "-"}<br/>
+            <strong>Memo Date:</strong> ${po.memoDate || "-"}
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <thead><tr style="background:${cfg.documentColor};color:#fff;">
+            <th style="padding:8px;border:1px solid #333;">#</th>
+            <th style="padding:8px;border:1px solid #333;">Cust Stock Code</th>
+            <th style="padding:8px;border:1px solid #333;">Cust Description</th>
+            <th style="padding:8px;border:1px solid #333;">SGF Code</th>
+            <th style="padding:8px;border:1px solid #333;">SGF Product</th>
+            <th style="padding:8px;border:1px solid #333;">Qty</th>
+            <th style="padding:8px;border:1px solid #333;">UOM</th>
+            <th style="padding:8px;border:1px solid #333;">Picked</th>
+            <th style="padding:8px;border:1px solid #333;">Checked</th>
+          </tr></thead>
+          <tbody>${lineRows}</tbody>
+        </table>
+        <div style="margin-top:25px;padding:15px;border:2px solid ${cfg.documentColor};border-radius:4px;">
+          <h3 style="font-size:12px;margin-bottom:10px;color:${cfg.documentColor};">FACTORY CHECKLIST</h3>
+          <div style="display:flex;gap:40px;font-size:11px;">
+            <div><input type="checkbox" style="margin-right:5px;" /> Correct products picked</div>
+            <div><input type="checkbox" style="margin-right:5px;" /> Quantities verified</div>
+            <div><input type="checkbox" style="margin-right:5px;" /> Batch numbers recorded</div>
+            <div><input type="checkbox" style="margin-right:5px;" /> Barrel labels applied</div>
+          </div>
+        </div>
+        <div style="margin-top:20px;display:flex;justify-content:space-between;font-size:11px;">
+          <div style="width:30%;">
+            <strong>Picked By:</strong><div style="border-bottom:1px solid #333;height:25px;margin-top:5px;"></div>
+            <div style="font-size:9px;color:#666;margin-top:3px;">Name & Signature</div>
+          </div>
+          <div style="width:30%;">
+            <strong>Checked By:</strong><div style="border-bottom:1px solid #333;height:25px;margin-top:5px;"></div>
+            <div style="font-size:9px;color:#666;margin-top:3px;">Name & Signature</div>
+          </div>
+          <div style="width:30%;">
+            <strong>Date & Time:</strong><div style="border-bottom:1px solid #333;height:25px;margin-top:5px;"></div>
+            <div style="font-size:9px;color:#666;margin-top:3px;">DD/MM/YYYY HH:MM</div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:20px;font-size:9px;color:#999;border-top:1px solid #ccc;padding-top:8px;">
+          <strong>${cfg.legalName}</strong> | Picking Slip for PO ${po.poNumber} | Page 1 of 1
+        </div>
+      </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 500);
+  }
+
   function selectPOLine(index: number) {
     const line = poLineItems[index];
     if (!line) return;
@@ -336,6 +506,12 @@ export default function PurchaseOrderDetailPage() {
         >
           <FileText className="w-4 h-4" />
           {generateInvForPO.isPending ? "Generating..." : "Generate Invoice"}
+        </button>
+        <button onClick={openEditForm} className="btn-secondary flex items-center gap-2 text-sm">
+          <Pencil className="w-4 h-4" /> Edit PO
+        </button>
+        <button onClick={handlePrintPickingSlip} className="btn-secondary flex items-center gap-2 text-sm">
+          <ClipboardList className="w-4 h-4" /> Picking Slip
         </button>
         {(barrels || []).length > 0 && (
           <button onClick={handlePrintPackingList} className="btn-secondary flex items-center gap-2 text-sm">
@@ -552,6 +728,125 @@ export default function PurchaseOrderDetailPage() {
                 <button type="submit" className="btn-gold">Add Barrel</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ EDIT PO MODAL ═══ */}
+      {showEditForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="modal-content w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Edit Purchase Order</h2>
+              <button onClick={() => setShowEditForm(false)} className="p-1 rounded hover:bg-[#222324]"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label-text">PO Number *</label><input required value={editForm.poNumber} onChange={(e) => setEditForm({ ...editForm, poNumber: e.target.value })} className="input-field w-full" /></div>
+                <div><label className="label-text">Order Date</label><input type="date" value={editForm.orderDate} onChange={(e) => setEditForm({ ...editForm, orderDate: e.target.value })} className="input-field w-full" /></div>
+                <div><label className="label-text">Due Date</label><input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="input-field w-full" /></div>
+                <div><label className="label-text">Memo Date</label><input type="date" value={editForm.memoDate} onChange={(e) => setEditForm({ ...editForm, memoDate: e.target.value })} className="input-field w-full" /></div>
+                <div className="col-span-2"><label className="label-text">Shipping Instructions</label><input value={editForm.shippingInstructions} onChange={(e) => setEditForm({ ...editForm, shippingInstructions: e.target.value })} className="input-field w-full" /></div>
+              </div>
+              {/* Line Items */}
+              <div className="pt-3 border-t border-[#222324]">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-white">Line Items</h3>
+                  <button type="button" onClick={handleAddEditLineItem} className="text-xs px-2 py-1 rounded" style={{ color: "#D4A843" }}>+ Add Line</button>
+                </div>
+                <div className="space-y-3">
+                  {editForm.lineItems.map((item, idx) => (
+                    <div key={idx} className="p-3 rounded-lg space-y-2" style={{ backgroundColor: "#131415" }}>
+                      <div className="grid grid-cols-12 gap-2">
+                        <div className="col-span-3">
+                          <label className="label-text text-[10px]">Cust. Stock Code *</label>
+                          <input required value={item.customerStockCode} onChange={(e) => handleUpdateLineItem(idx, "customerStockCode", e.target.value)} className="input-field w-full text-xs" placeholder="50101170" />
+                        </div>
+                        <div className="col-span-5">
+                          <label className="label-text text-[10px]">Cust. Description *</label>
+                          <input required value={item.customerDescription} onChange={(e) => handleUpdateLineItem(idx, "customerDescription", e.target.value)} className="input-field w-full text-xs" placeholder="SUPERMARKET SELECT SL" />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="label-text text-[10px]">Qty</label>
+                          <input type="number" value={item.quantity || ""} onChange={(e) => handleUpdateLineItem(idx, "quantity", parseFloat(e.target.value) || 0)} className="input-field w-full text-xs" />
+                        </div>
+                        <div className="col-span-1">
+                          <label className="label-text text-[10px]">UOM</label>
+                          <input value={item.uom} onChange={(e) => handleUpdateLineItem(idx, "uom", e.target.value)} className="input-field w-full text-xs" />
+                        </div>
+                        <div className="col-span-1">
+                          <button type="button" onClick={() => handleRemoveEditLineItem(idx)} className="p-1 rounded hover:bg-red-900/30 mt-4"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-12 gap-2 items-center">
+                        <div className="col-span-3">
+                          <label className="label-text text-[10px]">Unit Price (R)</label>
+                          <input type="number" step="0.01" value={item.unitPrice || ""} onChange={(e) => handleUpdateLineItem(idx, "unitPrice", parseFloat(e.target.value) || 0)} className="input-field w-full text-xs" />
+                        </div>
+                        <div className="col-span-6">
+                          <label className="label-text text-[10px]">Linked SGF Stock</label>
+                          {item.linkedStockItemId ? (
+                            <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs" style={{ backgroundColor: "#1A8C3F1A" }}>
+                              <Link2 className="w-3 h-3 text-[#4ADE80]" />
+                              <span className="text-white truncate flex-1">{item.linkedProductName}</span>
+                              <span className="text-[#8A8B8C] font-mono">{item.linkedProductCode}</span>
+                              <button type="button" onClick={() => handleUpdateLineItem(idx, "linkedStockItemId", null)} className="text-[#EF4444] hover:underline ml-1">Unlink</button>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-[#555] px-2 py-1.5">Not linked — link in PO detail after save</div>
+                          )}
+                        </div>
+                        <div className="col-span-3 text-right">
+                          <span className="text-xs text-[#8A8B8C]">Line Total: </span>
+                          <span className="text-xs font-medium text-white">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="label-text">Notes</label>
+                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} className="input-field w-full" rows={2} />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#222324]">
+                <button type="button" onClick={() => setShowEditForm(false)} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-gold" disabled={editForm.lineItems.length === 0 || !editForm.poNumber.trim()}>
+                  {updatePO.isPending ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ INVOICE RE-GENERATION PROMPT ═══ */}
+      {showRegenPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.8)" }}>
+          <div className="modal-content w-full max-w-md">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "#F59E0B1A" }}>
+                <AlertCircle className="w-5 h-5 text-[#F59E0B]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Invoice Update Required</h3>
+                <p className="text-sm text-[#8A8B8C]">This PO has a linked invoice that needs updating.</p>
+              </div>
+            </div>
+            <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "#131415" }}>
+              <p className="text-sm text-[#E8E8E9]">The Purchase Order has been updated. You should re-generate the invoice to reflect the changes (new quantities, prices, or line items).</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowRegenPrompt(false)} className="btn-secondary flex-1">Later</button>
+              <button
+                onClick={() => { generateInvForPO.mutate(poId); setShowRegenPrompt(false); }}
+                className="btn-gold flex-1 flex items-center justify-center gap-2"
+                disabled={generateInvForPO.isPending}
+              >
+                <FileText className="w-4 h-4" />
+                {generateInvForPO.isPending ? "Re-generating..." : "Re-generate Invoice"}
+              </button>
+            </div>
           </div>
         </div>
       )}

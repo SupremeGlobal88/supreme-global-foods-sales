@@ -996,7 +996,16 @@ export function initAutoSync(): () => void {
     return () => {};
   }
   if (autoSyncInitialized) return () => {};
-  if (!isFirebaseReady()) return () => {};
+  if (!isFirebaseReady()) {
+    console.warn("[FirebaseSync] Firebase not ready — will retry in 2s");
+    setTimeout(() => {
+      if (!autoSyncInitialized && isFirebaseReady()) {
+        console.log("[FirebaseSync] Retry initAutoSync...");
+        initAutoSync();
+      }
+    }, 2000);
+    return () => {};
+  }
 
   autoSyncInitialized = true;
   console.log("[FirebaseSync] Auto-sync initializing...");

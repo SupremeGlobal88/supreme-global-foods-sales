@@ -1120,6 +1120,31 @@ function getNextInvoiceNumber(): string {
   return `SGF${String(candidate)}`;
 }
 
+/** Get next Recircle SA invoice number. Starts at RC0412.
+ *  Separate series from SGF invoices — RC prefix for Recircle SA. */
+function getNextRecircleInvoiceNumber(): string {
+  let maxNum = 411; // Last known Recircle invoice (RC0411)
+  for (const inv of invoices) {
+    const match = (inv.invoiceNumber || "").match(/RC(\d+)/);
+    if (match) {
+      const n = parseInt(match[1]);
+      if (n > maxNum) maxNum = n;
+    }
+  }
+  let candidate = maxNum + 1;
+  const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+  while (existingNumbers.has(`RC${String(candidate).padStart(4, "0")}`)) {
+    candidate++;
+  }
+  return `RC${String(candidate).padStart(4, "0")}`;
+}
+
+/** Get the correct next invoice number based on company */
+function getNextInvoiceNumberForCompany(company?: string): string {
+  if (company === "recircle") return getNextRecircleInvoiceNumber();
+  return getNextInvoiceNumber();
+}
+
 /** Get next sample invoice number */
 function getNextSampleInvoiceNumber(): string {
   const smpCount = invoices.filter((i) => (i.invoiceNumber || "").startsWith("SGF-SMP")).length;
@@ -1136,7 +1161,7 @@ function getNextReceiptNumber(): string {
   return `REC-${String(max + 1).padStart(3, "0")}`;
 }
 
-function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean): string | null {
+function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean, company?: string): string | null {
   // ACQUIRE LOCK: prevent concurrent generation that causes duplicate numbers
   if (invoiceGenerationLock) {
     console.warn("[createInvoiceFromOrder] LOCKED — another invoice is being generated. Please wait.");
@@ -1154,8 +1179,9 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
     const dueDate = new Date(now);
     dueDate.setDate(dueDate.getDate() + days);
 
-    // Invoice numbering: SGF1801, SGF1802, etc. — ALL orders use SGF numbers
-    let invoiceNumber = getNextInvoiceNumber();
+    // Invoice numbering: SGF or RC prefix based on company
+    const invCompany = company || order.company || "sgf";
+    let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
     const deliveryNoteNumber = `DN-${order.orderNumber}`;
 
     // FINAL SAFETY CHECK: re-read the array right before pushing.
@@ -1182,6 +1208,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       orderNumber: order.orderNumber,
       invoiceNumber,
       deliveryNoteNumber,
+      company: invCompany,
       customerId: order.customerId,
       customer: customer || null,
       subtotal: isSample ? subtotal : subtotal,
@@ -1289,6 +1316,111 @@ export function generateMissingInvoices(): { created: number; details: string[] 
   }
 
   return { created, details };
+}
+
+/** Generate an invoice from a Purchase Order (corporate customer).
+ *  Creates an invoice with PO items as line items.
+ *  Uses SGFXXXX for SGF or RC0412+ for Recircle SA based on PO company.
+ *  Returns the invoice number or null. */
+export function generateInvoiceForPO(poId: number): string | null {
+  // ACQUIRE LOCK: prevent concurrent generation
+  if (invoiceGenerationLock) {
+    console.warn("[generateInvoiceForPO] LOCKED — another invoice is being generated.");
+    return null;
+  }
+  invoiceGenerationLock = true;
+
+  try {
+    load(); // ensure fresh data
+    const po = purchaseOrders.find((p) => p.id == poId);
+    if (!po) return null;
+
+    // Calculate totals from PO line items
+    const items = po.lineItems || [];
+    const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
+    const vatAmount = subtotal * 0.15;
+    const total = subtotal + vatAmount;
+
+    // Check if invoice already exists for this PO
+    const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+    if (existingIdx >= 0) {
+      const existing = invoices[existingIdx];
+      const amountPaid = Number(existing.amountPaid || 0);
+      const newBalanceDue = total - amountPaid;
+      invoices[existingIdx] = {
+        ...existing,
+        subtotal,
+        vatAmount,
+        total,
+        totalAmount: total,
+        balanceDue: newBalanceDue,
+        items: items.map((item: any) => ({
+          description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.quantity * item.unitPrice,
+        })),
+        updatedAt: new Date().toISOString(),
+        notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
+      };
+      saveItem("sgf_invoices", invoices);
+      return existing.invoiceNumber;
+    }
+
+    // Create new invoice
+    const now = new Date();
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + 30); // corporate: 30 days default
+
+    const invCompany = po.company || "sgf";
+    let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
+    const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+    let safetyCounter = 0;
+    while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
+      const match = invoiceNumber.match(/(SGF|RC)(\d+)/);
+      if (match) {
+        const prefix = match[1];
+        const n = parseInt(match[2]) + 1;
+        invoiceNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
+      }
+      safetyCounter++;
+    }
+
+    const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+
+    invoices.push({
+      id: nextInvId,
+      purchaseOrderId: po.id,
+      poNumber: po.poNumber,
+      invoiceNumber,
+      company: invCompany,
+      customerId: po.corporateCustomerId,
+      customer: { name: po.corporateCustomerName || "Corporate Customer" },
+      subtotal,
+      vatAmount,
+      total,
+      totalAmount: total,
+      balanceDue: total,
+      amountPaid: 0,
+      status: "draft",
+      paymentTerms: "30_days",
+      invoiceDate: now.toISOString(),
+      dueDate: dueDate.toISOString(),
+      notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
+      items: items.map((item: any) => ({
+        description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        lineTotal: item.quantity * item.unitPrice,
+      })),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+    saveItem("sgf_invoices", invoices);
+    return invoiceNumber;
+  } finally {
+    invoiceGenerationLock = false;
+  }
 }
 
 /** Remove duplicate orders, invoices, and customers. Call after Firebase sync or on demand. */

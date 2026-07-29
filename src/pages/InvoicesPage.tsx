@@ -3,10 +3,11 @@ import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
+import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
-  Database, Zap, ShoppingCart,
+  Database, Zap, ShoppingCart, Globe,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -21,6 +22,7 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all"); // all | system | sage
+  const [companyFilter, setCompanyFilter] = useState<"all" | CompanyKey>("all");
   const [sortBy, setSortBy] = useState("date"); // date | number
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -170,6 +172,8 @@ export default function InvoicesPage() {
     // Source filter: show system-only, sage-only, or all
     if (sourceFilter === "system") list = list.filter((i: any) => i.source !== "sage");
     if (sourceFilter === "sage") list = list.filter((i: any) => i.source === "sage");
+    // Company filter
+    if (companyFilter !== "all") list = list.filter((i: any) => (i.company || "sgf") === companyFilter);
     return list.sort((a: any, b: any) => {
       if (sortBy === "date") {
         // Sort by invoice date descending (newest first)
@@ -185,7 +189,7 @@ export default function InvoicesPage() {
       // Fallback: sort by created date
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
-  }, [invoices, search, statusFilter, sourceFilter, sortBy]);
+  }, [invoices, search, statusFilter, sourceFilter, companyFilter, sortBy]);
 
   /* Status badge */
   const badge = (s: string) => {
@@ -203,6 +207,8 @@ export default function InvoicesPage() {
   /* ── Print Combined Invoice + Delivery Note ── */
   function printDoc(inv: any) {
     const cust = inv.customer || (customers || []).find((c: any) => c.id === inv.customerId);
+    const invCompany: CompanyKey = inv.company || "sgf";
+    const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
     const invDate = new Date(inv.invoiceDate || inv.createdAt);
     const retDate = new Date(invDate); retDate.setDate(retDate.getDate() + 7);
@@ -212,14 +218,14 @@ export default function InvoicesPage() {
 
     const copy = (label: string, isOffice: boolean) => `
       <div style="position:relative; padding:18px 24px; min-height:720px; box-sizing:border-box;">
-        <div style="position:absolute; top:10px; right:10px; background:#D4A843; color:#000; padding:3px 12px; font-size:10px; font-weight:800; letter-spacing:1px; border-radius:2px;">${label}</div>
-        <div style="text-align:center; border-bottom:3px solid #D4A843; padding-bottom:10px; margin-bottom:14px;">
+        <div style="position:absolute; top:10px; right:10px; background:${cfg.documentColor}; color:#000; padding:3px 12px; font-size:10px; font-weight:800; letter-spacing:1px; border-radius:2px;">${label}</div>
+        <div style="text-align:center; border-bottom:3px solid ${cfg.documentColor}; padding-bottom:10px; margin-bottom:14px;">
           <img src="${logoUrl}" style="height:55px; margin-bottom:4px;" onerror="this.style.display='none'" />
           <div style="font-size:10px; color:#666; line-height:1.4;">
-            28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: 083 293 0644<br/>
-            VAT Reg: 4120123456 &nbsp;|&nbsp; Reg No: 2015/123456/07
+            ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; ${cfg.contact.email || ""} &nbsp;|&nbsp; ${cfg.contact.phone || ""}<br/>
+            VAT Reg: ${cfg.vatNumber || "N/A"} &nbsp;|&nbsp; ${cfg.legalName}
           </div>
-          <div style="font-size:20px; font-weight:800; color:#D4A843; margin-top:8px; letter-spacing:2px; text-transform:uppercase;">Tax Invoice &amp; Delivery Note</div>
+          <div style="font-size:20px; font-weight:800; color:${cfg.documentColor}; margin-top:8px; letter-spacing:2px; text-transform:uppercase;">Tax Invoice &amp; Delivery Note</div>
         </div>
         <table style="width:100%; font-size:11px; margin-bottom:12px; border-collapse:collapse;">
           <tr>
@@ -235,7 +241,7 @@ export default function InvoicesPage() {
             </td>
             <td style="vertical-align:top; text-align:right; width:45%;">
               <table style="font-size:11px; width:100%; text-align:right; border-collapse:collapse;">
-                <tr><td style="color:#888; padding:2px 0;">Invoice Number</td><td style="font-weight:800; font-size:14px; color:#D4A843; padding:2px 0; padding-left:12px;">${inv.invoiceNumber}</td></tr>
+                <tr><td style="color:#888; padding:2px 0;">Invoice Number</td><td style="font-weight:800; font-size:14px; color:${cfg.documentColor}; padding:2px 0; padding-left:12px;">${inv.invoiceNumber}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Delivery Note</td><td style="padding:2px 0; padding-left:12px;">${inv.deliveryNoteNumber || `DN-${inv.orderNumber}`}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Order Number</td><td style="padding:2px 0; padding-left:12px;">${inv.orderNumber || ""}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Invoice Date</td><td style="padding:2px 0; padding-left:12px;">${invDate.toLocaleDateString("en-ZA")}</td></tr>
@@ -246,7 +252,7 @@ export default function InvoicesPage() {
           </tr>
         </table>
         <table style="width:100%; border-collapse:collapse; font-size:11px;">
-          <thead><tr style="background:#D4A843; color:#fff;">
+          <thead><tr style="background:${cfg.documentColor}; color:#fff;">
             <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">#</th>
             <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Description</th>
             <th style="padding:7px 8px; text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Qty</th>
@@ -267,7 +273,7 @@ export default function InvoicesPage() {
           <div style="width:260px; font-size:11px;">
             <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;"><span style="color:#666;">Subtotal (excl VAT)</span><strong>R ${sub.toFixed(2)}</strong></div>
             <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;"><span style="color:#666;">VAT @ 15%</span><strong>R ${vat.toFixed(2)}</strong></div>
-            <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:2px solid #D4A843;"><span style="font-weight:800; font-size:12px;">TOTAL DUE</span><strong style="color:#D4A843; font-size:13px;">R ${tot.toFixed(2)}</strong></div>
+            <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:2px solid ${cfg.documentColor};"><span style="font-weight:800; font-size:12px;">TOTAL DUE</span><strong style="color:${cfg.documentColor}; font-size:13px;">R ${tot.toFixed(2)}</strong></div>
             ${paid > 0 ? `<div style="display:flex; justify-content:space-between; padding:3px 0;"><span style="color:#666;">Amount Paid</span><span style="color:#2E7D32;">R ${paid.toFixed(2)}</span></div>` : ""}
             ${bal > 0 ? `<div style="display:flex; justify-content:space-between; padding:4px 0; border-top:1px dashed #EF4444; margin-top:2px;"><span style="color:#EF4444; font-weight:800;">BALANCE OUTSTANDING</span><span style="color:#EF4444; font-weight:800;">R ${bal.toFixed(2)}</span></div>` : ""}
           </div>
@@ -301,14 +307,14 @@ export default function InvoicesPage() {
         </div>
         `}
         <div style="text-align:center; font-size:9px; color:#999; margin-top:12px; border-top:1px solid #ddd; padding-top:6px; line-height:1.5;">
-          Banking: ${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode} | Quote invoice number with payment<br/>
+          Banking: ${cfg.banking.bankName} | Acc: ${cfg.banking.accountName} | ${cfg.banking.accountNumber || banking.accountNumber} | Branch: ${cfg.banking.branchCode} | Quote invoice number with payment<br/>
           E&nbsp;&amp;&nbsp;OE. Thank you for your business!
         </div>
       </div>`;
 
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>SGF ${inv.invoiceNumber}</title>
+    w.document.write(`<!DOCTYPE html><html><head><title>${cfg.shortName} ${inv.invoiceNumber}</title>
       <style>@media print { body { padding: 0; margin: 0; } .page-break { page-break-before: always; } }
       body { font-family: Arial, Helvetica, sans-serif; color: #333; max-width: 210mm; margin: 0 auto; font-size: 11px; line-height: 1.4; }</style></head>
       <body>${copy("CUSTOMER COPY", false)}<div class="page-break"></div>${copy("OFFICE COPY", true)}
@@ -657,6 +663,17 @@ export default function InvoicesPage() {
             />
           </div>
           <div className="flex gap-2 flex-wrap">
+            {/* Company filter */}
+            <select
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value as any)}
+              className="input-field text-sm py-2 px-3"
+              style={{ minWidth: "120px" }}
+            >
+              <option value="all">All Companies</option>
+              <option value="sgf">Supreme Global Foods</option>
+              <option value="recircle">Recircle SA</option>
+            </select>
             {/* Source filter */}
             <select
               value={sourceFilter}
@@ -733,6 +750,10 @@ export default function InvoicesPage() {
                       <td className="p-3 font-display font-semibold text-sm text-[#D4A843]">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {inv.invoiceNumber}
+                          {(() => {
+                            const icfg = getCompanyConfig(inv.company);
+                            return <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: icfg.documentColor + "22", color: icfg.documentColor }}>{icfg.shortName}</span>;
+                          })()}
                           {inv.source === "sage" && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>SAGE</span>
                           )}

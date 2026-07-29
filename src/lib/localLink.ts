@@ -194,6 +194,7 @@ export function createLocalLink() {
               case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { await pushInvoice(inv); } break;
               // INVOICES — cloud first
               case "invoice.list": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.list(); break;
+              case "invoice.generateForPO": result = dataService.generateInvoiceForPO(input); if (result) { const inv = dataService.invoice.list().find((i: any) => i.invoiceNumber === result); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
               case "invoice.getById": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.getById(input); break;
               case "invoice.create": result = dataService.invoice.create(input); await fbPush("invoice", result); break;
               case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); await fbPush("invoice", result); break;

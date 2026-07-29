@@ -74,6 +74,15 @@ export default function PurchaseOrderDetailPage() {
   const updateStatus = trpc.purchaseOrder.updateStatus.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); },
   });
+  const generateInvForPO = trpc.invoice.generateForPO.useMutation({
+    onSuccess: async (invNum) => {
+      if (invNum) {
+        reloadFromStorage();
+        await utils.invoice.list.invalidate();
+        alert(`Invoice ${invNum} generated successfully!`);
+      }
+    },
+  });
   const createBarrel = trpc.barrel.create.useMutation({
     onSuccess: async (data) => {
       reloadFromStorage();
@@ -320,6 +329,14 @@ export default function PurchaseOrderDetailPage() {
             {po.dueDate && <><Calendar className="w-3 h-3 ml-2" /> Due: {po.dueDate}</>}
           </p>
         </div>
+        <button
+          onClick={() => generateInvForPO.mutate(poId)}
+          className="btn-gold flex items-center gap-2 text-sm"
+          disabled={generateInvForPO.isPending}
+        >
+          <FileText className="w-4 h-4" />
+          {generateInvForPO.isPending ? "Generating..." : "Generate Invoice"}
+        </button>
         {(barrels || []).length > 0 && (
           <button onClick={handlePrintPackingList} className="btn-secondary flex items-center gap-2 text-sm">
             <Printer className="w-4 h-4" /> Packing List

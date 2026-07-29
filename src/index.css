@@ -99,6 +99,14 @@
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  .modal-content {
+    background-color: #18191A;
+    border: 1px solid #2A2B2C;
+    border-radius: 16px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
+    padding: 24px;
+  }
+
   .card-surface:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(212, 168, 67, 0.08);

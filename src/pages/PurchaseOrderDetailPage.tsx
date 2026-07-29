@@ -510,8 +510,11 @@ export default function PurchaseOrderDetailPage() {
         <button onClick={openEditForm} className="btn-secondary flex items-center gap-2 text-sm">
           <Pencil className="w-4 h-4" /> Edit PO
         </button>
+        <button onClick={() => navigate(`/packing-list/${poId}`)} className="btn-secondary flex items-center gap-2 text-sm">
+          <ClipboardList className="w-4 h-4" /> Packing List
+        </button>
         <button onClick={handlePrintPickingSlip} className="btn-secondary flex items-center gap-2 text-sm">
-          <ClipboardList className="w-4 h-4" /> Picking Slip
+          <Printer className="w-4 h-4" /> Picking Slip
         </button>
         {(barrels || []).length > 0 && (
           <button onClick={handlePrintPackingList} className="btn-secondary flex items-center gap-2 text-sm">

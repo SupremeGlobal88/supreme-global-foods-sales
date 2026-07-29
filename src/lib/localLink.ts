@@ -10,6 +10,7 @@ import {
   pushPurchaseOrder, removePurchaseOrder,
   pushBarrel, removeBarrel,
   pushCOC, removeCOC,
+  pushPackingListLine, removePackingListLine,
   isFirebaseReady, readFromFirebase, mergeWithCloudData,
 } from "./firebaseSync";
 
@@ -384,6 +385,11 @@ export function createLocalLink() {
               case "coc.create": result = dataService.coc.create(input); await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
               case "coc.update": { const { id, ...data } = input; result = dataService.coc.update({ id, data }); if (result) await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.delete": result = dataService.coc.delete(input); await removeCOC(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
+              // ═══ PACKING LIST LINES ═══
+              case "packingList.listByPurchaseOrder": await syncFromCloud("packingListLines", "sgf_packingListLines"); result = dataService.packingList.listByPurchaseOrder(input); break;
+              case "packingList.create": result = dataService.packingList.create(input); await pushPackingListLine(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 1 } })); break;
+              case "packingList.update": { const { id, ...data } = input; result = dataService.packingList.update({ id, data }); if (result) await pushPackingListLine(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 1 } })); break; }
+              case "packingList.delete": result = dataService.packingList.delete(input); await removePackingListLine(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 1 } })); break;
               default: console.warn("[localLink] Unhandled:", path, input); result = null;
             }
 

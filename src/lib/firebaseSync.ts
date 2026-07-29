@@ -231,6 +231,7 @@ const FB_PATHS: Record<string, string> = {
   purchaseOrders: "purchaseOrders",
   barrels: "barrels",
   certificatesOfCompliance: "certificatesOfCompliance",
+  packingListLines: "packingListLines",
 };
 
 /** Read data directly from Firebase. Returns array of items or empty array.
@@ -323,6 +324,14 @@ export async function pushCOC(coc: any): Promise<void> {
 export async function removeCOC(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, `certificatesOfCompliance/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+}
+export async function pushPackingListLine(pl: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `packingListLines/${safeFbKey(pl.id)}`), { ...pl, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+export async function removePackingListLine(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `packingListLines/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 
 /** ⚠️ DANGER: Replaces ENTIRE customer list in Firebase.

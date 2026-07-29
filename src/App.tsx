@@ -29,6 +29,7 @@ import SalesRepReportsPage from "./pages/SalesRepReportsPage";
 import CorporateCustomersPage from "./pages/CorporateCustomersPage";
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
 import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
+import PackingListPage from "./pages/PackingListPage";
 import { ShieldAlert, Cloud } from "lucide-react";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -203,6 +204,9 @@ export default function App() {
       if (type === "certificatesOfCompliance") {
         utils.coc.list.invalidate();
       }
+      if (type === "packingListLines") {
+        utils.packingList.listByPurchaseOrder.invalidate();
+      }
     };
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);
@@ -249,6 +253,7 @@ export default function App() {
         <Route path="corporate-customers" element={<RoleGuard><CorporateCustomersPage /></RoleGuard>} />
         <Route path="purchase-orders" element={<RoleGuard><PurchaseOrdersPage /></RoleGuard>} />
         <Route path="purchase-order/:id" element={<RoleGuard><PurchaseOrderDetailPage /></RoleGuard>} />
+        <Route path="packing-list/:id" element={<RoleGuard><PackingListPage /></RoleGuard>} />
         <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
         <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
         <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />

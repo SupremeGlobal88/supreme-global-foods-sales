@@ -60,6 +60,7 @@ let corporateCustomers = [] as any[];
 let purchaseOrders = [] as any[];
 let barrels = [] as any[];
 let certificatesOfCompliance = [] as any[];
+let packingListLines = [] as any[];
 
 /** Global lock to prevent concurrent invoice generation.
  *  When two "Generate Invoice" buttons are clicked rapidly,
@@ -196,6 +197,9 @@ function load() {
   const coc = localStorage.getItem("sgf_certificatesOfCompliance");
   if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
   else certificatesOfCompliance = [];
+  const pll = localStorage.getItem("sgf_packingListLines");
+  if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
+  else packingListLines = [];
 }
 
 /** Fix customers with missing/invalid codes. Also converts remaining CUST codes to numeric.
@@ -953,6 +957,10 @@ export function reloadFromStorage(): void {
   try {
     const coc = localStorage.getItem("sgf_certificatesOfCompliance");
     if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
+  } catch { /* keep current */ }
+  try {
+    const pll = localStorage.getItem("sgf_packingListLines");
+    if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
   } catch { /* keep current */ }
 }
 
@@ -3614,6 +3622,40 @@ export const dataService = {
     delete: (id: number) => {
       certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id !== id);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      return { success: true };
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PACKING LIST LINES (factory-filled barrel packing lines)
+  // ═══════════════════════════════════════════════════════════════
+  packingList: {
+    list: () => packingListLines,
+    listByPurchaseOrder: (poId: number) => packingListLines.filter((pl) => pl.purchaseOrderId === poId),
+    getById: (id: number) => packingListLines.find((pl) => pl.id === id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      packingListLines.push(newItem);
+      saveItem("sgf_packingListLines", packingListLines);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = packingListLines.findIndex((pl) => pl.id === id);
+      if (idx >= 0) {
+        packingListLines[idx] = { ...packingListLines[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_packingListLines", packingListLines);
+        return packingListLines[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      packingListLines = packingListLines.filter((pl) => pl.id !== id);
+      saveItem("sgf_packingListLines", packingListLines);
       return { success: true };
     },
   },

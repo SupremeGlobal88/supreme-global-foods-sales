@@ -31,6 +31,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/corporate-customers": ["admin", "super_admin"],
   "/purchase-orders": ["admin", "super_admin"],
   "/purchase-order/:id": ["admin", "super_admin"],
+  "/packing-list/:id": ["admin", "super_admin"],
 };
 
 /** Page-level action permissions */

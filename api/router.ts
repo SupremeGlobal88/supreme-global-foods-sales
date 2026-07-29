@@ -178,6 +178,12 @@ export const appRouter = t.router({
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
     delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
   }),
+  packingList: t.router({
+    listByPurchaseOrder: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

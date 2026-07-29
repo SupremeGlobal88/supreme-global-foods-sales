@@ -989,6 +989,8 @@ function getCurrentUserRole(): string {
   return "sales_rep";
 }
 
+let initRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function initAutoSync(): () => void {
   // Check disconnect flag
   if (localStorage.getItem("sgf_firebase_disconnected") === "true") {
@@ -997,14 +999,23 @@ export function initAutoSync(): () => void {
   }
   if (autoSyncInitialized) return () => {};
   if (!isFirebaseReady()) {
-    console.warn("[FirebaseSync] Firebase not ready — will retry in 2s");
-    setTimeout(() => {
-      if (!autoSyncInitialized && isFirebaseReady()) {
-        console.log("[FirebaseSync] Retry initAutoSync...");
+    console.warn("[FirebaseSync] Firebase not ready — will retry...");
+    // Retry every 3 seconds until Firebase is ready (max 20 attempts = 60s)
+    let attempts = 0;
+    const tryInit = () => {
+      if (autoSyncInitialized) return;
+      attempts++;
+      if (isFirebaseReady()) {
+        console.log(`[FirebaseSync] Firebase ready after ${attempts} attempts, initializing...`);
         initAutoSync();
+      } else if (attempts < 20) {
+        initRetryTimer = setTimeout(tryInit, 3000);
+      } else {
+        console.error("[FirebaseSync] Failed to initialize after 20 attempts. Sync disabled.");
       }
-    }, 2000);
-    return () => {};
+    };
+    initRetryTimer = setTimeout(tryInit, 2000);
+    return () => { if (initRetryTimer) clearTimeout(initRetryTimer); };
   }
 
   autoSyncInitialized = true;
@@ -1079,8 +1090,20 @@ export function initAutoSync(): () => void {
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;
+    if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
     for (const u of unsubs) u();
   };
+
+  // Periodic health check: ensure subscriptions are still active
+  const healthCheckInterval = setInterval(() => {
+    if (!autoSyncInitialized) {
+      console.log("[FirebaseSync] Health check: subscriptions lost, re-initializing...");
+      clearInterval(healthCheckInterval);
+      initAutoSync();
+    }
+  }, 30000);
+  unsubs.push(() => clearInterval(healthCheckInterval));
+
   return autoSyncCleanup;
 }
 // Built: 2026-07-07T16:33:54Z

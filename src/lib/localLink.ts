@@ -6,6 +6,10 @@ import {
   pushFollowUpAction, pushFollowUp, pushOneReceipt, pushReceipts,
   pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete,
   pushSalesRep, removeSalesRep, pushCreditNote,
+  pushCorporateCustomer, removeCorporateCustomer,
+  pushPurchaseOrder, removePurchaseOrder,
+  pushBarrel, removeBarrel,
+  pushCOC, removeCOC,
   isFirebaseReady, readFromFirebase, mergeWithCloudData,
 } from "./firebaseSync";
 
@@ -353,6 +357,31 @@ export function createLocalLink() {
               case "collections.recordPromise": result = dataService.collections.recordPromise(input); break;
               case "collections.placeHold": result = dataService.collections.placeHold(input); break;
               case "collections.releaseHold": result = dataService.collections.releaseHold(input); break;
+              // ═══ CORPORATE MODULE ═══
+              case "corporateCustomer.list": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.list(); break;
+              case "corporateCustomer.getById": result = dataService.corporateCustomer.getById(input); break;
+              case "corporateCustomer.create": result = dataService.corporateCustomer.create(input); await pushCorporateCustomer(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); break;
+              case "corporateCustomer.update": { const { id, ...data } = input; result = dataService.corporateCustomer.update({ id, data }); if (result) await pushCorporateCustomer(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); break; }
+              case "corporateCustomer.delete": result = dataService.corporateCustomer.delete(input); await removeCorporateCustomer(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); break;
+              case "purchaseOrder.list": await syncFromCloud("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.list(); break;
+              case "purchaseOrder.getById": result = dataService.purchaseOrder.getById(input); break;
+              case "purchaseOrder.create": result = dataService.purchaseOrder.create(input); await pushPurchaseOrder(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break;
+              case "purchaseOrder.update": { const { id, ...data } = input; result = dataService.purchaseOrder.update({ id, data }); if (result) await pushPurchaseOrder(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break; }
+              case "purchaseOrder.updateStatus": result = dataService.purchaseOrder.updateStatus(input); await pushPurchaseOrder(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break;
+              case "purchaseOrder.delete": result = dataService.purchaseOrder.delete(input); await removePurchaseOrder(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break;
+              case "barrel.list": await syncFromCloud("barrels", "sgf_barrels"); result = dataService.barrel.list(); break;
+              case "barrel.listByPurchaseOrder": result = dataService.barrel.listByPurchaseOrder(input); break;
+              case "barrel.getById": result = dataService.barrel.getById(input); break;
+              case "barrel.create": result = dataService.barrel.create(input); await pushBarrel(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break;
+              case "barrel.update": { const { id, ...data } = input; result = dataService.barrel.update({ id, data }); if (result) await pushBarrel(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break; }
+              case "barrel.delete": result = dataService.barrel.delete(input); await removeBarrel(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break;
+              case "coc.list": await syncFromCloud("certificatesOfCompliance", "sgf_certificatesOfCompliance"); result = dataService.coc.list(); break;
+              case "coc.listByBarrel": result = dataService.coc.listByBarrel(input); break;
+              case "coc.listByPurchaseOrder": result = dataService.coc.listByPurchaseOrder(input); break;
+              case "coc.getById": result = dataService.coc.getById(input); break;
+              case "coc.create": result = dataService.coc.create(input); await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
+              case "coc.update": { const { id, ...data } = input; result = dataService.coc.update({ id, data }); if (result) await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
+              case "coc.delete": result = dataService.coc.delete(input); await removeCOC(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
               default: console.warn("[localLink] Unhandled:", path, input); result = null;
             }
 

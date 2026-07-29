@@ -145,6 +145,38 @@ export const appRouter = t.router({
     placeHold: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     releaseHold: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
   }),
+  corporateCustomer: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+  }),
+  purchaseOrder: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    updateStatus: t.procedure.input((val: unknown) => val as { id: number; status: string }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+  }),
+  barrel: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    listByPurchaseOrder: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+  }),
+  coc: t.router({
+    list: t.procedure.query(() => [] as any[]),
+    listByBarrel: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    listByPurchaseOrder: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
+    create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

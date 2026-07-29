@@ -55,6 +55,11 @@ let accountHolds = [] as any[];
 let receipts = [] as any[];
 let creditNotes = [] as any[];
 let users = [] as any[];
+// ─── CORPORATE MODULE DATA ───
+let corporateCustomers = [] as any[];
+let purchaseOrders = [] as any[];
+let barrels = [] as any[];
+let certificatesOfCompliance = [] as any[];
 
 /** Global lock to prevent concurrent invoice generation.
  *  When two "Generate Invoice" buttons are clicked rapidly,
@@ -177,6 +182,20 @@ function load() {
   // FIX: Repair Sage invoice dates that were corrupted by the old date parser.
   // The old code did `20${parts[2]}` on 4-digit years, producing dates like "202026-07-06".
   try { fixSageInvoiceDates(); } catch { /* ignore */ }
+
+  // ─── CORPORATE MODULE DATA LOADING ───
+  const cc = localStorage.getItem("sgf_corporateCustomers");
+  if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
+  else corporateCustomers = [];
+  const po = localStorage.getItem("sgf_purchaseOrders");
+  if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
+  else purchaseOrders = [];
+  const br = localStorage.getItem("sgf_barrels");
+  if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
+  else barrels = [];
+  const coc = localStorage.getItem("sgf_certificatesOfCompliance");
+  if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
+  else certificatesOfCompliance = [];
 }
 
 /** Fix customers with missing/invalid codes. Also converts remaining CUST codes to numeric.
@@ -917,6 +936,23 @@ export function reloadFromStorage(): void {
         SALES_REPS.push(...d);
       }
     }
+  } catch { /* keep current */ }
+  // ─── CORPORATE MODULE RELOAD ───
+  try {
+    const cc = localStorage.getItem("sgf_corporateCustomers");
+    if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
+  } catch { /* keep current */ }
+  try {
+    const po = localStorage.getItem("sgf_purchaseOrders");
+    if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
+  } catch { /* keep current */ }
+  try {
+    const br = localStorage.getItem("sgf_barrels");
+    if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
+  } catch { /* keep current */ }
+  try {
+    const coc = localStorage.getItem("sgf_certificatesOfCompliance");
+    if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
   } catch { /* keep current */ }
 }
 
@@ -3283,6 +3319,143 @@ export const dataService = {
         return { success: true };
       }
       return { success: false };
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  //  CORPORATE MODULE
+  // ═══════════════════════════════════════════════════════════════
+  corporateCustomer: {
+    list: () => corporateCustomers,
+    getById: (id: number) => corporateCustomers.find((c) => c.id === id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      corporateCustomers.push(newItem);
+      saveItem("sgf_corporateCustomers", corporateCustomers);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = corporateCustomers.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_corporateCustomers", corporateCustomers);
+        return corporateCustomers[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      corporateCustomers = corporateCustomers.filter((c) => c.id !== id);
+      saveItem("sgf_corporateCustomers", corporateCustomers);
+      return { success: true };
+    },
+  },
+
+  purchaseOrder: {
+    list: () => purchaseOrders,
+    getById: (id: number) => purchaseOrders.find((po) => po.id === id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        status: data.status || "received",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      purchaseOrders.push(newItem);
+      saveItem("sgf_purchaseOrders", purchaseOrders);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = purchaseOrders.findIndex((po) => po.id === id);
+      if (idx >= 0) {
+        purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_purchaseOrders", purchaseOrders);
+        return purchaseOrders[idx];
+      }
+      return null;
+    },
+    updateStatus: ({ id, status }: { id: number; status: string }) => {
+      const idx = purchaseOrders.findIndex((po) => po.id === id);
+      if (idx >= 0) {
+        purchaseOrders[idx].status = status;
+        purchaseOrders[idx].updatedAt = new Date().toISOString();
+        saveItem("sgf_purchaseOrders", purchaseOrders);
+        return purchaseOrders[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      purchaseOrders = purchaseOrders.filter((po) => po.id !== id);
+      saveItem("sgf_purchaseOrders", purchaseOrders);
+      return { success: true };
+    },
+  },
+
+  barrel: {
+    list: () => barrels,
+    listByPurchaseOrder: (poId: number) => barrels.filter((b) => b.purchaseOrderId === poId),
+    getById: (id: number) => barrels.find((b) => b.id === id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      barrels.push(newItem);
+      saveItem("sgf_barrels", barrels);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = barrels.findIndex((b) => b.id === id);
+      if (idx >= 0) {
+        barrels[idx] = { ...barrels[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_barrels", barrels);
+        return barrels[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      barrels = barrels.filter((b) => b.id !== id);
+      saveItem("sgf_barrels", barrels);
+      return { success: true };
+    },
+  },
+
+  coc: {
+    list: () => certificatesOfCompliance,
+    listByBarrel: (barrelId: number) => certificatesOfCompliance.filter((c) => c.barrelId === barrelId),
+    listByPurchaseOrder: (poId: number) => certificatesOfCompliance.filter((c) => c.purchaseOrderId === poId),
+    getById: (id: number) => certificatesOfCompliance.find((c) => c.id === id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      certificatesOfCompliance.push(newItem);
+      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = certificatesOfCompliance.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        certificatesOfCompliance[idx] = { ...certificatesOfCompliance[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+        return certificatesOfCompliance[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id !== id);
+      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      return { success: true };
     },
   },
 };

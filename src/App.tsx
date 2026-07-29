@@ -26,6 +26,9 @@ import SalesRepInvoicesPage from "./pages/SalesRepInvoicesPage";
 import BankImportPage from "./pages/BankImportPage";
 import CustomerStatementPage from "./pages/CustomerStatementPage";
 import SalesRepReportsPage from "./pages/SalesRepReportsPage";
+import CorporateCustomersPage from "./pages/CorporateCustomersPage";
+import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
+import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
 import { ShieldAlert, Cloud } from "lucide-react";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -187,6 +190,19 @@ export default function App() {
         // Invalidate customer search to refresh any dropdowns using sales reps.
         utils.customer.search.invalidate();
       }
+      // Corporate module data types
+      if (type === "corporateCustomers") {
+        utils.corporateCustomer.list.invalidate();
+      }
+      if (type === "purchaseOrders") {
+        utils.purchaseOrder.list.invalidate();
+      }
+      if (type === "barrels") {
+        utils.barrel.list.invalidate();
+      }
+      if (type === "certificatesOfCompliance") {
+        utils.coc.list.invalidate();
+      }
     };
     window.addEventListener("firebaseDataReceived", handler);
     return () => window.removeEventListener("firebaseDataReceived", handler);
@@ -230,6 +246,9 @@ export default function App() {
         <Route path="customer-statement" element={<RoleGuard><CustomerStatementPage /></RoleGuard>} />
         <Route path="sample-reports" element={<SampleReportsPage />} />
         <Route path="sales-rep-reports" element={<RoleGuard><SalesRepReportsPage /></RoleGuard>} />
+        <Route path="corporate-customers" element={<RoleGuard><CorporateCustomersPage /></RoleGuard>} />
+        <Route path="purchase-orders" element={<RoleGuard><PurchaseOrdersPage /></RoleGuard>} />
+        <Route path="purchase-order/:id" element={<RoleGuard><PurchaseOrderDetailPage /></RoleGuard>} />
         <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
         <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
         <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />

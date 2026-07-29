@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Users, ShoppingCart, FileText,
   Calendar, UserCog, CreditCard, Settings, LogOut, Globe,
   Bell, FlaskConical, ShieldAlert, Archive, X, Wallet,
-  FileSpreadsheet, Banknote, TrendingUp,
+  FileSpreadsheet, Banknote, TrendingUp, Building2, ClipboardList,
 } from "lucide-react";
 
 const allNavItems = [
@@ -23,6 +23,8 @@ const allNavItems = [
   { path: "/collections", label: "Collections", icon: CreditCard },
   { path: "/follow-ups", label: "Follow-ups", icon: Bell },
   { path: "/sample-reports", label: "Samples", icon: FlaskConical },
+  { path: "/corporate-customers", label: "Corp Customers", icon: Building2 },
+  { path: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/users", label: "Users", icon: ShieldAlert },
   { path: "/historical-import", label: "Import", icon: Archive },

@@ -227,6 +227,10 @@ const FB_PATHS: Record<string, string> = {
   users: "users",
   salesReps: "salesReps",
   creditNotes: "creditNotes",
+  corporateCustomers: "corporateCustomers",
+  purchaseOrders: "purchaseOrders",
+  barrels: "barrels",
+  certificatesOfCompliance: "certificatesOfCompliance",
 };
 
 /** Read data directly from Firebase. Returns array of items or empty array.
@@ -283,6 +287,42 @@ export async function pushOneStockItem(item: any): Promise<void> {
 export async function removeOneStockItem(itemId: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, `stock/${safeFbKey(itemId)}`), null); } catch { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORPORATE MODULE PUSH
+// ═══════════════════════════════════════════════════════════════
+export async function pushCorporateCustomer(customer: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `corporateCustomers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+export async function removeCorporateCustomer(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `corporateCustomers/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+}
+export async function pushPurchaseOrder(po: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `purchaseOrders/${safeFbKey(po.id)}`), { ...po, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+export async function removePurchaseOrder(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `purchaseOrders/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+}
+export async function pushBarrel(barrel: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `barrels/${safeFbKey(barrel.id)}`), { ...barrel, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+export async function removeBarrel(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `barrels/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+}
+export async function pushCOC(coc: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `certificatesOfCompliance/${safeFbKey(coc.id)}`), { ...coc, _syncedAt: Date.now() }); } catch { /* ignore */ }
+}
+export async function removeCOC(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `certificatesOfCompliance/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 
 /** ⚠️ DANGER: Replaces ENTIRE customer list in Firebase.

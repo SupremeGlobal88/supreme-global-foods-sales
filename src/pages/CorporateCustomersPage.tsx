@@ -17,6 +17,7 @@ export default function CorporateCustomersPage() {
     name: "",
     code: "",
     company: "sgf" as CompanyKey,
+    logoUrl: "",
     vatNumber: "",
     contactPerson: "",
     email: "",
@@ -51,12 +52,12 @@ export default function CorporateCustomersPage() {
   const selected = (customers || []).find((c: any) => c.id === selectedCustomer);
 
   function resetForm() {
-    setFormData({ name: "", code: "", company: "sgf", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", notes: "", isActive: true });
+    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", notes: "", isActive: true });
   }
 
   function handleEdit(c: any) {
     setFormData({
-      name: c.name || "", code: c.code || "", company: c.company || "sgf", vatNumber: c.vatNumber || "",
+      name: c.name || "", code: c.code || "", company: c.company || "sgf", logoUrl: c.logoUrl || "", vatNumber: c.vatNumber || "",
       contactPerson: c.contactPerson || "", email: c.email || "", phone: c.phone || "",
       deliveryAddress: c.deliveryAddress || "", city: c.city || "", province: c.province || "",
       postalCode: c.postalCode || "", notes: c.notes || "", isActive: c.isActive !== false,
@@ -250,6 +251,18 @@ export default function CorporateCustomersPage() {
                   </select>
                 </div>
                 <div><label className="label-text">Customer Code</label><input value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="input-field w-full" placeholder="e.g., DELI001" /></div>
+                <div><label className="label-text">Company</label>
+                  <select required value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value as CompanyKey })} className="input-field w-full">
+                    {getAllCompanies().map((cfg) => (
+                      <option key={cfg.key} value={cfg.key}>{cfg.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="label-text">Customer Logo URL</label>
+                  <input value={formData.logoUrl} onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })} className="input-field w-full" placeholder="e.g., /customer-logos/deli-spices.png or https://..." />
+                  <p className="text-[10px] text-[#8A8B8C] mt-1">Logo will appear on their COC. Use /customer-logos/filename.png for uploaded logos.</p>
+                </div>
                 <div>
                   <label className="label-text">VAT Number *</label>
                   <input required value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field w-full" placeholder="e.g., 4610105530" />

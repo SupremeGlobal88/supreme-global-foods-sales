@@ -3378,6 +3378,29 @@ export const dataService = {
       };
       corporateCustomers.push(newItem);
       saveItem("sgf_corporateCustomers", corporateCustomers);
+      // Also add to main customers list so invoices and statements resolve correctly
+      const mainCust = {
+        id: newItem.id,
+        name: newItem.name,
+        customerCode: newItem.code || `CORP-${newItem.id.toString().slice(-4)}`,
+        contactPerson: newItem.contactPerson || "",
+        email: newItem.email || "",
+        phone: newItem.phone || "",
+        physicalAddress: newItem.deliveryAddress || "",
+        city: newItem.city || "",
+        province: newItem.province || "",
+        postalCode: newItem.postalCode || "",
+        vatNumber: newItem.vatNumber || "",
+        paymentTerms: "30_days",
+        priceTier: "corporate",
+        isCorporate: true,
+        company: newItem.company || "sgf",
+        notes: newItem.notes || "",
+        createdAt: newItem.createdAt,
+        updatedAt: newItem.updatedAt,
+      };
+      customers.push(mainCust);
+      saveItem("sgf_customers", customers);
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
@@ -3385,6 +3408,27 @@ export const dataService = {
       if (idx >= 0) {
         corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_corporateCustomers", corporateCustomers);
+        // Sync updates to main customers list
+        const cIdx = customers.findIndex((c) => c.id === id && c.isCorporate);
+        if (cIdx >= 0) {
+          customers[cIdx] = {
+            ...customers[cIdx],
+            name: data.name ?? customers[cIdx].name,
+            customerCode: data.code ?? customers[cIdx].customerCode,
+            contactPerson: data.contactPerson ?? customers[cIdx].contactPerson,
+            email: data.email ?? customers[cIdx].email,
+            phone: data.phone ?? customers[cIdx].phone,
+            physicalAddress: data.deliveryAddress ?? customers[cIdx].physicalAddress,
+            city: data.city ?? customers[cIdx].city,
+            province: data.province ?? customers[cIdx].province,
+            postalCode: data.postalCode ?? customers[cIdx].postalCode,
+            vatNumber: data.vatNumber ?? customers[cIdx].vatNumber,
+            company: data.company ?? customers[cIdx].company,
+            notes: data.notes ?? customers[cIdx].notes,
+            updatedAt: new Date().toISOString(),
+          };
+          saveItem("sgf_customers", customers);
+        }
         return corporateCustomers[idx];
       }
       return null;
@@ -3392,6 +3436,9 @@ export const dataService = {
     delete: (id: number) => {
       corporateCustomers = corporateCustomers.filter((c) => c.id !== id);
       saveItem("sgf_corporateCustomers", corporateCustomers);
+      // Also remove from main customers list
+      customers = customers.filter((c) => !(c.id === id && c.isCorporate));
+      saveItem("sgf_customers", customers);
       return { success: true };
     },
   },

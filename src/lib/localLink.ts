@@ -359,6 +359,7 @@ export function createLocalLink() {
               case "collections.releaseHold": result = dataService.collections.releaseHold(input); break;
               // ═══ CORPORATE MODULE ═══
               case "corporateCustomer.list": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.list(); break;
+              case "corporateCustomer.listByCompany": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.listByCompany(input); break;
               case "corporateCustomer.getById": result = dataService.corporateCustomer.getById(input); break;
               case "corporateCustomer.create": result = dataService.corporateCustomer.create(input); await pushCorporateCustomer(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); break;
               case "corporateCustomer.update": { const { id, ...data } = input; result = dataService.corporateCustomer.update({ id, data }); if (result) await pushCorporateCustomer(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); break; }

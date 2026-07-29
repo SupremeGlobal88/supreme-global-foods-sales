@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
+import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Plus, Trash2, X, FileText, Building2, Calendar, Package,
-  CheckCircle2, Clock, AlertCircle, ChevronRight, Filter, Link2,
+  CheckCircle2, Clock, AlertCircle, ChevronRight, Filter, Link2, Globe,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -109,6 +110,7 @@ export default function PurchaseOrdersPage() {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [companyFilter, setCompanyFilter] = useState<"all" | CompanyKey>("all");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerIndex, setPickerIndex] = useState(0);
 
@@ -140,8 +142,9 @@ export default function PurchaseOrdersPage() {
       const customer = (corporateCustomers || []).find((c: any) => c.id === po.corporateCustomerId);
       const matchesSearch = !search || po.poNumber?.toLowerCase().includes(q) || customer?.name?.toLowerCase().includes(q);
       const matchesStatus = statusFilter === "all" || po.status === statusFilter;
-      if (preselectedCustomerId) return po.corporateCustomerId === parseInt(preselectedCustomerId) && matchesSearch && matchesStatus;
-      return matchesSearch && matchesStatus;
+      const matchesCompany = companyFilter === "all" || (po.company || "sgf") === companyFilter;
+      if (preselectedCustomerId) return po.corporateCustomerId === parseInt(preselectedCustomerId) && matchesSearch && matchesStatus && matchesCompany;
+      return matchesSearch && matchesStatus && matchesCompany;
     })
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -235,6 +238,18 @@ export default function PurchaseOrdersPage() {
             <button key={s} onClick={() => setStatusFilter(s)} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${statusFilter === s ? "text-white" : "text-[#8A8B8C] hover:text-white"}`} style={statusFilter === s ? { backgroundColor: "#D4A84333" } : {}}>{s === "all" ? "All" : s.replace("_", " ")}</button>
           ))}
         </div>
+        <div className="flex items-center gap-2">
+          <Globe className="w-4 h-4 text-[#8A8B8C]" />
+          {["all", "sgf", "recircle"].map((c) => {
+            const cfg = c === "all" ? null : getCompanyConfig(c as CompanyKey);
+            const isActive = companyFilter === c;
+            return (
+              <button key={c} onClick={() => setCompanyFilter(c as any)} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${isActive ? "text-white" : "text-[#8A8B8C] hover:text-white"}`} style={isActive ? { backgroundColor: cfg ? cfg.documentColor + "33" : "#D4A84333" } : {}}>
+                {c === "all" ? "All" : <><span className="w-2 h-2 rounded-full" style={{ backgroundColor: cfg?.documentColor }} />{cfg?.shortName}</>}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Stats */}
@@ -271,6 +286,10 @@ export default function PurchaseOrdersPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-medium text-white">{po.poNumber}</h3>
+                      {(() => {
+                        const ccfg = getCompanyConfig(po.company);
+                        return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: ccfg.documentColor + "22", color: ccfg.documentColor }}>{ccfg.shortName}</span>;
+                      })()}
                       <span className="text-xs px-2 py-0.5 rounded-full capitalize" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{po.status?.replace("_", " ")}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[#8A8B8C]">

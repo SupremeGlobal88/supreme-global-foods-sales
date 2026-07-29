@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
+import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, Package, Plus, Trash2, X, FileText, Printer, Building2,
@@ -179,40 +180,42 @@ export default function PurchaseOrderDetailPage() {
   }
 
   function handlePrintPackingList() {
+    const poCompany: CompanyKey = po.company || "sgf";
+    const cfg = getCompanyConfig(poCompany);
     setShowPackingList(true);
     setTimeout(() => {
       const printWindow = window.open("", "_blank");
       if (!printWindow) return;
       const barrelList = (barrels || []).map((b: any) => {
-      const line = poLineItems[b.poLineIndex];
-      return `
-        <tr>
-          <td style="padding:8px;border:1px solid #333;">${b.barrelNumber || "-"}</td>
-          <td style="padding:8px;border:1px solid #333;">${b.recircleProductCode || "-"}</td>
-          <td style="padding:8px;border:1px solid #333;">${b.customerProductCode || "-"}</td>
-          <td style="padding:8px;border:1px solid #333;">${b.productDescription || "-"}</td>
-          <td style="padding:8px;border:1px solid #333;">${line ? line.linkedProductName || "-" : "-"}</td>
-          <td style="padding:8px;border:1px solid #333;text-align:center;">${b.quantityBundles || 0}</td>
-          <td style="padding:8px;border:1px solid #333;">${b.batchNumber || "-"}</td>
-          <td style="padding:8px;border:1px solid #333;">${b.lotNumber || "-"}</td>
-          <td style="padding:8px;border:1px solid #333;">${b.sealNumber || "-"}</td>
-        </tr>
-      `;
-    }).join("");
+        const line = poLineItems[b.poLineIndex];
+        return `
+          <tr>
+            <td style="padding:8px;border:1px solid #333;">${b.barrelNumber || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.recircleProductCode || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.customerProductCode || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.productDescription || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${line ? line.linkedProductName || "-" : "-"}</td>
+            <td style="padding:8px;border:1px solid #333;text-align:center;">${b.quantityBundles || 0}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.batchNumber || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.lotNumber || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.sealNumber || "-"}</td>
+          </tr>
+        `;
+      }).join("");
       printWindow.document.write(`
         <html><head><title>Packing List - ${po.poNumber}</title></head>
         <body style="font-family:Arial,sans-serif;padding:40px;background:#fff;color:#000;">
           <div style="text-align:center;margin-bottom:30px;">
-            <h1 style="font-size:24px;margin-bottom:5px;">RECIRCLE SA CC</h1>
-            <p style="font-size:12px;color:#666;">28 Nagington Road, Wadeville, Gauteng, South Africa</p>
-            <h2 style="font-size:18px;margin-top:15px;border-bottom:2px solid #000;padding-bottom:10px;">PACKING LIST</h2>
+            <h1 style="font-size:24px;margin-bottom:5px;color:${cfg.documentColor};">${cfg.legalName}</h1>
+            <p style="font-size:12px;color:#666;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
+            <h2 style="font-size:18px;margin-top:15px;border-bottom:2px solid ${cfg.documentColor};padding-bottom:10px;color:#000;">PACKING LIST</h2>
           </div>
           <div style="display:flex;justify-content:space-between;margin-bottom:20px;font-size:12px;">
             <div><strong>PO Number:</strong> ${po.poNumber}<br/><strong>Customer:</strong> ${customer?.name || "-"}<br/><strong>Delivery:</strong> ${customer?.deliveryAddress || "-"}</div>
-            <div><strong>Date:</strong> ${new Date().toLocaleDateString("en-ZA")}<br/><strong>Total Barrels:</strong> ${(barrels || []).length}</div>
+            <div><strong>Date:</strong> ${new Date().toLocaleDateString("en-ZA")}<br/><strong>Total Barrels:</strong> ${(barrels || []).length}<br/><strong>From:</strong> ${cfg.shortName}</div>
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead><tr style="background:#f0f0f0;">
+            <thead><tr style="background:${cfg.documentColor}15;">
               <th style="padding:8px;border:1px solid #333;text-align:left;">Barrel #</th>
               <th style="padding:8px;border:1px solid #333;text-align:left;">Recircle Code</th>
               <th style="padding:8px;border:1px solid #333;text-align:left;">Customer Code</th>
@@ -225,8 +228,9 @@ export default function PurchaseOrderDetailPage() {
             </tr></thead>
             <tbody>${barrelList}</tbody>
           </table>
-          <div style="margin-top:30px;font-size:11px;color:#666;border-top:1px solid #ccc;padding-top:10px;">
-            <p><strong>IMPORTANT:</strong> Please note we require the following necessary documentation to process payments and must be supplied with all deliveries:</p>
+          <div style="margin-top:30px;font-size:11px;color:#666;border-top:2px solid ${cfg.documentColor};padding-top:10px;">
+            <p><strong>Banking Details:</strong> ${cfg.banking.bankName} | Acc: ${cfg.banking.accountName} | ${cfg.banking.accountNumber} | Branch: ${cfg.banking.branchCode}</p>
+            <p style="margin-top:10px;"><strong>IMPORTANT:</strong> Please note we require the following necessary documentation to process payments and must be supplied with all deliveries:</p>
             <p>1) DELIVERY NOTE &nbsp;&nbsp; 2) INVOICE &nbsp;&nbsp; 3) COA (CERTIFICATE OF ANALYSIS)</p>
             <p>Any deliveries received without these documents will not be accepted and will be returned on delivery.</p>
           </div>
@@ -239,16 +243,22 @@ export default function PurchaseOrderDetailPage() {
   }
 
   function handlePrintCOC(coc: any) {
+    const cocCompany: CompanyKey = coc.company || po?.company || "sgf";
+    const cfg = getCompanyConfig(cocCompany);
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
       <html><head><title>COC - ${coc.batchNumber}</title></head>
       <body style="font-family:Arial,sans-serif;padding:40px;background:#fff;color:#000;max-width:800px;margin:0 auto;">
-        <div style="text-align:center;margin-bottom:20px;">
-          <h1 style="font-size:20px;letter-spacing:2px;">SPECIFICATION SHEET / CERTIFICATE OF COMPLIANCE</h1>
+        <div style="text-align:center;margin-bottom:10px;">
+          <h1 style="font-size:22px;letter-spacing:2px;color:${cfg.documentColor};">${cfg.logoText}</h1>
+          <p style="font-size:11px;color:#666;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
+        </div>
+        <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid ${cfg.documentColor};padding-bottom:10px;">
+          <h2 style="font-size:16px;letter-spacing:1px;color:#000;">${cfg.cocHeader}</h2>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
-          <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;width:30%;">PRODUCT CODE RECIRCLE SA</td><td style="padding:6px;border:1px solid #ccc;">${coc.recircleProductCode || "-"}</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;width:30%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:6px;border:1px solid #ccc;">${coc.recircleProductCode || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT CODE ${customer?.name?.toUpperCase() || "CUSTOMER"}</td><td style="padding:6px;border:1px solid #ccc;">${coc.customerProductCode || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:6px;border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">LOT No</td><td style="padding:6px;border:1px solid #ccc;">${coc.lotNumber || "-"}</td></tr>
@@ -278,8 +288,8 @@ export default function PurchaseOrderDetailPage() {
         <p style="font-size:12px;margin-bottom:15px;">${coc.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery."}</p>
         <h3 style="font-size:14px;margin:15px 0 10px;">HANDLING AND STORAGE CONDITIONS</h3>
         <p style="font-size:12px;margin-bottom:15px;">${coc.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it."}</p>
-        <div style="text-align:center;margin-top:30px;font-size:11px;color:#666;border-top:1px solid #ccc;padding-top:15px;">
-          <p><strong>RECIRCLE SA CC</strong> | 28 Nagington Road, Wadeville, Gauteng | South Africa</p>
+        <div style="text-align:center;margin-top:30px;font-size:11px;color:#666;border-top:2px solid ${cfg.documentColor};padding-top:15px;">
+          <p><strong>${cfg.legalName}</strong> | ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.address.country}</p>
         </div>
       </body></html>
     `);
@@ -298,6 +308,10 @@ export default function PurchaseOrderDetailPage() {
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-semibold text-white">{po.poNumber}</h1>
+            {(() => {
+              const pcfg = getCompanyConfig(po.company);
+              return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: pcfg.documentColor + "22", color: pcfg.documentColor }}>{pcfg.shortName}</span>;
+            })()}
             <span className="text-xs px-2 py-0.5 rounded-full capitalize" style={{ backgroundColor: STATUS_FLOW[currentStep]?.bg || "#1A8C3F1A", color: STATUS_FLOW[currentStep]?.color || "#4ADE80" }}>{po.status?.replace("_", " ")}</span>
           </div>
           <p className="text-sm text-[#8A8B8C] flex items-center gap-2 flex-wrap">

@@ -3327,10 +3327,12 @@ export const dataService = {
   // ═══════════════════════════════════════════════════════════════
   corporateCustomer: {
     list: () => corporateCustomers,
+    listByCompany: (company: string) => corporateCustomers.filter((c) => c.company === company || (!c.company && company === "sgf")),
     getById: (id: number) => corporateCustomers.find((c) => c.id === id) || null,
     create: (data: any) => {
       const newItem = {
         ...data,
+        company: data.company || "sgf",
         id: Date.now(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -3357,10 +3359,18 @@ export const dataService = {
 
   purchaseOrder: {
     list: () => purchaseOrders,
+    listByCompany: (company: string) => purchaseOrders.filter((po) => po.company === company || (!po.company && company === "sgf")),
     getById: (id: number) => purchaseOrders.find((po) => po.id === id) || null,
     create: (data: any) => {
+      // Auto-inherit company from linked corporate customer if not explicitly set
+      let company = data.company;
+      if (!company && data.corporateCustomerId) {
+        const cust = corporateCustomers.find((c) => c.id === data.corporateCustomerId);
+        if (cust?.company) company = cust.company;
+      }
       const newItem = {
         ...data,
+        company: company || "sgf",
         id: Date.now(),
         status: data.status || "received",
         createdAt: new Date().toISOString(),
@@ -3401,8 +3411,15 @@ export const dataService = {
     listByPurchaseOrder: (poId: number) => barrels.filter((b) => b.purchaseOrderId === poId),
     getById: (id: number) => barrels.find((b) => b.id === id) || null,
     create: (data: any) => {
+      // Auto-inherit company from linked PO if not explicitly set
+      let company = data.company;
+      if (!company && data.purchaseOrderId) {
+        const po = purchaseOrders.find((p) => p.id === data.purchaseOrderId);
+        if (po?.company) company = po.company;
+      }
       const newItem = {
         ...data,
+        company: company || "sgf",
         id: Date.now(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -3433,8 +3450,18 @@ export const dataService = {
     listByPurchaseOrder: (poId: number) => certificatesOfCompliance.filter((c) => c.purchaseOrderId === poId),
     getById: (id: number) => certificatesOfCompliance.find((c) => c.id === id) || null,
     create: (data: any) => {
+      let company = data.company;
+      if (!company && data.barrelId) {
+        const b = barrels.find((br) => br.id === data.barrelId);
+        if (b?.company) company = b.company;
+      }
+      if (!company && data.purchaseOrderId) {
+        const po = purchaseOrders.find((p) => p.id === data.purchaseOrderId);
+        if (po?.company) company = po.company;
+      }
       const newItem = {
         ...data,
+        company: company || "sgf",
         id: Date.now(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

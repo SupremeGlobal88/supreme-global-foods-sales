@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
+import { getCompanyConfig, getAllCompanies, type CompanyKey } from "@/lib/companyConfig";
 import {
-  Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package,
+  Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package, Globe,
 } from "lucide-react";
 
 export default function CorporateCustomersPage() {
@@ -15,6 +16,7 @@ export default function CorporateCustomersPage() {
   const [formData, setFormData] = useState({
     name: "",
     code: "",
+    company: "sgf" as CompanyKey,
     vatNumber: "",
     contactPerson: "",
     email: "",
@@ -26,6 +28,7 @@ export default function CorporateCustomersPage() {
     notes: "",
     isActive: true,
   });
+  const [companyFilter, setCompanyFilter] = useState<"all" | CompanyKey>("all");
 
   const { data: customers } = trpc.corporateCustomer.list.useQuery();
   const createCustomer = trpc.corporateCustomer.create.useMutation({
@@ -40,18 +43,20 @@ export default function CorporateCustomersPage() {
 
   const filtered = (customers || []).filter((c: any) => {
     const q = search.toLowerCase();
-    return !search || (c.name?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q) || c.contactPerson?.toLowerCase().includes(q));
+    const matchesSearch = !search || (c.name?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q) || c.contactPerson?.toLowerCase().includes(q));
+    const matchesCompany = companyFilter === "all" || (c.company || "sgf") === companyFilter;
+    return matchesSearch && matchesCompany;
   });
 
-  const selected = filtered.find((c: any) => c.id === selectedCustomer);
+  const selected = (customers || []).find((c: any) => c.id === selectedCustomer);
 
   function resetForm() {
-    setFormData({ name: "", code: "", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", notes: "", isActive: true });
+    setFormData({ name: "", code: "", company: "sgf", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", notes: "", isActive: true });
   }
 
   function handleEdit(c: any) {
     setFormData({
-      name: c.name || "", code: c.code || "", vatNumber: c.vatNumber || "",
+      name: c.name || "", code: c.code || "", company: c.company || "sgf", vatNumber: c.vatNumber || "",
       contactPerson: c.contactPerson || "", email: c.email || "", phone: c.phone || "",
       deliveryAddress: c.deliveryAddress || "", city: c.city || "", province: c.province || "",
       postalCode: c.postalCode || "", notes: c.notes || "", isActive: c.isActive !== false,
@@ -86,16 +91,30 @@ export default function CorporateCustomersPage() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
-        <input
-          type="text"
-          placeholder="Search by name, code, or contact person..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input-field pl-10 w-full"
-        />
+      {/* Search + Company Filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
+          <input
+            type="text"
+            placeholder="Search by name, code, or contact person..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input-field pl-10 w-full"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Globe className="w-4 h-4 text-[#8A8B8C]" />
+          {["all", "sgf", "recircle"].map((c) => {
+            const cfg = c === "all" ? null : getCompanyConfig(c as CompanyKey);
+            const isActive = companyFilter === c;
+            return (
+              <button key={c} onClick={() => setCompanyFilter(c as any)} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${isActive ? "text-white" : "text-[#8A8B8C] hover:text-white"}`} style={isActive ? { backgroundColor: cfg ? cfg.documentColor + "33" : "#D4A84333" } : {}}>
+                {c === "all" ? "All" : <><span className="w-2 h-2 rounded-full" style={{ backgroundColor: cfg?.documentColor }} />{cfg?.shortName}</>}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -123,6 +142,10 @@ export default function CorporateCustomersPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium text-white">{c.name}</h3>
+                      {(() => {
+                        const cfg = getCompanyConfig(c.company);
+                        return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: cfg.documentColor + "22", color: cfg.documentColor }}>{cfg.shortName}</span>;
+                      })()}
                       {c.code && <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#1A8C3F1A", color: "#4ADE80" }}>{c.code}</span>}
                       {c.isActive === false && <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/30 text-red-400">Inactive</span>}
                     </div>
@@ -152,7 +175,13 @@ export default function CorporateCustomersPage() {
                   <Building2 className="w-5 h-5" style={{ color: "#D4A843" }} />
                 </div>
                 <div>
-                  <h3 className="font-medium text-white">{selected.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-white">{selected.name}</h3>
+                    {(() => {
+                      const cfg = getCompanyConfig(selected.company);
+                      return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: cfg.documentColor + "22", color: cfg.documentColor }}>{cfg.shortName}</span>;
+                    })()}
+                  </div>
                   {selected.code && <p className="text-xs text-[#8A8B8C]">Code: {selected.code}</p>}
                 </div>
               </div>
@@ -202,6 +231,14 @@ export default function CorporateCustomersPage() {
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><label className="label-text">Company Name *</label><input required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field w-full" /></div>
+                <div>
+                  <label className="label-text">Company *</label>
+                  <select required value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value as CompanyKey })} className="input-field w-full">
+                    {getAllCompanies().map((cfg) => (
+                      <option key={cfg.key} value={cfg.key}>{cfg.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <div><label className="label-text">Customer Code</label><input value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="input-field w-full" placeholder="e.g., DELI001" /></div>
                 <div><label className="label-text">VAT Number</label><input value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Contact Person</label><input value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field w-full" /></div>

@@ -1006,36 +1006,48 @@ export function initAutoSync(): () => void {
 
   /** Merge received Firebase data into localStorage then refresh dataService */
   const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
-    if (data && data.length > 0) {
-      console.log(`[FirebaseSync] Received ${data.length} ${type}`);
-      // Smart merge: Firebase is source of truth, but preserve local-only items
-      try {
+    // ALWAYS process — even empty arrays (they mean data was deleted in cloud)
+    const cloudCount = data?.length || 0;
+    console.log(`[FirebaseSync] Received ${cloudCount} ${type}`);
+
+    // Step 1: Merge cloud data with localStorage
+    try {
+      if (cloudCount > 0) {
         const merged = mergeWithCloudData(storageKey, data);
         localStorage.setItem(storageKey, JSON.stringify(merged));
-      } catch (e) {
-        console.warn("[FirebaseSync] Failed to merge", type, e);
+      } else if (cloudCount === 0) {
+        // Cloud is empty for this type — but DON'T clear localStorage.
+        // Another device may have just started up with empty data.
+        // Only clear if we're sure this is a legitimate delete.
+        console.log(`[FirebaseSync] Cloud returned 0 ${type}, keeping local data`);
       }
-      dataServiceRefresh?.();
-      // Deduplicate orders/invoices after sync to fix duplicates from old merge bug
-      if (type === "orders" || type === "invoices") {
-        try {
-          const result = dataService.deduplicateData();
-          if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
-            console.log(`[FirebaseSync] Auto-dedup removed ${result.ordersRemoved} orders, ${result.invoicesRemoved} invoices`);
-          }
-        } catch { /* ignore */ }
-      }
-      // Dispatch firebaseDataReceived event for ALL data types.
-      // This ensures tRPC cache invalidates on every device when ANY
-      // user creates/updates data — not just when the count increases.
-      if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes"].includes(type)) {
-        const prev = lastCounts[type] || 0;
-        const curr = data.length;
-        lastCounts[type] = curr;
-        try {
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: curr, newItems: Math.max(0, curr - prev) } }));
-        } catch { /* ignore */ }
-      }
+    } catch (e) {
+      console.warn("[FirebaseSync] Failed to merge", type, e);
+    }
+
+    // Step 2: Reload in-memory arrays from localStorage
+    dataServiceRefresh?.();
+
+    // Step 3: Deduplicate orders/invoices (modifies in-memory arrays directly)
+    if (type === "orders" || type === "invoices") {
+      try {
+        const result = dataService.deduplicateData();
+        if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
+          console.log(`[FirebaseSync] Auto-dedup removed ${result.ordersRemoved} orders, ${result.invoicesRemoved} invoices`);
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Step 4: CRITICAL — reload again after dedup so tRPC sees clean data
+    dataServiceRefresh?.();
+
+    // Step 5: Dispatch event to invalidate tRPC cache
+    if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes"].includes(type)) {
+      const prev = lastCounts[type] || 0;
+      lastCounts[type] = cloudCount;
+      try {
+        window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: cloudCount, newItems: Math.max(0, cloudCount - prev) } }));
+      } catch { /* ignore */ }
     }
   };
 

@@ -24,6 +24,7 @@ export default function PackingListPage() {
     customerStockCode: "",
     productDescription: "",
     productSize: "",
+    linkedStockItemId: null as number | null,
     barrelNumber: "",
     totalBarrels: "",
     quantityBundles: 0,
@@ -62,7 +63,7 @@ export default function PackingListPage() {
     setShowForm(false);
     setEditingId(null);
     setLotError("");
-    setForm({ poLineIndex: -1, customerStockCode: "", productDescription: "", productSize: "", barrelNumber: "", totalBarrels: "", quantityBundles: 0, grossWeight: 0, netWeight: 0, lotSealNumber: "" });
+    setForm({ poLineIndex: -1, customerStockCode: "", productDescription: "", productSize: "", linkedStockItemId: null, barrelNumber: "", totalBarrels: "", quantityBundles: 0, grossWeight: 0, netWeight: 0, lotSealNumber: "" });
   }
 
   function selectPOLine(index: number) {
@@ -81,6 +82,7 @@ export default function PackingListPage() {
       customerStockCode: line.customerStockCode || "",
       productDescription: line.linkedProductName || line.customerDescription || "",
       productSize: size,
+      linkedStockItemId: line.linkedStockItemId || null,
     }));
   }
 
@@ -100,6 +102,7 @@ export default function PackingListPage() {
       quantityBundles: Number(form.quantityBundles) || 0,
       grossWeight: Number(form.grossWeight) || 0,
       netWeight: Number(form.netWeight) || 0,
+      linkedStockItemId: form.linkedStockItemId,
     };
     if (editingId) {
       updateLine.mutate({ id: editingId, data: payload });
@@ -120,6 +123,7 @@ export default function PackingListPage() {
       grossWeight: line.grossWeight || 0,
       netWeight: line.netWeight || 0,
       lotSealNumber: line.lotSealNumber || line.lotNumber || line.sealNumber || "",
+      linkedStockItemId: line.linkedStockItemId || null,
     });
     setEditingId(line.id);
     setShowForm(true);

@@ -342,34 +342,202 @@ export default function PurchaseOrderDetailPage() {
     });
   }
 
-  function handleGenerateCOC(barrel: any) {
-    createCOC.mutate({
-      purchaseOrderId: poId,
-      barrelId: barrel.id,
-      poNumber: po.poNumber,
-      corporateCustomerId: po.corporateCustomerId,
-      corporateCustomerName: customer?.name || "",
-      recircleProductCode: barrel.recircleProductCode || "",
-      customerProductCode: barrel.customerProductCode || "",
-      productDescription: barrel.productDescription || "",
-      batchNumber: barrel.batchNumber || "",
-      lotSealNumber: barrel.lotSealNumber || barrel.lotNumber || barrel.sealNumber || "",
-      manufacturingDate: barrel.manufacturingDate || "",
-      useByDate: barrel.useByDate || "",
-      barrelNumber: barrel.barrelNumber || "",
-      quantityBundles: barrel.quantityBundles || 0,
-      calibration: barrel.calibration || "Min 28/30 mm",
-      length: barrel.length || "Minimum 90 to 91m/bundle",
-      qtyStrands: barrel.qtyStrands || "13 strands / bundle",
-      stuffingCapacity: barrel.stuffingCapacity || "44kg average / bundle",
-      odour: barrel.odour || "No off odours to be present",
-      colour: barrel.colour || "White / Beige color",
-      packing: barrel.packing || "Bundles packed in barrels of 150 or 200",
-      countryOfOrigin: barrel.countryOfOrigin || "South Africa",
-      status: barrel.status || "Non HALAAL",
-      cleaningProcess: "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
-      handlingStorage: "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
+  // ═══ AUTO-GENERATE COCs FROM PACKING LIST ═══
+  function handleAutoGenerateCOCs() {
+    const packingLines = dataService.packingList.listByPurchaseOrder(poId);
+    if (!packingLines || packingLines.length === 0) {
+      alert("No packing list lines found. Please complete the packing list first.");
+      return;
+    }
+
+    // Check if COCs already exist
+    const existingCOCs = dataService.coc.listByPurchaseOrder(poId);
+    const generateAll = existingCOCs.length > 0
+      ? confirm(`${existingCOCs.length} COC(s) already exist. Replace all with new auto-generated COCs?`)
+      : true;
+    if (!generateAll) return;
+
+    // Delete existing COCs
+    existingCOCs.forEach((c: any) => {
+      dataService.coc.delete(c.id);
+      removeCOC(c.id);
     });
+
+    // Get next batch number base
+    let batchCounter = 1;
+    const existingBatches = (dataService.coc.list() as any[])
+      .map((c: any) => c.batchNumber)
+      .filter(Boolean);
+
+    // Calculate dates
+    const orderDate = po.orderDate ? new Date(po.orderDate) : new Date();
+    const mfgStart = new Date(orderDate);
+    mfgStart.setDate(mfgStart.getDate() + 1); // Day 1 of manufacturing
+    const mfgEnd = new Date(orderDate);
+    mfgEnd.setDate(mfgEnd.getDate() + 3); // Day 3 of manufacturing
+    const useBy = new Date();
+    useBy.setFullYear(useBy.getFullYear() + 2); // 2 years from now
+
+    // Format dates
+    const formatDate = (d: Date) => d.toLocaleDateString("en-ZA", { day: "2-digit", month: "long", year: "numeric" });
+    const mfgDateStr = `${formatDate(mfgStart)} - ${formatDate(mfgEnd)}`;
+    const useByStr = formatDate(useBy);
+
+    packingLines.forEach((pl: any) => {
+      // Get stock data for specs
+      let stock: any = null;
+      if (pl.linkedStockItemId && stockItems) {
+        stock = (stockItems as any[]).find((s: any) => s.id === pl.linkedStockItemId);
+      }
+
+      // Auto-detect hog vs sheep
+      const descLower = (pl.productDescription || "").toLowerCase();
+      const sizeLower = (pl.productSize || "").toLowerCase();
+      const isSheep = descLower.includes("sheep") || sizeLower.includes("sheep") || descLower.includes("lamb");
+      const isHog = !isSheep;
+      const animalType = isSheep ? "sheep" : "hog";
+      const casingType = isSheep ? "SHEEP CASINGS" : "HOG CASINGS";
+
+      // Generate unique batch number
+      let batchNumber = "";
+      do {
+        const base = `${String(orderDate.getFullYear()).slice(-2)}${String(orderDate.getMonth() + 1).padStart(2, "0")}`;
+        batchNumber = `${base}${String(batchCounter).padStart(4, "0")}`;
+        batchCounter++;
+      } while (existingBatches.includes(batchNumber));
+      existingBatches.push(batchNumber);
+
+      // Build product description with full spec
+      const productDesc = pl.productDescription || "";
+      const fullDesc = stock
+        ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
+        : productDesc;
+
+      // Get customer stock code from PO line
+      const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
+      const customerStockCode = poLine?.customerStockCode || "";
+
+      // Get Recircle product code from stock
+      const recircleCode = stock?.productCode || pl.recircleProductCode || `22025${String(orderDate.getMonth() + 1).padStart(2, "0")}${String(orderDate.getDate()).padStart(2, "0")}`;
+
+      // Physical specs from stock or defaults
+      const calibration = stock?.size || "Min 28/30 mm";
+      const strands = stock?.strands ? `${stock.strands} strands / bundle` : "13 strands / bundle";
+      const length = stock?.length ? `Minimum ${stock.length}m/bundle` : "Minimum 90 to 91m/bundle";
+
+      createCOC.mutate({
+        purchaseOrderId: poId,
+        packingListLineId: pl.id,
+        poNumber: po.poNumber,
+        corporateCustomerId: po.corporateCustomerId,
+        corporateCustomerName: customer?.name || "",
+        recircleProductCode: recircleCode,
+        customerProductCode: customerStockCode,
+        productDescription: fullDesc,
+        batchNumber,
+        lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || "",
+        manufacturingDate: mfgDateStr,
+        useByDate: useByStr,
+        barrelNumber: pl.barrelNumber || "",
+        quantityBundles: pl.quantityBundles || 0,
+        calibration,
+        length,
+        qtyStrands: strands,
+        stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",
+        odour: "No off odors to be present",
+        colour: "White / Beige color",
+        packing: pl.quantityBundles <= 150
+          ? "Bundles packed in barrels of 150"
+          : pl.quantityBundles <= 200
+            ? "Bundles packed in barrels of 200"
+            : `Bundles packed in barrels of ${pl.quantityBundles}`,
+        countryOfOrigin: "South Africa",
+        status: "Non HALAAL",
+        casingType,
+        animalType,
+        cleaningProcess: isSheep
+          ? "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery."
+          : "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
+        handlingStorage: "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
+        grossWeight: pl.grossWeight || 0,
+        netWeight: pl.netWeight || 0,
+      });
+    });
+  }
+
+  // Print all COCs as multi-page document
+  function handlePrintAllCOCs() {
+    const allCocs = dataService.coc.listByPurchaseOrder(poId);
+    if (!allCocs || allCocs.length === 0) {
+      alert("No COCs found. Please auto-generate COCs first.");
+      return;
+    }
+    const cfg = getCompanyConfig(po?.company);
+    const w = window.open("", "_blank");
+    if (!w) return;
+
+    const cocPages = allCocs.map((coc: any) => {
+      const isSheep = coc.animalType === "sheep";
+      const animalName = isSheep ? "sheep" : "hog";
+      const casingName = isSheep ? "Sheep casings" : "hog casings";
+      return `
+        <div style="page-break-after:always; padding:40px; max-width:800px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
+          <div style="text-align:center; margin-bottom:10px;">
+            <h1 style="font-size:22px; letter-spacing:2px; color:${cfg.documentColor}; margin:0;">${cfg.logoText}</h1>
+            <p style="font-size:10px; color:#666; margin:3px 0;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
+          </div>
+          <div style="text-align:center; margin-bottom:15px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:8px;">
+            <h2 style="font-size:16px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>
+          </div>
+
+          <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:15px;">
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold; width:35%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:5px; border:1px solid #ccc;">${coc.recircleProductCode || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(customer?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:5px; border:1px solid #ccc;">${coc.customerProductCode || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:5px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:5px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:5px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">DATE OF MANUFACTURING</td><td style="padding:5px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">USE BY DATE</td><td style="padding:5px; border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">BARREL/BAGS NUMBER</td><td style="padding:5px; border:1px solid #ccc;">${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
+          </table>
+
+          <h3 style="font-size:13px; margin:12px 0 6px; text-decoration:underline;">PHYSICAL REQUIREMENTS: PER BUNDLE</h3>
+          <p style="font-size:10px; color:#666; margin:0 0 8px;">As per INSCA standards:</p>
+          <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:15px;">
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold; width:35%;">CALIBRATION</td><td style="padding:5px; border:1px solid #ccc;">${coc.calibration || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">LENGTH</td><td style="padding:5px; border:1px solid #ccc;">${coc.length || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">QTY STRANDS</td><td style="padding:5px; border:1px solid #ccc;">${coc.qtyStrands || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">STUFFING CAPACITY</td><td style="padding:5px; border:1px solid #ccc;">${coc.stuffingCapacity || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">ODOUR</td><td style="padding:5px; border:1px solid #ccc;">${coc.odour || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">COLOUR</td><td style="padding:5px; border:1px solid #ccc;">${coc.colour || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">PACKING</td><td style="padding:5px; border:1px solid #ccc;">${coc.packing || "-"}</td></tr>
+          </table>
+
+          <h3 style="font-size:13px; margin:12px 0 6px; text-decoration:underline;">TYPICAL ANALYSIS</h3>
+          <p style="font-size:11px; margin:0 0 12px; line-height:1.5;">Natural ${animalName} casings are simply a thin layer of cleaned ${animalName} intestines that provide a natural casing for the sausage. It's edible and normally consumed with the sausage.</p>
+
+          <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:15px;">
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold; width:35%;">COUNTRY OF ORIGIN</td><td style="padding:5px; border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">STATUS</td><td style="padding:5px; border:1px solid #ccc;">${coc.status || "Non HALAAL"}</td></tr>
+          </table>
+
+          <h3 style="font-size:13px; margin:12px 0 6px; text-decoration:underline;">CLEANING PROCESS</h3>
+          <p style="font-size:11px; margin:0 0 12px; line-height:1.5;">${coc.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery."}</p>
+
+          <h3 style="font-size:13px; margin:12px 0 6px; text-decoration:underline;">HANDLING AND STORAGE CONDITIONS</h3>
+          <p style="font-size:11px; margin:0 0 15px; line-height:1.5;">${coc.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it."}</p>
+
+          <div style="text-align:center; margin-top:20px; font-size:10px; color:#666; border-top:2px solid ${cfg.documentColor}; padding-top:10px;">
+            <p style="margin:2px 0;"><strong>${cfg.legalName}</strong></p>
+            <p style="margin:2px 0;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.address.country}</p>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    w.document.write(`<!DOCTYPE html><html><head><title>COCs - ${po.poNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${cocPages}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script></body></html>`);
+    w.document.close();
+    w.focus();
   }
 
   function handlePrintPackingList() {
@@ -520,6 +688,9 @@ export default function PurchaseOrderDetailPage() {
           <FileText className="w-4 h-4" />
           {generateInvForPO.isPending ? "Generating..." : "Generate Invoice"}
         </button>
+        <button onClick={handleAutoGenerateCOCs} className="btn-secondary flex items-center gap-2 text-sm" style={{ borderColor: "#0E7490", color: "#38BDF8" }}>
+          <FlaskConical className="w-4 h-4" /> Auto-Gen COCs
+        </button>
         <button onClick={openEditForm} className="btn-secondary flex items-center gap-2 text-sm">
           <Pencil className="w-4 h-4" /> Edit PO
         </button>
@@ -665,23 +836,7 @@ export default function PurchaseOrderDetailPage() {
                   {barrel.recircleProductCode && <div className="col-span-2"><span className="text-[#8A8B8C]">Recircle Code: </span><span className="text-white font-mono">{barrel.recircleProductCode}</span></div>}
                   {barrel.customerProductCode && <div className="col-span-2"><span className="text-[#8A8B8C]">Customer Code: </span><span className="text-white font-mono">{barrel.customerProductCode}</span></div>}
                 </div>
-                <div className="pt-2 border-t border-[#222324] flex gap-2">
-                  {barrelCOCs.length === 0 ? (
-                    <button onClick={() => handleGenerateCOC(barrel)} className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1">
-                      <FlaskConical className="w-3 h-3" /> Generate COC
-                    </button>
-                  ) : (
-                    <div className="flex-1 space-y-1">
-                      {barrelCOCs.map((coc: any) => (
-                        <div key={coc.id} className="flex items-center gap-2">
-                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#1A8C3F1A", color: "#4ADE80" }}>COC Ready</span>
-                          <button onClick={() => handlePrintCOC(coc)} className="text-xs flex items-center gap-1 hover:underline" style={{ color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
-                          <button onClick={() => { if (confirm("Delete this COC?")) deleteCOC.mutate(coc.id); }} className="p-0.5 rounded hover:bg-[#222324] ml-auto"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {/* COC actions removed - now auto-generated from packing list */}
               </div>
             );
           })}
@@ -745,6 +900,54 @@ export default function PurchaseOrderDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ═══ COC SECTION ═══ */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <FlaskConical className="w-4 h-4 text-[#38BDF8]" /> Certificates of Compliance
+          </h3>
+          {(cocs || []).length > 0 && (
+            <button onClick={handlePrintAllCOCs} className="btn-gold flex items-center gap-2 text-xs">
+              <Printer className="w-3 h-3" /> Print All COCs ({(cocs || []).length})
+            </button>
+          )}
+        </div>
+        {(cocs || []).length === 0 && (
+          <div className="card-glass text-center py-6">
+            <FlaskConical className="w-8 h-8 mx-auto mb-2 text-[#8A8B8C] opacity-20" />
+            <p className="text-[#8A8B8C] text-sm">No COCs yet. Click &quot;Auto-Gen COCs&quot; after packing list is complete.</p>
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {(cocs || []).map((coc: any) => (
+            <div key={coc.id} className="card-glass space-y-2">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded flex items-center justify-center" style={{ backgroundColor: "#0E74901A" }}>
+                    <FlaskConical className="w-4 h-4 text-[#38BDF8]" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Batch: {coc.batchNumber}</h4>
+                    <p className="text-xs text-[#8A8B8C]">{coc.productDescription}</p>
+                  </div>
+                </div>
+                <button onClick={() => { if (confirm("Delete this COC?")) deleteCOC.mutate(coc.id); }} className="p-1 rounded hover:bg-[#222324]">
+                  <Trash2 className="w-3 h-3 text-[#EF4444]" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div><span className="text-[#8A8B8C]">Barrel: </span><span className="text-white font-medium">{coc.barrelNumber}</span></div>
+                <div><span className="text-[#8A8B8C]">Bundles: </span><span className="text-white">{coc.quantityBundles}</span></div>
+                <div><span className="text-[#8A8B8C]">Lot/Seal: </span><span className="text-white font-mono" style={{ color: "#D4A843" }}>{coc.lotSealNumber}</span></div>
+                <div><span className="text-[#8A8B8C]">Mfg: </span><span className="text-white">{coc.manufacturingDate}</span></div>
+                <div><span className="text-[#8A8B8C]">Use By: </span><span className="text-white">{coc.useByDate}</span></div>
+                <div><span className="text-[#8A8B8C]">Type: </span><span className="text-white">{coc.casingType || "HOG"}</span></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* ═══ EDIT PO MODAL ═══ */}
       {showEditForm && (

@@ -63,22 +63,6 @@ export default function PurchaseOrderDetailPage() {
     status: "Non HALAAL",
   });
 
-  // Get PO line items with linked stock for barrel creation dropdown
-  const poLineItems = po?.lineItems || [];
-  const linkedStockItems = useMemo(() => {
-    return poLineItems
-      .filter((li: any) => li.linkedStockItemId)
-      .map((li: any, idx: number) => ({
-        index: idx,
-        customerStockCode: li.customerStockCode,
-        customerDescription: li.customerDescription,
-        linkedStockItemId: li.linkedStockItemId,
-        linkedProductName: li.linkedProductName,
-        linkedProductCode: li.linkedProductCode,
-        quantity: li.quantity,
-      }));
-  }, [poLineItems]);
-
   const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
   const { data: barrels } = trpc.barrel.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
@@ -134,6 +118,22 @@ export default function PurchaseOrderDetailPage() {
 
   const po = (purchaseOrders || []).find((p: any) => p.id === poId);
   const customer = po ? (corporateCustomers || []).find((c: any) => c.id === po.corporateCustomerId) : null;
+
+  // Derive PO line items for barrel creation and packing list (after po is defined)
+  const poLineItems = po?.lineItems || [];
+  const linkedStockItems = useMemo(() => {
+    return poLineItems
+      .filter((li: any) => li.linkedStockItemId)
+      .map((li: any, idx: number) => ({
+        index: idx,
+        customerStockCode: li.customerStockCode,
+        customerDescription: li.customerDescription,
+        linkedStockItemId: li.linkedStockItemId,
+        linkedProductName: li.linkedProductName,
+        linkedProductCode: li.linkedProductCode,
+        quantity: li.quantity,
+      }));
+  }, [poLineItems]);
 
   if (!po) {
     return (

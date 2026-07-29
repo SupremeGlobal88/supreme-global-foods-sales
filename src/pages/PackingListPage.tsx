@@ -29,8 +29,7 @@ export default function PackingListPage() {
     quantityBundles: 0,
     grossWeight: 0,
     netWeight: 0,
-    lotNumber: "",
-    sealNumber: "",
+    lotSealNumber: "",
   });
 
   const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
@@ -63,7 +62,7 @@ export default function PackingListPage() {
     setShowForm(false);
     setEditingId(null);
     setLotError("");
-    setForm({ poLineIndex: -1, customerStockCode: "", productDescription: "", productSize: "", barrelNumber: "", totalBarrels: "", quantityBundles: 0, grossWeight: 0, netWeight: 0, lotNumber: "", sealNumber: "" });
+    setForm({ poLineIndex: -1, customerStockCode: "", productDescription: "", productSize: "", barrelNumber: "", totalBarrels: "", quantityBundles: 0, grossWeight: 0, netWeight: 0, lotSealNumber: "" });
   }
 
   function selectPOLine(index: number) {
@@ -89,8 +88,8 @@ export default function PackingListPage() {
     e.preventDefault();
     setLotError("");
     // Validate lot number is exactly 10 digits if provided
-    if (form.lotNumber && !/^\d{10}$/.test(form.lotNumber)) {
-      setLotError("Lot number must be exactly 10 digits");
+    if (form.lotSealNumber && form.lotSealNumber.length > 0 && !/^\d{10}$/.test(form.lotSealNumber)) {
+      setLotError("Lot/Seal number must be exactly 10 digits");
       return;
     }
     if (!form.customerStockCode.trim() || !form.barrelNumber.trim()) return;
@@ -120,8 +119,7 @@ export default function PackingListPage() {
       quantityBundles: line.quantityBundles || 0,
       grossWeight: line.grossWeight || 0,
       netWeight: line.netWeight || 0,
-      lotNumber: line.lotNumber || "",
-      sealNumber: line.sealNumber || "",
+      lotSealNumber: line.lotSealNumber || line.lotNumber || line.sealNumber || "",
     });
     setEditingId(line.id);
     setShowForm(true);
@@ -146,8 +144,7 @@ export default function PackingListPage() {
         <td style="padding:6px;border:1px solid #333;font-size:10px;text-align:center;font-weight:bold;">${l.quantityBundles || 0}</td>
         <td style="padding:6px;border:1px solid #333;font-size:10px;text-align:center;">${l.grossWeight || "-"}</td>
         <td style="padding:6px;border:1px solid #333;font-size:10px;text-align:center;">${l.netWeight || "-"}</td>
-        <td style="padding:6px;border:1px solid #333;font-family:monospace;font-size:10px;text-align:center;">${l.lotNumber || "-"}</td>
-        <td style="padding:6px;border:1px solid #333;font-family:monospace;font-size:10px;text-align:center;">${l.sealNumber || "-"}</td>
+        <td style="padding:6px;border:1px solid #333;font-family:monospace;font-size:10px;text-align:center;">${l.lotSealNumber || l.lotNumber || l.sealNumber || "-"}</td>
         <td style="padding:6px;border:1px solid #333;font-size:10px;text-align:center;font-weight:bold;">${l.barrelNumber || "-"}</td>
       </tr>
     `).join("");
@@ -173,8 +170,7 @@ export default function PackingListPage() {
             <th style="padding:6px;border:1px solid #333;">Qty (BND)</th>
             <th style="padding:6px;border:1px solid #333;">Gross Wt (kg)</th>
             <th style="padding:6px;border:1px solid #333;">Net Wt (kg)</th>
-            <th style="padding:6px;border:1px solid #333;">Lot #</th>
-            <th style="padding:6px;border:1px solid #333;">Seal #</th>
+            <th style="padding:6px;border:1px solid #333;">Lot / Seal #</th>
             <th style="padding:6px;border:1px solid #333;">Barrel #</th>
           </tr></thead>
           <tbody>${lineRows}</tbody>
@@ -281,8 +277,7 @@ export default function PackingListPage() {
                 <th className="p-3 font-medium text-center">Qty (BND)</th>
                 <th className="p-3 font-medium text-center">Gross Wt</th>
                 <th className="p-3 font-medium text-center">Net Wt</th>
-                <th className="p-3 font-medium text-center">Lot #</th>
-                <th className="p-3 font-medium text-center">Seal #</th>
+                <th className="p-3 font-medium text-center">Lot / Seal #</th>
                 <th className="p-3 font-medium text-center">Barrel #</th>
                 <th className="p-3 font-medium text-right">Actions</th>
               </tr>
@@ -305,8 +300,7 @@ export default function PackingListPage() {
                   <td className="p-3 text-white text-center font-medium">{line.quantityBundles}</td>
                   <td className="p-3 text-[#8A8B8C] text-center">{line.grossWeight || "-"} kg</td>
                   <td className="p-3 text-[#8A8B8C] text-center">{line.netWeight || "-"} kg</td>
-                  <td className="p-3 font-mono text-xs text-center" style={{ color: "#D4A843" }}>{line.lotNumber || "-"}</td>
-                  <td className="p-3 font-mono text-xs text-center">{line.sealNumber || "-"}</td>
+                  <td className="p-3 font-mono text-xs text-center" style={{ color: "#D4A843" }}>{line.lotSealNumber || line.lotNumber || line.sealNumber || "-"}</td>
                   <td className="p-3 text-white text-center font-medium">{line.barrelNumber}</td>
                   <td className="p-3 text-right">
                     <button onClick={() => handleEdit(line)} className="p-1.5 rounded hover:bg-[#222324] mr-1" title="Edit"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
@@ -395,14 +389,10 @@ export default function PackingListPage() {
                   </div>
                   <div>
                     <label className="label-text">Lot # (10 digits)</label>
-                    <input value={form.lotNumber} onChange={(e) => { setLotError(""); setForm({ ...form, lotNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }); }} className={`input-field w-full text-sm font-mono ${lotError ? "border-red-500" : ""}`} placeholder="1234567890" maxLength={10} />
+                    <input value={form.lotSealNumber} onChange={(e) => { setLotError(""); setForm({ ...form, lotSealNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }); }} className={`input-field w-full text-sm font-mono ${lotError ? "border-red-500" : ""}`} placeholder="1234567890" maxLength={10} />
                     {lotError && <p className="text-xs text-[#EF4444] mt-1">{lotError}</p>}
-                    {form.lotNumber.length > 0 && form.lotNumber.length < 10 && <p className="text-xs text-[#F59E0B] mt-1">{10 - form.lotNumber.length} more digits needed</p>}
-                    {form.lotNumber.length === 10 && <p className="text-xs text-[#4ADE80] mt-1">Valid 10-digit lot number</p>}
-                  </div>
-                  <div className="col-span-3">
-                    <label className="label-text">Seal Number</label>
-                    <input value={form.sealNumber} onChange={(e) => setForm({ ...form, sealNumber: e.target.value })} className="input-field w-full text-sm" placeholder="Factory seal number" />
+                    {form.lotSealNumber.length > 0 && form.lotSealNumber.length < 10 && <p className="text-xs text-[#F59E0B] mt-1">{10 - form.lotSealNumber.length} more digits needed</p>}
+                    {form.lotSealNumber.length === 10 && <p className="text-xs text-[#4ADE80] mt-1">Valid 10-digit lot/seal number</p>}
                   </div>
                 </div>
               </div>

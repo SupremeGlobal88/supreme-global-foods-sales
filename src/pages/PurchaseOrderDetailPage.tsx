@@ -148,7 +148,7 @@ export default function PurchaseOrderDetailPage() {
 
   function resetBarrelForm() {
     setBarrelForm({
-      barrelNumber: "", poLineIndex: -1, productDescription: "", batchNumber: "", lotNumber: "", sealNumber: "",
+      barrelNumber: "", poLineIndex: -1, productDescription: "", batchNumber: "", lotSealNumber: "",
       manufacturingDate: "", useByDate: "", quantityBundles: 0,
       recircleProductCode: "", customerProductCode: "", calibration: "Min 28/30 mm",
       length: "Minimum 90 to 91m/bundle", qtyStrands: "13 strands / bundle",
@@ -353,8 +353,7 @@ export default function PurchaseOrderDetailPage() {
       customerProductCode: barrel.customerProductCode || "",
       productDescription: barrel.productDescription || "",
       batchNumber: barrel.batchNumber || "",
-      lotNumber: barrel.lotNumber || "",
-      sealNumber: barrel.sealNumber || "",
+      lotSealNumber: barrel.lotSealNumber || barrel.lotNumber || barrel.sealNumber || "",
       manufacturingDate: barrel.manufacturingDate || "",
       useByDate: barrel.useByDate || "",
       barrelNumber: barrel.barrelNumber || "",
@@ -391,8 +390,7 @@ export default function PurchaseOrderDetailPage() {
             <td style="padding:8px;border:1px solid #333;">${line ? line.linkedProductName || "-" : "-"}</td>
             <td style="padding:8px;border:1px solid #333;text-align:center;">${b.quantityBundles || 0}</td>
             <td style="padding:8px;border:1px solid #333;">${b.batchNumber || "-"}</td>
-            <td style="padding:8px;border:1px solid #333;">${b.lotNumber || "-"}</td>
-            <td style="padding:8px;border:1px solid #333;">${b.sealNumber || "-"}</td>
+            <td style="padding:8px;border:1px solid #333;">${b.lotSealNumber || b.lotNumber || b.sealNumber || "-"}</td>
           </tr>
         `;
       }).join("");
@@ -455,7 +453,7 @@ export default function PurchaseOrderDetailPage() {
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;width:30%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:6px;border:1px solid #ccc;">${coc.recircleProductCode || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT CODE ${customer?.name?.toUpperCase() || "CUSTOMER"}</td><td style="padding:6px;border:1px solid #ccc;">${coc.customerProductCode || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:6px;border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">LOT No</td><td style="padding:6px;border:1px solid #ccc;">${coc.lotNumber || "-"}</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">LOT / SEAL No</td><td style="padding:6px;border:1px solid #ccc;">${coc.lotSealNumber || coc.lotNumber || coc.sealNumber || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">BATCH NUMBER</td><td style="padding:6px;border:1px solid #ccc;">${coc.batchNumber || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">DATE OF MANUFACTURING</td><td style="padding:6px;border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">USE BY DATE</td><td style="padding:6px;border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
@@ -660,8 +658,7 @@ export default function PurchaseOrderDetailPage() {
                 )}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <div><span className="text-[#8A8B8C]">Batch: </span><span className="text-white font-mono">{barrel.batchNumber}</span></div>
-                  <div><span className="text-[#8A8B8C]">Lot: </span><span className="text-white font-mono">{barrel.lotNumber}</span></div>
-                  <div><span className="text-[#8A8B8C]">Seal: </span><span className="text-white font-mono">{barrel.sealNumber}</span></div>
+                  <div><span className="text-[#8A8B8C]">Lot/Seal: </span><span className="text-white font-mono">{barrel.lotSealNumber || barrel.lotNumber || barrel.sealNumber}</span></div>
                   <div><span className="text-[#8A8B8C]">Bundles: </span><span className="text-white">{barrel.quantityBundles}</span></div>
                   <div><span className="text-[#8A8B8C]">Mfg: </span><span className="text-white">{barrel.manufacturingDate}</span></div>
                   <div><span className="text-[#8A8B8C]">Use By: </span><span className="text-white">{barrel.useByDate}</span></div>
@@ -725,8 +722,7 @@ export default function PurchaseOrderDetailPage() {
                 <div><label className="label-text">Recircle Product Code</label><input value={barrelForm.recircleProductCode} onChange={(e) => setBarrelForm({ ...barrelForm, recircleProductCode: e.target.value })} className="input-field w-full" placeholder="220250212/24" /></div>
                 <div><label className="label-text">Customer Product Code</label><input value={barrelForm.customerProductCode} onChange={(e) => setBarrelForm({ ...barrelForm, customerProductCode: e.target.value })} className="input-field w-full" placeholder="50101170" /></div>
                 <div><label className="label-text">Batch Number *</label><input required value={barrelForm.batchNumber} onChange={(e) => setBarrelForm({ ...barrelForm, batchNumber: e.target.value })} className="input-field w-full" placeholder="250001112" /></div>
-                <div><label className="label-text">Lot Number</label><input value={barrelForm.lotNumber} onChange={(e) => setBarrelForm({ ...barrelForm, lotNumber: e.target.value })} className="input-field w-full" placeholder="8429922341" /></div>
-                <div><label className="label-text">Seal Number</label><input value={barrelForm.sealNumber} onChange={(e) => setBarrelForm({ ...barrelForm, sealNumber: e.target.value })} className="input-field w-full" /></div>
+                <div><label className="label-text">Lot / Seal Number</label><input value={barrelForm.lotSealNumber} onChange={(e) => setBarrelForm({ ...barrelForm, lotSealNumber: e.target.value })} className="input-field w-full font-mono" placeholder="8429922341" /></div>
                 <div><label className="label-text">Manufacturing Date</label><input type="date" value={barrelForm.manufacturingDate} onChange={(e) => setBarrelForm({ ...barrelForm, manufacturingDate: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Use By Date</label><input type="date" value={barrelForm.useByDate} onChange={(e) => setBarrelForm({ ...barrelForm, useByDate: e.target.value })} className="input-field w-full" /></div>
               </div>

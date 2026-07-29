@@ -331,18 +331,38 @@ export default function PurchaseOrdersPage() {
               <button onClick={() => setShowForm(false)} className="p-1 rounded hover:bg-[#222324]"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className="label-text">PO Number *</label><input required value={formData.poNumber} onChange={(e) => setFormData({ ...formData, poNumber: e.target.value })} className="input-field w-full" placeholder="e.g., P01018869" /></div>
-                <div className="col-span-2"><label className="label-text">Corporate Customer *</label>
-                  <select required value={formData.corporateCustomerId} onChange={(e) => setFormData({ ...formData, corporateCustomerId: parseInt(e.target.value) })} className="input-field w-full">
-                    <option value={0}>Select customer...</option>
-                    {(corporateCustomers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+              {/* Row 1: PO Number */}
+              <div>
+                <label className="label-text">PO Number *</label>
+                <input required value={formData.poNumber} onChange={(e) => setFormData({ ...formData, poNumber: e.target.value })} className="input-field w-full" placeholder="e.g., P01018869" />
+              </div>
+              {/* Row 2: Corporate Customer */}
+              <div>
+                <label className="label-text">Corporate Customer *</label>
+                <select required value={formData.corporateCustomerId} onChange={(e) => setFormData({ ...formData, corporateCustomerId: parseInt(e.target.value) })} className="input-field w-full">
+                  <option value={0}>Select customer...</option>
+                  {(corporateCustomers || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              {/* Row 3: Dates - 3 columns */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label-text">Order Date</label>
+                  <input type="date" value={formData.orderDate} onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })} className="input-field w-full" />
                 </div>
-                <div><label className="label-text">Order Date</label><input type="date" value={formData.orderDate} onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })} className="input-field w-full" /></div>
-                <div><label className="label-text">Due Date</label><input type="date" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} className="input-field w-full" /></div>
-                <div><label className="label-text">Memo Date</label><input type="date" value={formData.memoDate} onChange={(e) => setFormData({ ...formData, memoDate: e.target.value })} className="input-field w-full" /></div>
-                <div className="col-span-2"><label className="label-text">Shipping Instructions</label><input value={formData.shippingInstructions} onChange={(e) => setFormData({ ...formData, shippingInstructions: e.target.value })} className="input-field w-full" /></div>
+                <div>
+                  <label className="label-text">Due Date</label>
+                  <input type="date" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} className="input-field w-full" />
+                </div>
+                <div>
+                  <label className="label-text">Memo Date</label>
+                  <input type="date" value={formData.memoDate} onChange={(e) => setFormData({ ...formData, memoDate: e.target.value })} className="input-field w-full" />
+                </div>
+              </div>
+              {/* Row 4: Shipping Instructions */}
+              <div>
+                <label className="label-text">Shipping Instructions</label>
+                <input value={formData.shippingInstructions} onChange={(e) => setFormData({ ...formData, shippingInstructions: e.target.value })} className="input-field w-full" />
               </div>
 
               {/* Line Items */}

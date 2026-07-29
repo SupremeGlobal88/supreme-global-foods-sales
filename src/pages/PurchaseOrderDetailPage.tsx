@@ -741,12 +741,30 @@ export default function PurchaseOrderDetailPage() {
               <button onClick={() => setShowEditForm(false)} className="p-1 rounded hover:bg-[#222324]"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <form onSubmit={handleSaveEdit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="label-text">PO Number *</label><input required value={editForm.poNumber} onChange={(e) => setEditForm({ ...editForm, poNumber: e.target.value })} className="input-field w-full" /></div>
-                <div><label className="label-text">Order Date</label><input type="date" value={editForm.orderDate} onChange={(e) => setEditForm({ ...editForm, orderDate: e.target.value })} className="input-field w-full" /></div>
-                <div><label className="label-text">Due Date</label><input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="input-field w-full" /></div>
-                <div><label className="label-text">Memo Date</label><input type="date" value={editForm.memoDate} onChange={(e) => setEditForm({ ...editForm, memoDate: e.target.value })} className="input-field w-full" /></div>
-                <div className="col-span-2"><label className="label-text">Shipping Instructions</label><input value={editForm.shippingInstructions} onChange={(e) => setEditForm({ ...editForm, shippingInstructions: e.target.value })} className="input-field w-full" /></div>
+              {/* Row 1: PO Number */}
+              <div>
+                <label className="label-text">PO Number *</label>
+                <input required value={editForm.poNumber} onChange={(e) => setEditForm({ ...editForm, poNumber: e.target.value })} className="input-field w-full" />
+              </div>
+              {/* Row 2: Dates - 3 columns */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label-text">Order Date</label>
+                  <input type="date" value={editForm.orderDate} onChange={(e) => setEditForm({ ...editForm, orderDate: e.target.value })} className="input-field w-full" />
+                </div>
+                <div>
+                  <label className="label-text">Due Date</label>
+                  <input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="input-field w-full" />
+                </div>
+                <div>
+                  <label className="label-text">Memo Date</label>
+                  <input type="date" value={editForm.memoDate} onChange={(e) => setEditForm({ ...editForm, memoDate: e.target.value })} className="input-field w-full" />
+                </div>
+              </div>
+              {/* Row 3: Shipping Instructions */}
+              <div>
+                <label className="label-text">Shipping Instructions</label>
+                <input value={editForm.shippingInstructions} onChange={(e) => setEditForm({ ...editForm, shippingInstructions: e.target.value })} className="input-field w-full" />
               </div>
               {/* Line Items */}
               <div className="pt-3 border-t border-[#222324]">

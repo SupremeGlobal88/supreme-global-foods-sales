@@ -3,7 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { getCompanyConfig, getAllCompanies, type CompanyKey } from "@/lib/companyConfig";
 import {
-  Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package, Globe,
+  Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package, Globe, AlertCircle,
 } from "lucide-react";
 
 export default function CorporateCustomersPage() {
@@ -150,6 +150,7 @@ export default function CorporateCustomersPage() {
                       {c.isActive === false && <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/30 text-red-400">Inactive</span>}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[#8A8B8C]">
+                      {c.vatNumber && <span className="flex items-center gap-1 font-mono" style={{ color: "#D4A843" }}>VAT: {c.vatNumber}</span>}
                       {c.contactPerson && <span className="flex items-center gap-1"><Tag className="w-3 h-3" />{c.contactPerson}</span>}
                       {c.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{c.email}</span>}
                       {c.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</span>}
@@ -183,10 +184,19 @@ export default function CorporateCustomersPage() {
                     })()}
                   </div>
                   {selected.code && <p className="text-xs text-[#8A8B8C]">Code: {selected.code}</p>}
+                  {selected.vatNumber && (
+                    <p className="text-xs font-mono mt-1" style={{ color: "#D4A843" }}>
+                      VAT: {selected.vatNumber}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="space-y-3 text-sm">
-                {selected.vatNumber && <div className="flex justify-between"><span className="text-[#8A8B8C]">VAT No</span><span className="text-white">{selected.vatNumber}</span></div>}
+                {!selected.vatNumber && (
+                  <div className="px-2 py-1.5 rounded text-xs bg-red-900/20 text-red-400 flex items-center gap-1.5">
+                    <AlertCircle className="w-3 h-3" /> VAT Number not set — required for documents
+                  </div>
+                )}
                 {selected.contactPerson && <div className="flex justify-between"><span className="text-[#8A8B8C]">Contact</span><span className="text-white">{selected.contactPerson}</span></div>}
                 {selected.email && <div className="flex justify-between"><span className="text-[#8A8B8C]">Email</span><span className="text-white">{selected.email}</span></div>}
                 {selected.phone && <div className="flex justify-between"><span className="text-[#8A8B8C]">Phone</span><span className="text-white">{selected.phone}</span></div>}
@@ -240,7 +250,11 @@ export default function CorporateCustomersPage() {
                   </select>
                 </div>
                 <div><label className="label-text">Customer Code</label><input value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} className="input-field w-full" placeholder="e.g., DELI001" /></div>
-                <div><label className="label-text">VAT Number</label><input value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field w-full" /></div>
+                <div>
+                  <label className="label-text">VAT Number *</label>
+                  <input required value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field w-full" placeholder="e.g., 4610105530" />
+                  <p className="text-[10px] text-[#8A8B8C] mt-1">Required for tax invoices and compliance documents</p>
+                </div>
                 <div><label className="label-text">Contact Person</label><input value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Email</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Phone</label><input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="input-field w-full" /></div>

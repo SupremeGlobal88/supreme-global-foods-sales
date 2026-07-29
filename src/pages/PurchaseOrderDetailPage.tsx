@@ -26,6 +26,7 @@ export default function PurchaseOrderDetailPage() {
   const [showCOCForm, setShowCOCForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showRegenPrompt, setShowRegenPrompt] = useState(false);
+  const [editPickerLine, setEditPickerLine] = useState<number>(-1);
   const [selectedBarrelId, setSelectedBarrelId] = useState<number | null>(null);
 
   // Edit form state
@@ -188,6 +189,20 @@ export default function PurchaseOrderDetailPage() {
       ...prev,
       lineItems: prev.lineItems.map((item, i) => i === index ? { ...item, [field]: value } : item),
     }));
+  }
+
+  function linkStockToEditLine(index: number, stockItemId: number) {
+    const stock = (stockItems || []).find((s: any) => s.id === stockItemId);
+    if (!stock) return;
+    setEditForm(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) =>
+        i === index
+          ? { ...item, linkedStockItemId: stockItemId, linkedProductName: stock.productName || "", linkedProductCode: stock.productCode || "" }
+          : item
+      ),
+    }));
+    setEditPickerLine(-1);
   }
 
   function handleAddEditLineItem() {
@@ -808,13 +823,36 @@ export default function PurchaseOrderDetailPage() {
                           <label className="label-text text-[10px]">Linked SGF Stock</label>
                           {item.linkedStockItemId ? (
                             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs" style={{ backgroundColor: "#1A8C3F1A" }}>
-                              <Link2 className="w-3 h-3 text-[#4ADE80]" />
+                              <Link2 className="w-3 h-3 text-[#4ADE80] flex-shrink-0" />
                               <span className="text-white truncate flex-1">{item.linkedProductName}</span>
-                              <span className="text-[#8A8B8C] font-mono">{item.linkedProductCode}</span>
-                              <button type="button" onClick={() => handleUpdateLineItem(idx, "linkedStockItemId", null)} className="text-[#EF4444] hover:underline ml-1">Unlink</button>
+                              <span className="text-[#8A8B8C] font-mono flex-shrink-0">{item.linkedProductCode}</span>
+                              <button type="button" onClick={() => setEditPickerLine(idx)} className="text-[#D4A843] hover:underline ml-1 flex-shrink-0 text-[10px]">Change</button>
+                              <button type="button" onClick={() => { handleUpdateLineItem(idx, "linkedStockItemId", null); handleUpdateLineItem(idx, "linkedProductName", ""); handleUpdateLineItem(idx, "linkedProductCode", ""); }} className="text-[#EF4444] hover:underline ml-1 flex-shrink-0 text-[10px]">Unlink</button>
                             </div>
                           ) : (
-                            <div className="text-xs text-[#555] px-2 py-1.5">Not linked — link in PO detail after save</div>
+                            <button type="button" onClick={() => setEditPickerLine(idx)} className="w-full text-left px-2 py-1.5 rounded text-xs border border-dashed border-[#444] text-[#8A8B8C] hover:text-white hover:border-[#666] transition-all flex items-center gap-1">
+                              <Link2 className="w-3 h-3" /> Click to link SGF/Recircle stock...
+                            </button>
+                          )}
+                          {/* Inline stock picker for edit */}
+                          {editPickerLine === idx && (
+                            <div className="mt-2 p-2 rounded-lg border border-[#333]" style={{ backgroundColor: "#0A0A0B" }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-[#8A8B8C]">Select SGF stock:</span>
+                                <button type="button" onClick={() => setEditPickerLine(-1)} className="text-[#8A8B8C] hover:text-white"><X className="w-3 h-3" /></button>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto space-y-1">
+                                {(stockItems || []).length === 0 && <p className="text-xs text-[#555]">No stock available</p>}
+                                {(stockItems || []).map((s: any) => (
+                                  <div key={s.id} onClick={() => linkStockToEditLine(idx, s.id)} className="flex items-center gap-2 p-2 rounded hover:bg-[#222324] cursor-pointer">
+                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.quantity > 0 ? "#4ADE80" : "#EF4444" }} />
+                                    <span className="text-xs text-white truncate flex-1">{s.productName}</span>
+                                    <span className="text-[10px] text-[#8A8B8C] font-mono">{s.productCode}</span>
+                                    <span className="text-[10px] text-[#8A8B8C]">{s.quantity || 0} SOH</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
                         <div className="col-span-3 text-right">

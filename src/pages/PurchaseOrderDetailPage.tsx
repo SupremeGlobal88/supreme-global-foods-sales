@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, Package, Plus, Trash2, X, FileText, Printer, Building2,
   Calendar, Hash, FlaskConical, CheckCircle2, Clock, AlertCircle, ChevronDown,
+  Link2,
 } from "lucide-react";
 
 const STATUS_FLOW = [
@@ -27,6 +28,7 @@ export default function PurchaseOrderDetailPage() {
   // Barrel form state
   const [barrelForm, setBarrelForm] = useState({
     barrelNumber: "",
+    poLineIndex: -1, // which PO line item this barrel fulfills
     productDescription: "",
     batchNumber: "",
     lotNumber: "",
@@ -36,16 +38,32 @@ export default function PurchaseOrderDetailPage() {
     quantityBundles: 0,
     recircleProductCode: "",
     customerProductCode: "",
-    calibration: "",
-    length: "",
-    qtyStrands: "",
-    stuffingCapacity: "",
+    calibration: "Min 28/30 mm",
+    length: "Minimum 90 to 91m/bundle",
+    qtyStrands: "13 strands / bundle",
+    stuffingCapacity: "44kg average / bundle",
     odour: "No off odours to be present",
-    colour: "White / Beige",
+    colour: "White / Beige color",
     packing: "Bundles packed in barrels of 150 or 200",
     countryOfOrigin: "South Africa",
     status: "Non HALAAL",
   });
+
+  // Get PO line items with linked stock for barrel creation dropdown
+  const poLineItems = po?.lineItems || [];
+  const linkedStockItems = useMemo(() => {
+    return poLineItems
+      .filter((li: any) => li.linkedStockItemId)
+      .map((li: any, idx: number) => ({
+        index: idx,
+        customerStockCode: li.customerStockCode,
+        customerDescription: li.customerDescription,
+        linkedStockItemId: li.linkedStockItemId,
+        linkedProductName: li.linkedProductName,
+        linkedProductCode: li.linkedProductCode,
+        quantity: li.quantity,
+      }));
+  }, [poLineItems]);
 
   const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
@@ -93,13 +111,27 @@ export default function PurchaseOrderDetailPage() {
 
   function resetBarrelForm() {
     setBarrelForm({
-      barrelNumber: "", productDescription: "", batchNumber: "", lotNumber: "", sealNumber: "",
+      barrelNumber: "", poLineIndex: -1, productDescription: "", batchNumber: "", lotNumber: "", sealNumber: "",
       manufacturingDate: "", useByDate: "", quantityBundles: 0,
-      recircleProductCode: "", customerProductCode: "", calibration: "", length: "",
-      qtyStrands: "", stuffingCapacity: "", odour: "No off odours to be present",
-      colour: "White / Beige", packing: "Bundles packed in barrels of 150 or 200",
+      recircleProductCode: "", customerProductCode: "", calibration: "Min 28/30 mm",
+      length: "Minimum 90 to 91m/bundle", qtyStrands: "13 strands / bundle",
+      stuffingCapacity: "44kg average / bundle", odour: "No off odours to be present",
+      colour: "White / Beige color", packing: "Bundles packed in barrels of 150 or 200",
       countryOfOrigin: "South Africa", status: "Non HALAAL",
     });
+  }
+
+  // When user selects a PO line, auto-populate barrel form with linked stock info
+  function selectPOLine(index: number) {
+    const line = poLineItems[index];
+    if (!line) return;
+    setBarrelForm(prev => ({
+      ...prev,
+      poLineIndex: index,
+      productDescription: line.customerDescription || prev.productDescription,
+      customerProductCode: line.customerStockCode || prev.customerProductCode,
+      recircleProductCode: line.linkedProductCode || prev.recircleProductCode,
+    }));
   }
 
   function handleCreateBarrel(e: React.FormEvent) {
@@ -107,6 +139,7 @@ export default function PurchaseOrderDetailPage() {
     if (!barrelForm.barrelNumber.trim() || !barrelForm.batchNumber.trim()) return;
     createBarrel.mutate({
       ...barrelForm,
+      poLineIndex: barrelForm.poLineIndex >= 0 ? barrelForm.poLineIndex : null,
       purchaseOrderId: poId,
       poNumber: po.poNumber,
       corporateCustomerId: po.corporateCustomerId,
@@ -150,18 +183,22 @@ export default function PurchaseOrderDetailPage() {
     setTimeout(() => {
       const printWindow = window.open("", "_blank");
       if (!printWindow) return;
-      const barrelList = (barrels || []).map((b: any) => `
+      const barrelList = (barrels || []).map((b: any) => {
+      const line = poLineItems[b.poLineIndex];
+      return `
         <tr>
           <td style="padding:8px;border:1px solid #333;">${b.barrelNumber || "-"}</td>
           <td style="padding:8px;border:1px solid #333;">${b.recircleProductCode || "-"}</td>
           <td style="padding:8px;border:1px solid #333;">${b.customerProductCode || "-"}</td>
           <td style="padding:8px;border:1px solid #333;">${b.productDescription || "-"}</td>
+          <td style="padding:8px;border:1px solid #333;">${line ? line.linkedProductName || "-" : "-"}</td>
           <td style="padding:8px;border:1px solid #333;text-align:center;">${b.quantityBundles || 0}</td>
           <td style="padding:8px;border:1px solid #333;">${b.batchNumber || "-"}</td>
           <td style="padding:8px;border:1px solid #333;">${b.lotNumber || "-"}</td>
           <td style="padding:8px;border:1px solid #333;">${b.sealNumber || "-"}</td>
         </tr>
-      `).join("");
+      `;
+    }).join("");
       printWindow.document.write(`
         <html><head><title>Packing List - ${po.poNumber}</title></head>
         <body style="font-family:Arial,sans-serif;padding:40px;background:#fff;color:#000;">
@@ -180,6 +217,7 @@ export default function PurchaseOrderDetailPage() {
               <th style="padding:8px;border:1px solid #333;text-align:left;">Recircle Code</th>
               <th style="padding:8px;border:1px solid #333;text-align:left;">Customer Code</th>
               <th style="padding:8px;border:1px solid #333;text-align:left;">Description</th>
+              <th style="padding:8px;border:1px solid #333;text-align:left;">SGF Stock</th>
               <th style="padding:8px;border:1px solid #333;text-align:center;">Bundles</th>
               <th style="padding:8px;border:1px solid #333;text-align:left;">Batch #</th>
               <th style="padding:8px;border:1px solid #333;text-align:left;">Lot #</th>
@@ -319,9 +357,9 @@ export default function PurchaseOrderDetailPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs text-[#8A8B8C] border-b border-[#222324]">
-              <th className="pb-2 font-medium">Stock Code</th>
-              <th className="pb-2 font-medium">Description</th>
-              <th className="pb-2 font-medium">Due Date</th>
+              <th className="pb-2 font-medium">Cust. Stock Code</th>
+              <th className="pb-2 font-medium">Cust. Description</th>
+              <th className="pb-2 font-medium">Linked SGF Stock</th>
               <th className="pb-2 font-medium text-right">Qty</th>
               <th className="pb-2 font-medium">UOM</th>
               <th className="pb-2 font-medium text-right">Unit Price</th>
@@ -330,9 +368,19 @@ export default function PurchaseOrderDetailPage() {
             <tbody>
               {(po.lineItems || []).map((item: any, idx: number) => (
                 <tr key={idx} className="border-b border-[#222324] last:border-0">
-                  <td className="py-2 text-white font-mono text-xs">{item.stockCode}</td>
-                  <td className="py-2 text-white">{item.description}</td>
-                  <td className="py-2 text-[#8A8B8C]">{item.dueDate}</td>
+                  <td className="py-2 text-white font-mono text-xs">{item.customerStockCode}</td>
+                  <td className="py-2 text-white">{item.customerDescription}</td>
+                  <td className="py-2">
+                    {item.linkedStockItemId ? (
+                      <div className="flex items-center gap-1">
+                        <Link2 className="w-3 h-3 text-[#4ADE80]" />
+                        <span className="text-xs text-white">{item.linkedProductName}</span>
+                        <span className="text-[10px] text-[#8A8B8C] font-mono">{item.linkedProductCode}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-[#555]">Not linked</span>
+                    )}
+                  </td>
                   <td className="py-2 text-white text-right">{item.quantity}</td>
                   <td className="py-2 text-[#8A8B8C]">{item.uom}</td>
                   <td className="py-2 text-white text-right">R {Number(item.unitPrice).toFixed(2)}</td>
@@ -364,6 +412,7 @@ export default function PurchaseOrderDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {(barrels || []).map((barrel: any) => {
             const barrelCOCs = (cocs || []).filter((c: any) => c.barrelId === barrel.id);
+            const fulfilledLine = poLineItems[barrel.poLineIndex];
             return (
               <div key={barrel.id} className="card-glass space-y-2">
                 <div className="flex items-start justify-between">
@@ -378,6 +427,12 @@ export default function PurchaseOrderDetailPage() {
                   </div>
                   <button onClick={() => { if (confirm("Delete this barrel?")) deleteBarrel.mutate(barrel.id); }} className="p-1 rounded hover:bg-[#222324]"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
                 </div>
+                {fulfilledLine && (
+                  <div className="text-xs px-2 py-1 rounded flex items-center gap-1" style={{ backgroundColor: "#6366F11A" }}>
+                    <Link2 className="w-3 h-3 text-[#818CF8]" />
+                    <span className="text-[#818CF8]">Fulfills: {fulfilledLine.customerStockCode} - {fulfilledLine.customerDescription}</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <div><span className="text-[#8A8B8C]">Batch: </span><span className="text-white font-mono">{barrel.batchNumber}</span></div>
                   <div><span className="text-[#8A8B8C]">Lot: </span><span className="text-white font-mono">{barrel.lotNumber}</span></div>
@@ -423,6 +478,24 @@ export default function PurchaseOrderDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label-text">Barrel Number *</label><input required value={barrelForm.barrelNumber} onChange={(e) => setBarrelForm({ ...barrelForm, barrelNumber: e.target.value })} className="input-field w-full" placeholder="e.g., 1/43" /></div>
                 <div><label className="label-text">Quantity (Bundles)</label><input type="number" value={barrelForm.quantityBundles || ""} onChange={(e) => setBarrelForm({ ...barrelForm, quantityBundles: parseInt(e.target.value) || 0 })} className="input-field w-full" /></div>
+                {/* PO Line selector - auto-populates from linked SGF stock */}
+                <div className="col-span-2">
+                  <label className="label-text">Fulfill PO Line Item</label>
+                  {linkedStockItems.length > 0 ? (
+                    <select value={barrelForm.poLineIndex} onChange={(e) => selectPOLine(parseInt(e.target.value))} className="input-field w-full text-sm">
+                      <option value={-1}>Select PO line to auto-fill product info...</option>
+                      {linkedStockItems.map((li) => (
+                        <option key={li.index} value={li.index}>
+                          {li.customerStockCode} - {li.customerDescription} (SGF: {li.linkedProductName})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="text-xs text-[#8A8B8C] px-2 py-1.5 rounded" style={{ backgroundColor: "#1A1A1B" }}>
+                      No PO lines linked to SGF stock. Manual entry required.
+                    </div>
+                  )}
+                </div>
                 <div className="col-span-2"><label className="label-text">Product Description</label><input value={barrelForm.productDescription} onChange={(e) => setBarrelForm({ ...barrelForm, productDescription: e.target.value })} className="input-field w-full" placeholder="e.g., Supermarket Select SL (Hog 28/32)" /></div>
                 <div><label className="label-text">Recircle Product Code</label><input value={barrelForm.recircleProductCode} onChange={(e) => setBarrelForm({ ...barrelForm, recircleProductCode: e.target.value })} className="input-field w-full" placeholder="220250212/24" /></div>
                 <div><label className="label-text">Customer Product Code</label><input value={barrelForm.customerProductCode} onChange={(e) => setBarrelForm({ ...barrelForm, customerProductCode: e.target.value })} className="input-field w-full" placeholder="50101170" /></div>

@@ -70,6 +70,8 @@ export default function PurchaseOrderDetailPage() {
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: barrels } = trpc.barrel.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
   const { data: cocs } = trpc.coc.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
+  const { data: allCocsList } = trpc.coc.list.useQuery();
+  const { data: packingLines } = trpc.packingList.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
 
   const updateStatus = trpc.purchaseOrder.updateStatus.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); },
@@ -356,28 +358,27 @@ export default function PurchaseOrderDetailPage() {
 
   // ═══ AUTO-GENERATE COCs FROM PACKING LIST ═══
   function handleAutoGenerateCOCs() {
-    const packingLines = dataService.packingList.listByPurchaseOrder(poId);
-    if (!packingLines || packingLines.length === 0) {
+    const pls = packingLines || [];
+    if (pls.length === 0) {
       alert("No packing list lines found. Please complete the packing list first.");
       return;
     }
 
-    // Check if COCs already exist
-    const existingCOCs = dataService.coc.listByPurchaseOrder(poId);
+    // Check if COCs already exist (uses tRPC data = cloud-first)
+    const existingCOCs = cocs || [];
     const generateAll = existingCOCs.length > 0
       ? confirm(`${existingCOCs.length} COC(s) already exist. Replace all with new auto-generated COCs?`)
       : true;
     if (!generateAll) return;
 
-    // Delete existing COCs
+    // Delete existing COCs via tRPC mutation (cloud-first)
     existingCOCs.forEach((c: any) => {
-      dataService.coc.delete(c.id);
-      removeCOC(c.id);
+      deleteCOC.mutate(c.id);
     });
 
     // Get next batch number base
     let batchCounter = 1;
-    const existingBatches = (dataService.coc.list() as any[])
+    const existingBatches = (allCocsList || [])
       .map((c: any) => c.batchNumber)
       .filter(Boolean);
 
@@ -395,7 +396,7 @@ export default function PurchaseOrderDetailPage() {
     const mfgDateStr = `${formatDate(mfgStart)} - ${formatDate(mfgEnd)}`;
     const useByStr = formatDate(useBy);
 
-    packingLines.forEach((pl: any) => {
+    pls.forEach((pl: any) => {
       // Get stock data for specs
       let stock: any = null;
       if (pl.linkedStockItemId && stockItems) {
@@ -479,8 +480,8 @@ export default function PurchaseOrderDetailPage() {
 
   // Print all COCs as multi-page document
   function handlePrintAllCOCs() {
-    const allCocs = dataService.coc.listByPurchaseOrder(poId);
-    if (!allCocs || allCocs.length === 0) {
+    const allCocs = cocs || [];
+    if (allCocs.length === 0) {
       alert("No COCs found. Please auto-generate COCs first.");
       return;
     }

@@ -183,12 +183,16 @@ export default function CustomerStatementPage() {
   // ─── PRINT ───
   function printStatement() {
     if (!selectedCustomer || custInvoices.length === 0) return;
+    // Determine company: check customer record → corporate list → invoices → default sgf
     let stmtCompany: CompanyKey = selectedCustomer.company || "sgf";
-    // If no company on main customer record, check corporate customer list
-    if (!selectedCustomer.company && selectedCustomer.isCorporate) {
-      const corpCust = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer.id);
-      if (corpCust?.company) stmtCompany = corpCust.company;
-    }
+    // Check corporate customer list (by ID or by name match)
+    const corpById = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer.id);
+    const corpByName = (corporateCustomers || []).find((c: any) => c.name?.toLowerCase().trim() === selectedCustomer.name?.toLowerCase().trim());
+    const corpCust = corpById || corpByName;
+    if (corpCust?.company) stmtCompany = corpCust.company;
+    // Also check invoices for this customer — they carry the company from the PO
+    const invWithCompany = custInvoices.find((i: any) => i.company);
+    if (invWithCompany?.company) stmtCompany = invWithCompany.company;
     const stmtCfg = getCompanyConfig(stmtCompany);
     const logoUrl = `${window.location.origin}${stmtCfg.logoUrl || "/sgf-logo.png"}`;
     const fromStr = new Date(stmtFrom).toLocaleDateString("en-ZA");

@@ -380,7 +380,7 @@ export function createLocalLink() {
               case "barrel.delete": result = dataService.barrel.delete(input); await removeBarrel(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break;
               case "coc.list": await syncFromCloud("certificatesOfCompliance", "sgf_certificatesOfCompliance"); result = dataService.coc.list(); break;
               case "coc.listByBarrel": result = dataService.coc.listByBarrel(input); break;
-              case "coc.listByPurchaseOrder": result = dataService.coc.listByPurchaseOrder(input); break;
+              case "coc.listByPurchaseOrder": await syncFromCloud("certificatesOfCompliance", "sgf_certificatesOfCompliance"); result = dataService.coc.listByPurchaseOrder(input); break;
               case "coc.getById": result = dataService.coc.getById(input); break;
               case "coc.create": result = dataService.coc.create(input); await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
               case "coc.update": { const { id, data } = input; result = dataService.coc.update({ id, data }); if (result) await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }

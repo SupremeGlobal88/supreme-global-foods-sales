@@ -396,7 +396,9 @@ export default function PurchaseOrderDetailPage() {
     const mfgDateStr = `${formatDate(mfgStart)} - ${formatDate(mfgEnd)}`;
     const useByStr = formatDate(useBy);
 
-    pls.forEach((pl: any) => {
+    const totalBarrels = pls.length;
+
+    pls.forEach((pl: any, barrelIdx: number) => {
       // Get stock data for specs
       let stock: any = null;
       if (pl.linkedStockItemId && stockItems) {
@@ -430,13 +432,17 @@ export default function PurchaseOrderDetailPage() {
       const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
       const customerStockCode = poLine?.customerStockCode || "";
 
-      // Get Recircle product code from stock
-      const recircleCode = stock?.productCode || pl.recircleProductCode || `22025${String(orderDate.getMonth() + 1).padStart(2, "0")}${String(orderDate.getDate()).padStart(2, "0")}`;
+      // Generate UNIQUE product code per barrel/COC: YYYYMM-XXXX-BB
+      // where XXXX = batch sequence, BB = barrel index
+      const uniqueProductCode = `${batchNumber}-${String(barrelIdx + 1).padStart(2, "0")}`;
 
       // Physical specs from stock or defaults
       const calibration = stock?.size || "Min 28/30 mm";
       const strands = stock?.strands ? `${stock.strands} strands / bundle` : "13 strands / bundle";
       const length = stock?.length ? `Minimum ${stock.length}m/bundle` : "Minimum 90 to 91m/bundle";
+
+      // Barrel number in "X of Y" format
+      const barrelNumberDisplay = `${barrelIdx + 1} of ${totalBarrels}`;
 
       createCOC.mutate({
         purchaseOrderId: poId,
@@ -444,14 +450,16 @@ export default function PurchaseOrderDetailPage() {
         poNumber: po.poNumber,
         corporateCustomerId: po.corporateCustomerId,
         corporateCustomerName: customer?.name || "",
-        recircleProductCode: recircleCode,
+        recircleProductCode: uniqueProductCode,
         customerProductCode: customerStockCode,
         productDescription: fullDesc,
         batchNumber,
         lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || "",
         manufacturingDate: mfgDateStr,
         useByDate: useByStr,
-        barrelNumber: pl.barrelNumber || "",
+        barrelNumber: barrelNumberDisplay,
+        barrelIndex: barrelIdx + 1,
+        totalBarrels,
         quantityBundles: pl.quantityBundles || 0,
         calibration,
         length,
@@ -459,11 +467,7 @@ export default function PurchaseOrderDetailPage() {
         stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",
         odour: "No off odors to be present",
         colour: "White / Beige color",
-        packing: pl.quantityBundles <= 150
-          ? "Bundles packed in barrels of 150"
-          : pl.quantityBundles <= 200
-            ? "Bundles packed in barrels of 200"
-            : `Bundles packed in barrels of ${pl.quantityBundles}`,
+        packing: "Bundles packed in barrels of 150 or 200",
         countryOfOrigin: "South Africa",
         status: "Non HALAAL",
         casingType,
@@ -489,18 +493,17 @@ export default function PurchaseOrderDetailPage() {
     const w = window.open("", "_blank");
     if (!w) return;
 
-    // Check if customer has a custom logo
+    // Check if customer has a custom logo — use absolute URL for print window
     const customerLogo = customer?.logoUrl || "";
     const hasCustomerLogo = !!customerLogo;
+    const logoSrc = hasCustomerLogo
+      ? (customerLogo.startsWith("http") ? customerLogo : `${window.location.origin}${customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`}`)
+      : "";
 
     const cocPages = allCocs.map((coc: any) => {
       const isSheep = coc.animalType === "sheep";
       const animalName = isSheep ? "sheep" : "hog";
       const casingName = isSheep ? "Sheep casings" : "hog casings";
-      // Build full logo URL
-      const logoSrc = hasCustomerLogo
-        ? (customerLogo.startsWith("http") || customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`)
-        : "";
       return `
         <div style="page-break-after:always; padding:40px; max-width:800px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
           <div style="text-align:center; margin-bottom:10px;">
@@ -524,14 +527,14 @@ export default function PurchaseOrderDetailPage() {
           </div>
 
           <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:15px;">
-            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold; width:35%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:5px; border:1px solid #ccc;">${coc.recircleProductCode || "-"}</td></tr>
-            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(customer?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:5px; border:1px solid #ccc;">${coc.customerProductCode || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold; width:35%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:5px; border:1px solid #ccc; font-family:monospace;">${coc.recircleProductCode || "-"}</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(customer?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:5px; border:1px solid #ccc; font-family:monospace;">${coc.customerProductCode || "-"}</td></tr>
             <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:5px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
             <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:5px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
             <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:5px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
             <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">DATE OF MANUFACTURING</td><td style="padding:5px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
             <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">USE BY DATE</td><td style="padding:5px; border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
-            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">BARREL/BAGS NUMBER</td><td style="padding:5px; border:1px solid #ccc;">${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
+            <tr><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">BARREL/BAGS NUMBER</td><td style="padding:5px; border:1px solid #ccc; font-weight:bold;">Barrel ${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
           </table>
 
           <h3 style="font-size:13px; margin:12px 0 6px; text-decoration:underline;">PHYSICAL REQUIREMENTS: PER BUNDLE</h3>

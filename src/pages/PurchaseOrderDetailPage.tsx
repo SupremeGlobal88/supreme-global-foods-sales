@@ -66,6 +66,7 @@ export default function PurchaseOrderDetailPage() {
 
   const { data: purchaseOrders, isLoading: poLoading } = trpc.purchaseOrder.list.useQuery();
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
+  const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: barrels } = trpc.barrel.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
   const { data: cocs } = trpc.coc.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
 

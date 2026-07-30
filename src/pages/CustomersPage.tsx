@@ -84,7 +84,7 @@ export default function CustomersPage() {
     }
     setVatError("");
     if (editingId) {
-      updateCustomer.mutate({ id: editingId, ...formData });
+      updateCustomer.mutate({ id: editingId, data: formData });
     } else {
       // Auto-generate customer code for new customers
       const dataToSend = { ...formData };

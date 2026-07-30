@@ -152,7 +152,7 @@ export async function pushAppointment(appointment: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
     await set(ref(db, `appointments/${safeFbKey(appointment.id)}`), { ...appointment, _syncedAt: Date.now() });
-  } catch { /* ignore */ }
+  } catch (e: any) { console.error(`[pushAppointment] FAILED: ${appointment?.id}:`, e.message); }
 }
 
 export async function pushInvoice(invoice: any): Promise<{ success: boolean; error?: string }> {
@@ -267,7 +267,8 @@ export async function pushCheckinDelete(id: number): Promise<void> {
  *  Only use pushCustomersFullList for explicit bulk operations. */
 export async function pushOneCustomer(customer: any): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `customers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() }); } catch { /* ignore */ }
+  try { await set(ref(db, `customers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() }); }
+  catch (e: any) { console.error(`[pushOneCustomer] FAILED: ${customer?.name} (${customer?.id}):`, e.message); }
 }
 
 /** Remove a single customer from Firebase by ID */

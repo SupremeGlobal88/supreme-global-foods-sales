@@ -23,7 +23,7 @@ import {
  *  Previously errors were silently swallowed, making it impossible to debug. */
 // Track last sync time per data type to prevent excessive Firebase reads
 const lastSyncTimes: Record<string, number> = {};
-const SYNC_COOLDOWN_MS = 5000; // Only sync same type every 5 seconds minimum
+const SYNC_COOLDOWN_MS = 1000; // Only sync same type every 1 second minimum
 
 async function syncFromCloud(type: string, storageKey: string): Promise<void> {
   if (!isFirebaseReady()) { console.warn("[syncFromCloud] Firebase not ready for", type); return; }

@@ -385,7 +385,22 @@ export function createLocalLink() {
               case "coc.create": result = dataService.coc.create(input); await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
               case "coc.update": { const { id, data } = input; result = dataService.coc.update({ id, data }); if (result) await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.delete": result = dataService.coc.delete(input); await removeCOC(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
-              case "coc.bulkGenerateForPO": { const { poId, cocDataList } = input; const created = dataService.coc.bulkGenerateForPO(poId, cocDataList); for (const c of created) { await pushCOC(c); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: created.length } })); result = created; break; }
+              case "coc.bulkGenerateForPO": { const { poId, cocDataList } = input;
+                // Step 1: Read ALL COCs directly from Firebase (bypasses syncFromCloud cooldown)
+                const allFirebaseCOCs = await readFromFirebase("certificatesOfCompliance");
+                // Step 2: Find ALL COCs for this PO in Firebase (including stale ones localStorage doesn't know about)
+                const firebasePOCOCs = allFirebaseCOCs.filter((c: any) => c.purchaseOrderId === poId);
+                // Step 3: Delete EVERY COC for this PO from Firebase
+                for (const c of firebasePOCOCs) { await removeCOC(c.id); }
+                // Step 4: Also read localStorage COCs for this PO and clear them
+                const localCOCs = dataService.coc.listByPurchaseOrder(poId);
+                for (const c of localCOCs) { dataService.coc.delete(c.id); }
+                // Step 5: Now create all new COCs in localStorage with fresh IDs
+                const created = dataService.coc.bulkGenerateForPO(poId, cocDataList);
+                // Step 6: Push all new COCs to Firebase
+                for (const c of created) { await pushCOC(c); }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: created.length } }));
+                result = created; break; }
               // ═══ PACKING LIST LINES ═══
               case "packingList.listByPurchaseOrder": await syncFromCloud("packingListLines", "sgf_packingListLines"); result = dataService.packingList.listByPurchaseOrder(input); break;
               case "packingList.create": result = dataService.packingList.create(input); await pushPackingListLine(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 1 } })); break;

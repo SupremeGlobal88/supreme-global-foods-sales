@@ -396,7 +396,7 @@ export default function PurchaseOrderDetailPage() {
     const mfgDateStr = `${formatDate(mfgStart)} - ${formatDate(mfgEnd)}`;
     const useByStr = formatDate(useBy);
 
-    const totalBarrels = pls.length;
+    const totalBarrels = (barrels || []).length || pls.length;
 
     pls.forEach((pl: any, barrelIdx: number) => {
       // Get stock data for specs
@@ -493,10 +493,11 @@ export default function PurchaseOrderDetailPage() {
     const w = window.open("", "_blank");
     if (!w) return;
 
-    // Check if customer has a custom logo — use absolute URL for print window
+    // Build absolute logo URLs for print window
+    const companyLogoSrc = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
     const customerLogo = customer?.logoUrl || "";
     const hasCustomerLogo = !!customerLogo;
-    const logoSrc = hasCustomerLogo
+    const customerLogoSrc = hasCustomerLogo
       ? (customerLogo.startsWith("http") ? customerLogo : `${window.location.origin}${customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`}`)
       : "";
 
@@ -507,20 +508,17 @@ export default function PurchaseOrderDetailPage() {
       return `
         <div style="page-break-after:always; padding:40px; max-width:800px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
           <div style="text-align:center; margin-bottom:10px;">
-            ${hasCustomerLogo ? `
-              <div style="display:flex; align-items:center; justify-content:center; gap:20px; margin-bottom:8px;">
-                <div style="text-align:left;">
-                  <h1 style="font-size:14px; letter-spacing:1px; color:${cfg.documentColor}; margin:0;">${cfg.logoText}</h1>
-                  <p style="font-size:8px; color:#666; margin:2px 0;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}</p>
-                </div>
-                <div style="width:80px; height:80px; display:flex; align-items:center; justify-content:center;">
-                  <img src="${logoSrc}" style="max-width:75px; max-height:75px; object-fit:contain;" onerror="this.style.display='none'; this.parentElement.style.display='none';" />
-                </div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:20px; margin-bottom:8px;">
+              <div style="flex:0 0 auto; text-align:center;">
+                <img src="${companyLogoSrc}" style="max-width:90px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'" />
               </div>
-            ` : `
-              <h1 style="font-size:22px; letter-spacing:2px; color:${cfg.documentColor}; margin:0;">${cfg.logoText}</h1>
-              <p style="font-size:10px; color:#666; margin:3px 0;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.country}</p>
-            `}
+              <div style="flex:1 1 auto; text-align:center;">
+                <h1 style="font-size:16px; letter-spacing:1px; color:${cfg.documentColor}; margin:0;">${cfg.logoText}</h1>
+                <p style="font-size:8px; color:#666; margin:2px 0;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}</p>
+                <p style="font-size:8px; color:#666; margin:0;">VAT: ${cfg.vatNumber} | Reg: ${cfg.regNumber}</p>
+              </div>
+              ${hasCustomerLogo ? `<div style="flex:0 0 auto; text-align:center;"><img src="${customerLogoSrc}" style="max-width:90px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'" /></div>` : ""}
+            </div>
           </div>
           <div style="text-align:center; margin-bottom:15px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:8px;">
             <h2 style="font-size:16px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>

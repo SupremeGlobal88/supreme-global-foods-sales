@@ -64,7 +64,7 @@ export default function PurchaseOrderDetailPage() {
     status: "Non HALAAL",
   });
 
-  const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
+  const { data: purchaseOrders, isLoading: poLoading } = trpc.purchaseOrder.list.useQuery();
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
   const { data: barrels } = trpc.barrel.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
   const { data: cocs } = trpc.coc.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
@@ -136,12 +136,22 @@ export default function PurchaseOrderDetailPage() {
       }));
   }, [poLineItems]);
 
+  if (poLoading) {
+    return (
+      <div className="p-6 text-center min-h-[60vh] flex flex-col items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#D4A843] border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-[#E5E7EB] text-sm">Loading purchase order...</p>
+      </div>
+    );
+  }
+
   if (!po) {
     return (
-      <div className="p-6 text-center">
+      <div className="p-6 text-center min-h-[60vh] flex flex-col items-center justify-center">
         <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[#EF4444] opacity-40" />
-        <p className="text-white">Purchase order not found</p>
-        <button onClick={() => navigate("/purchase-orders")} className="btn-gold mt-4">Back to POs</button>
+        <p className="text-white font-medium">Purchase order not found</p>
+        <p className="text-[#9CA3AF] text-sm mt-1 mb-4">Data may still be syncing from the cloud.</p>
+        <button onClick={() => navigate("/purchase-orders")} className="btn-gold">Back to POs</button>
       </div>
     );
   }

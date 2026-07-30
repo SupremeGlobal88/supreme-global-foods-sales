@@ -980,49 +980,48 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div style={{ position: "relative", zIndex: 20 }}>
                   <label className="label-text block mb-1.5">Customer *</label>
-                  {editingOrder ? (
-                    <div className="input-field" style={{ opacity: 0.7 }}>
-                      {(customers || []).find((c) => c.id === formData.customerId)?.name || "Unknown"}
-                    </div>
-                  ) : (
-                    <>
-                      <input
-                        ref={customerInputRef}
-                        type="text"
-                        value={customerSearch}
-                        onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
-                        onFocus={handleOpenCustomerDropdown}
-                        placeholder="Type to search customers..."
-                        className="input-field w-full"
-                        required
-                        autoComplete="off"
-                      />
-                      {showCustomerDropdown && (
-                        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 200, overflowY: "auto", backgroundColor: "#18191A", border: "1px solid #2A2B2C", borderRadius: 8, zIndex: 30, marginTop: 4 }}>
-                          {filteredCustomers.length === 0 && (
-                            <div style={{ padding: 12, color: "#8A8B8C", fontSize: 12 }}>No customers found</div>
-                          )}
-                          {filteredCustomers.map((c) => (
-                            <div
-                              key={c.id}
-                              onClick={() => handleCustomerSelect(c.id)}
-                              style={{ padding: "10px 12px", cursor: "pointer", borderBottom: "1px solid #222324", color: formData.customerId === c.id ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
-                              className="hover:bg-[#222324]"
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-body font-medium">{c.name}</span>
-                                <span className="font-mono-data text-xs" style={{ color: "#8A8B8C" }}>{c.customerCode}</span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-xs" style={{ color: "#4ADE80" }}>{c.priceTier}</span>
-                                <span className="text-xs" style={{ color: "#8A8B8C" }}>{c.city}</span>
-                              </div>
+                  <>
+                    <input
+                      ref={customerInputRef}
+                      type="text"
+                      value={customerSearch}
+                      onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                      onFocus={handleOpenCustomerDropdown}
+                      placeholder="Type to search customers..."
+                      className="input-field w-full"
+                      required
+                      autoComplete="off"
+                      disabled={editingOrder && !isAdmin}
+                      style={editingOrder && !isAdmin ? { opacity: 0.7, cursor: "not-allowed" } : {}}
+                    />
+                    {editingOrder && !isAdmin && (
+                      <p className="text-xs mt-1" style={{ color: "#8A8B8C" }}>Admin can change customer</p>
+                    )}
+                    {showCustomerDropdown && (
+                      <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 200, overflowY: "auto", backgroundColor: "#18191A", border: "1px solid #2A2B2C", borderRadius: 8, zIndex: 30, marginTop: 4 }}>
+                        {filteredCustomers.length === 0 && (
+                          <div style={{ padding: 12, color: "#8A8B8C", fontSize: 12 }}>No customers found</div>
+                        )}
+                        {filteredCustomers.map((c) => (
+                          <div
+                            key={c.id}
+                            onClick={() => { if (!editingOrder || isAdmin) handleCustomerSelect(c.id); }}
+                            style={{ padding: "10px 12px", cursor: (!editingOrder || isAdmin) ? "pointer" : "not-allowed", borderBottom: "1px solid #222324", color: formData.customerId === c.id ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
+                            className="hover:bg-[#222324]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-body font-medium">{c.name}</span>
+                              <span className="font-mono-data text-xs" style={{ color: "#8A8B8C" }}>{c.customerCode}</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs" style={{ color: "#4ADE80" }}>{c.priceTier}</span>
+                              <span className="text-xs" style={{ color: "#8A8B8C" }}>{c.city}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 </div>
                 <div>
                   <label className="label-text block mb-1.5">Payment Terms</label>

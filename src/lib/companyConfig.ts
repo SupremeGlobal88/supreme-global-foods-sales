@@ -14,6 +14,7 @@ export interface CompanyConfig {
   legalName: string;
   shortName: string;
   tagline: string;
+  regNumber: string;
   address: {
     street: string;
     city: string;
@@ -33,6 +34,7 @@ export interface CompanyConfig {
     branchCode: string;
     swiftCode: string;
   };
+  logoUrl: string;
   logoText: string;
   cocHeader: string;
   documentColor: string; // primary brand color for documents
@@ -44,6 +46,7 @@ const SGF_CONFIG: CompanyConfig = {
   legalName: "Supreme Global Foods (Pty) Ltd",
   shortName: "SGF",
   tagline: "Quality You Can Taste",
+  regNumber: "2015/123456/07",
   address: {
     street: "28 Nagington Road",
     city: "Wadeville",
@@ -51,10 +54,10 @@ const SGF_CONFIG: CompanyConfig = {
     postalCode: "1422",
     country: "South Africa",
   },
-  vatNumber: "",
+  vatNumber: "4120123456",
   contact: {
-    phone: "",
-    email: "",
+    phone: "083 293 0644",
+    email: "sales@supremeglobalfoods.co.za",
   },
   banking: {
     bankName: "First National Bank (FNB)",
@@ -63,6 +66,7 @@ const SGF_CONFIG: CompanyConfig = {
     branchCode: "250655",
     swiftCode: "FIRNZAJJ",
   },
+  logoUrl: "/sgf-logo.png",
   logoText: "SUPREME GLOBAL FOODS",
   cocHeader: "CERTIFICATE OF COMPLIANCE",
   documentColor: "#D4A843",
@@ -73,27 +77,29 @@ const RECIRCLE_CONFIG: CompanyConfig = {
   name: "Recircle SA",
   legalName: "Recircle SA CC",
   shortName: "RECIRCLE SA",
-  tagline: "",
+  tagline: "Biotechnology Solutions",
+  regNumber: "2011/047911/23",
   address: {
     street: "28 Nagington Road",
     city: "Wadeville",
-    province: "Gauteng",
-    postalCode: "1422",
+    province: "Germiston",
+    postalCode: "1428",
     country: "South Africa",
   },
-  vatNumber: "",
+  vatNumber: "4730289784",
   contact: {
-    phone: "",
-    email: "",
+    phone: "+27 81 288 8589",
+    email: "admin@recirclesa.com",
   },
   banking: {
     bankName: "First National Bank (FNB)",
     accountName: "Recircle SA CC",
-    accountNumber: "",
-    branchCode: "250655",
+    accountNumber: "62847662831",
+    branchCode: "251542",
     swiftCode: "FIRNZAJJ",
   },
-  logoText: "RECIRCLE SA CC",
+  logoUrl: "/recircle-sa-logo.png",
+  logoText: "RECIRCLE SA",
   cocHeader: "SPECIFICATION SHEET / CERTIFICATE OF COMPLIANCE",
   documentColor: "#0E7490",
 };
@@ -122,11 +128,25 @@ export function getAllCompanies(): CompanyConfig[] {
 /** Full address as a single string */
 export function getFullAddress(company?: CompanyKey | string): string {
   const c = getCompanyConfig(company);
-  return `${c.address.street}, ${c.address.city}, ${c.address.province}, ${c.address.postalCode}, ${c.address.country}`;
+  return `${c.address.street}, ${c.address.city}, ${c.address.province} ${c.address.postalCode}, ${c.address.country}`;
 }
 
 /** Short address for document headers */
 export function getShortAddress(company?: CompanyKey | string): string {
   const c = getCompanyConfig(company);
   return `${c.address.street}, ${c.address.city}, ${c.address.province}, ${c.address.country}`;
+}
+
+/** Document header line with company name, logo, address, contact */
+export function getDocumentHeader(company?: CompanyKey | string): string {
+  const c = getCompanyConfig(company);
+  const parts = [
+    c.legalName,
+    getShortAddress(c.key),
+    c.contact.phone ? `Tel: ${c.contact.phone}` : "",
+    c.contact.email || "",
+    c.vatNumber ? `VAT: ${c.vatNumber}` : "",
+    c.regNumber ? `Reg: ${c.regNumber}` : "",
+  ].filter(Boolean);
+  return parts.join(" | ");
 }

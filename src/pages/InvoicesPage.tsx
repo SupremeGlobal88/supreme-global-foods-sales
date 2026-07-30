@@ -209,7 +209,7 @@ export default function InvoicesPage() {
     const cust = inv.customer || (customers || []).find((c: any) => c.id === inv.customerId);
     const invCompany: CompanyKey = inv.company || "sgf";
     const cfg = getCompanyConfig(invCompany);
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
     const invDate = new Date(inv.invoiceDate || inv.createdAt);
     const retDate = new Date(invDate); retDate.setDate(retDate.getDate() + 7);
     const sub = Number(inv.subtotal || 0), vat = Number(inv.vatAmount || 0), tot = Number(inv.total || 0);
@@ -426,7 +426,9 @@ export default function InvoicesPage() {
     const freshInvoices = await utils.invoice.list.fetch();
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const invCompany: CompanyKey = cust?.company || "sgf";
+    const cfg = getCompanyConfig(invCompany);
+    const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
 
     // Build invoice list — same matching as the invoice list search
     const custCode = cust.customerCode;

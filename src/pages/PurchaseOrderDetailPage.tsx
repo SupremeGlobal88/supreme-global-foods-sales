@@ -481,8 +481,8 @@ export default function PurchaseOrderDetailPage() {
         status: "Non HALAAL",
         casingType,
         animalType,
-        cleaningProcess: "Intestines collected, manure stripped by hand, mucosa removed through soaking and rollers. Quality control, calibration, salted and stored in drums.",
-        handlingStorage: "Handle per GMP. Store in salt at ambient/cool temperature. Refrigerate after opening, use within 10-12 months.",
+        cleaningProcess: "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
+        handlingStorage: "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
         grossWeight: pl.grossWeight || 0,
         netWeight: pl.netWeight || 0,
       });
@@ -523,41 +523,41 @@ export default function PurchaseOrderDetailPage() {
             <h2 style="font-size:14px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>
           </div>
 
-          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:8px;">
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:4px 6px; border:1px solid #ccc; font-family:monospace;">${coc.recircleProductCode || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(customer?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:4px 6px; border:1px solid #ccc; font-family:monospace;">${coc.customerProductCode || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:4px 6px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:4px 6px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">DATE OF MFG</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">USE BY DATE</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">BARREL NUMBER</td><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">Barrel ${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
-          </table>
-
-          <h3 style="font-size:12px; margin:6px 0 4px; text-decoration:underline;">PHYSICAL REQUIREMENTS: PER BUNDLE</h3>
-          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:8px;">
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">CALIBRATION</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.calibration || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">LENGTH</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.length || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">QTY STRANDS</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.qtyStrands || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">STUFFING CAPACITY</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.stuffingCapacity || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">ODOUR</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.odour || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">COLOUR</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.colour || "-"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">PACKING</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.packing || "-"}</td></tr>
-          </table>
-
-          <h3 style="font-size:12px; margin:6px 0 4px; text-decoration:underline;">TYPICAL ANALYSIS</h3>
-          <p style="font-size:10px; margin:0 0 6px; line-height:1.4;">Natural ${animalName} casings provide a natural edible casing for sausage.</p>
-
           <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">COUNTRY OF ORIGIN</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>
-            <tr><td style="padding:4px 6px; border:1px solid #ccc; font-weight:bold;">STATUS</td><td style="padding:4px 6px; border:1px solid #ccc;">${coc.status || "Non HALAAL"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.recircleProductCode || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(customer?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.customerProductCode || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">DATE OF MFG</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">USE BY DATE</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BARREL NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">Barrel ${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
           </table>
 
-          <h3 style="font-size:12px; margin:6px 0 4px; text-decoration:underline;">CLEANING PROCESS</h3>
-          <p style="font-size:10px; margin:0 0 6px; line-height:1.4;">${coc.cleaningProcess || "Intestines collected, manure stripped by hand, mucosa removed through soaking and rollers. Quality control, calibration, salted and stored in drums."}</p>
+          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">PHYSICAL REQUIREMENTS: PER BUNDLE</h3>
+          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">CALIBRATION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.calibration || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LENGTH</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.length || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">QTY STRANDS</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.qtyStrands || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">STUFFING CAPACITY</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.stuffingCapacity || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">ODOUR</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.odour || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">COLOUR</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.colour || "-"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PACKING</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.packing || "-"}</td></tr>
+          </table>
 
-          <h3 style="font-size:12px; margin:6px 0 4px; text-decoration:underline;">HANDLING AND STORAGE</h3>
-          <p style="font-size:10px; margin:0 0 6px; line-height:1.4;">${coc.handlingStorage || "Handle per GMP. Store in salt at ambient/cool temperature. Refrigerate after opening, use within 10-12 months."}</p>
+          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">TYPICAL ANALYSIS</h3>
+          <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">Natural ${animalName} casings are simply a thin layer of cleaned ${animalName} intestines that provide a natural casing for the sausage. It's edible and normally consumed with the sausage.</p>
+
+          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:4px;">
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">COUNTRY OF ORIGIN</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>
+            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">STATUS</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.status || "Non HALAAL"}</td></tr>
+          </table>
+
+          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">CLEANING PROCESS</h3>
+          <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">${coc.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery."}</p>
+
+          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">HANDLING AND STORAGE CONDITIONS</h3>
+          <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">${coc.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it."}</p>
 
           <div style="text-align:center; margin-top:10px; font-size:9px; color:#666; border-top:2px solid ${cfg.documentColor}; padding-top:6px;">
             <p style="margin:2px 0;"><strong>${cfg.legalName}</strong> | ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.address.country}</p>

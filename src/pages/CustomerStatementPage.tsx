@@ -18,6 +18,7 @@ export default function CustomerStatementPage() {
 
   const { data: invoices } = trpc.invoice.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
   const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
@@ -182,9 +183,14 @@ export default function CustomerStatementPage() {
   // ─── PRINT ───
   function printStatement() {
     if (!selectedCustomer || custInvoices.length === 0) return;
-    const stmtCompany: CompanyKey = selectedCustomer.company || "sgf";
+    let stmtCompany: CompanyKey = selectedCustomer.company || "sgf";
+    // If no company on main customer record, check corporate customer list
+    if (!selectedCustomer.company && selectedCustomer.isCorporate) {
+      const corpCust = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer.id);
+      if (corpCust?.company) stmtCompany = corpCust.company;
+    }
     const stmtCfg = getCompanyConfig(stmtCompany);
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const logoUrl = `${window.location.origin}${stmtCfg.logoUrl || "/sgf-logo.png"}`;
     const fromStr = new Date(stmtFrom).toLocaleDateString("en-ZA");
     const toStr = new Date(stmtTo).toLocaleDateString("en-ZA");
     const closingBal = totalDebit - totalCredit;

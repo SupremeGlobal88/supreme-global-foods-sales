@@ -371,10 +371,9 @@ export default function PurchaseOrderDetailPage() {
       : true;
     if (!generateAll) return;
 
-    // Delete existing COCs sequentially with delay to prevent race conditions
+    // Delete existing COCs sequentially — await each to guarantee completion
     for (const c of existingCOCs) {
-      deleteCOC.mutate(c.id);
-      await new Promise((r) => setTimeout(r, 50));
+      await deleteCOC.mutateAsync(c.id);
     }
 
     // Get next batch number base
@@ -399,13 +398,7 @@ export default function PurchaseOrderDetailPage() {
 
     const totalBarrels = (barrels || []).length || pls.length;
 
-    // Track which packing list lines we've already processed to prevent duplicates
-    const processedPLIds = new Set<number>();
-
     for (const [barrelIdx, pl] of pls.entries()) {
-      // Skip duplicate packing list lines
-      if (processedPLIds.has(pl.id)) continue;
-      processedPLIds.add(pl.id);
       // Get stock data for specs
       let stock: any = null;
       if (pl.linkedStockItemId && stockItems) {
@@ -453,7 +446,7 @@ export default function PurchaseOrderDetailPage() {
       // Barrel number in "X of Y" format
       const barrelNumberDisplay = `${barrelIdx + 1} of ${totalBarrels}`;
 
-      createCOC.mutate({
+      await createCOC.mutateAsync({
         purchaseOrderId: poId,
         packingListLineId: pl.id,
         poNumber: po.poNumber,
@@ -486,8 +479,6 @@ export default function PurchaseOrderDetailPage() {
         grossWeight: pl.grossWeight || 0,
         netWeight: pl.netWeight || 0,
       });
-      // Small delay between each COC creation to prevent localStorage race conditions
-      await new Promise((r) => setTimeout(r, 100));
     }
   }
 

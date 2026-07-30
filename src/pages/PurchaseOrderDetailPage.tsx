@@ -120,6 +120,9 @@ export default function PurchaseOrderDetailPage() {
   const deleteCOC = trpc.coc.delete.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.coc.listByPurchaseOrder.invalidate(poId); },
   });
+  const bulkGenerateCOCs = trpc.coc.bulkGenerateForPO.useMutation({
+    onSuccess: async () => { reloadFromStorage(); await utils.coc.listByPurchaseOrder.invalidate(poId); },
+  });
 
   const po = (purchaseOrders || []).find((p: any) => p.id === poId);
   const customer = po ? (corporateCustomers || []).find((c: any) => c.id === po.corporateCustomerId) : null;
@@ -356,8 +359,8 @@ export default function PurchaseOrderDetailPage() {
     });
   }
 
-  // ═══ AUTO-GENERATE COCs FROM PACKING LIST ═══
-  async function handleAutoGenerateCOCs() {
+  // ═══ AUTO-GENERATE COCs FROM PACKING LIST — ATOMIC BULK OPERATION ═══
+  function handleAutoGenerateCOCs() {
     const pls = packingLines || [];
     if (pls.length === 0) {
       alert("No packing list lines found. Please complete the packing list first.");
@@ -371,49 +374,34 @@ export default function PurchaseOrderDetailPage() {
       : true;
     if (!generateAll) return;
 
-    // Delete existing COCs sequentially — await each to guarantee completion
-    for (const c of existingCOCs) {
-      await deleteCOC.mutateAsync(c.id);
-    }
-
-    // Get next batch number base
-    let batchCounter = 1;
-    const existingBatches = (allCocsList || [])
-      .map((c: any) => c.batchNumber)
-      .filter(Boolean);
-
-    // Calculate dates
+    // Calculate dates once
     const orderDate = po.orderDate ? new Date(po.orderDate) : new Date();
     const mfgStart = new Date(orderDate);
-    mfgStart.setDate(mfgStart.getDate() + 1); // Day 1 of manufacturing
+    mfgStart.setDate(mfgStart.getDate() + 1);
     const mfgEnd = new Date(orderDate);
-    mfgEnd.setDate(mfgEnd.getDate() + 3); // Day 3 of manufacturing
+    mfgEnd.setDate(mfgEnd.getDate() + 3);
     const useBy = new Date();
-    useBy.setFullYear(useBy.getFullYear() + 2); // 2 years from now
-
-    // Format dates
+    useBy.setFullYear(useBy.getFullYear() + 2);
     const formatDate = (d: Date) => d.toLocaleDateString("en-ZA", { day: "2-digit", month: "long", year: "numeric" });
     const mfgDateStr = `${formatDate(mfgStart)} - ${formatDate(mfgEnd)}`;
     const useByStr = formatDate(useBy);
 
     const totalBarrels = (barrels || []).length || pls.length;
+    const existingBatches = (allCocsList || [])
+      .map((c: any) => c.batchNumber)
+      .filter(Boolean);
 
-    for (const [barrelIdx, pl] of pls.entries()) {
-      // Get stock data for specs
-      let stock: any = null;
-      if (pl.linkedStockItemId && stockItems) {
-        stock = (stockItems as any[]).find((s: any) => s.id === pl.linkedStockItemId);
-      }
+    // Build ALL COC data in memory first — no mutations yet
+    const cocDataList = pls.map((pl: any, barrelIdx: number) => {
+      const stock = pl.linkedStockItemId && stockItems
+        ? (stockItems as any[]).find((s: any) => s.id === pl.linkedStockItemId)
+        : null;
 
-      // Auto-detect hog vs sheep
       const descLower = (pl.productDescription || "").toLowerCase();
-      const sizeLower = (pl.productSize || "").toLowerCase();
-      const isSheep = descLower.includes("sheep") || sizeLower.includes("sheep") || descLower.includes("lamb");
-      const isHog = !isSheep;
-      const animalType = isSheep ? "sheep" : "hog";
+      const isSheep = descLower.includes("sheep") || descLower.includes("lamb");
       const casingType = isSheep ? "SHEEP CASINGS" : "HOG CASINGS";
 
-      // Generate unique 10-digit batch number (e.g., 6073098341)
+      // Unique 10-digit batch number
       let batchNumber = "";
       do {
         const yy = String(orderDate.getFullYear()).slice(-2);
@@ -424,48 +412,34 @@ export default function PurchaseOrderDetailPage() {
       } while (existingBatches.includes(batchNumber));
       existingBatches.push(batchNumber);
 
-      // Build product description with full spec
       const productDesc = pl.productDescription || "";
       const fullDesc = stock
         ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
         : productDesc;
 
-      // Get customer stock code from PO line
       const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
-      const customerStockCode = poLine?.customerStockCode || "";
-
-      // Generate UNIQUE product code — different format from batch number
-      // Format: PC-{barrelIndex}-{YY}{MM}{random4}
       const uniqueProductCode = `PC${String(barrelIdx + 1).padStart(2, "0")}${String(orderDate.getFullYear()).slice(-2)}${String(orderDate.getMonth() + 1).padStart(2, "0")}${String(Math.floor(1000 + Math.random() * 9000))}`;
 
-      // Physical specs from stock or defaults
-      const calibration = stock?.size || "Min 28/30 mm";
-      const strands = stock?.strands ? `${stock.strands} strands / bundle` : "13 strands / bundle";
-      const length = stock?.length ? `Minimum ${stock.length}m/bundle` : "Minimum 90 to 91m/bundle";
-
-      // Barrel number in "X of Y" format
-      const barrelNumberDisplay = `${barrelIdx + 1} of ${totalBarrels}`;
-
-      await createCOC.mutateAsync({
+      return {
         purchaseOrderId: poId,
         packingListLineId: pl.id,
         poNumber: po.poNumber,
         corporateCustomerId: po.corporateCustomerId,
         corporateCustomerName: customer?.name || "",
         recircleProductCode: uniqueProductCode,
-        customerProductCode: customerStockCode,
+        customerProductCode: poLine?.customerStockCode || "",
         productDescription: fullDesc,
         batchNumber,
         lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || "",
         manufacturingDate: mfgDateStr,
         useByDate: useByStr,
-        barrelNumber: barrelNumberDisplay,
+        barrelNumber: `${barrelIdx + 1} of ${totalBarrels}`,
         barrelIndex: barrelIdx + 1,
         totalBarrels,
         quantityBundles: pl.quantityBundles || 0,
-        calibration,
-        length,
-        qtyStrands: strands,
+        calibration: stock?.size || "Min 28/30 mm",
+        length: stock?.length ? `Minimum ${stock.length}m/bundle` : "Minimum 90 to 91m/bundle",
+        qtyStrands: stock?.strands ? `${stock.strands} strands / bundle` : "13 strands / bundle",
         stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",
         odour: "No off odors to be present",
         colour: "White / Beige color",
@@ -473,13 +447,16 @@ export default function PurchaseOrderDetailPage() {
         countryOfOrigin: "South Africa",
         status: "Non HALAAL",
         casingType,
-        animalType,
+        animalType: isSheep ? "sheep" : "hog",
         cleaningProcess: "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
         handlingStorage: "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
         grossWeight: pl.grossWeight || 0,
         netWeight: pl.netWeight || 0,
-      });
-    }
+      };
+    });
+
+    // Single atomic mutation — deletes old COCs + creates all new ones + saves once
+    bulkGenerateCOCs.mutate({ poId, cocDataList });
   }
 
   // Print all COCs as multi-page document

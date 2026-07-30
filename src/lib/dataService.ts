@@ -3570,6 +3570,37 @@ export const dataService = {
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
       return { success: true };
     },
+    /** Atomically delete all existing COCs for a PO and create new ones.
+     *  Prevents race conditions from rapid-fire individual creates/deletes.
+     *  All COCs created in a single batch with unique sequential IDs. */
+    bulkGenerateForPO: (poId: number, cocDataList: any[]) => {
+      // 1. Remove all existing COCs for this PO
+      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.purchaseOrderId !== poId);
+
+      // 2. Create all new COCs with guaranteed unique sequential IDs
+      const created: any[] = [];
+      const baseTime = Date.now();
+      for (let i = 0; i < cocDataList.length; i++) {
+        const data = cocDataList[i];
+        const company = data.company || (() => {
+          const po = purchaseOrders.find((p) => p.id === poId);
+          return po?.company || "sgf";
+        })();
+        const newCOC = {
+          ...data,
+          company,
+          id: baseTime + i, // sequential IDs, guaranteed unique
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        certificatesOfCompliance.push(newCOC);
+        created.push(newCOC);
+      }
+
+      // 3. Save ONCE to localStorage — atomic write
+      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      return created;
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════

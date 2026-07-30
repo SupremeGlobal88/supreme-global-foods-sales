@@ -177,6 +177,7 @@ export const appRouter = t.router({
     create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
     delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+    bulkGenerateForPO: t.procedure.input((val: unknown) => val as { poId: number; cocDataList: any[] }).mutation(() => [] as any[]),
   }),
   packingList: t.router({
     listByPurchaseOrder: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),

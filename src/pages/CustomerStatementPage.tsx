@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { getBankingDetails } from "@/lib/dataService";
+import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import { Printer, Calendar, User, FileText, ArrowLeft, Search } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -181,6 +182,8 @@ export default function CustomerStatementPage() {
   // ─── PRINT ───
   function printStatement() {
     if (!selectedCustomer || custInvoices.length === 0) return;
+    const stmtCompany: CompanyKey = selectedCustomer.company || "sgf";
+    const stmtCfg = getCompanyConfig(stmtCompany);
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
     const fromStr = new Date(stmtFrom).toLocaleDateString("en-ZA");
     const toStr = new Date(stmtTo).toLocaleDateString("en-ZA");
@@ -222,18 +225,18 @@ export default function CustomerStatementPage() {
 
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>Statement - ${selectedCustomer.name}</title><style>
+    w.document.write(`<!DOCTYPE html><html><head><title>${stmtCfg.shortName} Statement - ${selectedCustomer.name}</title><style>
       @media print{body{padding:0 12px}}
       body{font-family:Arial,Helvetica,sans-serif;color:#333;max-width:210mm;margin:0 auto;font-size:11px;line-height:1.4;padding:20px;background:#fff}
       .header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:10px;margin-bottom:16px}
       .header img{height:55px;margin-bottom:4px}
-      .header h1{font-size:20px;font-weight:800;color:#D4A843;margin:6px 0;letter-spacing:1px;text-transform:uppercase}
+      .header h1{font-size:20px;font-weight:800;color:${stmtCfg.documentColor};margin:6px 0;letter-spacing:1px;text-transform:uppercase}
       .header .subtitle{font-size:10px;color:#666;line-height:1.5}
       .info-grid{display:flex;justify-content:space-between;margin-bottom:16px;font-size:11px}
       .info-block .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
       .info-block .value{font-weight:700;font-size:13px;color:#222}
       table.ledger{width:100%;border-collapse:collapse;font-size:10.5px}
-      table.ledger thead th{background:#D4A843;color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}
+      table.ledger thead th{background:${stmtCfg.documentColor};color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}
       table.ledger tbody td{padding:6px 8px;border-bottom:1px solid #e5e5e5;vertical-align:top}
       table.ledger .num{text-align:right}
       .summary{margin-top:12px;display:flex;justify-content:flex-end}
@@ -245,7 +248,7 @@ export default function CustomerStatementPage() {
     </style></head><body>
       <div class="header">
         <img src="${logoUrl}" onerror="this.style.display='none'"/>
-        <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: 083 293 0644<br/>VAT Reg: 4120123456 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>
+        <div class="subtitle">${stmtCfg.address.street}, ${stmtCfg.address.city}, ${stmtCfg.address.province}, ${stmtCfg.address.postalCode} &nbsp;|&nbsp; ${stmtCfg.contact.email} &nbsp;|&nbsp; Tel: ${stmtCfg.contact.phone}<br/>VAT Reg: ${stmtCfg.vatNumber} &nbsp;|&nbsp; Reg No: ${stmtCfg.regNumber}</div>
         <h1>Statement of Account</h1>
         <div style="font-size:10px;color:#666">Period: ${fromStr} &nbsp;to&nbsp; ${toStr} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>
       </div>
@@ -282,8 +285,8 @@ export default function CustomerStatementPage() {
       ${agingHtml}
       ${closingBal > 0 ? `<div class="overdue-note">Please arrange payment within your agreed terms. Outstanding balance must be settled to avoid account hold.</div>` : ""}
       <div class="footer">
-        Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>
-        Banking: ${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode} | Quote customer code with payment
+        ${stmtCfg.legalName} &nbsp;|&nbsp; ${stmtCfg.address.street}, ${stmtCfg.address.city}, ${stmtCfg.address.province}, ${stmtCfg.address.postalCode} &nbsp;|&nbsp; ${stmtCfg.contact.phone}<br/>
+        Banking: ${stmtCfg.banking.bankName} | Acc: ${stmtCfg.banking.accountName} | ${stmtCfg.banking.accountNumber} | Branch: ${stmtCfg.banking.branchCode} | Quote customer code with payment
       </div>
       <script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print()},200)}}if(document.readyState==="complete")p();else window.onload=p;setTimeout(p,2000)})()</script>
     </body></html>`);

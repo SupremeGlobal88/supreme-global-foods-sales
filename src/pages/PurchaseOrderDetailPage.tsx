@@ -413,12 +413,14 @@ export default function PurchaseOrderDetailPage() {
       const animalType = isSheep ? "sheep" : "hog";
       const casingType = isSheep ? "SHEEP CASINGS" : "HOG CASINGS";
 
-      // Generate unique batch number
+      // Generate unique 10-digit batch number (e.g., 6073098341)
       let batchNumber = "";
       do {
-        const base = `${String(orderDate.getFullYear()).slice(-2)}${String(orderDate.getMonth() + 1).padStart(2, "0")}`;
-        batchNumber = `${base}${String(batchCounter).padStart(4, "0")}`;
-        batchCounter++;
+        const yy = String(orderDate.getFullYear()).slice(-2);
+        const mm = String(orderDate.getMonth() + 1).padStart(2, "0");
+        const dd = String(orderDate.getDate()).padStart(2, "0");
+        const rand4 = String(Math.floor(1000 + Math.random() * 9000));
+        batchNumber = `${yy}${mm}${dd}${rand4}`;
       } while (existingBatches.includes(batchNumber));
       existingBatches.push(batchNumber);
 
@@ -432,9 +434,9 @@ export default function PurchaseOrderDetailPage() {
       const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
       const customerStockCode = poLine?.customerStockCode || "";
 
-      // Generate UNIQUE product code per barrel/COC: YYYYMM-XXXX-BB
-      // where XXXX = batch sequence, BB = barrel index
-      const uniqueProductCode = `${batchNumber}-${String(barrelIdx + 1).padStart(2, "0")}`;
+      // Generate UNIQUE product code — different format from batch number
+      // Format: PC-{barrelIndex}-{YY}{MM}{random4}
+      const uniqueProductCode = `PC${String(barrelIdx + 1).padStart(2, "0")}${String(orderDate.getFullYear()).slice(-2)}${String(orderDate.getMonth() + 1).padStart(2, "0")}${String(Math.floor(1000 + Math.random() * 9000))}`;
 
       // Physical specs from stock or defaults
       const calibration = stock?.size || "Min 28/30 mm";
@@ -493,8 +495,7 @@ export default function PurchaseOrderDetailPage() {
     const w = window.open("", "_blank");
     if (!w) return;
 
-    // Build absolute logo URLs for print window
-    const companyLogoSrc = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
+    // Customer logo URL (absolute for print window)
     const customerLogo = customer?.logoUrl || "";
     const hasCustomerLogo = !!customerLogo;
     const customerLogoSrc = hasCustomerLogo
@@ -508,17 +509,11 @@ export default function PurchaseOrderDetailPage() {
       return `
         <div style="page-break-after:always; padding:40px; max-width:800px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
           <div style="text-align:center; margin-bottom:10px;">
-            <div style="display:flex; align-items:center; justify-content:center; gap:20px; margin-bottom:8px;">
-              <div style="flex:0 0 auto; text-align:center;">
-                <img src="${companyLogoSrc}" style="max-width:90px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'" />
+            ${hasCustomerLogo ? `
+              <div style="display:flex; align-items:center; justify-content:center; margin-bottom:8px;">
+                <img src="${customerLogoSrc}" style="max-width:140px; max-height:90px; object-fit:contain;" onerror="this.style.display='none'" />
               </div>
-              <div style="flex:1 1 auto; text-align:center;">
-                <h1 style="font-size:16px; letter-spacing:1px; color:${cfg.documentColor}; margin:0;">${cfg.logoText}</h1>
-                <p style="font-size:8px; color:#666; margin:2px 0;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}</p>
-                <p style="font-size:8px; color:#666; margin:0;">VAT: ${cfg.vatNumber} | Reg: ${cfg.regNumber}</p>
-              </div>
-              ${hasCustomerLogo ? `<div style="flex:0 0 auto; text-align:center;"><img src="${customerLogoSrc}" style="max-width:90px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'" /></div>` : ""}
-            </div>
+            ` : ""}
           </div>
           <div style="text-align:center; margin-bottom:15px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:8px;">
             <h2 style="font-size:16px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>

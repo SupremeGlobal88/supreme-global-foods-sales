@@ -513,13 +513,13 @@ export default function PurchaseOrderDetailPage() {
       const isSheep = coc.animalType === "sheep";
       const animalName = isSheep ? "sheep" : "hog";
       return `
-        <div style="page-break-after:always; padding:16px 28px; max-width:780px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
-          <div style="text-align:center; margin-bottom:6px;">
+        <div style="page-break-after:always; padding:14px 24px; max-width:780px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
+          <div style="text-align:center; margin-bottom:4px;">
             ${hasCustomerLogo ? `
-              <img src="${customerLogoSrc}" style="max-width:100px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'" />
+              <img src="${customerLogoSrc}" style="max-width:90px; max-height:60px; object-fit:contain;" onerror="this.style.display='none'" />
             ` : `<h2 style="font-size:14px; color:${cfg.documentColor}; margin:0;">${cfg.cocHeader}</h2>`}
           </div>
-          <div style="text-align:center; margin-bottom:10px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:5px;">
+          <div style="text-align:center; margin-bottom:8px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:4px;">
             <h2 style="font-size:14px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>
           </div>
 
@@ -546,7 +546,7 @@ export default function PurchaseOrderDetailPage() {
           </table>
 
           <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">TYPICAL ANALYSIS</h3>
-          <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">Natural ${animalName} casings are simply a thin layer of cleaned ${animalName} intestines that provide a natural casing for the sausage. It's edible and normally consumed with the sausage.</p>
+          <p style="font-size:10px; margin:0 0 4px; line-height:1.35; overflow:visible;">Natural ${animalName} casings are simply a thin layer of cleaned ${animalName} intestines that provide a natural casing for the sausage. It&#39;s edible and normally consumed with the sausage.</p>
 
           <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:4px;">
             <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">COUNTRY OF ORIGIN</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>

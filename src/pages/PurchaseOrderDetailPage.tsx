@@ -28,6 +28,7 @@ export default function PurchaseOrderDetailPage() {
   const [showRegenPrompt, setShowRegenPrompt] = useState(false);
   const [editPickerLine, setEditPickerLine] = useState<number>(-1);
   const [selectedBarrelId, setSelectedBarrelId] = useState<number | null>(null);
+  const [stockPickerFilter, setStockPickerFilter] = useState("");
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -1066,21 +1067,37 @@ export default function PurchaseOrderDetailPage() {
                           )}
                           {/* Inline stock picker for edit */}
                           {editPickerLine === idx && (
-                            <div className="mt-2 p-2 rounded-lg border border-[#333]" style={{ backgroundColor: "#0A0A0B" }}>
+                            <div className="mt-2 p-3 rounded-lg border border-[#333]" style={{ backgroundColor: "#0A0A0B" }}>
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs text-[#8A8B8C]">Select SGF stock:</span>
-                                <button type="button" onClick={() => setEditPickerLine(-1)} className="text-[#8A8B8C] hover:text-white"><X className="w-3 h-3" /></button>
+                                <button type="button" onClick={() => { setEditPickerLine(-1); setStockPickerFilter(""); }} className="text-[#8A8B8C] hover:text-white"><X className="w-3 h-3" /></button>
                               </div>
-                              <div className="max-h-40 overflow-y-auto space-y-1">
-                                {(stockItems || []).length === 0 && <p className="text-xs text-[#555]">No stock available</p>}
-                                {(stockItems || []).map((s: any) => (
-                                  <div key={s.id} onClick={() => linkStockToEditLine(idx, s.id)} className="flex items-center gap-2 p-2 rounded hover:bg-[#222324] cursor-pointer">
-                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.quantity > 0 ? "#4ADE80" : "#EF4444" }} />
-                                    <span className="text-xs text-white truncate flex-1">{s.productName}</span>
-                                    <span className="text-[10px] text-[#8A8B8C] font-mono">{s.productCode}</span>
-                                    <span className="text-[10px] text-[#8A8B8C]">{s.quantity || 0} SOH</span>
-                                  </div>
-                                ))}
+                              <input
+                                type="text"
+                                placeholder="Search product name or code..."
+                                value={stockPickerFilter}
+                                onChange={(e) => setStockPickerFilter(e.target.value)}
+                                className="input-field w-full text-xs mb-2"
+                                autoFocus
+                              />
+                              <div className="max-h-48 overflow-y-auto space-y-1">
+                                {(() => {
+                                  const filter = stockPickerFilter.trim().toLowerCase();
+                                  const filtered = (stockItems || []).filter((s: any) => {
+                                    if (!filter) return true;
+                                    return (s.productName || "").toLowerCase().includes(filter) ||
+                                           (s.productCode || "").toLowerCase().includes(filter);
+                                  });
+                                  if (filtered.length === 0) return <p className="text-xs text-[#555] p-2">No products match "{stockPickerFilter}"</p>;
+                                  return filtered.map((s: any) => (
+                                    <div key={s.id} onClick={() => { linkStockToEditLine(idx, s.id); setStockPickerFilter(""); }} className="flex items-center gap-2 p-2 rounded hover:bg-[#222324] cursor-pointer transition-colors">
+                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.quantity > 0 ? "#4ADE80" : "#EF4444" }} />
+                                      <span className="text-xs text-white truncate flex-1">{s.productName}</span>
+                                      <span className="text-[10px] text-[#8A8B8C] font-mono flex-shrink-0">{s.productCode}</span>
+                                      <span className="text-[10px] text-[#8A8B8C] flex-shrink-0">{s.quantity || 0} SOH</span>
+                                    </div>
+                                  ));
+                                })()}
                               </div>
                             </div>
                           )}

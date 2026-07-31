@@ -53,6 +53,7 @@ export default function InvoicesPage() {
   const [cnInvNumber, setCnInvNumber] = useState("");
   const [cnAmount, setCnAmount] = useState("");
   const [cnReason, setCnReason] = useState("");
+  const [cnLineItems, setCnLineItems] = useState<any[]>([]);
 
   /* Admin edit invoice form */
   const [showEditInv, setShowEditInv] = useState(false);
@@ -146,6 +147,31 @@ export default function InvoicesPage() {
     setPayAmt(bal > 0 ? String(bal) : "");
     setEditPayId(0);
     setShowPayForm(true);
+  }
+
+  function openCreditNote(inv: any) {
+    setCnInvId(inv.id);
+    setCnInvNumber(inv.invoiceNumber);
+    const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+    setCnAmount(bal > 0 ? String(bal) : "");
+    // Load invoice line items into credit note form
+    const items = (inv.items || []).map((item: any) => {
+      const qty = item.quantity || 0;
+      const price = item.unitPrice || 0;
+      const lineTotal = item.lineTotal || (qty * price);
+      return {
+        stockItemId: item.stockItemId || null,
+        productDescription: item.productName || item.description || "Unknown product",
+        originalQty: qty,
+        returnedQty: 0,
+        unitPrice: price,
+        originalLineTotal: lineTotal,
+        creditAmount: 0,
+        selected: false,
+      };
+    });
+    setCnLineItems(items);
+    setShowCreditNote(true);
   }
 
   function openEditPay(invId: number, invNumber: string, custName: string, p: any) {
@@ -793,7 +819,7 @@ export default function InvoicesPage() {
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
                           )}
                           {isAdmin && inv.status !== "draft" && (
-                            <button onClick={() => { setCnInvId(inv.id); setCnInvNumber(inv.invoiceNumber); setCnAmount(bal > 0 ? String(bal) : ""); setShowCreditNote(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Credit Note"><RotateCcw className="w-3.5 h-3.5 text-[#F59E0B]" /></button>
+                            <button onClick={() => openCreditNote(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Credit Note"><RotateCcw className="w-3.5 h-3.5 text-[#F59E0B]" /></button>
                           )}
                           {isAdmin && inv.status !== "draft" && (
                             <button onClick={() => sendEmail(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Email Invoice"><Mail className="w-3.5 h-3.5 text-[#3B82F6]" /></button>
@@ -836,15 +862,31 @@ export default function InvoicesPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {inv.items.map((it: any, idx: number) => (
-                                    <tr key={idx} style={{ borderBottom: "1px solid #18191A" }}>
-                                      <td className="p-2 text-[#888]">{idx + 1}</td>
-                                      <td className="p-2 text-[#E8E8E9]">{it.description || it.productName || "Item"}</td>
-                                      <td className="p-2 text-right text-white">{it.quantity || 0}</td>
-                                      <td className="p-2 text-right text-[#8A8B8C]">R {Number(it.unitPrice || 0).toFixed(2)}</td>
-                                      <td className="p-2 text-right text-[#D4A843] font-medium">R {Number(it.lineTotal || 0).toFixed(2)}</td>
-                                    </tr>
-                                  ))}
+                                  {(() => {
+                                    const invCNs = (allCreditNotes || []).filter((cn: any) => cn.invoiceId === inv.id && !cn.voided);
+                                    return inv.items.map((it: any, idx: number) => {
+                                      // Check if this line item has been credited
+                                      const credited = (inv.creditedLines || []).filter((cl: any) => (cl.productDescription === (it.productName || it.description) || cl.productDescription?.includes(it.productName || it.description)));
+                                      const totalCreditedQty = credited.reduce((sum: number, cl: any) => sum + (cl.returnedQty || 0), 0);
+                                      const isFullyCredited = totalCreditedQty >= (it.quantity || 0);
+                                      return (
+                                        <tr key={idx} style={{ borderBottom: "1px solid #18191A", opacity: isFullyCredited ? 0.5 : 1 }}>
+                                          <td className="p-2 text-[#888]">{idx + 1}</td>
+                                          <td className="p-2 text-[#E8E8E9]">
+                                            {it.description || it.productName || "Item"}
+                                            {totalCreditedQty > 0 && (
+                                              <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium" style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>
+                                                CREDITED: {totalCreditedQty} {isFullyCredited ? "(FULL)" : ""}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="p-2 text-right text-white">{it.quantity || 0}</td>
+                                          <td className="p-2 text-right text-[#8A8B8C]">R {Number(it.unitPrice || 0).toFixed(2)}</td>
+                                          <td className="p-2 text-right text-[#D4A843] font-medium">R {Number(it.lineTotal || 0).toFixed(2)}</td>
+                                        </tr>
+                                      );
+                                    });
+                                  })()}
                                 </tbody>
                               </table>
                             </div>
@@ -932,17 +974,30 @@ export default function InvoicesPage() {
                               {(() => {
                                 const invCreditNotes = (allCreditNotes || []).filter((cn: any) => cn.invoiceId === inv.id && !cn.voided);
                                 return invCreditNotes.length > 0 ? (
-                                  <div className="space-y-1">
+                                  <div className="space-y-2">
                                     {invCreditNotes.map((cn: any) => (
-                                      <div key={cn.id} className="flex items-center justify-between p-2.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
-                                        <div className="flex items-center gap-2">
-                                          <RotateCcw className="w-3.5 h-3.5 text-[#F59E0B] shrink-0" />
-                                          <span className="text-[#F59E0B] font-semibold">{cn.creditNoteNumber}</span>
-                                          <span className="text-[#F59E0B]">R {Number(cn.amount || 0).toFixed(2)}</span>
-                                          <span className="text-[#8A8B8C]">{cn.reason}</span>
-                                          <span className="text-[#8A8B8C]">{new Date(cn.createdAt).toLocaleDateString("en-ZA")}</span>
+                                      <div key={cn.id} className="p-2.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <div className="flex items-center gap-2">
+                                            <RotateCcw className="w-3.5 h-3.5 text-[#F59E0B] shrink-0" />
+                                            <span className="text-[#F59E0B] font-semibold">{cn.creditNoteNumber}</span>
+                                            <span className="text-[#F59E0B] font-bold">R {Number(cn.amount || 0).toFixed(2)}</span>
+                                            <span className="text-[#8A8B8C]">{cn.reason}</span>
+                                            <span className="text-[#8A8B8C]">{new Date(cn.createdAt).toLocaleDateString("en-ZA")}</span>
+                                          </div>
+                                          <button onClick={() => { if (confirm("Void this credit note? The invoice balance will be restored.")) voidCreditNote.mutate(cn.id); }} className="p-1.5 rounded hover:bg-[#222324]" title="Void"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
                                         </div>
-                                        <button onClick={() => { if (confirm("Void this credit note? The invoice balance will be restored.")) voidCreditNote.mutate(cn.id); }} className="p-1.5 rounded hover:bg-[#222324]" title="Void"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
+                                        {/* Line item breakdown */}
+                                        {cn.lineItems && cn.lineItems.length > 0 && (
+                                          <div className="mt-1.5 pt-1.5 space-y-1" style={{ borderTop: "1px solid rgba(245,158,11,0.15)" }}>
+                                            {cn.lineItems.map((li: any, liIdx: number) => (
+                                              <div key={liIdx} className="flex items-center justify-between pl-5">
+                                                <span className="text-[#8A8B8C] truncate flex-1">{li.productDescription}</span>
+                                                <span className="text-[#F59E0B] shrink-0 ml-2">{li.returnedQty} x R {Number(li.unitPrice).toFixed(2)} = R {Number(li.creditAmount).toFixed(2)}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     ))}
                                   </div>
@@ -958,7 +1013,7 @@ export default function InvoicesPage() {
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
                             )}
                             {isAdmin && inv.status !== "draft" && (
-                              <button onClick={() => { setCnInvId(inv.id); setCnInvNumber(inv.invoiceNumber); setCnAmount(bal > 0 ? String(bal) : ""); setShowCreditNote(true); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
+                              <button onClick={() => openCreditNote(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
                             )}
                             {isAdmin && inv.status !== "draft" && (
                               <button onClick={() => sendEmail(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(59,130,246,0.3)" }}><Mail className="w-3 h-3" /> Email to Customer</button>
@@ -1089,52 +1144,139 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      {/* ═══════ CREDIT NOTE MODAL ═══════ */}
+      {/* ═══════ CREDIT NOTE MODAL — LINE ITEM SELECTION ═══════ */}
       {showCreditNote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
                   <RotateCcw className="w-5 h-5 text-[#F59E0B]" /> Create Credit Note
                 </h2>
-                <p className="text-xs text-[#8A8B8C] mt-0.5">Invoice: {editInvNumber || cnInvId}</p>
+                <p className="text-xs text-[#8A8B8C] mt-0.5">Invoice: {cnInvNumber || cnInvId}</p>
               </div>
-              <button onClick={() => setShowCreditNote(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => { setShowCreditNote(false); setCnLineItems([]); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#F59E0B" }}>
-              Creates a credit note against this invoice. If the invoice is already paid, the customer will have a credit balance that can be applied to future invoices.
+              Select which products are being returned and enter the quantity. The system will calculate the credit amount per line and return stock to inventory.
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="label-text block mb-1.5">Credit Amount (R) *</label>
-                <input type="number" step="0.01" value={cnAmount} onChange={(e) => setCnAmount(e.target.value)} className="input-field" placeholder="Enter amount..." />
-              </div>
-              <div>
-                <label className="label-text block mb-1.5">Reason *</label>
-                <select value={cnReason} onChange={(e) => setCnReason(e.target.value)} className="input-field">
-                  <option value="">Select reason...</option>
-                  <option value="Stock return">Stock Return</option>
-                  <option value="Damaged goods">Damaged Goods</option>
-                  <option value="Price adjustment">Price Adjustment</option>
-                  <option value="Discount applied">Discount Applied</option>
-                  <option value="Other">Other</option>
-                </select>
-                {cnReason === "Other" && (
-                  <input type="text" value={cnReason} onChange={(e) => setCnReason(e.target.value)} className="input-field mt-2" placeholder="Enter reason..." />
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  if (!cnAmount || parseFloat(cnAmount) <= 0) { alert("Please enter a valid credit amount greater than 0."); return; }
-                  if (!cnReason) { alert("Please select a reason for the credit note."); return; }
-                  createCreditNote.mutate({ invoiceId: cnInvId, invoiceNumber: cnInvNumber, amount: parseFloat(cnAmount), reason: cnReason });
-                }}
-                className="btn-primary w-full justify-center"
-              >
-                <RotateCcw className="w-4 h-4" /> Create Credit Note
-              </button>
+
+            {/* Line Item Selection */}
+            <div className="space-y-3 mb-4">
+              <label className="label-text block">Select Products to Credit</label>
+              {cnLineItems.length === 0 && (
+                <p className="text-xs text-[#8A8B8C]">Loading invoice items...</p>
+              )}
+              {cnLineItems.map((li, idx) => (
+                <div key={idx} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-white">{li.productDescription}</p>
+                      <p className="text-xs text-[#8A8B8C]">Original: {li.originalQty} x R {li.unitPrice.toFixed(2)} = R {li.originalLineTotal.toFixed(2)}</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={li.selected}
+                      onChange={(e) => {
+                        const updated = [...cnLineItems];
+                        updated[idx] = { ...li, selected: e.target.checked };
+                        setCnLineItems(updated);
+                      }}
+                      className="w-5 h-5 accent-[#D4A843]"
+                    />
+                  </div>
+                  {li.selected && (
+                    <div className="mt-2">
+                      <label className="text-xs text-[#8A8B8C] block mb-1">Qty to Return (max {li.originalQty})</label>
+                      <input
+                        type="number"
+                        min={0.01}
+                        max={li.originalQty}
+                        step={li.unitPrice < 1 ? 0.01 : 1}
+                        value={li.returnedQty}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const clamped = Math.max(0, Math.min(val, li.originalQty));
+                          const creditAmount = clamped * li.unitPrice;
+                          const updated = [...cnLineItems];
+                          updated[idx] = { ...li, returnedQty: clamped, creditAmount };
+                          setCnLineItems(updated);
+                        }}
+                        className="input-field text-sm"
+                        style={{ maxWidth: 120 }}
+                      />
+                      <p className="text-xs mt-1" style={{ color: "#F59E0B" }}>
+                        Credit: R {li.creditAmount.toFixed(2)} (excl VAT: R {(li.creditAmount / 1.15).toFixed(2)})
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
+
+            {/* Total Credit Summary */}
+            {(() => {
+              const totalCredit = cnLineItems.filter((li) => li.selected).reduce((sum, li) => sum + li.creditAmount, 0);
+              return totalCredit > 0 ? (
+                <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#4ADE80]">Total Credit (excl VAT):</span>
+                    <span className="text-white font-semibold">R {(totalCredit / 1.15).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#4ADE80]">VAT (15%):</span>
+                    <span className="text-white">R {(totalCredit - totalCredit / 1.15).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold mt-1 pt-1" style={{ borderTop: "1px solid rgba(74,222,128,0.2)" }}>
+                    <span className="text-[#4ADE80]">Total Credit:</span>
+                    <span className="text-[#D4A843]">R {totalCredit.toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Reason */}
+            <div className="mb-4">
+              <label className="label-text block mb-1.5">Reason *</label>
+              <select value={cnReason} onChange={(e) => setCnReason(e.target.value)} className="input-field w-full">
+                <option value="">Select reason...</option>
+                <option value="Stock return">Stock Return</option>
+                <option value="Damaged goods">Damaged Goods</option>
+                <option value="Price adjustment">Price Adjustment</option>
+                <option value="Discount applied">Discount Applied</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            {/* Create Button */}
+            <button
+              onClick={() => {
+                const selectedItems = cnLineItems.filter((li) => li.selected && li.returnedQty > 0);
+                if (selectedItems.length === 0) { alert("Please select at least one product and enter a return quantity."); return; }
+                if (!cnReason) { alert("Please select a reason for the credit note."); return; }
+                const totalCredit = selectedItems.reduce((sum, li) => sum + li.creditAmount, 0);
+                createCreditNote.mutate({
+                  invoiceId: cnInvId,
+                  invoiceNumber: cnInvNumber,
+                  amount: totalCredit,
+                  reason: cnReason,
+                  lineItems: selectedItems.map((li) => ({
+                    stockItemId: li.stockItemId,
+                    productDescription: li.productDescription,
+                    originalQty: li.originalQty,
+                    returnedQty: li.returnedQty,
+                    unitPrice: li.unitPrice,
+                    creditAmount: li.creditAmount,
+                  })),
+                });
+                setShowCreditNote(false);
+                setCnLineItems([]);
+                setCnReason("");
+              }}
+              className="btn-primary w-full justify-center"
+            >
+              <RotateCcw className="w-4 h-4" /> Create Credit Note
+            </button>
           </div>
         </div>
       )}

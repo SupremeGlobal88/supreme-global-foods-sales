@@ -2264,10 +2264,21 @@ export const dataService = {
     getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId === invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId === customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     createCreditNote: (data: any) => {
+      // Calculate total credit from line items if provided
+      let lineItems = data.lineItems || [];
+      let creditTotal = data.amount || 0;
+
+      // If line items provided, recalculate total from them
+      if (lineItems.length > 0) {
+        creditTotal = lineItems.reduce((sum: number, li: any) => sum + (li.creditAmount || 0), 0);
+      }
+
       const creditNote = {
         id: Date.now() + Math.random(),
         creditNoteNumber: `CN-${String(creditNotes.filter((cn) => !cn.voided).length + 1).padStart(3, "0")}`,
         ...data,
+        amount: creditTotal, // ensure total is calculated from line items
+        lineItems,
         createdAt: new Date().toISOString(),
       };
       creditNotes.push(creditNote);
@@ -2306,7 +2317,6 @@ export const dataService = {
                   (data.invoiceNumber && i.invoiceNumber === data.invoiceNumber)
                 );
                 if (storedIdx >= 0) {
-                  // Found in localStorage but not in memory — reload and search again
                   invoices = stored;
                   idx = invoices.findIndex((i) => i.id == data.invoiceId);
                   if (idx < 0 && data.invoiceNumber) {
@@ -2322,11 +2332,27 @@ export const dataService = {
 
         // Apply credit note to invoice
         const inv = invoices[idx];
-        const creditTotal = (data.amount || 0);
         const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
         inv.balanceDue = currentBalance - creditTotal;
         if (!inv.creditNotes) inv.creditNotes = [];
         inv.creditNotes.push(creditNote.id);
+
+        // Store credited line items on the invoice for display
+        if (!inv.creditedLines) inv.creditedLines = [];
+        for (const li of lineItems) {
+          inv.creditedLines.push({
+            creditNoteId: creditNote.id,
+            creditNoteNumber: creditNote.creditNoteNumber,
+            productDescription: li.productDescription,
+            originalQty: li.originalQty,
+            returnedQty: li.returnedQty,
+            unitPrice: li.unitPrice,
+            creditAmount: li.creditAmount,
+            reason: data.reason,
+            createdAt: creditNote.createdAt,
+          });
+        }
+
         if (inv.balanceDue > 0.01) {
           inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
         } else if (inv.balanceDue >= -0.01) {
@@ -2340,7 +2366,23 @@ export const dataService = {
       };
 
       updatedInvoice = findAndUpdateInvoice();
-      logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${data.amount} invoice=${data.invoiceId} found=${!!updatedInvoice}`);
+
+      // Return stock to inventory for each credited line item
+      if (lineItems.length > 0) {
+        for (const li of lineItems) {
+          if (li.stockItemId && li.returnedQty > 0) {
+            const prodIdx = products.findIndex((p) => p.id === li.stockItemId);
+            if (prodIdx >= 0) {
+              const newQty = (products[prodIdx].quantity || 0) + li.returnedQty;
+              products[prodIdx].quantity = newQty;
+              products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+            }
+          }
+        }
+        saveItem("sgf_products", products);
+      }
+
+      logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${creditTotal} invoice=${data.invoiceId} lines=${lineItems.length} found=${!!updatedInvoice}`);
       return { creditNote, updatedInvoice };
     },
     voidCreditNote: (id: number) => {

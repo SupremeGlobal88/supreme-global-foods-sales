@@ -420,7 +420,9 @@ export default function OrdersPage() {
     setFormData({ ...formData, customerId: cid,
       priceTier: (customer?.priceTier as any) || "wholesale",
       paymentTerms: (customer?.paymentTerms as any) || "cod",
-      deliveryAddress: customer?.physicalAddress || "", items: [],
+      deliveryAddress: customer?.physicalAddress || "",
+      // Only clear items when creating a NEW order — preserve items when editing
+      items: editingOrder ? formData.items : [],
     });
     setCustomerSearch(customer?.name || "");
     setShowCustomerDropdown(false);
@@ -512,6 +514,9 @@ export default function OrdersPage() {
       deliveryAddress: order.deliveryAddress || "", notes: order.notes || "",
       items: (order.items || []).map((it: any) => ({ stockItemId: it.stockItemId, quantity: it.quantity, unitPrice: it.unitPrice })),
     });
+    // Pre-fill customer search with existing customer name so field is not blank
+    const cust = (customers || []).find((c: any) => c.id === order.customerId);
+    setCustomerSearch(cust?.name || "");
     setShowForm(true);
   }
 

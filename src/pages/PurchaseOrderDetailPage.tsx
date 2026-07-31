@@ -508,83 +508,99 @@ export default function PurchaseOrderDetailPage() {
   }
 
   // Print all COCs as multi-page document
+  // Shared COC page template — used by both printAll and printOne
+  function renderCOCHTML(coc: any, cfg: any, cust: any, customerLogoSrc: string, hasCustomerLogo: boolean): string {
+    const isSheep = coc.animalType === "sheep";
+    const animalName = isSheep ? "sheep" : "hog";
+    return `
+      <div style="page-break-after:always; padding:14px 24px; max-width:780px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
+        <div style="text-align:center; margin-bottom:4px;">
+          ${hasCustomerLogo ? `
+            <img src="${customerLogoSrc}" style="max-width:90px; max-height:60px; object-fit:contain;" onerror="this.style.display='none'" />
+          ` : `<h2 style="font-size:14px; color:${cfg.documentColor}; margin:0;">${cfg.cocHeader}</h2>`}
+        </div>
+        <div style="text-align:center; margin-bottom:8px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:4px;">
+          <h2 style="font-size:14px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.recircleProductCode || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(cust?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.customerProductCode || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">DATE OF MFG</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">USE BY DATE</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BARREL NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">Barrel ${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
+        </table>
+
+        <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">PHYSICAL REQUIREMENTS: PER BUNDLE</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">CALIBRATION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.calibration || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LENGTH</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.length || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">QTY STRANDS</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.qtyStrands || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">STUFFING CAPACITY</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.stuffingCapacity || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">ODOUR</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.odour || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">COLOUR</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.colour || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PACKING</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.packing || "-"}</td></tr>
+        </table>
+
+        <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">TYPICAL ANALYSIS</h3>
+        <p style="font-size:10px; margin:0 0 4px; line-height:1.35; overflow:visible;">Natural ${animalName} casings are simply a thin layer of cleaned ${animalName} intestines that provide a natural casing for the sausage. It&#39;s edible and normally consumed with the sausage.</p>
+
+        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:4px;">
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">COUNTRY OF ORIGIN</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">STATUS</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.status || "Non HALAAL"}</td></tr>
+        </table>
+
+        <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">CLEANING PROCESS</h3>
+        <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">${coc.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery."}</p>
+
+        <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">HANDLING AND STORAGE CONDITIONS</h3>
+        <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">${coc.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it."}</p>
+
+        <div style="text-align:center; margin-top:10px; font-size:9px; color:#666; border-top:2px solid ${cfg.documentColor}; padding-top:6px;">
+          <p style="margin:2px 0;"><strong>${cfg.legalName}</strong> | ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.address.country}</p>
+        </div>
+      </div>
+    `;
+  }
+
+  // Helper: open print window with COC HTML
+  function openCOCPrintWindow(title: string, cocHTML: string) {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${cocHTML}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script></body></html>`);
+    w.document.close();
+    w.focus();
+  }
+
+  // Get shared print config for COCs
+  function getCOCPrintConfig() {
+    const cfg = getCompanyConfig(po?.company);
+    const customerLogo = customer?.logoUrl || "";
+    const hasCustomerLogo = !!customerLogo;
+    const customerLogoSrc = hasCustomerLogo
+      ? (customerLogo.startsWith("http") ? customerLogo : `${window.location.origin}${customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`}`)
+      : "";
+    return { cfg, customerLogoSrc, hasCustomerLogo };
+  }
+
   function handlePrintAllCOCs() {
     const allCocs = cocs || [];
     if (allCocs.length === 0) {
       alert("No COCs found. Please auto-generate COCs first.");
       return;
     }
-    const cfg = getCompanyConfig(po?.company);
-    const w = window.open("", "_blank");
-    if (!w) return;
+    const { cfg, customerLogoSrc, hasCustomerLogo } = getCOCPrintConfig();
+    const cocPages = allCocs.map((coc: any) => renderCOCHTML(coc, cfg, customer, customerLogoSrc, hasCustomerLogo)).join("");
+    openCOCPrintWindow(`COCs - ${po.poNumber}`, cocPages);
+  }
 
-    // Customer logo URL (absolute for print window)
-    const customerLogo = customer?.logoUrl || "";
-    const hasCustomerLogo = !!customerLogo;
-    const customerLogoSrc = hasCustomerLogo
-      ? (customerLogo.startsWith("http") ? customerLogo : `${window.location.origin}${customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`}`)
-      : "";
-
-    const cocPages = allCocs.map((coc: any) => {
-      const isSheep = coc.animalType === "sheep";
-      const animalName = isSheep ? "sheep" : "hog";
-      return `
-        <div style="page-break-after:always; padding:14px 24px; max-width:780px; margin:0 auto; font-family:Arial,sans-serif; color:#000;">
-          <div style="text-align:center; margin-bottom:4px;">
-            ${hasCustomerLogo ? `
-              <img src="${customerLogoSrc}" style="max-width:90px; max-height:60px; object-fit:contain;" onerror="this.style.display='none'" />
-            ` : `<h2 style="font-size:14px; color:${cfg.documentColor}; margin:0;">${cfg.cocHeader}</h2>`}
-          </div>
-          <div style="text-align:center; margin-bottom:8px; border-bottom:2px solid ${cfg.documentColor}; padding-bottom:4px;">
-            <h2 style="font-size:14px; letter-spacing:1px; color:#000; margin:0;">${cfg.cocHeader}</h2>
-          </div>
-
-          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.recircleProductCode || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(customer?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.customerProductCode || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">DATE OF MFG</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">USE BY DATE</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.useByDate || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BARREL NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">Barrel ${coc.barrelNumber || "-"} (${coc.quantityBundles || 0} Bundles)</td></tr>
-          </table>
-
-          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">PHYSICAL REQUIREMENTS: PER BUNDLE</h3>
-          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">CALIBRATION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.calibration || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LENGTH</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.length || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">QTY STRANDS</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.qtyStrands || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">STUFFING CAPACITY</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.stuffingCapacity || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">ODOUR</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.odour || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">COLOUR</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.colour || "-"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PACKING</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.packing || "-"}</td></tr>
-          </table>
-
-          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">TYPICAL ANALYSIS</h3>
-          <p style="font-size:10px; margin:0 0 4px; line-height:1.35; overflow:visible;">Natural ${animalName} casings are simply a thin layer of cleaned ${animalName} intestines that provide a natural casing for the sausage. It&#39;s edible and normally consumed with the sausage.</p>
-
-          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:4px;">
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">COUNTRY OF ORIGIN</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>
-            <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">STATUS</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.status || "Non HALAAL"}</td></tr>
-          </table>
-
-          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">CLEANING PROCESS</h3>
-          <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">${coc.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery."}</p>
-
-          <h3 style="font-size:12px; margin:4px 0 3px; text-decoration:underline;">HANDLING AND STORAGE CONDITIONS</h3>
-          <p style="font-size:10px; margin:0 0 4px; line-height:1.35;">${coc.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it."}</p>
-
-          <div style="text-align:center; margin-top:10px; font-size:9px; color:#666; border-top:2px solid ${cfg.documentColor}; padding-top:6px;">
-            <p style="margin:2px 0;"><strong>${cfg.legalName}</strong> | ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.address.country}</p>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    w.document.write(`<!DOCTYPE html><html><head><title>COCs - ${po.poNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${cocPages}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script></body></html>`);
-    w.document.close();
-    w.focus();
+  function handlePrintOneCOC(coc: any) {
+    const { cfg, customerLogoSrc, hasCustomerLogo } = getCOCPrintConfig();
+    const page = renderCOCHTML(coc, cfg, customer, customerLogoSrc, hasCustomerLogo);
+    openCOCPrintWindow(`COC - ${coc.batchNumber}`, page);
   }
 
   function handlePrintPackingList() {
@@ -979,9 +995,14 @@ export default function PurchaseOrderDetailPage() {
                     <p className="text-xs text-[#8A8B8C]">{coc.productDescription}</p>
                   </div>
                 </div>
-                <button onClick={() => { if (confirm("Delete this COC?")) deleteCOC.mutate(coc.id); }} className="p-1 rounded hover:bg-[#222324]">
-                  <Trash2 className="w-3 h-3 text-[#EF4444]" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => handlePrintOneCOC(coc)} className="p-1 rounded hover:bg-[#222324]" title="Print this COC">
+                    <Printer className="w-3 h-3 text-[#D4A843]" />
+                  </button>
+                  <button onClick={() => { if (confirm("Delete this COC?")) deleteCOC.mutate(coc.id); }} className="p-1 rounded hover:bg-[#222324]" title="Delete this COC">
+                    <Trash2 className="w-3 h-3 text-[#EF4444]" />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <div><span className="text-[#8A8B8C]">Barrel: </span><span className="text-white font-medium">{coc.barrelNumber}</span></div>

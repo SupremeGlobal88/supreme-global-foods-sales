@@ -498,7 +498,7 @@ export default function OrdersPage() {
       payload.salesRepName = user?.name || "";
     }
     if (editingOrder) {
-      updateOrder.mutate({ id: editingOrder.id, ...payload });
+      updateOrder.mutate({ id: editingOrder.id, data: payload });
     } else {
       createOrder.mutate(payload);
     }

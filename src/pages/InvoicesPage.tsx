@@ -1336,7 +1336,7 @@ export default function InvoicesPage() {
                         style={{ maxWidth: 120 }}
                       />
                       <p className="text-xs mt-1" style={{ color: "#F59E0B" }}>
-                        Credit: R {li.creditAmount.toFixed(2)} (excl VAT: R {(li.creditAmount / 1.15).toFixed(2)})
+                        Line: R {li.creditAmount.toFixed(2)} excl VAT / R {(li.creditAmount * 1.15).toFixed(2)} incl VAT
                       </p>
                     </div>
                   )}
@@ -1362,15 +1362,15 @@ export default function InvoicesPage() {
                 <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#4ADE80]">Total Credit (excl VAT):</span>
-                    <span className="text-white font-semibold">R {(totalCredit / 1.15).toFixed(2)}</span>
+                    <span className="text-white font-semibold">R {totalCredit.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-[#4ADE80]">VAT (15%):</span>
-                    <span className="text-white">R {(totalCredit - totalCredit / 1.15).toFixed(2)}</span>
+                    <span className="text-[#4ADE80]">VAT @ 15%:</span>
+                    <span className="text-white">R {(totalCredit * 0.15).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold mt-1 pt-1" style={{ borderTop: "1px solid rgba(74,222,128,0.2)" }}>
-                    <span className="text-[#4ADE80]">Total Credit:</span>
-                    <span className="text-[#D4A843]">R {totalCredit.toFixed(2)}</span>
+                    <span className="text-[#4ADE80]">Total Credit (incl VAT):</span>
+                    <span className="text-[#D4A843]">R {(totalCredit * 1.15).toFixed(2)}</span>
                   </div>
                 </div>
               );
@@ -1395,12 +1395,13 @@ export default function InvoicesPage() {
                 const selectedItems = cnLineItems.filter((li) => li.selected && li.returnedQty > 0);
                 if (selectedItems.length === 0) { alert("Please select at least one product and enter a return quantity."); return; }
                 if (!cnReason) { alert("Please select a reason for the credit note."); return; }
-                const totalCredit = selectedItems.reduce((sum, li) => sum + li.creditAmount, 0);
+                const totalExclVAT = selectedItems.reduce((sum, li) => sum + li.creditAmount, 0);
+                const totalInclVAT = totalExclVAT * 1.15; // Credit note amount must include VAT
                 const isSample = selectedItems.some((li) => li.isSample);
                 createCreditNote.mutate({
                   invoiceId: cnInvId,
                   invoiceNumber: cnInvNumber,
-                  amount: totalCredit,
+                  amount: isSample ? 0 : totalInclVAT,
                   reason: isSample ? `Sample Stock Return — ${cnReason}` : cnReason,
                   lineItems: selectedItems.map((li) => ({
                     stockItemId: li.stockItemId,

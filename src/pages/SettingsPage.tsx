@@ -41,7 +41,7 @@ const DEFAULT_COMPANY = {
 const DEFAULT_BANKING = {
   bankName: "First National Bank (FNB)",
   accountName: "Supreme Global Foods",
-  accountNumber: "62001234567",
+  accountNumber: "63176141182",
   branchCode: "250655",
   swiftCode: "FIRNZAJJ",
 };

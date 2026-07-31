@@ -294,10 +294,18 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
 
 /** Read banking details from settings. Used by invoice print, statements, emails. */
 export function getBankingDetails(): { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string } {
-  const defaults = { bankName: "First National Bank (FNB)", accountName: "Supreme Global Foods", accountNumber: "62001234567", branchCode: "250655", swiftCode: "FIRNZAJJ" };
+  const defaults = { bankName: "First National Bank (FNB)", accountName: "Supreme Global Foods", accountNumber: "63176141182", branchCode: "250655", swiftCode: "FIRNZAJJ" };
   try {
     const raw = localStorage.getItem("sgf_settings_banking");
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // Auto-fix old incorrect account number that was deployed in earlier versions
+      if (saved.accountNumber === "62001234567") {
+        saved.accountNumber = "63176141182";
+        localStorage.setItem("sgf_settings_banking", JSON.stringify(saved));
+      }
+      return { ...defaults, ...saved };
+    }
   } catch { /* ignore */ }
   return defaults;
 }

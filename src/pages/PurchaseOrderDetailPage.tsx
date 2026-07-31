@@ -367,12 +367,7 @@ export default function PurchaseOrderDetailPage() {
       return;
     }
 
-    // Check if COCs already exist (uses tRPC data = cloud-first)
     const existingCOCs = cocs || [];
-    const generateAll = existingCOCs.length > 0
-      ? confirm(`${existingCOCs.length} COC(s) already exist. Replace all with new auto-generated COCs?`)
-      : true;
-    if (!generateAll) return;
 
     // Calculate dates once
     const orderDate = po.orderDate ? new Date(po.orderDate) : new Date();
@@ -387,11 +382,17 @@ export default function PurchaseOrderDetailPage() {
     const useByStr = formatDate(useBy);
 
     const totalBarrels = (barrels || []).length || pls.length;
-    const existingBatches = (allCocsList || [])
-      .map((c: any) => c.batchNumber)
-      .filter(Boolean);
 
-    // Build ALL COC data in memory first — no mutations yet
+    // Build map of existing COCs by packingListLineId for quick lookup
+    const cocByPackingLine = new Map<number, any>();
+    for (const c of existingCOCs) {
+      if (c.packingListLineId) cocByPackingLine.set(c.packingListLineId, c);
+    }
+
+    // Build list of existing batch numbers to avoid collisions for NEW COCs only
+    const usedBatches = new Set(existingCOCs.map((c: any) => c.batchNumber).filter(Boolean));
+
+    // Build ALL COC data — REUSE batch numbers and product codes for existing COCs
     const cocDataList = pls.map((pl: any, barrelIdx: number) => {
       const stock = pl.linkedStockItemId && stockItems
         ? (stockItems as any[]).find((s: any) => s.id === pl.linkedStockItemId)
@@ -401,7 +402,56 @@ export default function PurchaseOrderDetailPage() {
       const isSheep = descLower.includes("sheep") || descLower.includes("lamb");
       const casingType = isSheep ? "SHEEP CASINGS" : "HOG CASINGS";
 
-      // Unique 10-digit batch number
+      const productDesc = pl.productDescription || "";
+      const fullDesc = stock
+        ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
+        : productDesc;
+
+      const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
+
+      // Check if a COC already exists for this packing list line
+      const existingCOC = cocByPackingLine.get(pl.id);
+
+      if (existingCOC) {
+        // PRESERVE batch number and product code — only update changed fields
+        return {
+          ...existingCOC,
+          purchaseOrderId: poId,
+          packingListLineId: pl.id,
+          poNumber: po.poNumber,
+          corporateCustomerId: po.corporateCustomerId,
+          corporateCustomerName: customer?.name || "",
+          recircleProductCode: existingCOC.recircleProductCode, // PRESERVED
+          customerProductCode: poLine?.customerStockCode || existingCOC.customerProductCode || "",
+          productDescription: fullDesc, // Updated in case product description changed
+          batchNumber: existingCOC.batchNumber, // PRESERVED — never changes
+          lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || existingCOC.lotSealNumber || "",
+          manufacturingDate: mfgDateStr,
+          useByDate: useByStr,
+          barrelNumber: `${barrelIdx + 1} of ${totalBarrels}`,
+          barrelIndex: barrelIdx + 1,
+          totalBarrels,
+          quantityBundles: pl.quantityBundles || 0,
+          calibration: stock?.size || existingCOC.calibration || "Min 28/30 mm",
+          length: stock?.length ? `Minimum ${stock.length}m/bundle` : (existingCOC.length || "Minimum 90 to 91m/bundle"),
+          qtyStrands: stock?.strands ? `${stock.strands} strands / bundle` : (existingCOC.qtyStrands || "13 strands / bundle"),
+          stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",
+          grossWeight: pl.grossWeight || existingCOC.grossWeight || 0,
+          netWeight: pl.netWeight || existingCOC.netWeight || 0,
+          // Preserve these fields if they exist
+          odour: existingCOC.odour || "No off odors to be present",
+          colour: existingCOC.colour || "White / Beige color",
+          packing: existingCOC.packing || "Bundles packed in barrels of 150 or 200",
+          countryOfOrigin: existingCOC.countryOfOrigin || "South Africa",
+          status: existingCOC.status || "Non HALAAL",
+          casingType,
+          animalType: isSheep ? "sheep" : "hog",
+          cleaningProcess: existingCOC.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
+          handlingStorage: existingCOC.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
+        };
+      }
+
+      // NEW packing list line — generate fresh batch number and product code
       let batchNumber = "";
       do {
         const yy = String(orderDate.getFullYear()).slice(-2);
@@ -409,15 +459,9 @@ export default function PurchaseOrderDetailPage() {
         const dd = String(orderDate.getDate()).padStart(2, "0");
         const rand4 = String(Math.floor(1000 + Math.random() * 9000));
         batchNumber = `${yy}${mm}${dd}${rand4}`;
-      } while (existingBatches.includes(batchNumber));
-      existingBatches.push(batchNumber);
+      } while (usedBatches.has(batchNumber));
+      usedBatches.add(batchNumber);
 
-      const productDesc = pl.productDescription || "";
-      const fullDesc = stock
-        ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
-        : productDesc;
-
-      const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
       const uniqueProductCode = `PC${String(barrelIdx + 1).padStart(2, "0")}${String(orderDate.getFullYear()).slice(-2)}${String(orderDate.getMonth() + 1).padStart(2, "0")}${String(Math.floor(1000 + Math.random() * 9000))}`;
 
       return {
@@ -455,8 +499,12 @@ export default function PurchaseOrderDetailPage() {
       };
     });
 
-    // Single atomic mutation — deletes old COCs + creates all new ones + saves once
-    bulkGenerateCOCs.mutate({ poId, cocDataList });
+    // Delete COCs for packing list lines that no longer exist
+    const activePackingLineIds = new Set(pls.map((pl: any) => pl.id));
+    const orphanedCOCs = existingCOCs.filter((c: any) => !activePackingLineIds.has(c.packingListLineId));
+
+    // Pass both new data and orphan info to handler
+    bulkGenerateCOCs.mutate({ poId, cocDataList, deleteOrphanIds: orphanedCOCs.map((c: any) => c.id) });
   }
 
   // Print all COCs as multi-page document

@@ -396,7 +396,11 @@ export function createLocalLink() {
                 const localCOCs = dataService.coc.listByPurchaseOrder(poId);
                 for (const c of localCOCs) { dataService.coc.delete(c.id); }
                 // Step 5: Now create all new COCs in localStorage with fresh IDs
-                const created = dataService.coc.bulkGenerateForPO(poId, cocDataList);
+                const { deleteOrphanIds } = input;
+                if (deleteOrphanIds && deleteOrphanIds.length > 0) {
+                  for (const oid of deleteOrphanIds) { await removeCOC(oid); }
+                }
+                const created = dataService.coc.bulkGenerateForPO(poId, cocDataList, deleteOrphanIds || []);
                 // Step 6: Push all new COCs to Firebase
                 for (const c of created) { await pushCOC(c); }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: created.length } }));

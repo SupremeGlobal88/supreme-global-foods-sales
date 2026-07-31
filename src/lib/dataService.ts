@@ -3572,12 +3572,18 @@ export const dataService = {
     },
     /** Atomically delete all existing COCs for a PO and create new ones.
      *  Prevents race conditions from rapid-fire individual creates/deletes.
+     *  Preserves batch numbers and product codes for existing COCs.
      *  All COCs created in a single batch with unique sequential IDs. */
-    bulkGenerateForPO: (poId: number, cocDataList: any[]) => {
-      // 1. Remove all existing COCs for this PO
+    bulkGenerateForPO: (poId: number, cocDataList: any[], deleteOrphanIds: number[] = []) => {
+      // 1. Remove orphaned COCs (packing list lines that no longer exist)
+      if (deleteOrphanIds.length > 0) {
+        certificatesOfCompliance = certificatesOfCompliance.filter((c) => !deleteOrphanIds.includes(c.id));
+      }
+
+      // 2. Remove all existing COCs for this PO — the new list is complete
       certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.purchaseOrderId !== poId);
 
-      // 2. Create all new COCs with guaranteed unique sequential IDs
+      // 3. Create all new COCs with guaranteed unique sequential IDs
       const created: any[] = [];
       const baseTime = Date.now();
       for (let i = 0; i < cocDataList.length; i++) {
@@ -3590,14 +3596,14 @@ export const dataService = {
           ...data,
           company,
           id: baseTime + i, // sequential IDs, guaranteed unique
-          createdAt: new Date().toISOString(),
+          createdAt: data.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
         certificatesOfCompliance.push(newCOC);
         created.push(newCOC);
       }
 
-      // 3. Save ONCE to localStorage — atomic write
+      // 4. Save ONCE to localStorage — atomic write
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
       return created;
     },

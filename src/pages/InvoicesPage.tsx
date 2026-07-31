@@ -154,10 +154,13 @@ export default function InvoicesPage() {
     setCnInvNumber(inv.invoiceNumber);
     const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setCnAmount(bal > 0 ? String(bal) : "");
+    // Detect sample order — samples have $0 prices but still need stock return tracking
+    const isSample = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
     // Load invoice line items into credit note form
     const items = (inv.items || []).map((item: any) => {
       const qty = item.quantity || 0;
-      const price = item.unitPrice || 0;
+      // For samples, use actual stock price for tracking (credit note shows as stock return)
+      const price = isSample ? (item.unitPrice || item.actualPrice || 0) : (item.unitPrice || 0);
       const lineTotal = item.lineTotal || (qty * price);
       return {
         stockItemId: item.stockItemId || null,
@@ -168,6 +171,7 @@ export default function InvoicesPage() {
         originalLineTotal: lineTotal,
         creditAmount: 0,
         selected: false,
+        isSample,
       };
     });
     setCnLineItems(items);
@@ -443,6 +447,119 @@ export default function InvoicesPage() {
         setTimeout(printIt, 2000);
       })();
     </script>`);
+    w.document.close();
+  }
+
+  /* ── Credit Note Print ── */
+  function printCreditNote(cn: any, inv: any) {
+    const cfg = getCompanyConfig(inv?.company);
+    const cust = inv?.customer || {};
+    const customerLogo = cust?.logoUrl || "";
+    const hasCustomerLogo = !!customerLogo;
+    const customerLogoSrc = hasCustomerLogo
+      ? (customerLogo.startsWith("http") ? customerLogo : `${window.location.origin}${customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`}`)
+      : "";
+    const isSample = inv?.orderType === "sample" || (inv?.notes || "").includes("Sample");
+
+    const page = `
+      <div style="padding:30px 40px; max-width:210mm; margin:0 auto; font-family:Arial,sans-serif; color:#000; font-size:12px;">
+        ${hasCustomerLogo ? `
+        <div style="text-align:center; margin-bottom:8px;">
+          <img src="${customerLogoSrc}" style="max-width:100px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'" />
+        </div>` : ""}
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+          <div>
+            <img src="${window.location.origin}${cfg.logoUrl}" style="max-width:100px; max-height:70px; object-fit:contain;" onerror="this.style.display='none'; this.parentElement.innerHTML='<h2 style=\\'color:${cfg.documentColor};margin:0;font-size:18px;letter-spacing:2px;\\'>${cfg.logoText}</h2>'" />
+            <p style="margin:4px 0 0; font-size:10px; color:#666;">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}<br/>
+            Tel: ${cfg.contact.phone} | Email: ${cfg.contact.email}<br/>
+            VAT: ${cfg.vatNumber} | Reg: ${cfg.regNumber}</p>
+          </div>
+          <div style="text-align:right;">
+            <h1 style="font-size:22px; color:#C62828; margin:0; letter-spacing:2px;">CREDIT NOTE</h1>
+            <p style="font-size:16px; font-weight:800; margin:4px 0; color:#C62828;">${cn.creditNoteNumber}</p>
+            <p style="font-size:10px; color:#666; margin:0;">Date: ${new Date(cn.createdAt).toLocaleDateString("en-ZA")}</p>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px; padding:12px; background:#F9F9F9; border-radius:4px;">
+          <div>
+            <p style="font-size:10px; color:#888; margin:0 0 4px;">CREDIT TO</p>
+            <p style="font-weight:800; margin:0 0 2px;">${cust.name || inv.customerName || "Customer"}</p>
+            ${cust.contactPerson ? `<p style="margin:0; font-size:10px;">${cust.contactPerson}</p>` : ""}
+            <p style="margin:0; font-size:10px;">${cust.physicalAddress || ""}</p>
+            ${cust.vatNumber ? `<p style="margin:2px 0 0; font-size:10px; color:#666;">VAT: ${cust.vatNumber}</p>` : ""}
+          </div>
+          <div style="text-align:right;">
+            <p style="font-size:10px; color:#888; margin:0 0 4px;">ORIGINAL INVOICE</p>
+            <p style="font-weight:800; margin:0; color:#D4A843;">${inv.invoiceNumber || "N/A"}</p>
+            ${isSample ? `<p style="margin:0; font-size:10px; color:#C62828;">SAMPLE ORDER — Stock Return Only</p>` : ""}
+            <p style="margin:0; font-size:10px; color:#666;">Date: ${inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString("en-ZA") : "N/A"}</p>
+          </div>
+        </div>
+
+        <div style="margin-bottom:8px;">
+          <p style="font-size:10px; color:#888; margin:0 0 4px;">REASON</p>
+          <p style="margin:0; font-weight:600;">${cn.reason || "Stock Return"}</p>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:16px;">
+          <thead>
+            <tr style="background:${cfg.documentColor}; color:#fff;">
+              <th style="padding:8px; text-align:left; font-size:10px;">PRODUCT DESCRIPTION</th>
+              <th style="padding:8px; text-align:right; font-size:10px;">QTY RETURNED</th>
+              <th style="padding:8px; text-align:right; font-size:10px;">UNIT PRICE</th>
+              <th style="padding:8px; text-align:right; font-size:10px;">CREDIT AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(cn.lineItems || []).map((li: any, idx: number) => `
+              <tr style="border-bottom:1px solid #e5e5e5;">
+                <td style="padding:8px;">${li.productDescription || "Product"}</td>
+                <td style="padding:8px; text-align:right;">${li.returnedQty || 0}</td>
+                <td style="padding:8px; text-align:right;">R ${Number(li.unitPrice || 0).toFixed(2)}</td>
+                <td style="padding:8px; text-align:right; font-weight:600;">R ${Number(li.creditAmount || 0).toFixed(2)}</td>
+              </tr>
+            `).join("") || `
+              <tr style="border-bottom:1px solid #e5e5e5;">
+                <td style="padding:8px;" colspan="3">${cn.reason || "Credit"}</td>
+                <td style="padding:8px; text-align:right; font-weight:600;">R ${Number(cn.amount || 0).toFixed(2)}</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+
+        <div style="display:flex; justify-content:flex-end;">
+          <div style="width:260px; font-size:11px;">
+            ${!isSample ? `
+            <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;">
+              <span style="color:#666;">Subtotal (excl VAT)</span><strong>R ${(Number(cn.amount || 0) / 1.15).toFixed(2)}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;">
+              <span style="color:#666;">VAT @ 15%</span><strong>R ${(Number(cn.amount || 0) - Number(cn.amount || 0) / 1.15).toFixed(2)}</strong>
+            </div>
+            ` : ""}
+            <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:2px solid #C62828;">
+              <span style="font-weight:800; font-size:12px;">TOTAL CREDIT</span>
+              <strong style="color:#C62828; font-size:13px;">R ${Number(cn.amount || 0).toFixed(2)}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:20px; padding:10px; background:#FFF5F5; border:1px solid #C62828; border-radius:4px; font-size:10px; color:#C62828;">
+          <strong>NOTE:</strong> This credit note ${isSample ? "records the return of sample stock. No monetary value is applicable for sample orders." : "reduces the balance of the original invoice. If the invoice is already paid, the credit will be applied to the customer's account for future use."}
+        </div>
+
+        <div style="margin-top:20px; text-align:center; font-size:9px; color:#999; border-top:1px solid #ddd; padding-top:8px; line-height:1.5;">
+          <strong>${cfg.legalName}</strong> | ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.address.country}<br/>
+          Banking: ${cfg.banking.bankName} | Acc: ${cfg.banking.accountName} | ${cfg.banking.accountNumber} | Branch: ${cfg.banking.branchCode}<br/>
+          E&nbsp;&amp;&nbsp;OE. This is a system-generated credit note.
+        </div>
+      </div>
+    `;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>Credit Note ${cn.creditNoteNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${page}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script></body></html>`);
     w.document.close();
   }
 
@@ -985,7 +1102,10 @@ export default function InvoicesPage() {
                                             <span className="text-[#8A8B8C]">{cn.reason}</span>
                                             <span className="text-[#8A8B8C]">{new Date(cn.createdAt).toLocaleDateString("en-ZA")}</span>
                                           </div>
-                                          <button onClick={() => { if (confirm("Void this credit note? The invoice balance will be restored.")) voidCreditNote.mutate(cn.id); }} className="p-1.5 rounded hover:bg-[#222324]" title="Void"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
+                                          <div className="flex items-center gap-1">
+                                            <button onClick={() => printCreditNote(cn, inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Print Credit Note"><Printer className="w-3 h-3 text-[#D4A843]" /></button>
+                                            <button onClick={() => { if (confirm("Void this credit note? The invoice balance will be restored.")) voidCreditNote.mutate(cn.id); }} className="p-1.5 rounded hover:bg-[#222324]" title="Void"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
+                                          </div>
                                         </div>
                                         {/* Line item breakdown */}
                                         {cn.lineItems && cn.lineItems.length > 0 && (
@@ -1157,9 +1277,19 @@ export default function InvoicesPage() {
               </div>
               <button onClick={() => { setShowCreditNote(false); setCnLineItems([]); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
-            <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#F59E0B" }}>
-              Select which products are being returned and enter the quantity. The system will calculate the credit amount per line and return stock to inventory.
-            </div>
+            {(() => {
+              const isSample = cnLineItems.some((li) => li.isSample);
+              return isSample ? (
+                <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", color: "#3B82F6" }}>
+                  <strong>SAMPLE ORDER — Stock Return</strong><br/>
+                  This is a sample order credit note. No monetary value will be credited — only stock quantities will be returned to inventory for tracking purposes.
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg mb-4 text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#F59E0B" }}>
+                  Select which products are being returned and enter the quantity. The system will calculate the credit amount per line and return stock to inventory.
+                </div>
+              );
+            })()}
 
             {/* Line Item Selection */}
             <div className="space-y-3 mb-4">
@@ -1216,8 +1346,19 @@ export default function InvoicesPage() {
 
             {/* Total Credit Summary */}
             {(() => {
-              const totalCredit = cnLineItems.filter((li) => li.selected).reduce((sum, li) => sum + li.creditAmount, 0);
-              return totalCredit > 0 ? (
+              const selectedItems = cnLineItems.filter((li) => li.selected);
+              const totalCredit = selectedItems.reduce((sum, li) => sum + li.creditAmount, 0);
+              const isSample = selectedItems.some((li) => li.isSample);
+              if (selectedItems.length === 0) return null;
+              return isSample ? (
+                <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span className="text-[#3B82F6]">Total Items Being Returned:</span>
+                    <span className="text-white">{selectedItems.reduce((sum, li) => sum + li.returnedQty, 0)} units</span>
+                  </div>
+                  <p className="text-xs text-[#8A8B8C] mt-1">No monetary credit — stock return only</p>
+                </div>
+              ) : (
                 <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#4ADE80]">Total Credit (excl VAT):</span>
@@ -1232,7 +1373,7 @@ export default function InvoicesPage() {
                     <span className="text-[#D4A843]">R {totalCredit.toFixed(2)}</span>
                   </div>
                 </div>
-              ) : null;
+              );
             })()}
 
             {/* Reason */}
@@ -1255,11 +1396,12 @@ export default function InvoicesPage() {
                 if (selectedItems.length === 0) { alert("Please select at least one product and enter a return quantity."); return; }
                 if (!cnReason) { alert("Please select a reason for the credit note."); return; }
                 const totalCredit = selectedItems.reduce((sum, li) => sum + li.creditAmount, 0);
+                const isSample = selectedItems.some((li) => li.isSample);
                 createCreditNote.mutate({
                   invoiceId: cnInvId,
                   invoiceNumber: cnInvNumber,
                   amount: totalCredit,
-                  reason: cnReason,
+                  reason: isSample ? `Sample Stock Return — ${cnReason}` : cnReason,
                   lineItems: selectedItems.map((li) => ({
                     stockItemId: li.stockItemId,
                     productDescription: li.productDescription,
@@ -1275,7 +1417,7 @@ export default function InvoicesPage() {
               }}
               className="btn-primary w-full justify-center"
             >
-              <RotateCcw className="w-4 h-4" /> Create Credit Note
+              <RotateCcw className="w-4 h-4" /> {cnLineItems.some((li) => li.isSample) ? "Record Stock Return" : "Create Credit Note"}
             </button>
           </div>
         </div>

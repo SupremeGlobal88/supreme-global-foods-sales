@@ -1006,7 +1006,8 @@ export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; ne
 }
 
 /** Migrate old sample orders to use normal status flow and SGF invoice numbers.
- *  Run this once after the sample order fix is deployed. */
+ *  PRESERVES real invoice totals — sample invoices show actual values with balanceDue=0.
+ *  The invoice document shows what was sampled; the balanceDue=0 means no charge. */
 export function migrateSampleOrders(): { migrated: number; invoicesCreated: number; followUpsCreated: number; details: string[] } {
   load();
   const details: string[] = [];
@@ -1024,10 +1025,16 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
       details.push(`Order ${order.orderNumber}: status changed from sample_delivered → delivered`);
     }
 
+    // Calculate REAL totals from order items (never zero these out)
+    const items = order.items || [];
+    const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+    const vatAmount = subtotal * 0.15;
+    const total = subtotal + vatAmount;
+
     // Fix 2: Ensure a proper SGF invoice exists
     const existingInvoice = invoices.find((i) => i.orderId == order.id);
     if (!existingInvoice) {
-      // Create a new SGF invoice for this sample order
+      // Create a new SGF invoice for this sample order WITH REAL TOTALS
       const invoiceNumber = getNextInvoiceNumber();
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
       const now = new Date();
@@ -1040,46 +1047,46 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
         deliveryNoteNumber: `DN-${order.orderNumber}`,
         customerId: order.customerId,
         customer: customers.find((c) => c.id === order.customerId) || null,
-        subtotal: 0,
-        vatAmount: 0,
-        total: 0,
-        totalAmount: 0,
-        balanceDue: 0,
+        subtotal,
+        vatAmount,
+        total,
+        totalAmount: total,
+        balanceDue: 0, // Sample = no charge, but totals show real values
         amountPaid: 0,
         status: "paid",
         paymentTerms: order.paymentTerms || "cod",
         invoiceDate: order.createdAt || now.toISOString(),
         dueDate: now.toISOString(),
-        notes: `Sample order - ${order.orderNumber} (No Charge)`,
+        notes: `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}`,
         items: (order.items || []).map((item: any) => ({
           description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
           quantity: item.quantity,
-          unitPrice: 0,
-          lineTotal: 0,
+          unitPrice: item.unitPrice || 0,
+          lineTotal: item.lineTotal || 0,
         })),
         createdAt: order.createdAt || now.toISOString(),
         updatedAt: now.toISOString(),
       });
       invoicesCreated++;
-      details.push(`Order ${order.orderNumber}: created invoice ${invoiceNumber}`);
+      details.push(`Order ${order.orderNumber}: created invoice ${invoiceNumber} with REAL totals R ${total.toFixed(2)}`);
     } else if (existingInvoice && !existingInvoice.invoiceNumber?.startsWith("SGF")) {
-      // Fix existing non-SGF invoice number
+      // Fix existing non-SGF invoice number — PRESERVE real totals
       const oldNum = existingInvoice.invoiceNumber;
       existingInvoice.invoiceNumber = getNextInvoiceNumber();
-      existingInvoice.subtotal = 0;
-      existingInvoice.vatAmount = 0;
-      existingInvoice.total = 0;
-      existingInvoice.totalAmount = 0;
+      existingInvoice.subtotal = subtotal;
+      existingInvoice.vatAmount = vatAmount;
+      existingInvoice.total = total;
+      existingInvoice.totalAmount = total;
       existingInvoice.balanceDue = 0;
       existingInvoice.status = "paid";
-      existingInvoice.notes = `Sample order - ${order.orderNumber} (No Charge)`;
+      existingInvoice.notes = `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}`;
       existingInvoice.items = (order.items || []).map((item: any) => ({
         description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
         quantity: item.quantity,
-        unitPrice: 0,
-        lineTotal: 0,
+        unitPrice: item.unitPrice || 0,
+        lineTotal: item.lineTotal || 0,
       }));
-      details.push(`Order ${order.orderNumber}: invoice renumbered ${oldNum} → ${existingInvoice.invoiceNumber}`);
+      details.push(`Order ${order.orderNumber}: invoice renumbered ${oldNum} → ${existingInvoice.invoiceNumber} with REAL totals R ${total.toFixed(2)}`);
     }
 
     // Fix 3: Ensure a follow-up exists for this sample order
@@ -1241,8 +1248,8 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       items: (order.items || []).map((item: any) => ({
         description: `${item.productCode} - ${item.productName}`,
         quantity: item.quantity,
-        unitPrice: isSample ? 0 : item.unitPrice,
-        lineTotal: isSample ? 0 : item.lineTotal,
+        unitPrice: item.unitPrice || 0,
+        lineTotal: item.lineTotal || 0,
       })),
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -1287,9 +1294,10 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       items: items.map((item: any) => ({
         stockItemId: item.stockItemId,
         productName: item.productName,
+        description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        lineTotal: item.lineTotal,
+        unitPrice: item.unitPrice || 0,
+        lineTotal: item.lineTotal || 0,
       })),
       subtotal,
       vatAmount,
@@ -2340,19 +2348,26 @@ export const dataService = {
         inv.creditNotes.push(creditNote.id);
 
         // Store credited line items on the invoice for display
+        // GUARD: prevent duplicate entries for the same credit note + product
         if (!inv.creditedLines) inv.creditedLines = [];
         for (const li of lineItems) {
-          inv.creditedLines.push({
-            creditNoteId: creditNote.id,
-            creditNoteNumber: creditNote.creditNoteNumber,
-            productDescription: li.productDescription,
-            originalQty: li.originalQty,
-            returnedQty: li.returnedQty,
-            unitPrice: li.unitPrice,
-            creditAmount: li.creditAmount,
-            reason: data.reason,
-            createdAt: creditNote.createdAt,
-          });
+          const alreadyExists = inv.creditedLines.some((cl: any) =>
+            cl.creditNoteId == creditNote.id &&
+            cl.productDescription === li.productDescription
+          );
+          if (!alreadyExists) {
+            inv.creditedLines.push({
+              creditNoteId: creditNote.id,
+              creditNoteNumber: creditNote.creditNoteNumber,
+              productDescription: li.productDescription,
+              originalQty: li.originalQty,
+              returnedQty: li.returnedQty,
+              unitPrice: li.unitPrice,
+              creditAmount: li.creditAmount,
+              reason: data.reason,
+              createdAt: creditNote.createdAt,
+            });
+          }
         }
 
         if (inv.balanceDue > 0.01) {
@@ -2388,13 +2403,15 @@ export const dataService = {
       return { creditNote, updatedInvoice };
     },
     voidCreditNote: (id: number) => {
-      const idx = creditNotes.findIndex((cn) => cn.id === id);
+      // Use loose equality (==) because Firebase may convert number IDs to strings
+      const idx = creditNotes.findIndex((cn) => cn.id == id);
       if (idx >= 0) {
         const cn = creditNotes[idx];
         cn.voided = true;
         cn.voidedAt = new Date().toISOString();
         if (cn.invoiceId) {
-          const inv = invoices.find((i) => i.id === cn.invoiceId);
+          // Use loose equality (==) because Firebase may convert number IDs to strings
+          const inv = invoices.find((i) => i.id == cn.invoiceId);
           if (inv) {
             // Restore the balance by adding the credit note amount back.
             // Credit notes NEVER affect amountPaid — only balanceDue.

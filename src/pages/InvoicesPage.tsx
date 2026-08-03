@@ -983,7 +983,15 @@ export default function InvoicesPage() {
                                     const invCNs = (allCreditNotes || []).filter((cn: any) => cn.invoiceId === inv.id && !cn.voided);
                                     return inv.items.map((it: any, idx: number) => {
                                       // Check if this line item has been credited
-                                      const credited = (inv.creditedLines || []).filter((cl: any) => (cl.productDescription === (it.productName || it.description) || cl.productDescription?.includes(it.productName || it.description)));
+                                      // DEDUPLICATE by creditNoteId — prevents "CREDITED: 5" when only 1 qty was returned
+                                      // (old bug created duplicate creditedLines entries)
+                                      const seenCNIds = new Set();
+                                      const credited = (inv.creditedLines || []).filter((cl: any) => {
+                                        if (seenCNIds.has(cl.creditNoteId)) return false;
+                                        const matches = cl.productDescription === (it.productName || it.description) || cl.productDescription?.includes(it.productName || it.description);
+                                        if (matches) seenCNIds.add(cl.creditNoteId);
+                                        return matches;
+                                      });
                                       const totalCreditedQty = credited.reduce((sum: number, cl: any) => sum + (cl.returnedQty || 0), 0);
                                       const isFullyCredited = totalCreditedQty >= (it.quantity || 0);
                                       return (

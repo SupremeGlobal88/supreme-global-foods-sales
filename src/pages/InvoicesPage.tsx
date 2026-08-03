@@ -242,8 +242,14 @@ export default function InvoicesPage() {
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
     const invDate = new Date(inv.invoiceDate || inv.createdAt);
     const retDate = new Date(invDate); retDate.setDate(retDate.getDate() + 7);
-    const sub = Number(inv.subtotal || 0), vat = Number(inv.vatAmount || 0), tot = Number(inv.total || 0);
-    const paid = Number(inv.amountPaid || 0), bal = Number(inv.balanceDue || tot - paid);
+    // CUSTOMER PRINT: sample orders show R 0.00 (no charge to customer)
+    // INTERNAL VIEW: still shows real values for admin tracking
+    const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+    const rawSub = Number(inv.subtotal || 0), rawVat = Number(inv.vatAmount || 0), rawTot = Number(inv.total || 0);
+    const sub = isSampleInvoice ? 0 : rawSub;
+    const vat = isSampleInvoice ? 0 : rawVat;
+    const tot = isSampleInvoice ? 0 : rawTot;
+    const paid = Number(inv.amountPaid || 0), bal = isSampleInvoice ? 0 : Number(inv.balanceDue || tot - paid);
     const items = inv.items || [];
 
     const copy = (label: string, isOffice: boolean) => `

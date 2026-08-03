@@ -2342,8 +2342,14 @@ export const dataService = {
 
         // Apply credit note to invoice
         const inv = invoices[idx];
-        const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-        inv.balanceDue = currentBalance - creditTotal;
+        // SAMPLE ORDER: credit note is stock return only — NO monetary impact on balance
+        const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+        if (!isSampleInvoice) {
+          // Normal order: subtract credit amount from balance
+          const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+          inv.balanceDue = currentBalance - creditTotal;
+        }
+        // For samples, balanceDue stays as-is (already 0)
         if (!inv.creditNotes) inv.creditNotes = [];
         inv.creditNotes.push(creditNote.id);
 
@@ -2370,12 +2376,13 @@ export const dataService = {
           }
         }
 
-        if (inv.balanceDue > 0.01) {
-          inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
-        } else if (inv.balanceDue >= -0.01) {
-          inv.status = "paid";
-        } else {
-          inv.status = "paid";
+        // Sample orders always stay "paid" — credit notes are stock returns only
+        if (!isSampleInvoice) {
+          if (inv.balanceDue > 0.01) {
+            inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
+          } else {
+            inv.status = "paid";
+          }
         }
         inv.updatedAt = new Date().toISOString();
         saveItem("sgf_invoices", invoices);
@@ -2413,24 +2420,30 @@ export const dataService = {
           // Use loose equality (==) because Firebase may convert number IDs to strings
           const inv = invoices.find((i) => i.id == cn.invoiceId);
           if (inv) {
-            // Restore the balance by adding the credit note amount back.
-            // Credit notes NEVER affect amountPaid — only balanceDue.
-            // Use explicit null check because (0 || 0) works but is fragile.
-            const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
-            inv.balanceDue = currentBal + (cn.amount || 0);
+            // SAMPLE ORDER: credit note was stock return only — do NOT restore balance
+            const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+            if (!isSampleInvoice) {
+              // Normal order: restore the balance by adding the credit note amount back
+              const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
+              inv.balanceDue = currentBal + (cn.amount || 0);
+              // Recalculate status based on restored balance
+              const total = Number(inv.total || inv.totalAmount || 0);
+              const paid = Number(inv.amountPaid || 0);
+              if (inv.balanceDue >= total - 0.01) {
+                inv.status = "sent"; // No payment, full balance restored
+              } else if (inv.balanceDue > 0.01) {
+                inv.status = "partially_paid"; // Some payment, some balance
+              } else {
+                inv.status = "paid"; // Fully paid or credit
+              }
+            }
             // Remove credit note ID from invoice tracking
             if (inv.creditNotes) {
               inv.creditNotes = inv.creditNotes.filter((cnId: any) => cnId !== cn.id);
             }
-            // Recalculate status based on restored balance
-            const total = Number(inv.total || inv.totalAmount || 0);
-            const paid = Number(inv.amountPaid || 0);
-            if (inv.balanceDue >= total - 0.01) {
-              inv.status = "sent"; // No payment, full balance restored
-            } else if (inv.balanceDue > 0.01) {
-              inv.status = "partially_paid"; // Some payment, some balance
-            } else {
-              inv.status = "paid"; // Fully paid or credit
+            // Remove credited lines for this credit note
+            if (inv.creditedLines) {
+              inv.creditedLines = inv.creditedLines.filter((cl: any) => cl.creditNoteId != cn.id);
             }
             saveItem("sgf_invoices", invoices);
           }

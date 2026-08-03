@@ -639,9 +639,11 @@ export default function OrdersPage() {
     const logoUrl = `${window.location.origin}/sgf-logo.png`;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const subtotal = Number(order.subtotal || 0);
-    const vatAmount = Number(order.vatAmount || 0);
-    const total = Number(order.total || 0);
+    // Calculate totals from invoice data (correct incl VAT) or fall back to items
+    const itemSubtotal = (order.items || []).reduce((s: number, it: any) => s + (it.lineTotal || 0), 0);
+    const subtotal = Number(matchedInvoice?.subtotal || itemSubtotal);
+    const vatAmount = Number(matchedInvoice?.vatAmount || itemSubtotal * 0.15);
+    const total = Number(matchedInvoice?.total || subtotal + vatAmount);
     const logoBlock = (id: string) => `
       <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('${id}').style.display='block'" />
       <div id="${id}" class="logo-fallback">SUPREME GLOBAL FOODS</div>`;

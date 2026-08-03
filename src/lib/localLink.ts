@@ -273,6 +273,13 @@ export function createLocalLink() {
                   if (result.updatedInvoice) {
                     await pushInvoice(result.updatedInvoice);
                   }
+                  // Push updated stock quantities back to Firebase (stock returned to inventory)
+                  for (const li of (result.creditNote.lineItems || [])) {
+                    if (li.stockItemId) {
+                      const prod = dataService.stock.getById(li.stockItemId);
+                      if (prod) await pushOneStockItem(prod);
+                    }
+                  }
                 }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;

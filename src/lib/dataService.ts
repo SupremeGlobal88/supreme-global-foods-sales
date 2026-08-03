@@ -1265,9 +1265,9 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
   // Calculate totals: samples are always zero-value
   const items = order.items || [];
-  const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-  const vatAmount = isSample ? 0 : subtotal * 0.15;
-  const total = isSample ? 0 : subtotal + vatAmount;
+  const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+  const vatAmount = subtotal * 0.15;
+  const total = subtotal + vatAmount;
   // Check if invoice already exists — UPDATE it with new order data
   const existingIdx = invoices.findIndex((i) => i.orderId == orderId);
   if (existingIdx >= 0) {
@@ -1277,9 +1277,11 @@ export function generateInvoiceForOrder(orderId: number): string | null {
     const oldTotal = Number(existing.total || existing.totalAmount || 0);
     const newTotal = total;
     const amountPaid = Number(existing.amountPaid || 0);
-    const newBalanceDue = Math.abs(newTotal - oldTotal) > 0.01
+    let newBalanceDue = Math.abs(newTotal - oldTotal) > 0.01
       ? newTotal - amountPaid
       : (existing.balanceDue !== undefined ? existing.balanceDue : newTotal - amountPaid);
+    // Sample orders always have R 0 balance due (no charge)
+    if (isSample) newBalanceDue = 0;
     invoices[existingIdx] = {
       ...existing,
       items: items.map((item: any) => ({

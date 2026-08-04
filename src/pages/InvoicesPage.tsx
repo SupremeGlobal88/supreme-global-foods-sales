@@ -889,7 +889,8 @@ export default function InvoicesPage() {
                 const tot = Number(inv.total || 0);
                 const paid = Number(inv.amountPaid || 0);
                 const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (tot - paid);
-                const invReceipts = (allReceipts || []).filter((r: any) => r.invoiceId === inv.id);
+                // Use loose equality (==) — Firebase may convert number IDs to strings
+                const invReceipts = (allReceipts || []).filter((r: any) => r.invoiceId == inv.id);
                 return (
                   <>
                     <tr
@@ -986,7 +987,8 @@ export default function InvoicesPage() {
                                 </thead>
                                 <tbody>
                                   {(() => {
-                                    const invCNs = (allCreditNotes || []).filter((cn: any) => cn.invoiceId === inv.id && !cn.voided);
+                                    // Use loose equality (==) — Firebase may convert number IDs to strings
+                                    const invCNs = (allCreditNotes || []).filter((cn: any) => cn.invoiceId == inv.id && !cn.voided);
                                     return inv.items.map((it: any, idx: number) => {
                                       // Check if this line item has been credited
                                       // DEDUPLICATE by creditNoteId — prevents "CREDITED: 5" when only 1 qty was returned
@@ -1103,7 +1105,8 @@ export default function InvoicesPage() {
                                 <RotateCcw className="w-3.5 h-3.5" /> Credit Notes
                               </div>
                               {(() => {
-                                const invCreditNotes = (allCreditNotes || []).filter((cn: any) => cn.invoiceId === inv.id && !cn.voided);
+                                // Use loose equality (==) — Firebase may convert number IDs to strings
+                                const invCreditNotes = (allCreditNotes || []).filter((cn: any) => cn.invoiceId == inv.id && !cn.voided);
                                 return invCreditNotes.length > 0 ? (
                                   <div className="space-y-2">
                                     {invCreditNotes.map((cn: any) => (

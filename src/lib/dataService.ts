@@ -833,7 +833,7 @@ function getCommittedStock(productId: number): number {
 // Check if customer already has a sample of this product
 function hasExistingSample(customerId: number, stockItemId: number): boolean {
   return orders.some((o) =>
-    o.customerId === customerId &&
+    o.customerId == customerId &&
     o.orderType === "sample" &&
     o.items?.some((item: any) => item.stockItemId === stockItemId)
   );
@@ -2265,14 +2265,15 @@ export const dataService = {
       return inv;
     },
     getReceipts: () => receipts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    getReceiptsByInvoice: (invoiceId: number) => receipts.filter((r) => r.invoiceId === invoiceId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    getReceiptsByCustomer: (customerId: number) => receipts.filter((r) => r.customerId === customerId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    getReceiptById: (id: number) => receipts.find((r) => r.id === r.id) || null,
+    getReceiptsByInvoice: (invoiceId: number) => receipts.filter((r) => r.invoiceId == invoiceId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getReceiptsByCustomer: (customerId: number) => receipts.filter((r) => r.customerId == customerId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getReceiptById: (id: number) => receipts.find((r) => r.id == id) || null,
 
     // Credit note methods
     getCreditNotes: () => creditNotes.filter((cn) => !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId === invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId === customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    // Use loose equality (==) — Firebase may convert number IDs to strings
+    getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId == invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId == customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     createCreditNote: (data: any) => {
       // Calculate total credit from line items if provided
       let lineItems = data.lineItems || [];
@@ -2907,7 +2908,7 @@ export const dataService = {
     })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     listByCustomer: ({ customerId }: { customerId: number }) =>
       followUpActions
-        .filter((fa) => fa.customerId === customerId)
+        .filter((fa) => fa.customerId == customerId)
         .map((fa) => ({
           ...fa,
           customer: customers.find((c) => c.id === fa.customerId) || null,
@@ -2937,13 +2938,13 @@ export const dataService = {
   specialPrice: {
     listByCustomer: ({ customerId }: { customerId: number }) =>
       specialPrices
-        .filter((sp) => sp.customerId === customerId)
+        .filter((sp) => sp.customerId == customerId)
         .map((sp) => ({
           ...sp,
           stockItem: products.find((p) => p.id === sp.stockItemId) || null,
         })),
     set: ({ customerId, stockItemId, specialPrice: price }: { customerId: number; stockItemId: number; specialPrice: number }) => {
-      const existing = specialPrices.find((sp) => sp.customerId === customerId && sp.stockItemId === stockItemId);
+      const existing = specialPrices.find((sp) => sp.customerId == customerId && sp.stockItemId == stockItemId);
       if (existing) {
         existing.specialPrice = String(price);
         existing.updatedAt = new Date().toISOString();
@@ -3148,11 +3149,11 @@ export const dataService = {
           else if (daysOverdue >= 3) bucket = "days_3_5";
           else if (daysOverdue >= 1) bucket = "days_1_2";
           else if (daysOverdue === 0) bucket = "due_today";
-          const notes = collectionNotes.filter((n) => n.invoiceId === inv.id);
+          const notes = collectionNotes.filter((n) => n.invoiceId == inv.id);
           const latestPromise = collectionPromises
-            .filter((p) => p.invoiceId === inv.id)
+            .filter((p) => p.invoiceId == inv.id)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null;
-          const accountHold = accountHolds.find((h) => h.customerId === inv.customerId && h.status === "active") || null;
+          const accountHold = accountHolds.find((h) => h.customerId == inv.customerId && h.status === "active") || null;
           return {
             ...inv,
             customer: customer || null,
@@ -3188,10 +3189,10 @@ export const dataService = {
     },
     getCustomerPaymentHistory: (customerId: number) => {
       return invoices
-        .filter((inv) => inv.customerId === customerId)
+        .filter((inv) => inv.customerId == customerId)
         .map((inv) => ({
           ...inv,
-          notes: collectionNotes.filter((n) => n.invoiceId === inv.id),
+          notes: collectionNotes.filter((n) => n.invoiceId == inv.id),
         }))
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
@@ -3209,7 +3210,7 @@ export const dataService = {
     },
     placeHold: ({ customerId, reason, notes }: any) => {
       // Remove any existing active hold first
-      accountHolds = accountHolds.map((h) => h.customerId === customerId && h.status === "active" ? { ...h, status: "released", releasedAt: new Date().toISOString() } : h);
+      accountHolds = accountHolds.map((h) => h.customerId == customerId && h.status === "active" ? { ...h, status: "released", releasedAt: new Date().toISOString() } : h);
       const hold = { id: Date.now() + Math.random(), customerId, reason: reason || "Non-payment", notes: notes || "", status: "active", createdAt: new Date().toISOString() };
       accountHolds.push(hold);
       // Also add a collection note
@@ -3232,7 +3233,7 @@ export const dataService = {
 
   sampleReport: {
     getByCustomer: ({ customerId }: { customerId: number }) => {
-      const customerOrders = orders.filter((o) => o.customerId === customerId && o.orderType === "sample");
+      const customerOrders = orders.filter((o) => o.customerId == customerId && o.orderType === "sample");
       const report = customerOrders.flatMap((o) =>
         (o.items || []).map((item: any) => {
           const product = products.find((p) => p.id === item.stockItemId);

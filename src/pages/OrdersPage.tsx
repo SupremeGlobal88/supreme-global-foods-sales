@@ -675,7 +675,7 @@ export default function OrdersPage() {
     ${logoBlock("lf1")}
     <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422</div>
     <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
-    <div class="subtitle">VAT: 4120123456 &middot; Reg: 2015/123456/07</div>
+    <div class="subtitle">VAT: 4150254441 &middot; Reg: 2015/123456/07</div>
   </div>
   <div class="doc-title">TAX INVOICE &amp; DELIVERY NOTE</div>
   <div class="info-section">

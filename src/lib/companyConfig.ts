@@ -54,7 +54,7 @@ const SGF_CONFIG: CompanyConfig = {
     postalCode: "1422",
     country: "South Africa",
   },
-  vatNumber: "4120123456",
+  vatNumber: "4150254441",
   contact: {
     phone: "083 293 0644",
     email: "sales@supremeglobalfoods.co.za",

@@ -103,7 +103,7 @@ function openPrintWindow(
       // Header
       `<div class="header">` +
       `<img src="${logoUrl}" onerror="this.style.display='none'"/>` +
-      `<div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: 083 293 0644<br/>VAT Reg: 4120123456 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>` +
+      `<div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: 083 293 0644<br/>VAT Reg: 4150254441 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>` +
       `<h1>Statement of Account</h1>` +
       `<div style="font-size:10px;color:#666">Period: ${fromStr} &nbsp;to&nbsp; ${toStr} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>` +
       `</div>` +

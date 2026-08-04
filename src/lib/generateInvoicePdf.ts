@@ -39,7 +39,7 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   y += 5;
   doc.text("Tel: 083 293 0644  |  sales@supremeglobalfoods.co.za", margin, y);
   y += 5;
-  doc.text("VAT: 4120123456  |  Reg: 2015/123456/07", margin, y);
+  doc.text("VAT: 4150254441  |  Reg: 2015/123456/07", margin, y);
 
   // Gold line
   y += 6;

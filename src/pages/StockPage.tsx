@@ -80,7 +80,8 @@ export default function StockPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (editingId) { updateStock.mutate({ id: editingId, ...formData }); }
+    // FIX: Must send { id, data } — localLink handler destructures const { id, data } = input
+    if (editingId) { updateStock.mutate({ id: editingId, data: formData }); }
     else { createStock.mutate(formData); }
   }
 

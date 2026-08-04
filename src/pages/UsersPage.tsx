@@ -65,7 +65,7 @@ export default function UsersPage() {
     if (editingId) {
       const data: any = { name: form.name.trim(), email: form.email.trim(), role: form.role };
       if (form.pin.trim()) data.pin = form.pin.trim();
-      updateUser.mutate({ id: editingId, ...data });
+      updateUser.mutate({ id: editingId, data });
     } else {
       createUser.mutate({ name: form.name.trim(), email: form.email.trim(), role: form.role, pin: form.pin.trim() });
     }

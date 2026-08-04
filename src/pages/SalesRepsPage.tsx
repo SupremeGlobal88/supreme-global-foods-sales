@@ -98,7 +98,7 @@ export default function SalesRepsPage() {
               <h2 className="font-display font-semibold text-white text-xl">{editingId ? "Edit" : "Add"} Sales Rep</h2>
               <button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); if (editingId) { updateRep.mutate({ id: editingId, ...formData }); } else { createRep.mutate(formData); } }} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); if (editingId) { updateRep.mutate({ id: editingId, data: formData }); } else { createRep.mutate(formData); } }} className="space-y-4">
               <div><label className="label-text block mb-1.5">Full Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field" required /></div>
               <div><label className="label-text block mb-1.5">Email *</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field" required /></div>
               <div><label className="label-text block mb-1.5">Phone</label><input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="input-field" placeholder="+27612345678" /></div>

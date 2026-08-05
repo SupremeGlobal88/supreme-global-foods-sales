@@ -6,6 +6,75 @@ import { directAuthenticate } from "@/lib/dataService";
 import { Globe, Lock, Eye, EyeOff, User, Shield } from "lucide-react";
 import gsap from "gsap";
 
+/** Emergency Access — PIN protected, Collin only.
+ *  Hidden behind a PIN prompt so users cannot bypass login.
+ *  Only Collin's PIN (2580) grants emergency super_admin access. */
+function EmergencyAccess() {
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [emergencyPin, setEmergencyPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const attemptsRef = useRef(0);
+
+  function verifyPin() {
+    // Collin's PIN only — hardcoded to prevent tampering with user data
+    if (emergencyPin === "2580") {
+      localStorage.setItem("demo_user", JSON.stringify({
+        id: 1,
+        name: "Collin",
+        email: "collin@supremeglobalfoods.co.za",
+        role: "super_admin",
+      }));
+      window.location.href = "/#/dashboard";
+    } else {
+      attemptsRef.current += 1;
+      setPinError(`Invalid PIN. ${3 - attemptsRef.current} attempts remaining.`);
+      setEmergencyPin("");
+      if (attemptsRef.current >= 3) {
+        setShowPinInput(false);
+        setPinError("");
+        attemptsRef.current = 0;
+      }
+    }
+  }
+
+  if (showPinInput) {
+    return (
+      <div className="mt-4 space-y-2">
+        <div className="relative">
+          <input
+            type="password"
+            placeholder="Enter emergency PIN"
+            value={emergencyPin}
+            onChange={(e) => { setEmergencyPin(e.target.value); setPinError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") verifyPin(); }}
+            className="input-field text-xs py-2"
+            maxLength={10}
+            autoFocus
+          />
+        </div>
+        {pinError && <p className="text-[10px] text-[#EF4444] text-center">{pinError}</p>}
+        <div className="flex gap-2 justify-center">
+          <button onClick={verifyPin} className="btn-primary text-[10px] py-1.5 px-3">Unlock</button>
+          <button onClick={() => { setShowPinInput(false); setEmergencyPin(""); setPinError(""); attemptsRef.current = 0; }} className="btn-secondary text-[10px] py-1.5 px-3">Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 text-center">
+      <button
+        type="button"
+        onClick={() => setShowPinInput(true)}
+        className="text-[10px] text-[#333] hover:text-[#555] transition-colors cursor-pointer"
+        title="Emergency access — Collin only"
+      >
+        Support
+      </button>
+    </div>
+  );
+}
+
 // Sync users from Firebase on login page load
 // This ensures users created on other devices are available for login
 function useSyncUsersFromCloud() {
@@ -226,19 +295,8 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Emergency admin access */}
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.setItem("demo_user", JSON.stringify({ id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin" }));
-                window.location.href = "/#/dashboard";
-              }}
-              className="text-xs text-[#555] hover:text-[#D4A843] transition-colors cursor-pointer"
-            >
-              Admin Access
-            </button>
-          </div>
+          {/* Emergency access — PIN protected, Collin only */}
+          <EmergencyAccess />
         </div>
 
         <div className="absolute bottom-8 left-12">

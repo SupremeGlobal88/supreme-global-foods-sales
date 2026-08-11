@@ -1304,6 +1304,7 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       total: newTotal,
       totalAmount: newTotal,
       balanceDue: newBalanceDue,
+      paymentTerms: order.paymentTerms || "cod",
       updatedAt: new Date().toISOString(),
       notes: isSample ? `Sample order ${order.orderNumber || ""}` : `Invoice for ${order.orderNumber || ""}`,
     };

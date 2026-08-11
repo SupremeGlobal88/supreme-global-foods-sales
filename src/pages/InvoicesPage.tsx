@@ -65,6 +65,7 @@ export default function InvoicesPage() {
   const [editInvPaid, setEditInvPaid] = useState("");
   const [editInvNotes, setEditInvNotes] = useState("");
   const [editInvStatus, setEditInvStatus] = useState("sent");
+  const [editInvPaymentTerms, setEditInvPaymentTerms] = useState("cod");
 
   /* Data */
   const { data: invoices, refetch: refetchInvoices } = trpc.invoice.list.useQuery();
@@ -937,7 +938,7 @@ export default function InvoicesPage() {
                           )}
                           <button onClick={() => printDoc(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Print Invoice & Delivery Note"><Printer className="w-3.5 h-3.5 text-[#8A8B8C]" /></button>
                           {isAdmin && (
-                            <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
+                            <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setEditInvPaymentTerms(inv.paymentTerms || "cod"); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
                           )}
                           {isAdmin && bal > 0 && (
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
@@ -1541,6 +1542,15 @@ export default function InvoicesPage() {
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="label-text block mb-1.5">Payment Terms</label>
+                <select value={editInvPaymentTerms} onChange={(e) => setEditInvPaymentTerms(e.target.value)} className="input-field">
+                  <option value="cod">COD</option>
+                  <option value="7_days">7 Days</option>
+                  <option value="14_days">14 Days</option>
+                  <option value="30_days">30 Days</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label-text block mb-1.5">Total (R)</label>
@@ -1571,6 +1581,7 @@ export default function InvoicesPage() {
                       amountPaid: parseFloat(editInvPaid),
                       balanceDue: parseFloat(editInvTotal) - parseFloat(editInvPaid),
                       status: editInvStatus,
+                      paymentTerms: editInvPaymentTerms,
                       notes: editInvNotes,
                     },
                   };

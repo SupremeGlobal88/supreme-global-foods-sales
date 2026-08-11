@@ -26,6 +26,7 @@ export default function CorporateCustomersPage() {
     city: "",
     province: "",
     postalCode: "",
+    paymentTerms: "30_days" as "cod" | "7_days" | "14_days" | "30_days",
     notes: "",
     isActive: true,
   });
@@ -52,7 +53,7 @@ export default function CorporateCustomersPage() {
   const selected = (customers || []).find((c: any) => c.id === selectedCustomer);
 
   function resetForm() {
-    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", notes: "", isActive: true });
+    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true });
   }
 
   function handleEdit(c: any) {
@@ -60,7 +61,7 @@ export default function CorporateCustomersPage() {
       name: c.name || "", code: c.code || "", company: c.company || "sgf", logoUrl: c.logoUrl || "", vatNumber: c.vatNumber || "",
       contactPerson: c.contactPerson || "", email: c.email || "", phone: c.phone || "",
       deliveryAddress: c.deliveryAddress || "", city: c.city || "", province: c.province || "",
-      postalCode: c.postalCode || "", notes: c.notes || "", isActive: c.isActive !== false,
+      postalCode: c.postalCode || "", paymentTerms: (c.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "30_days", notes: c.notes || "", isActive: c.isActive !== false,
     });
     setEditingId(c.id);
     setShowForm(true);
@@ -275,6 +276,15 @@ export default function CorporateCustomersPage() {
                 <div><label className="label-text">City</label><input value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Province</label><input value={formData.province} onChange={(e) => setFormData({ ...formData, province: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Postal Code</label><input value={formData.postalCode} onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })} className="input-field w-full" /></div>
+                <div>
+                  <label className="label-text">Payment Terms</label>
+                  <select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field w-full">
+                    <option value="cod">COD</option>
+                    <option value="7_days">7 Days</option>
+                    <option value="14_days">14 Days</option>
+                    <option value="30_days">30 Days</option>
+                  </select>
+                </div>
                 <div className="col-span-2"><label className="label-text">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field w-full" rows={3} /></div>
               </div>
               <div className="flex justify-end gap-2 pt-3">

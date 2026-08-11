@@ -3475,7 +3475,7 @@ export const dataService = {
         province: newItem.province || "",
         postalCode: newItem.postalCode || "",
         vatNumber: newItem.vatNumber || "",
-        paymentTerms: "30_days",
+        paymentTerms: newItem.paymentTerms || "30_days",
         priceTier: "corporate",
         isCorporate: true,
         company: newItem.company || "sgf",
@@ -3507,6 +3507,7 @@ export const dataService = {
             province: data.province ?? customers[cIdx].province,
             postalCode: data.postalCode ?? customers[cIdx].postalCode,
             vatNumber: data.vatNumber ?? customers[cIdx].vatNumber,
+            paymentTerms: data.paymentTerms ?? customers[cIdx].paymentTerms,
             company: data.company ?? customers[cIdx].company,
             notes: data.notes ?? customers[cIdx].notes,
             updatedAt: new Date().toISOString(),
@@ -3750,6 +3751,12 @@ export const dataService = {
 
       // Check if invoice already exists for this PO
       const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+
+      // Get corporate customer for payment terms
+      const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+      const paymentTerms = corpCustomer?.paymentTerms || po.paymentTerms || "30_days";
+      const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
+
       if (existingIdx >= 0) {
         const existing = invoices[existingIdx];
         const amountPaid = Number(existing.amountPaid || 0);
@@ -3761,6 +3768,7 @@ export const dataService = {
           total,
           totalAmount: total,
           balanceDue: newBalanceDue,
+          paymentTerms,
           items: items.map((item: any) => ({
             description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
             quantity: item.quantity,
@@ -3777,7 +3785,7 @@ export const dataService = {
       // Create new invoice
       const now = new Date();
       const dueDate = new Date(now);
-      dueDate.setDate(dueDate.getDate() + 30); // corporate: 30 days default
+      dueDate.setDate(dueDate.getDate() + days);
 
       const invCompany = po.company || "sgf";
       let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
@@ -3810,7 +3818,7 @@ export const dataService = {
         balanceDue: total,
         amountPaid: 0,
         status: "draft",
-        paymentTerms: "30_days",
+        paymentTerms,
         invoiceDate: now.toISOString(),
         dueDate: dueDate.toISOString(),
         notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,

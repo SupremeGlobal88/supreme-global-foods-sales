@@ -1881,7 +1881,10 @@ export const dataService = {
       const items = (data.items || []).map((item: any) => {
         const product = products.find((p) => p.id === item.stockItemId);
         const conversion = item.conversion || 1;
-        const unitPrice = isSample ? getEffectivePrice(item.stockItemId, "corporate", data.customerId) : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
+        // unitPrice from frontend is per-SELECTED-UNIT (e.g., per box).
+        // If no custom price entered, calculate from tier price × conversion.
+        const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId);
+        const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
         return {
           ...item,
           productCode: product?.productCode || "",
@@ -1972,8 +1975,12 @@ export const dataService = {
         const isSample = data.orderType === "sample";
         const items = (data.items || []).map((item: any) => {
           const product = products.find((p) => p.id === item.stockItemId);
-          const unitPrice = isSample ? getEffectivePrice(item.stockItemId, "corporate", data.customerId) : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
-          return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice, unit: item.unit || "each", conversion: item.conversion || 1, unitLabel: item.unitLabel || "Each" };
+          const conversion = item.conversion || 1;
+          // unitPrice from frontend is per-SELECTED-UNIT (e.g., per box).
+          // If no custom price entered, calculate from tier price × conversion.
+          const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId);
+          const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
+          return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice, unit: item.unit || "each", conversion, unitLabel: item.unitLabel || "Each" };
         });
         const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
         const vatAmount = isSample ? 0 : subtotal * 0.15;

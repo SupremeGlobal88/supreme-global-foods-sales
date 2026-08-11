@@ -23,7 +23,7 @@ import {
  *  Previously errors were silently swallowed, making it impossible to debug. */
 // Track last sync time per data type to prevent excessive Firebase reads
 const lastSyncTimes: Record<string, number> = {};
-const SYNC_COOLDOWN_MS = 1000; // Only sync same type every 1 second minimum
+const SYNC_COOLDOWN_MS = 5000; // Only sync same type every 5 seconds minimum
 
 async function syncFromCloud(type: string, storageKey: string): Promise<void> {
   if (!isFirebaseReady()) { console.warn("[syncFromCloud] Firebase not ready for", type); return; }
@@ -124,7 +124,7 @@ export function createLocalLink() {
               case "customer.getById": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getById(input); break;
               case "customer.create": result = dataService.customer.create(input); await fbPush("customer", result); break;
               case "customer.update": { const { id, data } = input; result = dataService.customer.update({ id, data }); if (result) await pushOneCustomer(result); break; }
-              case "customer.delete": result = dataService.customer.delete(input); removeOneCustomer(input); break;
+              case "customer.delete": result = dataService.customer.delete(input); await removeOneCustomer(input); break;
               case "customer.getStats": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getStats(); break;
               case "customer.getSalesReps": await syncFromCloud("users", "sgf_users"); result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;
@@ -209,7 +209,7 @@ export function createLocalLink() {
               case "invoice.getReceiptsByInvoice": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceiptsByInvoice(input); break;
               case "invoice.getReceiptsByCustomer": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceiptsByCustomer(input); break;
               case "invoice.getReceiptById": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceiptById(input); break;
-              case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); pushInvoices(dataService.invoice.list()); break;
+              case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); await pushInvoices(dataService.invoice.list()); break;
               case "invoice.relinkSageInvoices": {
                 result = dataService.invoice.relinkSageInvoices();
                 if (result?.changedInvoices && result.changedInvoices.length > 0) {
@@ -335,7 +335,7 @@ export function createLocalLink() {
               // FOLLOW-UPS — cloud first
               case "followUpAction.list": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.list(); break;
               case "followUpAction.listByCustomer": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.listByCustomer(input); break;
-              case "followUpAction.create": result = dataService.followUpAction.create(input); pushFollowUpAction(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); break;
+              case "followUpAction.create": result = dataService.followUpAction.create(input); await pushFollowUpAction(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); break;
               case "followUpAction.getStats": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
@@ -343,10 +343,10 @@ export function createLocalLink() {
               case "salesRep.list": await syncFromCloud("salesReps", "sgf_salesReps"); result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
-              case "salesRep.create": result = dataService.salesRep.create(input); if (result) pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
-              case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); if (result) pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break; }
-              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
-              case "salesRep.delete": result = dataService.salesRep.delete(input); removeSalesRep(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.create": result = dataService.salesRep.create(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break; }
+              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.delete": result = dataService.salesRep.delete(input); await removeSalesRep(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               // DASHBOARD — cloud first (orders + invoices)
               case "dashboard.stats": await syncFromCloud("orders", "sgf_orders"); await syncFromCloud("invoices", "sgf_invoices"); result = dataService.dashboard.stats(); break;
               case "audit.list": result = dataService.audit.list(); break;

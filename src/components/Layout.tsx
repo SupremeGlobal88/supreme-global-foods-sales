@@ -1,15 +1,21 @@
 import { useState, useEffect } from "react";
 import { Outlet } from "react-router";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, WifiOff } from "lucide-react";
 import Sidebar from "./Sidebar";
 import SyncStatus from "./SyncStatus";
+import { onConnectionChange } from "../lib/firebaseSync";
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showRefreshPrompt, setShowRefreshPrompt] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
+    const unsub = onConnectionChange((connected) => {
+      setIsConnected(connected);
+    });
+
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -24,6 +30,7 @@ export default function Layout() {
     window.addEventListener("firebaseDataReceived", handleFirebaseData);
 
     return () => {
+      unsub();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("firebaseDataReceived", handleFirebaseData);
     };
@@ -116,6 +123,28 @@ export default function Layout() {
             >
               Dismiss
             </button>
+          </div>
+        )}
+
+        {/* Offline notification */}
+        {!isConnected && (
+          <div
+            className="fixed left-0 right-0 z-40 flex items-center justify-center gap-2"
+            style={{
+              top: isMobile ? 44 : 16,
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "#EF4444",
+              padding: "8px 16px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 500,
+              margin: "0 auto",
+              maxWidth: 400,
+            }}
+          >
+            <WifiOff className="w-4 h-4" />
+            <span>Sync disconnected — changes may not reach other devices</span>
           </div>
         )}
 

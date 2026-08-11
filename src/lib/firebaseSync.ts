@@ -22,6 +22,7 @@ import {
   onValue,
   update,
   get,
+  onDisconnect,
 } from "firebase/database";
 
 const CONFIG_KEY = "sgf_firebase_config";
@@ -61,6 +62,34 @@ let db: any = null;
 let config: any = null;
 let listeners: Array<() => void> = [];
 
+/** Connection state monitoring */
+let connectionListener: (() => void) | null = null;
+let isFirebaseConnected = false;
+let connectionCallbacks: Array<(connected: boolean) => void> = [];
+
+export function onConnectionChange(cb: (connected: boolean) => void) {
+  connectionCallbacks.push(cb);
+  cb(isFirebaseConnected);
+  return () => { connectionCallbacks = connectionCallbacks.filter((c) => c !== cb); };
+}
+
+export function getConnectionState() { return isFirebaseConnected; }
+
+function setConnectionState(connected: boolean) {
+  if (isFirebaseConnected === connected) return;
+  isFirebaseConnected = connected;
+  connectionCallbacks.forEach((cb) => cb(connected));
+}
+
+/** Set up Firebase connection state monitoring */
+function monitorConnection() {
+  if (!db) return;
+  const connectedRef = ref(db, ".info/connected");
+  if (connectionListener) connectionListener();
+  connectionListener = onValue(connectedRef, (snap: any) => {
+    setConnectionState(snap.val() === true);
+  });
+}
 export function initFirebase(userConfig?: any): boolean {
   // If user provides config, save it
   if (userConfig && userConfig.apiKey && !userConfig.apiKey.includes("PLACEHOLDER")) {
@@ -82,12 +111,14 @@ export function initFirebase(userConfig?: any): boolean {
   const existingApps = getApps();
   if (existingApps.length > 0) {
     db = getDatabase(existingApps[0]);
+    monitorConnection();
     return true;
   }
 
   try {
     const app = initializeApp(config);
     db = getDatabase(app);
+    monitorConnection();
     console.log("[FirebaseSync] Initialized with project:", config.projectId);
     return true;
   } catch (e: any) {
@@ -625,6 +656,7 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
     if (orders.length > 0) {
       const merged = mergeWithCloudData("sgf_orders", orders);
       try { localStorage.setItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
+      dataServiceRefresh();
     }
     onData(orders);
   });
@@ -641,6 +673,7 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
     if (checkins.length > 0) {
       const merged = mergeWithCloudData("sgf_checkins", checkins);
       try { localStorage.setItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
+      dataServiceRefresh();
     }
     onData(checkins);
   });
@@ -657,6 +690,7 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
     if (appts.length > 0) {
       const merged = mergeWithCloudData("sgf_appointments", appts);
       try { localStorage.setItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
+      dataServiceRefresh();
     }
     onData(appts);
   });
@@ -673,6 +707,7 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
     if (invoices.length > 0) {
       const merged = mergeWithCloudData("sgf_invoices", invoices);
       try { localStorage.setItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
+      dataServiceRefresh();
     }
     onData(invoices);
   });
@@ -689,6 +724,7 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
     if (actions.length > 0) {
       const merged = mergeWithCloudData("sgf_followUpActions", actions);
       try { localStorage.setItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
+      dataServiceRefresh();
     }
     onData(actions);
   });

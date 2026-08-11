@@ -1880,6 +1880,7 @@ export const dataService = {
       
       const items = (data.items || []).map((item: any) => {
         const product = products.find((p) => p.id === item.stockItemId);
+        const conversion = item.conversion || 1;
         const unitPrice = isSample ? getEffectivePrice(item.stockItemId, "corporate", data.customerId) : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
         return {
           ...item,
@@ -1887,6 +1888,9 @@ export const dataService = {
           productName: product?.productName || "Unknown",
           lineTotal: unitPrice * item.quantity,
           unitPrice,
+          unit: item.unit || "each",
+          conversion,
+          unitLabel: item.unitLabel || (conversion === 1 ? "Each" : `${conversion} units`),
         };
       });
       
@@ -1910,10 +1914,13 @@ export const dataService = {
       orders.push(newOrder);
 
       // DEDUCT STOCK for each item (both regular and sample orders)
+      // Use conversion factor for products sold by box/bundle/etc.
       for (const item of items) {
         const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
         if (prodIdx >= 0) {
-          const newQty = Math.max(0, (products[prodIdx].quantity || 0) - item.quantity);
+          const conversion = item.conversion || 1;
+          const deductQty = item.quantity * conversion;
+          const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
           products[prodIdx].quantity = newQty;
           products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
         }
@@ -1950,11 +1957,13 @@ export const dataService = {
       const idx = orders.findIndex((o) => o.id === id);
       if (idx >= 0) {
         const oldOrder = orders[idx];
-        // RESTORE old stock first
+        // RESTORE old stock first (using conversion factor)
         for (const item of (oldOrder.items || [])) {
           const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
           if (prodIdx >= 0) {
-            const newQty = (products[prodIdx].quantity || 0) + item.quantity;
+            const conversion = item.conversion || 1;
+            const restoreQty = item.quantity * conversion;
+            const newQty = (products[prodIdx].quantity || 0) + restoreQty;
             products[prodIdx].quantity = newQty;
             products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
           }
@@ -1964,16 +1973,18 @@ export const dataService = {
         const items = (data.items || []).map((item: any) => {
           const product = products.find((p) => p.id === item.stockItemId);
           const unitPrice = isSample ? getEffectivePrice(item.stockItemId, "corporate", data.customerId) : (item.unitPrice || getEffectivePrice(item.stockItemId, data.priceTier, data.customerId));
-          return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice };
+          return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice, unit: item.unit || "each", conversion: item.conversion || 1, unitLabel: item.unitLabel || "Each" };
         });
         const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
         const vatAmount = isSample ? 0 : subtotal * 0.15;
         const total = isSample ? 0 : subtotal + vatAmount;
-        // DEDUCT new stock
+        // DEDUCT new stock (using conversion factor)
         for (const item of items) {
           const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
           if (prodIdx >= 0) {
-            const newQty = Math.max(0, (products[prodIdx].quantity || 0) - item.quantity);
+            const conversion = item.conversion || 1;
+            const deductQty = item.quantity * conversion;
+            const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
             products[prodIdx].quantity = newQty;
             products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
           }
@@ -2001,7 +2012,9 @@ export const dataService = {
           for (const item of (order.items || [])) {
             const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
             if (prodIdx >= 0) {
-              const newQty = (products[prodIdx].quantity || 0) + item.quantity;
+              const conversion = item.conversion || 1;
+              const restoreQty = item.quantity * conversion;
+              const newQty = (products[prodIdx].quantity || 0) + restoreQty;
               products[prodIdx].quantity = newQty;
               products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
             }

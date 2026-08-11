@@ -43,7 +43,9 @@ export default function StockPage() {
   const [formData, setFormData] = useState({
     productCode: "", productName: "", category: "", strands: "", size: "", grade: "", color: "", species: "", origin: "",
     quantity: 0, corporatePrice: 0, bulkPrice: 0, wholesalePrice: 0, retailPrice: 0, description: "",
+    sellingUnits: [] as { unit: string; label: string; conversion: number }[],
   });
+  const [hasMultipleUnits, setHasMultipleUnits] = useState(false);
 
   const { data: stockItems } = trpc.stock.search.useQuery({ query: search || " " }, { enabled: true });
   const { data: categories } = trpc.stock.getCategories.useQuery();
@@ -63,10 +65,12 @@ export default function StockPage() {
   });
 
   function resetForm() {
-    setFormData({ productCode: "", productName: "", category: "", strands: "", size: "", grade: "", color: "", species: "", origin: "", quantity: 0, corporatePrice: 0, bulkPrice: 0, wholesalePrice: 0, retailPrice: 0, description: "" });
+    setFormData({ productCode: "", productName: "", category: "", strands: "", size: "", grade: "", color: "", species: "", origin: "", quantity: 0, corporatePrice: 0, bulkPrice: 0, wholesalePrice: 0, retailPrice: 0, description: "", sellingUnits: [] });
+    setHasMultipleUnits(false);
   }
 
   function handleEdit(item: NonNullable<typeof stockItems>[0]) {
+    const units = item.sellingUnits || [];
     setFormData({
       productCode: item.productCode, productName: item.productName, category: item.category,
       strands: item.strands || "", size: item.size || "", grade: item.grade || "", color: item.color || "",
@@ -74,7 +78,9 @@ export default function StockPage() {
       corporatePrice: Number(item.corporatePrice), bulkPrice: Number(item.bulkPrice),
       wholesalePrice: Number(item.wholesalePrice), retailPrice: Number(item.retailPrice),
       description: item.description || "",
+      sellingUnits: units,
     });
+    setHasMultipleUnits(units.length > 0);
     setEditingId(item.id); setShowForm(true);
   }
 
@@ -465,6 +471,59 @@ export default function StockPage() {
                 <div><label className="label-text block mb-1.5">Retail (R) *</label><input type="number" step="0.01" value={formData.retailPrice} onChange={(e) => setFormData({ ...formData, retailPrice: parseFloat(e.target.value) || 0 })} className="input-field" required min={0} /></div>
               </div>
               <div><label className="label-text block mb-1.5">Description</label><textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="input-field" rows={2} /></div>
+
+              {/* Selling Units Configuration */}
+              <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-text">Selling Units</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasMultipleUnits(!hasMultipleUnits);
+                      if (hasMultipleUnits) {
+                        setFormData({ ...formData, sellingUnits: [] });
+                      } else {
+                        // Default: add kg + box for new products, or just keep existing
+                        setFormData({ ...formData, sellingUnits: formData.sellingUnits.length > 0 ? formData.sellingUnits : [{ unit: "kg", label: "Per KG", conversion: 1 }] });
+                      }
+                    }}
+                    className="text-xs px-2 py-1 rounded cursor-pointer transition-colors"
+                    style={{ backgroundColor: hasMultipleUnits ? "rgba(74,222,128,0.12)" : "#222324", color: hasMultipleUnits ? "#4ADE80" : "#8A8B8C" }}
+                  >
+                    {hasMultipleUnits ? "Enabled" : "Disabled (Each only)"}
+                  </button>
+                </div>
+                {hasMultipleUnits && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-[#8A8B8C]">Configure how this product is sold. Conversion = stock qty per unit (e.g., Box = 15 kg).</p>
+                    {(formData.sellingUnits || []).map((u, i) => (
+                      <div key={i} className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="text-[10px] text-[#8A8B8C] block">Unit Code</label>
+                          <input value={u.unit} onChange={(e) => { const units = [...formData.sellingUnits]; units[i] = { ...u, unit: e.target.value }; setFormData({ ...formData, sellingUnits: units }); }} className="input-field text-xs py-1.5" placeholder="kg, box, bundle" />
+                        </div>
+                        <div className="flex-[2]">
+                          <label className="text-[10px] text-[#8A8B8C] block">Label</label>
+                          <input value={u.label} onChange={(e) => { const units = [...formData.sellingUnits]; units[i] = { ...u, label: e.target.value }; setFormData({ ...formData, sellingUnits: units }); }} className="input-field text-xs py-1.5" placeholder="Per KG, Box (15kg)" />
+                        </div>
+                        <div className="w-20">
+                          <label className="text-[10px] text-[#8A8B8C] block">Conversion</label>
+                          <input type="number" value={u.conversion} onChange={(e) => { const units = [...formData.sellingUnits]; units[i] = { ...u, conversion: parseFloat(e.target.value) || 1 }; setFormData({ ...formData, sellingUnits: units }); }} className="input-field text-xs py-1.5" min={1} />
+                        </div>
+                        <button type="button" onClick={() => { const units = formData.sellingUnits.filter((_, idx) => idx !== i); setFormData({ ...formData, sellingUnits: units }); }} className="p-1.5 rounded hover:bg-[#222324] cursor-pointer mb-0.5"><X className="w-3.5 h-3.5 text-[#EF4444]" /></button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, sellingUnits: [...formData.sellingUnits, { unit: "", label: "", conversion: 1 }] })}
+                      className="text-xs text-[#D4A843] hover:text-[#E8C86B] cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add Unit
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button type="submit" className="btn-primary w-full justify-center">{editingId ? "Update" : "Add"} Product</button>
             </form>
           </div>

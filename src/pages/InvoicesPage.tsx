@@ -300,7 +300,7 @@ export default function InvoicesPage() {
             ${items.map((it: any, idx: number) => `<tr style="border-bottom:1px solid #e5e5e5;">
               <td style="padding:7px 8px; color:#888;">${idx + 1}</td>
               <td style="padding:7px 8px;">${it.description || it.productName || ""}</td>
-              <td style="padding:7px 8px; text-align:right;">${it.quantity || 0}</td>
+              <td style="padding:7px 8px; text-align:right;">${it.quantity || 0}${it.unitLabel ? ` <span style="color:#888;font-size:9px;">${it.unitLabel}</span>` : ""}</td>
               <td style="padding:7px 8px; text-align:right;">R ${Number(it.unitPrice || 0).toFixed(2)}</td>
               <td style="padding:7px 8px; text-align:right; font-weight:600;">R ${Number(it.lineTotal || 0).toFixed(2)}</td>
             </tr>`).join("")}

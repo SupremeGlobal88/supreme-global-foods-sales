@@ -1,14 +1,27 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getCompanyConfig, type CompanyKey } from "./companyConfig";
 
 export function generateInvoicePdf(invoice: any, copyType: "customer" | "office" = "customer") {
+  const company: CompanyKey = invoice?.company || "sgf";
+  const cfg = getCompanyConfig(company);
+
+  // Convert hex color to RGB array for jsPDF
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const clean = hex.replace("#", "");
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    return [r, g, b];
+  };
+  const brandColor = hexToRgb(cfg.documentColor);
+
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
   let y = 10;
 
   // --- Colors ---
-  const gold = [212, 168, 67] as [number, number, number];
   const darkGray = [80, 80, 80] as [number, number, number];
   const black = [0, 0, 0] as [number, number, number];
   const lightGray = [200, 200, 200] as [number, number, number];
@@ -16,14 +29,14 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   // === HEADER ===
   // Company name
   doc.setFontSize(22);
-  doc.setTextColor(...gold);
+  doc.setTextColor(...brandColor);
   doc.setFont("helvetica", "bold");
-  doc.text("SUPREME GLOBAL FOODS", margin, y);
+  doc.text(cfg.logoText, margin, y);
 
   // Copy label
   if (copyType === "office") {
     doc.setFontSize(12);
-    doc.setTextColor(...gold);
+    doc.setTextColor(...brandColor);
     doc.text("OFFICE COPY", pageWidth - margin - 30, y);
   } else {
     doc.setFontSize(12);
@@ -35,15 +48,15 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   doc.setFontSize(9);
   doc.setTextColor(...darkGray);
   doc.setFont("helvetica", "normal");
-  doc.text("28 Nagington road, Wadeville, Germiston, 1422", margin, y);
+  doc.text(`${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode}`, margin, y);
   y += 5;
-  doc.text("Tel: 083 293 0644  |  sales@supremeglobalfoods.co.za", margin, y);
+  doc.text(`Tel: ${cfg.contact.phone}  |  ${cfg.contact.email}`, margin, y);
   y += 5;
-  doc.text("VAT: 4150254441  |  Reg: 2015/123456/07", margin, y);
+  doc.text(`VAT: ${cfg.vatNumber}  |  Reg: ${cfg.regNumber}`, margin, y);
 
-  // Gold line
+  // Brand line
   y += 6;
-  doc.setDrawColor(...gold);
+  doc.setDrawColor(...brandColor);
   doc.setLineWidth(1);
   doc.line(margin, y, pageWidth - margin, y);
 
@@ -94,7 +107,7 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
 
   y += 5;
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(...gold);
+  doc.setTextColor(...brandColor);
   doc.text(invoice.invoiceNumber || "N/A", col1, y);
   doc.setTextColor(99, 102, 241);
   doc.text(invoice.deliveryNoteNumber || "N/A", col2, y);
@@ -176,7 +189,7 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
       : [["-", "Order-based invoice", "-", "-", "-"]],
     theme: "grid",
     headStyles: {
-      fillColor: gold,
+      fillColor: brandColor,
       textColor: [10, 10, 11],
       fontSize: 8,
       fontStyle: "bold",
@@ -221,12 +234,12 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   doc.text(`R ${Number(invoice.vatAmount || 0).toFixed(2)}`, pageWidth - margin, y, { align: "right" });
 
   y += 8;
-  doc.setDrawColor(...gold);
+  doc.setDrawColor(...brandColor);
   doc.setLineWidth(0.8);
   doc.line(totalsX - 5, y - 4, pageWidth - margin, y - 4);
 
   doc.setFontSize(13);
-  doc.setTextColor(...gold);
+  doc.setTextColor(...brandColor);
   doc.setFont("helvetica", "bold");
   doc.text("TOTAL DUE:", totalsX, y);
   doc.text(`R ${Number(invoice.total || invoice.totalAmount || 0).toFixed(2)}`, pageWidth - margin, y, { align: "right" });
@@ -261,7 +274,7 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
 
   // === DELIVERY NOTE SECTION ===
   y += 22;
-  doc.setDrawColor(...gold);
+  doc.setDrawColor(...brandColor);
   doc.setLineWidth(0.5);
   doc.line(margin, y - 5, pageWidth - margin, y - 5);
 
@@ -347,8 +360,8 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   doc.setFontSize(7);
   doc.setTextColor(150, 150, 150);
   doc.setFont("helvetica", "normal");
-  doc.text("Banking: FNB | Account: 62001234567 | Branch: 250655 | Quote invoice number with payment", pageWidth / 2, footerY, { align: "center" });
-  doc.text("E&OE. Goods remain the property of Supreme Global Foods until paid in full.", pageWidth / 2, footerY + 4, { align: "center" });
+  doc.text(`Banking: ${cfg.banking.bankName} | Account: ${cfg.banking.accountNumber} | Branch: ${cfg.banking.branchCode} | Quote invoice number with payment`, pageWidth / 2, footerY, { align: "center" });
+  doc.text(`E&OE. Goods remain the property of ${cfg.legalName} until paid in full.`, pageWidth / 2, footerY + 4, { align: "center" });
 
   // === SAVE ===
   const filename = `${invoice.invoiceNumber || "invoice"}_${copyType}.pdf`;

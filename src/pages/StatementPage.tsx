@@ -182,7 +182,7 @@ function openPrintWindow(
         : "") +
       `<div class="footer">` +
       `Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>` +
-      `Banking: FNB | Acc: 62001234567 | Branch: 250655 | Quote customer code with payment` +
+      `Banking: FNB | Acc: 63176141182 | Branch: 250655 | Quote customer code with payment` +
       `</div>` +
       // Auto-print
       `<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print()},200)}}if(document.readyState==="complete")p();else window.onload=p;setTimeout(p,2000)})()</script>` +

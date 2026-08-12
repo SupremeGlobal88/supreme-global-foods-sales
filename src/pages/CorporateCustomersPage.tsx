@@ -19,6 +19,7 @@ export default function CorporateCustomersPage() {
     company: "sgf" as CompanyKey,
     logoUrl: "",
     vatNumber: "",
+    vatExempt: false,
     contactPerson: "",
     email: "",
     phone: "",
@@ -53,12 +54,12 @@ export default function CorporateCustomersPage() {
   const selected = (customers || []).find((c: any) => c.id === selectedCustomer);
 
   function resetForm() {
-    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true });
+    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", vatExempt: false, contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true });
   }
 
   function handleEdit(c: any) {
     setFormData({
-      name: c.name || "", code: c.code || "", company: c.company || "sgf", logoUrl: c.logoUrl || "", vatNumber: c.vatNumber || "",
+      name: c.name || "", code: c.code || "", company: c.company || "sgf", logoUrl: c.logoUrl || "", vatNumber: c.vatNumber || "", vatExempt: !!c.vatExempt,
       contactPerson: c.contactPerson || "", email: c.email || "", phone: c.phone || "",
       deliveryAddress: c.deliveryAddress || "", city: c.city || "", province: c.province || "",
       postalCode: c.postalCode || "", paymentTerms: (c.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "30_days", notes: c.notes || "", isActive: c.isActive !== false,
@@ -268,6 +269,18 @@ export default function CorporateCustomersPage() {
                   <label className="label-text">VAT Number *</label>
                   <input required value={formData.vatNumber} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} className="input-field w-full" placeholder="e.g., 4610105530" />
                   <p className="text-[10px] text-[#8A8B8C] mt-1">Required for tax invoices and compliance documents</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="vatExemptCorp"
+                    checked={formData.vatExempt}
+                    onChange={(e) => setFormData({ ...formData, vatExempt: e.target.checked })}
+                    className="w-4 h-4 accent-[#D4A843] cursor-pointer"
+                  />
+                  <label htmlFor="vatExemptCorp" className="label-text cursor-pointer">
+                    VAT Exempt <span className="text-[#8A8B8C] font-normal">(0% VAT on PO invoices)</span>
+                  </label>
                 </div>
                 <div><label className="label-text">Contact Person</label><input value={formData.contactPerson} onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })} className="input-field w-full" /></div>
                 <div><label className="label-text">Email</label><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="input-field w-full" /></div>

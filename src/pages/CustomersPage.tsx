@@ -34,7 +34,7 @@ export default function CustomersPage() {
     customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "",
     physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
-    salesRepName: "", vatNumber: "", notes: "",
+    salesRepName: "", vatNumber: "", vatExempt: false, notes: "",
   });
 
   const { data: customers } = trpc.customer.search.useQuery({ query: search || " " });
@@ -66,12 +66,12 @@ export default function CustomersPage() {
   });
 
   function resetForm() {
-    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", notes: "" });
+    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", vatExempt: false, notes: "" });
     setVatError("");
   }
 
   function handleEdit(cust: NonNullable<typeof customers>[0]) {
-    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", notes: cust.notes || "" });
+    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", vatExempt: !!cust.vatExempt, notes: cust.notes || "" });
     setEditingId(cust.id); setShowForm(true);
   }
 
@@ -444,6 +444,18 @@ export default function CustomersPage() {
                   <label className="label-text block mb-1.5">VAT Number <span className="text-[#8A8B8C] font-normal">(10 digits, optional)</span></label>
                   <input type="text" value={formData.vatNumber} onChange={(e) => handleVatChange(e.target.value)} className={`input-field ${vatError ? "border-red-500" : ""}`} maxLength={10} placeholder="0123456789" />
                   {vatError && <p className="text-[#EF4444] text-xs mt-1">{vatError}</p>}
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="vatExempt"
+                    checked={formData.vatExempt}
+                    onChange={(e) => setFormData({ ...formData, vatExempt: e.target.checked })}
+                    className="w-4 h-4 accent-[#D4A843] cursor-pointer"
+                  />
+                  <label htmlFor="vatExempt" className="label-text cursor-pointer">
+                    VAT Exempt <span className="text-[#8A8B8C] font-normal">(rural / international / export customer — 0% VAT on invoices)</span>
+                  </label>
                 </div>
                 <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} /></div>
                 <button type="submit" className="btn-primary w-full justify-center">{editingId ? "Update" : "Add"} Customer</button>

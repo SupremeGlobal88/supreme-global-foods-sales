@@ -1046,7 +1046,10 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
     // Calculate REAL totals from order items (never zero these out)
     const items = order.items || [];
     const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-    const vatAmount = subtotal * 0.15;
+    // Check if customer is VAT exempt
+    const customer = customers.find((c) => c.id === order.customerId);
+    const vatRate = customer?.vatExempt ? 0 : 0.15;
+    const vatAmount = subtotal * vatRate;
     const total = subtotal + vatAmount;
 
     // Fix 2: Ensure a proper SGF invoice exists
@@ -1202,7 +1205,7 @@ function getNextReceiptNumber(): string {
   return `REC-${String(max + 1).padStart(3, "0")}`;
 }
 
-function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean, company?: string): string | null {
+function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number, total: number, isSample: boolean, company?: string, vatRate?: number): string | null {
   // ACQUIRE LOCK: prevent concurrent generation that causes duplicate numbers
   if (invoiceGenerationLock) {
     console.warn("[createInvoiceFromOrder] LOCKED — another invoice is being generated. Please wait.");
@@ -1254,6 +1257,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       customer: customer || null,
       subtotal: isSample ? subtotal : subtotal,
       vatAmount: isSample ? vatAmount : vatAmount,
+      vatRate: vatRate !== undefined ? vatRate : 0.15,
       total: isSample ? total : total,
       totalAmount: isSample ? total : total,
       balanceDue: isSample ? 0 : total,
@@ -1288,10 +1292,13 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   if (!order) return null;
   // Detect sample orders
   const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
-  // Calculate totals: samples are always zero-value
+  // Check if customer is VAT exempt
+  const customer = customers.find((c) => c.id === order.customerId);
+  const vatRate = customer?.vatExempt ? 0 : 0.15;
+  // Calculate totals
   const items = order.items || [];
   const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-  const vatAmount = subtotal * 0.15;
+  const vatAmount = subtotal * vatRate;
   const total = subtotal + vatAmount;
   // Check if invoice already exists — UPDATE it with new order data
   const existingIdx = invoices.findIndex((i) => i.orderId == orderId);
@@ -1319,6 +1326,7 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       })),
       subtotal,
       vatAmount,
+      vatRate,
       total: newTotal,
       totalAmount: newTotal,
       balanceDue: newBalanceDue,
@@ -1330,7 +1338,7 @@ export function generateInvoiceForOrder(orderId: number): string | null {
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;
   }
-  return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
+  return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, undefined, vatRate);
 }
 
 /** Generate invoices for all orders that don't have one. Returns count created. */
@@ -1343,12 +1351,14 @@ export function generateMissingInvoices(): { created: number; details: string[] 
     // Use loose equality (==) because Firebase may convert number IDs to strings
     const existing = invoices.find((i) => i.orderId == order.id && i.invoiceNumber && i.invoiceNumber.startsWith("SGF"));
     if (!existing) {
+      const customer = customers.find((c) => c.id === order.customerId);
+      const vatRate = customer?.vatExempt ? 0 : 0.15;
       const items = order.items || [];
       const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-      const vatAmount = subtotal * 0.15;
+      const vatAmount = subtotal * vatRate;
       const total = subtotal + vatAmount;
       const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
-      const invNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample);
+      const invNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, undefined, vatRate);
       if (invNum) {
         created++;
         details.push(`${order.orderNumber} -> ${invNum}`);
@@ -2548,6 +2558,7 @@ export const dataService = {
       if (data.notes !== undefined) inv.notes = data.notes;
       if (data.items !== undefined) inv.items = data.items;
       if (data.subtotal !== undefined) inv.subtotal = data.subtotal;
+      if (data.vatRate !== undefined) inv.vatRate = data.vatRate;
       if (data.vatAmount !== undefined) inv.vatAmount = data.vatAmount;
       if (data.paymentTerms !== undefined) inv.paymentTerms = data.paymentTerms;
       inv.updatedAt = new Date().toISOString();
@@ -3807,14 +3818,16 @@ export const dataService = {
       // Calculate totals from PO line items
       const items = po.lineItems || [];
       const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
-      const vatAmount = subtotal * 0.15;
+      // Check if corporate customer is VAT exempt
+      const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+      const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+      const vatAmount = subtotal * vatRate;
       const total = subtotal + vatAmount;
 
       // Check if invoice already exists for this PO
       const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
 
       // Get corporate customer for payment terms
-      const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
       const paymentTerms = corpCustomer?.paymentTerms || po.paymentTerms || "30_days";
       const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
 
@@ -3826,6 +3839,7 @@ export const dataService = {
           ...existing,
           subtotal,
           vatAmount,
+          vatRate,
           total,
           totalAmount: total,
           balanceDue: newBalanceDue,
@@ -3874,6 +3888,7 @@ export const dataService = {
         customer: { name: po.corporateCustomerName || "Corporate Customer" },
         subtotal,
         vatAmount,
+        vatRate,
         total,
         totalAmount: total,
         balanceDue: total,

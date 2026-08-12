@@ -228,7 +228,12 @@ export function generateInvoicePdf(invoice: any, copyType: "customer" | "office"
   y += 6;
   doc.setTextColor(...darkGray);
   doc.setFont("helvetica", "normal");
-  doc.text("VAT @ 15%:", totalsX, y);
+  const vatRate = invoice.vatRate !== undefined ? invoice.vatRate : 0.15;
+  if (vatRate === 0) {
+    doc.text("VAT Exempt @ 0%:", totalsX, y);
+  } else {
+    doc.text(`VAT @ ${(vatRate * 100).toFixed(0)}%:`, totalsX, y);
+  }
   doc.setTextColor(...black);
   doc.setFont("helvetica", "bold");
   doc.text(`R ${Number(invoice.vatAmount || 0).toFixed(2)}`, pageWidth - margin, y, { align: "right" });

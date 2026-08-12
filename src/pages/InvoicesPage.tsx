@@ -66,6 +66,7 @@ export default function InvoicesPage() {
   const [editInvNotes, setEditInvNotes] = useState("");
   const [editInvStatus, setEditInvStatus] = useState("sent");
   const [editInvPaymentTerms, setEditInvPaymentTerms] = useState("cod");
+  const [editInvVatRate, setEditInvVatRate] = useState(0.15);
 
   /* Data */
   const { data: invoices, refetch: refetchInvoices } = trpc.invoice.list.useQuery();
@@ -310,7 +311,7 @@ export default function InvoicesPage() {
         <div style="display:flex; justify-content:flex-end; margin-top:12px;">
           <div style="width:260px; font-size:11px;">
             <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;"><span style="color:#666;">Subtotal (excl VAT)</span><strong>R ${sub.toFixed(2)}</strong></div>
-            <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;"><span style="color:#666;">VAT @ 15%</span><strong>R ${vat.toFixed(2)}</strong></div>
+            <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #e5e5e5;"><span style="color:#666;">${inv.vatRate === 0 ? "VAT Exempt @ 0%" : "VAT @ 15%"}</span><strong>R ${vat.toFixed(2)}</strong></div>
             <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:2px solid ${cfg.documentColor};"><span style="font-weight:800; font-size:12px;">TOTAL DUE</span><strong style="color:${cfg.documentColor}; font-size:13px;">R ${tot.toFixed(2)}</strong></div>
             ${paid > 0 ? `<div style="display:flex; justify-content:space-between; padding:3px 0;"><span style="color:#666;">Amount Paid</span><span style="color:#2E7D32;">R ${paid.toFixed(2)}</span></div>` : ""}
             ${bal > 0 ? `<div style="display:flex; justify-content:space-between; padding:4px 0; border-top:1px dashed #EF4444; margin-top:2px;"><span style="color:#EF4444; font-weight:800;">BALANCE OUTSTANDING</span><span style="color:#EF4444; font-weight:800;">R ${bal.toFixed(2)}</span></div>` : ""}
@@ -940,7 +941,7 @@ export default function InvoicesPage() {
                           )}
                           <button onClick={() => printDoc(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Print Invoice & Delivery Note"><Printer className="w-3.5 h-3.5 text-[#8A8B8C]" /></button>
                           {isAdmin && (
-                            <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setEditInvPaymentTerms(inv.paymentTerms || "cod"); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
+                            <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setEditInvPaymentTerms(inv.paymentTerms || "cod"); setEditInvVatRate(inv.vatRate !== undefined ? inv.vatRate : 0.15); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
                           )}
                           {isAdmin && bal > 0 && inv.status !== "cancelled" && (
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
@@ -1032,7 +1033,7 @@ export default function InvoicesPage() {
                           <div className="flex justify-end mb-4">
                             <div className="text-right space-y-1 text-xs" style={{ width: 220 }}>
                               <div className="flex justify-between"><span className="text-[#8A8B8C]">Subtotal (excl VAT):</span><span>R {Number(inv.subtotal || 0).toFixed(2)}</span></div>
-                              <div className="flex justify-between"><span className="text-[#8A8B8C]">VAT 15%:</span><span>R {Number(inv.vatAmount || 0).toFixed(2)}</span></div>
+                              <div className="flex justify-between"><span className="text-[#8A8B8C]">{inv.vatRate === 0 ? "VAT Exempt @ 0%" : `VAT ${(inv.vatRate !== undefined ? inv.vatRate * 100 : 15).toFixed(0)}%`}:</span><span>R {Number(inv.vatAmount || 0).toFixed(2)}</span></div>
                               <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #D4A843" }}>
                                 <span className="text-[#D4A843] font-semibold">Total:</span><span className="text-[#D4A843] font-bold">R {tot.toFixed(2)}</span>
                               </div>
@@ -1554,6 +1555,13 @@ export default function InvoicesPage() {
                   <option value="30_days">30 Days</option>
                 </select>
               </div>
+              <div>
+                <label className="label-text block mb-1.5">VAT Rate</label>
+                <select value={editInvVatRate} onChange={(e) => setEditInvVatRate(parseFloat(e.target.value))} className="input-field">
+                  <option value={0.15}>15% VAT (Standard)</option>
+                  <option value={0}>0% VAT Exempt (Rural / International / Export)</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label-text block mb-1.5">Total (R)</label>
@@ -1585,6 +1593,7 @@ export default function InvoicesPage() {
                       balanceDue: parseFloat(editInvTotal) - parseFloat(editInvPaid),
                       status: editInvStatus,
                       paymentTerms: editInvPaymentTerms,
+                      vatRate: editInvVatRate,
                       notes: editInvNotes,
                     },
                   };

@@ -99,9 +99,7 @@ export default function BankImportPage() {
     setLoading(true);
     try {
       const rawRows = await readExcel(f);
-      const parsed = parseMutation.mutate(rawRows as any) as unknown as BankPaymentRow[];
-      // Since parseBankStatement returns directly (not a promise), we need to handle this differently
-      // The mutation returns the parsed data via onSuccess
+      // Call parse mutation with onSuccess callback
       parseMutation.mutate(rawRows as any, {
         onSuccess: (parsed: any) => {
           setParsedRows(parsed || []);
@@ -119,13 +117,20 @@ export default function BankImportPage() {
                 setStep("review");
                 setLoading(false);
               },
+              onError: (err: any) => {
+                alert("Match failed: " + (err.message || "Unknown error"));
+                setLoading(false);
+              },
             });
           } else {
-            alert("No SGF payment rows found in the uploaded file.");
+            alert("No SGF payment rows found in the uploaded file.\n\nIf this keeps happening, press Ctrl+Shift+R (or Cmd+Shift+R on Mac) to reload the latest app version.");
             setLoading(false);
           }
         },
-        onError: () => setLoading(false),
+        onError: (err: any) => {
+          alert("Parse failed: " + (err.message || "Unknown error"));
+          setLoading(false);
+        },
       });
     } catch (err: any) {
       alert("Failed to read file: " + err.message);

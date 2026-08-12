@@ -597,6 +597,9 @@ export default function SettingsPage() {
             <p className="text-xs text-[#8A8B8C] font-body">
               {syncStatus.configured ? `Connected: ${syncStatus.projectId}` : "NOT connected - sales rep data won't sync"}
             </p>
+            <p className="text-[10px] text-[#555657] font-mono-data mt-0.5">
+              App version: {localStorage.getItem("sgf_app_version") || "unknown"}
+            </p>
           </div>
         </div>
 

@@ -40,17 +40,14 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     console.log("[syncFromCloud] Reading", type, "from Firebase...");
     const cloudData = await readFromFirebase(type);
     console.log("[syncFromCloud] Firebase returned", cloudData.length, type);
-    if (cloudData.length > 0) {
-      const before = JSON.parse(localStorage.getItem(storageKey) || "[]").length;
-      const merged = mergeWithCloudData(storageKey, cloudData);
-      const after = merged.length;
-      localStorage.setItem(storageKey, JSON.stringify(merged));
-      reloadFromStorage();
-      if (after !== before) {
-        console.log(`[syncFromCloud] ${type}: ${before} local → merged ${after} items (${after - before > 0 ? '+' : ''}${after - before} from cloud)`);
-      }
-    } else {
-      console.warn("[syncFromCloud] Firebase returned 0", type, "— cloud may be empty or path wrong");
+    // ALWAYS merge — even when cloud is empty, to clear deleted items locally
+    const before = JSON.parse(localStorage.getItem(storageKey) || "[]").length;
+    const merged = mergeWithCloudData(storageKey, cloudData);
+    const after = merged.length;
+    localStorage.setItem(storageKey, JSON.stringify(merged));
+    reloadFromStorage();
+    if (after !== before) {
+      console.log(`[syncFromCloud] ${type}: ${before} local → merged ${after} items (${after - before > 0 ? '+' : ''}${after - before} from cloud)`);
     }
   } catch (e: any) {
     console.error("[syncFromCloud] FAILED for", type, ":", e.message || e);

@@ -30,7 +30,8 @@ const CONFIG_KEY = "sgf_firebase_config";
 /** Firebase RTDB keys cannot contain ".", "#", "$", "[", or "]".
  *  This function sanitizes any ID to be a valid Firebase key. */
 function safeFbKey(id: any): string {
-  return String(id).replace(/[.#$[\]]/g, '_');
+  // Firebase RTDB path separator is / — MUST escape it or keys become nested paths
+  return String(id).replace(/[.#$[\]\/]/g, '_');
 }
 
 // Supreme Global Foods Firebase — auto-connects
@@ -450,11 +451,9 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
   const unsub = onValue(cnRef, (snapshot) => {
     const data = snapshot.val();
     const notes = fbToArray(data);
-    if (notes.length > 0) {
-      const merged = mergeWithCloudData("sgf_creditNotes", notes);
-      try { localStorage.setItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
-      dataService.reloadFromStorage();
-    }
+    const merged = mergeWithCloudData("sgf_creditNotes", notes);
+    try { localStorage.setItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataService.reloadFromStorage();
     if (onData) onData(notes);
   });
   listeners.push(unsub);
@@ -474,11 +473,10 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
     try {
       const snapshot = await get(ref(db, path));
       const data = fbToArray(snapshot.val());
-      if (data.length > 0) {
-        let merged = mergeWithCloudData(storageKey, data);
-        if (postProcess) merged = postProcess(merged);
-        localStorage.setItem(storageKey, JSON.stringify(merged));
-      }
+      // ALWAYS merge — even when cloud is empty, to clear deleted items locally
+      let merged = mergeWithCloudData(storageKey, data);
+      if (postProcess) merged = postProcess(merged);
+      localStorage.setItem(storageKey, JSON.stringify(merged));
       counts[path] = data.length;
       return data;
     } catch (e: any) {
@@ -556,11 +554,19 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // Start with all Firebase items (source of truth)
     const merged = new Map<string, any>(incomingMap);
 
-    // Add local items that DON'T exist in Firebase (unsynced / newly created)
+    // Add local items that DON'T exist in Firebase (unsynced / newly created).
+    // CLOUD-FIRST RULE: If an item was previously synced (_syncedAt exists) but is
+    // no longer in Firebase, it was DELETED from the cloud → remove it locally.
+    // If an item was NEVER synced (no _syncedAt), it is a local draft → keep it.
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
-        merged.set(k, item); // Preserve local-only item
+        if (item._syncedAt) {
+          // Previously synced but now deleted from cloud → skip (remove ghost)
+          continue;
+        }
+        // Never synced → preserve as local draft
+        merged.set(k, item);
       }
     }
 
@@ -599,25 +605,23 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
   const unsub = onValue(customersRef, (snapshot) => {
     const data = snapshot.val();
     const customers = fbToArray(data);
-    if (customers.length > 0) {
-      let merged = mergeWithCloudData("sgf_customers", customers);
-      // Deduplicate customers by normalized name after merge.
-      // Same customer from different devices may have different IDs.
-      const custMap = new Map<string, any>();
-      for (const c of merged) {
-        const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
-        if (!key) continue;
-        const existing = custMap.get(key);
-        if (!existing || ((c.updatedAt || c.createdAt || 0) > (existing.updatedAt || existing.createdAt || 0))) {
-          custMap.set(key, c);
-        }
+    let merged = mergeWithCloudData("sgf_customers", customers);
+    // Deduplicate customers by normalized name after merge.
+    // Same customer from different devices may have different IDs.
+    const custMap = new Map<string, any>();
+    for (const c of merged) {
+      const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+      if (!key) continue;
+      const existing = custMap.get(key);
+      if (!existing || ((c.updatedAt || c.createdAt || 0) > (existing.updatedAt || existing.createdAt || 0))) {
+        custMap.set(key, c);
       }
-      merged = Array.from(custMap.values());
-      try {
-        localStorage.setItem("sgf_customers", JSON.stringify(merged));
-        console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud, deduped to", merged.length);
-      } catch { /* ignore */ }
     }
+    merged = Array.from(custMap.values());
+    try {
+      localStorage.setItem("sgf_customers", JSON.stringify(merged));
+      console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud, deduped to", merged.length);
+    } catch { /* ignore */ }
     if (onData) onData(customers);
   });
   listeners.push(unsub);
@@ -630,13 +634,11 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
   const unsub = onValue(stockRef, (snapshot) => {
     const data = snapshot.val();
     const stock = fbToArray(data);
-    if (stock.length > 0) {
-      const merged = mergeWithCloudData("sgf_products", stock);
-      try {
-        localStorage.setItem("sgf_products", JSON.stringify(merged));
-        console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
-      } catch { /* ignore */ }
-    }
+    const merged = mergeWithCloudData("sgf_products", stock);
+    try {
+      localStorage.setItem("sgf_products", JSON.stringify(merged));
+      console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
+    } catch { /* ignore */ }
     if (onData) onData(stock);
   });
   listeners.push(unsub);
@@ -653,11 +655,10 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
   const unsub = onValue(ordersRef, (snapshot) => {
     const data = snapshot.val();
     const orders = fbToArray(data);
-    if (orders.length > 0) {
-      const merged = mergeWithCloudData("sgf_orders", orders);
-      try { localStorage.setItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
-      dataServiceRefresh();
-    }
+    // ALWAYS merge — even when cloud is empty, to clear deleted items locally
+    const merged = mergeWithCloudData("sgf_orders", orders);
+    try { localStorage.setItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataServiceRefresh();
     onData(orders);
   });
   listeners.push(unsub);
@@ -670,11 +671,9 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
   const unsub = onValue(ref_path, (snapshot) => {
     const data = snapshot.val();
     const checkins = fbToArray(data);
-    if (checkins.length > 0) {
-      const merged = mergeWithCloudData("sgf_checkins", checkins);
-      try { localStorage.setItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
-      dataServiceRefresh();
-    }
+    const merged = mergeWithCloudData("sgf_checkins", checkins);
+    try { localStorage.setItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataServiceRefresh();
     onData(checkins);
   });
   listeners.push(unsub);
@@ -687,11 +686,9 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
   const unsub = onValue(ref_path, (snapshot) => {
     const data = snapshot.val();
     const appts = fbToArray(data);
-    if (appts.length > 0) {
-      const merged = mergeWithCloudData("sgf_appointments", appts);
-      try { localStorage.setItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
-      dataServiceRefresh();
-    }
+    const merged = mergeWithCloudData("sgf_appointments", appts);
+    try { localStorage.setItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataServiceRefresh();
     onData(appts);
   });
   listeners.push(unsub);
@@ -704,11 +701,9 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
   const unsub = onValue(ref_path, (snapshot) => {
     const data = snapshot.val();
     const invoices = fbToArray(data);
-    if (invoices.length > 0) {
-      const merged = mergeWithCloudData("sgf_invoices", invoices);
-      try { localStorage.setItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
-      dataServiceRefresh();
-    }
+    const merged = mergeWithCloudData("sgf_invoices", invoices);
+    try { localStorage.setItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataServiceRefresh();
     onData(invoices);
   });
   listeners.push(unsub);
@@ -721,11 +716,9 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
   const unsub = onValue(ref_path, (snapshot) => {
     const data = snapshot.val();
     const actions = fbToArray(data);
-    if (actions.length > 0) {
-      const merged = mergeWithCloudData("sgf_followUpActions", actions);
-      try { localStorage.setItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
-      dataServiceRefresh();
-    }
+    const merged = mergeWithCloudData("sgf_followUpActions", actions);
+    try { localStorage.setItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataServiceRefresh();
     onData(actions);
   });
   listeners.push(unsub);
@@ -738,10 +731,8 @@ export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () =>
   const unsub = onValue(followUpsRef, (snapshot) => {
     const data = snapshot.val();
     const followUps = fbToArray(data);
-    if (followUps.length > 0) {
-      const merged = mergeWithCloudData("sgf_followUps", followUps);
-      try { localStorage.setItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
-    }
+    const merged = mergeWithCloudData("sgf_followUps", followUps);
+    try { localStorage.setItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
     if (onData) onData(followUps);
   });
   listeners.push(unsub);
@@ -754,11 +745,8 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
   const unsub = onValue(receiptsRef, (snapshot) => {
     const data = snapshot.val();
     const receipts = fbToArray(data);
-    if (receipts.length > 0) {
-      // Use mergeWithCloudData to preserve local receipts that haven't been pushed yet
-      const merged = mergeWithCloudData("sgf_receipts", receipts);
-      try { localStorage.setItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
-    }
+    const merged = mergeWithCloudData("sgf_receipts", receipts);
+    try { localStorage.setItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
     if (onData) onData(receipts);
   });
   listeners.push(unsub);
@@ -771,19 +759,17 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
   const unsub = onValue(repsRef, (snapshot) => {
     const data = snapshot.val();
     const reps = fbToArray(data);
-    if (reps.length > 0) {
-      const merged = mergeWithCloudData("sgf_salesReps_data", reps);
-      try { localStorage.setItem("sgf_salesReps_data", JSON.stringify(merged)); } catch { /* ignore */ }
-      // CRITICAL: Also update SALES_REPS in dataService so list() and getSalesReps() are in sync
-      try {
-        const names = reps.map((r: any) => r.name).filter((n: any) => typeof n === "string");
-        if (names.length > 0) {
-          // Update dataService's SALES_REPS via the shared localStorage key
-          localStorage.setItem("sgf_salesReps", JSON.stringify(names));
-        }
-      } catch { /* ignore */ }
-      reloadFromStorage(); // Update in-memory SALES_REPS array
-    }
+    const merged = mergeWithCloudData("sgf_salesReps_data", reps);
+    try { localStorage.setItem("sgf_salesReps_data", JSON.stringify(merged)); } catch { /* ignore */ }
+    // CRITICAL: Also update SALES_REPS in dataService so list() and getSalesReps() are in sync
+    try {
+      const names = reps.map((r: any) => r.name).filter((n: any) => typeof n === "string");
+      if (names.length > 0) {
+        // Update dataService's SALES_REPS via the shared localStorage key
+        localStorage.setItem("sgf_salesReps", JSON.stringify(names));
+      }
+    } catch { /* ignore */ }
+    reloadFromStorage(); // Update in-memory SALES_REPS array
     if (onData) onData(reps);
   });
   listeners.push(unsub);
@@ -796,11 +782,9 @@ export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
   const unsub = onValue(usersRef, (snapshot) => {
     const data = snapshot.val();
     const users = fbToArray(data);
-    if (users.length > 0) {
-      const merged = mergeWithCloudData("sgf_users", users);
-      try { localStorage.setItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
-      reloadFromStorage(); // Update in-memory users array
-    }
+    const merged = mergeWithCloudData("sgf_users", users);
+    try { localStorage.setItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
+    reloadFromStorage(); // Update in-memory users array
     if (onData) onData(users);
   });
   listeners.push(unsub);
@@ -966,35 +950,168 @@ export async function forcePullAllFromCloud(): Promise<{
 export async function diagnoseSync(): Promise<{
   firebase: Record<string, number>;
   localStorage: Record<string, number>;
+  ghosts: Record<string, number>;
+  drafts: Record<string, number>;
+  duplicates: Record<string, number>;
+  idMismatches: Record<string, number>;
 }> {
   const firebase: Record<string, number> = {};
   const localStorageCounts: Record<string, number> = {};
+  const ghosts: Record<string, number> = {};
+  const drafts: Record<string, number> = {};
+  const duplicates: Record<string, number> = {};
+  const idMismatches: Record<string, number> = {};
+
+  const DATA_TYPES = [
+    { path: "orders", key: "sgf_orders" },
+    { path: "invoices", key: "sgf_invoices" },
+    { path: "customers", key: "sgf_customers" },
+    { path: "stock", key: "sgf_products" },
+    { path: "appointments", key: "sgf_appointments" },
+    { path: "checkins", key: "sgf_checkins" },
+    { path: "followUps", key: "sgf_followUps" },
+    { path: "receipts", key: "sgf_receipts" },
+    { path: "creditNotes", key: "sgf_creditNotes" },
+    { path: "users", key: "sgf_users" },
+    { path: "salesReps", key: "sgf_salesReps_data" },
+  ];
 
   // Check Firebase
   if (isFirebaseReady()) {
-    const paths = ["orders", "invoices", "customers", "stock", "appointments", "checkins", "followUps", "receipts"];
-    for (const p of paths) {
+    for (const { path } of DATA_TYPES) {
       try {
-        const snapshot = await get(ref(db, p));
-        firebase[p] = fbToArray(snapshot.val()).length;
-      } catch { firebase[p] = -1; }
+        const snapshot = await get(ref(db, path));
+        firebase[path] = fbToArray(snapshot.val()).length;
+      } catch { firebase[path] = -1; }
     }
   }
 
-  // Check localStorage
-  const localKeys = ["sgf_orders", "sgf_invoices", "sgf_customers", "sgf_products", "sgf_appointments", "sgf_checkins", "sgf_followUps", "sgf_receipts"];
-  for (const k of localKeys) {
+  // Check localStorage and detect ghosts/drafts/duplicates
+  for (const { path, key } of DATA_TYPES) {
     try {
-      const raw = localStorage.getItem(k);
-      if (!raw) { localStorageCounts[k] = 0; continue; }
+      const raw = localStorage.getItem(key);
+      if (!raw) { localStorageCounts[key] = 0; ghosts[key] = 0; drafts[key] = 0; duplicates[key] = 0; idMismatches[key] = 0; continue; }
       const parsed = JSON.parse(raw);
-      localStorageCounts[k] = Array.isArray(parsed) ? parsed.length : 0;
-    } catch { localStorageCounts[k] = -1; }
+      const items = Array.isArray(parsed) ? parsed : [];
+      localStorageCounts[key] = items.length;
+
+      // Get Firebase IDs for this type
+      let firebaseIds = new Set<string>();
+      if (isFirebaseReady() && firebase[path] !== -1) {
+        try {
+          const snapshot = await get(ref(db, path));
+          const fbItems = fbToArray(snapshot.val());
+          firebaseIds = new Set(fbItems.map((item: any) => getStableKey(item, key)).filter((k: any) => k !== null));
+        } catch { /* ignore */ }
+      }
+
+      // Count ghosts (synced but deleted from cloud), drafts (never synced), duplicates, ID mismatches
+      let ghostCount = 0;
+      let draftCount = 0;
+      let dupCount = 0;
+      let mismatchCount = 0;
+      const seenIds = new Set<string>();
+      const seenIdTypes = new Map<string, { string: boolean; number: boolean }>();
+
+      for (const item of items) {
+        const k = getStableKey(item, key);
+        if (k === null) continue;
+
+        // Ghost detection: has _syncedAt but not in Firebase
+        if (item._syncedAt && !firebaseIds.has(k)) {
+          ghostCount++;
+        }
+        // Draft detection: no _syncedAt and not in Firebase
+        if (!item._syncedAt && !firebaseIds.has(k)) {
+          draftCount++;
+        }
+        // Duplicate detection
+        if (seenIds.has(k)) {
+          dupCount++;
+        } else {
+          seenIds.add(k);
+        }
+        // ID type mismatch detection
+        if (!seenIdTypes.has(k)) {
+          seenIdTypes.set(k, { string: false, number: false });
+        }
+        const typeInfo = seenIdTypes.get(k)!;
+        if (typeof item.id === "string") typeInfo.string = true;
+        if (typeof item.id === "number") typeInfo.number = true;
+      }
+
+      // Count ID type mismatches (same stable key but different ID types)
+      for (const [, typeInfo] of seenIdTypes) {
+        if (typeInfo.string && typeInfo.number) {
+          mismatchCount++;
+        }
+      }
+
+      ghosts[key] = ghostCount;
+      drafts[key] = draftCount;
+      duplicates[key] = dupCount;
+      idMismatches[key] = mismatchCount;
+    } catch {
+      localStorageCounts[key] = -1;
+      ghosts[key] = -1;
+      drafts[key] = -1;
+      duplicates[key] = -1;
+      idMismatches[key] = -1;
+    }
   }
 
   console.log("[diagnoseSync] Firebase:", firebase);
   console.log("[diagnoseSync] localStorage:", localStorageCounts);
-  return { firebase, localStorage: localStorageCounts };
+  console.log("[diagnoseSync] ghosts:", ghosts);
+  console.log("[diagnoseSync] drafts:", drafts);
+  console.log("[diagnoseSync] duplicates:", duplicates);
+  console.log("[diagnoseSync] idMismatches:", idMismatches);
+  return { firebase, localStorage: localStorageCounts, ghosts, drafts, duplicates, idMismatches };
+}
+
+// =============================================================================
+// FORCE RESET & SYNC: Emergency clear all local data and re-pull from Firebase
+// Use this when a device has corrupted data that won't sync properly.
+// =============================================================================
+
+export async function forceResetAndSync(): Promise<{
+  cleared: string[];
+  pulled: Record<string, number>;
+  success: boolean;
+}> {
+  const result = { cleared: [] as string[], pulled: {} as Record<string, number>, success: false };
+
+  if (!isFirebaseReady()) {
+    console.warn("[forceResetAndSync] Firebase not ready");
+    return result;
+  }
+
+  // Step 1: Clear all transaction data from localStorage
+  const keysToClear = [
+    "sgf_orders", "sgf_invoices", "sgf_checkins", "sgf_appointments",
+    "sgf_receipts", "sgf_creditNotes", "sgf_followUps", "sgf_followUpActions",
+    "sgf_collectionNotes", "sgf_collectionPromises", "sgf_accountHolds",
+    "sgf_specialPrices", "sgf_auditLog",
+  ];
+
+  for (const key of keysToClear) {
+    try {
+      localStorage.removeItem(key);
+      result.cleared.push(key);
+    } catch { /* ignore */ }
+  }
+
+  // Step 2: Re-pull from Firebase
+  const pulled = await pullFromCloud();
+  result.pulled = pulled;
+
+  // Step 3: Reload dataService
+  reloadFromStorage?.();
+  dataServiceRefresh?.();
+
+  result.success = true;
+  console.log("[forceResetAndSync] Cleared:", result.cleared, "Pulled:", result.pulled);
+  return result;
 }
 
 // =============================================================================

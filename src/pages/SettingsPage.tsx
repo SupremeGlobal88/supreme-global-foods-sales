@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
-import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData, pullFromCloud, forcePushAllLocalData, forcePullAllFromCloud, diagnoseSync } from "@/lib/firebaseSync";
+import { getFirebaseConfig, getConfigFromStorage, saveFirebaseConfig, clearFirebaseConfig, syncAllLocalData, pushCustomers, pushStock, disconnectFirebase, clearCloudData, pullFromCloud, forcePushAllLocalData, forcePullAllFromCloud, diagnoseSync, forceResetAndSync } from "@/lib/firebaseSync";
 import { useRole } from "@/hooks/useRole";
 import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
 
@@ -332,11 +332,55 @@ export default function SettingsPage() {
     setDiagnoseResult("Checking...");
     try {
       const result = await diagnoseSync();
-      const fb = Object.entries(result.firebase).map(([k, v]) => `${k}: ${v}`).join(", ");
-      const ls = Object.entries(result.localStorage).map(([k, v]) => `${k}: ${v}`).join(", ");
-      setDiagnoseResult(`Firebase: ${fb} | localStorage: ${ls}`);
+      const lines = [];
+      for (const [key, count] of Object.entries(result.localStorage)) {
+        const path = key.replace("sgf_", "").replace("_data", "");
+        const fbCount = result.firebase[path] ?? -1;
+        const ghost = result.ghosts[key] ?? 0;
+        const draft = result.drafts[key] ?? 0;
+        const dup = result.duplicates[key] ?? 0;
+        const mismatch = result.idMismatches[key] ?? 0;
+        let status = `Local: ${count}, Cloud: ${fbCount}`;
+        if (ghost > 0) status += `, GHOSTS: ${ghost}`;
+        if (draft > 0) status += `, Drafts: ${draft}`;
+        if (dup > 0) status += `, DUPS: ${dup}`;
+        if (mismatch > 0) status += `, ID-MISMATCH: ${mismatch}`;
+        lines.push(`${key}: ${status}`);
+      }
+      setDiagnoseResult(lines.join(" | "));
     } catch (e: any) {
       setDiagnoseResult("Diagnose failed: " + (e.message || "Unknown error"));
+    }
+  }
+
+  async function handleForceReset() {
+    if (!confirm("WARNING: This will clear ALL local transaction data and re-download from Firebase. Any unsynced local data will be lost. Continue?")) return;
+    setForceSyncStatus("Resetting local data and re-syncing from cloud...");
+    try {
+      const result = await forceResetAndSync();
+      if (result.success) {
+        // Invalidate ALL tRPC queries
+        await utils.invoice.list.invalidate();
+        await utils.invoice.getStats.invalidate();
+        await utils.order.list.invalidate();
+        await utils.order.getStats.invalidate();
+        await utils.customer.search.invalidate();
+        await utils.customer.list.invalidate();
+        await utils.stock.list.invalidate();
+        await utils.appointment.list.invalidate();
+        await utils.checkIn.list.invalidate();
+        await utils.followUp.list.invalidate();
+        await utils.followUpAction.list.invalidate();
+        await utils.dashboard.stats.invalidate();
+        const parts = Object.entries(result.pulled).map(([k, v]) => `${k}: ${v}`).join(", ");
+        setForceSyncStatus(`EMERGENCY RESET complete! Cleared ${result.cleared.length} keys. Re-downloaded: ${parts || "No data"}. Pages refreshed.`);
+      } else {
+        setForceSyncStatus("Reset failed — Firebase not ready.");
+      }
+      setTimeout(() => setForceSyncStatus(""), 15000);
+    } catch (e: any) {
+      setForceSyncStatus("Reset failed: " + (e.message || "Unknown error"));
+      setTimeout(() => setForceSyncStatus(""), 10000);
     }
   }
 
@@ -596,6 +640,11 @@ export default function SettingsPage() {
                 <button onClick={handleDiagnose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: "rgba(74, 222, 128, 0.1)", color: "#4ADE80", border: "1px solid rgba(74, 222, 128, 0.3)" }}>
                   Diagnose Sync
                 </button>
+                {isSuperAdmin && (
+                  <button onClick={handleForceReset} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+                    <Trash2 className="w-4 h-4 inline mr-1" /> EMERGENCY RESET & SYNC
+                  </button>
+                )}
               </div>
               {forcePushStatus && <div className="mt-2 text-xs text-[#D4A843]"><Cloud className="w-3 h-3 inline mr-1" />{forcePushStatus}</div>}
               {forcePullStatus && <div className="mt-2 text-xs text-[#6366F1]"><RefreshCw className="w-3 h-3 inline mr-1" />{forcePullStatus}</div>}
@@ -603,7 +652,8 @@ export default function SettingsPage() {
               <div className="mt-2 text-[10px] text-[#8A8B8C]">
                 <strong>Force Push</strong>: Sends every item from this device to Firebase. Use if other users can't see your data.<br />
                 <strong>Force Pull</strong>: Downloads all data from Firebase to this device. Use if you're seeing stale data.<br />
-                <strong>Diagnose</strong>: Shows item counts in Firebase vs this device. Use to check if sync is working.
+                <strong>Diagnose</strong>: Shows item counts in Firebase vs this device, plus ghosts/drafts/duplicates. Use to check if sync is working.<br />
+                <strong>EMERGENCY RESET</strong>: Clears ALL local data and re-downloads from Firebase. Use ONLY when a device has corrupted data that won't sync.
               </div>
             </div>
             {syncStatus.configured && shareUrl && (

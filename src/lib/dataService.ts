@@ -345,33 +345,51 @@ export function parseBankStatement(rawRows: any[][]): BankStatementRow[] {
     return -1;
   };
   const colInvoiceDate = findIdx(["invoice date"]);
-  const colCustomer = findIdx(["customer"]);
-  const colInvoiceNo = findIdx(["invoice no", "invoice no.", "invoice number"]);
-  const colAmountDue = findIdx(["amount due", "cs"]);
-  const colAmountPaid = findIdx(["amount paid", "amount paid", "over payment"]);
-  const colPaidDate = findIdx(["paid date"]);
+  // CR Invoice No header can be "cr invoice no" or variants
+  const colInvoiceNo = findIdx(["invoice no", "invoice no.", "invoice number", "cr invoice no"]);
+  // Customer column: some files have no header (blank column between Invoice Date and CR Invoice No)
+  let colCustomer = findIdx(["customer"]);
+  if (colCustomer < 0) {
+    // Fallback: column 1 is typically the customer when header is blank
+    colCustomer = 1;
+  }
+  // Amount due: can be "amount due", "cs", "op" (outstanding payment), or "amount"
+  const colAmountDue = findIdx(["amount due", "cs", "op", "amount"]);
+  // Amount paid: can be "amount paid", "over payment", "ap"
+  const colAmountPaid = findIdx(["amount paid", "over payment", "ap"]);
+  // Paid date: can be "paid date" or "pd"
+  const colPaidDate = findIdx(["paid date", "pd"]);
+
+  console.log("[parseBankStatement] Columns found:", {
+    invoiceDate: colInvoiceDate, customer: colCustomer, invoiceNo: colInvoiceNo,
+    amountDue: colAmountDue, amountPaid: colAmountPaid, paidDate: colPaidDate,
+    headers: headers.map((h: any) => String(h).trim()),
+  });
 
   const parsed: BankStatementRow[] = [];
   for (let i = 1; i < rawRows.length; i++) {
     const r = rawRows[i];
     if (!r || r.length === 0) continue;
-    const invoiceNumber = String(r[colInvoiceNo] || "").trim();
+    const invoiceNumber = colInvoiceNo >= 0 ? String(r[colInvoiceNo] || "").trim() : "";
     // Only process SGF invoices
     if (!invoiceNumber || !/^SGF\d+$/i.test(invoiceNumber)) continue;
-    const amountPaidRaw = r[colAmountPaid];
+    const amountPaidRaw = colAmountPaid >= 0 ? r[colAmountPaid] : 0;
     const amountPaid = typeof amountPaidRaw === "number" ? amountPaidRaw : parseFloat(String(amountPaidRaw || "0").replace(/,/g, "")) || 0;
     // Skip rows with zero amount paid (nothing to allocate)
     if (amountPaid <= 0) continue;
     parsed.push({
       rowIndex: i,
-      invoiceDate: String(r[colInvoiceDate] || "").trim(),
-      customerName: String(r[colCustomer] || "").trim(),
+      invoiceDate: colInvoiceDate >= 0 ? String(r[colInvoiceDate] || "").trim() : "",
+      customerName: colCustomer >= 0 ? String(r[colCustomer] || "").trim() : "",
       invoiceNumber,
-      amountDue: typeof r[colAmountDue] === "number" ? r[colAmountDue] : parseFloat(String(r[colAmountDue] || "0").replace(/,/g, "")) || 0,
+      amountDue: colAmountDue >= 0
+        ? (typeof r[colAmountDue] === "number" ? r[colAmountDue] : parseFloat(String(r[colAmountDue] || "0").replace(/,/g, "")) || 0)
+        : 0,
       amountPaid,
-      paidDate: r[colPaidDate] ? String(r[colPaidDate]).trim() : null,
+      paidDate: colPaidDate >= 0 && r[colPaidDate] ? String(r[colPaidDate]).trim() : null,
     });
   }
+  console.log("[parseBankStatement] Parsed", parsed.length, "rows from", rawRows.length - 1, "data rows");
   return parsed;
 }
 

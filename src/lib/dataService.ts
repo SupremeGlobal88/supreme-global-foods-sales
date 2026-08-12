@@ -1422,6 +1422,24 @@ function activateInvoiceFromOrder(orderId: number) {
   }
 }
 
+/** When order is cancelled, also cancel its linked invoice (if any).
+ *  Returns the cancelled invoice so caller can push to Firebase (cloud-first). */
+function cancelInvoiceFromOrder(orderId: number): any | null {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const idx = invoices.findIndex((i) => i.orderId == orderId);
+  if (idx >= 0 && invoices[idx].status !== "cancelled") {
+    const oldInvStatus = invoices[idx].status;
+    invoices[idx].status = "cancelled";
+    invoices[idx].updatedAt = new Date().toISOString();
+    invoices[idx].cancelledAt = new Date().toISOString();
+    invoices[idx].cancellationReason = "Order cancelled";
+    saveItem("sgf_invoices", invoices);
+    console.log(`[Invoice] Cancelled invoice ${invoices[idx].invoiceNumber} (was ${oldInvStatus}) because order ${orderId} was cancelled`);
+    return invoices[idx];
+  }
+  return null;
+}
+
 /** Fix invoices stuck in "draft" whose orders are already delivered/ready.
  *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder.
  *  Returns changed invoices so caller can push to Firebase (cloud-first). */
@@ -2029,6 +2047,7 @@ export const dataService = {
         const oldStatus = orders[idx].status;
         const order = orders[idx];
         order.status = status;
+        let cancelledInvoice: any | null = null;
         // RESTORE STOCK only when order is CANCELLED (not delivered).
         // Stock is deducted at order creation and stays deducted through the
         // entire lifecycle (pending → ready → delivered). Only cancelled orders
@@ -2045,6 +2064,8 @@ export const dataService = {
             }
           }
           saveItem("sgf_products", products);
+          // Also cancel the linked invoice if one exists
+          cancelledInvoice = cancelInvoiceFromOrder(order.id);
         }
         // ACTIVATE INVOICE from draft to sent when order becomes ready or delivered
         // (only if invoice already exists — admin must generate it manually)
@@ -2052,7 +2073,7 @@ export const dataService = {
           activateInvoiceFromOrder(order.id);
         }
         saveItem("sgf_orders", orders);
-        return order;
+        return { order, cancelledInvoice };
       }
       return null;
     },
@@ -2752,6 +2773,7 @@ export const dataService = {
           if (i.source === "sage" && custCodeLower && nestedCode && String(nestedCode).trim().toLowerCase() === custCodeLower) return true;
           return false;
         })
+        .filter((i) => i.status !== "cancelled")
         .filter((i) => !fromDate || new Date(i.invoiceDate || i.createdAt) >= new Date(fromDate))
         .filter((i) => !toDate || new Date(i.invoiceDate || i.createdAt) <= new Date(toDate + "T23:59:59"));
       let runningBal = 0;
@@ -2787,11 +2809,11 @@ export const dataService = {
       const totalValue = invoices.reduce((sum, i) => sum + Number(i.total || i.totalAmount || 0), 0);
       const totalPaid = invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0);
       const outstanding = invoices
-        .filter((i) => i.status !== "draft" && i.status !== "paid")
+        .filter((i) => i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
         .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0);
       const sageCount = invoices.filter((i) => i.source === "sage").length;
       const sageOutstanding = invoices
-        .filter((i) => i.source === "sage" && i.status !== "draft" && i.status !== "paid")
+        .filter((i) => i.source === "sage" && i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
         .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0);
       return {
         total: invoices.length,
@@ -2800,6 +2822,7 @@ export const dataService = {
         partiallyPaid: invoices.filter((i) => i.status === "partially_paid").length,
         paid: invoices.filter((i) => i.status === "paid").length,
         overdue: invoices.filter((i) => i.status === "overdue").length,
+        cancelled: invoices.filter((i) => i.status === "cancelled").length,
         totalValue,
         totalPaid,
         outstanding,
@@ -3170,7 +3193,7 @@ export const dataService = {
     getOverdueInvoices: () => {
       const now = new Date();
       return invoices
-        .filter((inv) => inv.status !== "paid")
+        .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
         .map((inv) => {
           const customer = customers.find((c) => c.id === inv.customerId);
           // Use invoiceDate (actual invoice date) not createdAt (import date)

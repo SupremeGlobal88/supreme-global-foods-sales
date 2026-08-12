@@ -158,11 +158,17 @@ export function createLocalLink() {
                 break;
               }
               case "order.updateStatus": {
-                result = dataService.order.updateStatus(input);
+                const updateResult = dataService.order.updateStatus(input);
+                result = updateResult?.order || updateResult;
                 await fbPush("order", result);
                 // Push updated stock to Firebase (cancelled orders restore stock)
                 await pushStock(dataService.stock.list());
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
+                // If order was cancelled and a linked invoice was also cancelled, push it
+                if (updateResult?.cancelledInvoice) {
+                  await pushInvoice(updateResult.cancelledInvoice);
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                }
                 break;
               }
               case "order.generateInvoice": {

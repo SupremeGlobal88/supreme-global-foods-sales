@@ -230,6 +230,7 @@ export default function InvoicesPage() {
       partially_paid: { bg: "rgba(245,158,11,0.12)", c: "#F59E0B", l: "Partial" },
       paid: { bg: "rgba(74,222,128,0.12)", c: "#4ADE80", l: "Paid" },
       overdue: { bg: "rgba(239,68,68,0.12)", c: "#EF4444", l: "Overdue" },
+      cancelled: { bg: "rgba(107,114,128,0.12)", c: "#6B7280", l: "Cancelled" },
     };
     const x = m[s] || { bg: "#222324", c: "#8A8B8C", l: s };
     return <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: x.bg, color: x.c }}>{x.l}</span>;
@@ -782,7 +783,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* ═══════ STATS CARDS (clickable filters) ═══════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
         {[
           { key: "all", label: "ALL", v: stats?.total || 0, c: "#8A8B8C" },
           { key: "draft", label: "DRAFT", v: stats?.draft || 0, c: "#8B5CF6" },
@@ -790,6 +791,7 @@ export default function InvoicesPage() {
           { key: "partially_paid", label: "PARTIAL", v: stats?.partiallyPaid || 0, c: "#F59E0B" },
           { key: "paid", label: "PAID", v: stats?.paid || 0, c: "#4ADE80" },
           { key: "overdue", label: "OVERDUE", v: stats?.overdue || 0, c: "#EF4444" },
+          { key: "cancelled", label: "CANCELLED", v: stats?.cancelled || 0, c: "#6B7280" },
         ].map((s) => (
           <button
             key={s.key}
@@ -940,13 +942,13 @@ export default function InvoicesPage() {
                           {isAdmin && (
                             <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setEditInvPaymentTerms(inv.paymentTerms || "cod"); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
                           )}
-                          {isAdmin && bal > 0 && (
+                          {isAdmin && bal > 0 && inv.status !== "cancelled" && (
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
                           )}
-                          {isAdmin && inv.status !== "draft" && (
+                          {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
                             <button onClick={() => openCreditNote(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Credit Note"><RotateCcw className="w-3.5 h-3.5 text-[#F59E0B]" /></button>
                           )}
-                          {isAdmin && inv.status !== "draft" && (
+                          {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
                             <button onClick={() => sendEmail(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Email Invoice"><Mail className="w-3.5 h-3.5 text-[#3B82F6]" /></button>
                           )}
                         </div>
@@ -1147,13 +1149,13 @@ export default function InvoicesPage() {
                           {/* Action buttons row */}
                           <div className="flex gap-2 flex-wrap pt-3" style={{ borderTop: "1px solid #222324" }}>
                             <button onClick={() => printDoc(inv)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Invoice &amp; DN</button>
-                            {isAdmin && bal > 0 && (
+                            {isAdmin && bal > 0 && inv.status !== "cancelled" && (
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
                             )}
-                            {isAdmin && inv.status !== "draft" && (
+                            {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
                               <button onClick={() => openCreditNote(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
                             )}
-                            {isAdmin && inv.status !== "draft" && (
+                            {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
                               <button onClick={() => sendEmail(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(59,130,246,0.3)" }}><Mail className="w-3 h-3" /> Email to Customer</button>
                             )}
                             {isAdmin && (!inv.orderId || !(allOrders || []).find((o: any) => o.id === inv.orderId)) && (
@@ -1539,6 +1541,7 @@ export default function InvoicesPage() {
                     <option value="paid">Paid</option>
                     <option value="partially_paid">Partially Paid</option>
                     <option value="overdue">Overdue</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
               </div>

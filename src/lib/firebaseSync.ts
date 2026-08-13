@@ -267,12 +267,20 @@ const FB_PATHS: Record<string, string> = {
 };
 
 /** Read data directly from Firebase. Returns array of items or empty array.
- *  This is the CLOUD FIRST read — every query goes to Firebase first. */
+ *  This is the CLOUD FIRST read — every query goes to Firebase first.
+ *  CRITICAL: 10-second timeout prevents the app from hanging forever if Firebase is slow/unresponsive. */
 export async function readFromFirebase(path: string): Promise<any[]> {
   if (!isFirebaseReady()) return [];
   try {
-    const snapshot = await get(ref(db, FB_PATHS[path] || path));
-    const val = snapshot.val();
+    // Race Firebase get() against a 10-second timeout to prevent indefinite hangs
+    const timeoutMs = 10000;
+    const snapshot = await Promise.race([
+      get(ref(db, FB_PATHS[path] || path)),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Firebase read timeout: ${path}`)), timeoutMs)
+      ),
+    ]);
+    const val = (snapshot as any).val();
     if (!val) return [];
     // Handle both array and object formats
     if (Array.isArray(val)) return val.filter((x) => x != null);
@@ -480,8 +488,15 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
 
   const pullType = async (path: string, storageKey: string, postProcess?: (items: any[]) => any[]) => {
     try {
-      const snapshot = await get(ref(db, path));
-      const data = fbToArray(snapshot.val());
+      // CRITICAL: 10-second timeout prevents the app from hanging forever if Firebase is slow
+      const timeoutMs = 10000;
+      const snapshot = await Promise.race([
+        get(ref(db, path)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Firebase pull timeout: ${path}`)), timeoutMs)
+        ),
+      ]);
+      const data = fbToArray((snapshot as any).val());
       // ALWAYS merge — even when cloud is empty, to clear deleted items locally
       let merged = mergeWithCloudData(storageKey, data);
       if (postProcess) merged = postProcess(merged);

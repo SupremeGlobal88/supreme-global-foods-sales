@@ -114,14 +114,25 @@ export default function App() {
         console.warn("[Sync] Error:", e);
       } finally {
         // ALWAYS set cloud ready so the app renders — even if Firebase is down or slow.
-        // The original code had this in a finally block. The cost optimization accidentally
-        // moved it inside the if() block, causing the app to get stuck on loading screen.
+        // The previous bug: moving setIsCloudReady(true) inside the if() block meant
+        // if Firebase init was slow or pullFromCloud hung, the app stayed on the
+        // loading screen forever. finally guarantees the app ALWAYS renders.
         setIsCloudReady(true);
       }
     }
 
+    // CRITICAL SAFETY NET: If loadFromCloud() hangs for any reason (Firebase get() can
+    // hang indefinitely on slow networks), force the app to render after 15 seconds.
+    // The finally block above should catch most cases, but this is a second line of defense.
+    const safetyTimer = setTimeout(() => {
+      if (!isCloudReady) {
+        console.warn("[Sync] SAFETY TIMEOUT: loadFromCloud took too long, forcing app render");
+        setIsCloudReady(true);
+      }
+    }, 15000);
+
     loadFromCloud();
-    return () => { unsub(); };
+    return () => { unsub(); clearTimeout(safetyTimer); };
   }, []);
 
   // POST-LOGIN SYNC: Re-sync after user logs in.

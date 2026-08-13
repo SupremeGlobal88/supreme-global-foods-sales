@@ -104,12 +104,18 @@ export default function App() {
           // Subscriptions handle ongoing real-time sync, but the initial pull ensures
           // we catch any data that was missed while the app was closed.
           const counts = await pullFromCloud();
+          reloadFromStorage();
+          queryClient.clear();
           console.log("[Sync] Cloud data pulled successfully:", counts);
-
-          setIsCloudReady(true);
+        } else {
+          console.warn("[Sync] Firebase not ready — skipping initial pull. Will retry via subscriptions.");
         }
       } catch (e) {
         console.warn("[Sync] Error:", e);
+      } finally {
+        // ALWAYS set cloud ready so the app renders — even if Firebase is down or slow.
+        // The original code had this in a finally block. The cost optimization accidentally
+        // moved it inside the if() block, causing the app to get stuck on loading screen.
         setIsCloudReady(true);
       }
     }

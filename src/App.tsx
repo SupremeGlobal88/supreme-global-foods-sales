@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -100,9 +100,12 @@ export default function App() {
           reloadFromStorage();
           console.log("[Sync] Local data loaded first");
 
-          // Subscriptions below will handle the initial cloud sync via onValue.
-          // pullFromCloud() removed — subscriptions download all data on initial attach
-          // and keep it updated live, eliminating redundant full-collection downloads.
+          // CRITICAL: Pull from cloud at startup to ensure all devices start with fresh data.
+          // Subscriptions handle ongoing real-time sync, but the initial pull ensures
+          // we catch any data that was missed while the app was closed.
+          const counts = await pullFromCloud();
+          console.log("[Sync] Cloud data pulled successfully:", counts);
+
           setIsCloudReady(true);
         }
       } catch (e) {
@@ -118,8 +121,6 @@ export default function App() {
   // POST-LOGIN SYNC: Re-sync after user logs in.
   // The mount sync may have run before Firebase was ready or before login.
   // This ensures fresh data is loaded AFTER authentication.
-  // NOTE: pullFromCloud removed — subscriptions handle all sync automatically.
-  // Only reload from localStorage to refresh dataService in-memory arrays.
   useEffect(() => {
     if (isAuthenticated && isCloudReady) {
       console.log("[Sync] Post-login sync triggered");

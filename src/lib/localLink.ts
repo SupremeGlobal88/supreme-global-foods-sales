@@ -96,11 +96,11 @@ export function createLocalLink() {
             switch (path) {
               case "auth.me": result = dataService.auth.me(); break;
               // STOCK — cloud first
-              case "stock.list": result = dataService.stock.list(); break;
-              case "stock.search": result = dataService.stock.search(input || { query: "" }); break;
-              case "stock.getById": result = dataService.stock.getById(input); break;
+              case "stock.list": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.list(); break;
+              case "stock.search": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.search(input || { query: "" }); break;
+              case "stock.getById": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.getById(input); break;
               case "stock.getCategories": result = dataService.stock.getCategories(); break;
-              case "stock.getStats": result = dataService.stock.getStats(); break;
+              case "stock.getStats": await syncFromCloud("stock", "sgf_products"); result = dataService.stock.getStats(); break;
               case "stock.getDailyInvoicedStock": result = dataService.stock.getDailyInvoicedStock(input || {}); break;
               case "stock.reconcileStock": result = dataService.stock.reconcileStock(input || {}); break;
               case "stock.create": { result = dataService.stock.create(input); await pushOneStockItem(result); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } })); break; }
@@ -116,19 +116,19 @@ export function createLocalLink() {
                 break;
               }
               // CUSTOMERS — cloud first
-              case "customer.list": result = dataService.customer.list(); break;
-              case "customer.search": result = dataService.customer.search(input || { query: "" }); break;
-              case "customer.getById": result = dataService.customer.getById(input); break;
+              case "customer.list": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.list(); break;
+              case "customer.search": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.search(input || { query: "" }); break;
+              case "customer.getById": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getById(input); break;
               case "customer.create": result = dataService.customer.create(input); await fbPush("customer", result); break;
               case "customer.update": { const { id, data } = input; result = dataService.customer.update({ id, data }); if (result) await pushOneCustomer(result); break; }
               case "customer.delete": result = dataService.customer.delete(input); await removeOneCustomer(input); break;
-              case "customer.getStats": result = dataService.customer.getStats(); break;
+              case "customer.getStats": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getStats(); break;
               case "customer.getSalesReps": result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;
-              case "customer.getCustomersNeedingFollowUp": result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
+              case "customer.getCustomersNeedingFollowUp": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
               // ORDERS — cloud first
-              case "order.list": result = dataService.order.list(); break;
-              case "order.getById": result = dataService.order.getById(input); break;
+              case "order.list": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.list(); break;
+              case "order.getById": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.getById(input); break;
               case "order.create": {
                 result = dataService.order.create(input);
                 await fbPush("order", result);
@@ -193,25 +193,25 @@ export function createLocalLink() {
                 }
                 break;
               }
-              case "order.getStats": result = dataService.order.getStats(); break;
+              case "order.getStats": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
               case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { await pushInvoice(inv); } break;
               // INVOICES — cloud first
-              case "invoice.list": result = dataService.invoice.list(); break;
+              case "invoice.list": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.list(); break;
               case "invoice.generateForPO": result = dataService.generateInvoiceForPO(input); if (result) { const inv = dataService.invoice.list().find((i: any) => i.invoiceNumber === result); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
-              case "invoice.getById": result = dataService.invoice.getById(input); break;
+              case "invoice.getById": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.getById(input); break;
               case "invoice.create": result = dataService.invoice.create(input); await fbPush("invoice", result); break;
               case "invoice.updateStatus": result = dataService.invoice.updateStatus(input); await fbPush("invoice", result); break;
               case "invoice.update": result = dataService.invoice.updateInvoice(input); if (result) await fbPush("invoice", result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
               case "invoice.recordPayment": result = dataService.invoice.recordPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); if (result?.receipt) await pushOneReceipt(result.receipt); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
               case "invoice.editPayment": result = dataService.invoice.editPayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
               case "invoice.deletePayment": result = dataService.invoice.deletePayment(input); if (input?.invoiceId) { const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;
-              case "invoice.getCustomerStatement": result = dataService.invoice.getCustomerStatement(input); break;
-              case "invoice.getStats": result = dataService.invoice.getStats(); break;
-              case "invoice.getReceipts": result = dataService.invoice.getReceipts(); break;
-              case "invoice.getReceiptsByInvoice": result = dataService.invoice.getReceiptsByInvoice(input); break;
-              case "invoice.getReceiptsByCustomer": result = dataService.invoice.getReceiptsByCustomer(input); break;
-              case "invoice.getReceiptById": result = dataService.invoice.getReceiptById(input); break;
+              case "invoice.getCustomerStatement": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.getCustomerStatement(input); break;
+              case "invoice.getStats": await syncFromCloud("invoices", "sgf_invoices"); result = dataService.invoice.getStats(); break;
+              case "invoice.getReceipts": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceipts(); break;
+              case "invoice.getReceiptsByInvoice": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceiptsByInvoice(input); break;
+              case "invoice.getReceiptsByCustomer": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceiptsByCustomer(input); break;
+              case "invoice.getReceiptById": await syncFromCloud("receipts", "sgf_receipts"); result = dataService.invoice.getReceiptById(input); break;
               case "invoice.bulkHistoricalImport": result = dataService.invoice.bulkHistoricalImport(input); await pushInvoices(dataService.invoice.list()); break;
               case "invoice.relinkSageInvoices": {
                 result = dataService.invoice.relinkSageInvoices();
@@ -264,9 +264,9 @@ export function createLocalLink() {
                 }
                 break;
               }
-              case "invoice.getCreditNotes": result = dataService.invoice.getCreditNotes(); break;
-              case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
-              case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
+              case "invoice.getCreditNotes": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotes(); break;
+              case "invoice.getCreditNotesByInvoice": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotesByInvoice(input); break;
+              case "invoice.getCreditNotesByCustomer": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotesByCustomer(input); break;
               case "invoice.createCreditNote": {
                 result = dataService.invoice.createCreditNote(input);
                 if (result?.creditNote) {
@@ -308,7 +308,7 @@ export function createLocalLink() {
                 break;
               }
               // USERS
-              case "user.list": result = dataService.user.list(); break;
+              case "user.list": await syncFromCloud("users", "sgf_users"); result = dataService.user.list(); break;
               case "user.getById": result = dataService.user.getById(input); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
               case "user.create": result = dataService.user.create(input); await fbPush("user", result); break;
@@ -317,33 +317,33 @@ export function createLocalLink() {
               case "user.toggleActive": result = dataService.user.toggleActive(input); await fbPush("user", result); break;
               case "user.resetPin": result = dataService.user.resetPin(input); await fbPush("user", result); break;
               // APPOINTMENTS — cloud first
-              case "appointment.list": result = dataService.appointment.list(); break;
+              case "appointment.list": await syncFromCloud("appointments", "sgf_appointments"); result = dataService.appointment.list(); break;
               case "appointment.create": result = dataService.appointment.create(input); await fbPush("appointment", result); break;
               case "appointment.update": { const { id, data } = input; result = dataService.appointment.update({ id, data }); await fbPush("appointment", result); break; }
               case "appointment.delete": result = dataService.appointment.delete(input); await pushAppointmentDelete(input); break;
               case "appointment.updateStatus": result = dataService.appointment.updateStatus(input); await fbPush("appointment", result); break;
-              case "appointment.getStats": result = dataService.appointment.getStats(); break;
+              case "appointment.getStats": await syncFromCloud("appointments", "sgf_appointments"); result = dataService.appointment.getStats(); break;
               // CHECKINS — cloud first
-              case "checkIn.list": result = dataService.checkin.list(); break;
+              case "checkIn.list": await syncFromCloud("checkins", "sgf_checkins"); result = dataService.checkin.list(); break;
               case "checkIn.create": result = dataService.checkin.create(input); await fbPush("checkin", result); break;
               case "checkIn.update": { const { id, data } = input; result = dataService.checkin.update({ id, data }); await fbPush("checkin", result); break; }
               case "checkIn.delete": result = dataService.checkin.delete(input); await pushCheckinDelete(input); break;
               case "checkIn.checkout": result = dataService.checkin.checkout(input); await fbPush("checkin", result); break;
-              case "checkIn.getStats": result = dataService.checkin.getStats(); break;
+              case "checkIn.getStats": await syncFromCloud("checkins", "sgf_checkins"); result = dataService.checkin.getStats(); break;
               case "checkIn.getDailyReport": result = dataService.checkin.getDailyReport(input?.date); break;
               case "checkIn.getWeeklyReport": result = dataService.checkin.getWeeklyReport(input?.year, input?.week); break;
               case "checkIn.getMonthlyReport": result = dataService.checkin.getMonthlyReport(input?.year, input?.month); break;
               case "checkIn.getAARate": result = getAARate(); break;
               case "checkIn.setAARate": result = setAARate(input); break;
               // FOLLOW-UPS — cloud first
-              case "followUpAction.list": result = dataService.followUpAction.list(); break;
+              case "followUpAction.list": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.list(); break;
               case "followUpAction.listByCustomer": result = dataService.followUpAction.listByCustomer(input); break;
               case "followUpAction.create": result = dataService.followUpAction.create(input); await pushFollowUpAction(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); break;
-              case "followUpAction.getStats": result = dataService.followUpAction.getStats(); break;
+              case "followUpAction.getStats": await syncFromCloud("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.getStats(); break;
               case "specialPrice.listByCustomer": result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
-              case "salesRep.list": result = dataService.salesRep.list(); break;
+              case "salesRep.list": await syncFromCloud("salesReps", "sgf_salesReps"); result = dataService.salesRep.list(); break;
               case "salesRep.getStats": result = dataService.salesRep.getStats(); break;
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
               case "salesRep.create": result = dataService.salesRep.create(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
@@ -355,7 +355,7 @@ export function createLocalLink() {
               case "audit.list": result = dataService.audit.list(); break;
               case "audit.getCustomerDeletions": result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": result = dataService.audit.getAddressChanges(); break;
-              case "followUp.list": result = dataService.followUp.list(); break;
+              case "followUp.list": await syncFromCloud("followUps", "sgf_followUps"); result = dataService.followUp.list(); break;
               case "followUp.update": result = dataService.followUp.update(input); if (result) { await pushFollowUp(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "followUp.getStats": result = dataService.followUp.getStats(); break;
               case "sampleReport.getByCustomer": result = dataService.sampleReport.getByCustomer(input); break;
@@ -370,28 +370,28 @@ export function createLocalLink() {
               case "collections.placeHold": result = dataService.collections.placeHold(input); break;
               case "collections.releaseHold": result = dataService.collections.releaseHold(input); break;
               // ═══ CORPORATE MODULE ═══
-              case "corporateCustomer.list": result = dataService.corporateCustomer.list(); break;
+              case "corporateCustomer.list": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.list(); break;
               case "corporateCustomer.listByCompany": result = dataService.corporateCustomer.listByCompany(input); break;
-              case "corporateCustomer.getById": result = dataService.corporateCustomer.getById(input); break;
+              case "corporateCustomer.getById": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.getById(input); break;
               case "corporateCustomer.create": result = dataService.corporateCustomer.create(input); await pushCorporateCustomer(result); await pushOneCustomer(dataService.customer.list().find((c: any) => c.id === result.id)); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break;
               case "corporateCustomer.update": { const { id, data } = input; result = dataService.corporateCustomer.update({ id, data }); if (result) await pushCorporateCustomer(result); const updCust = dataService.customer.list().find((c: any) => c.id === id); if (updCust) await pushOneCustomer(updCust); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
               case "corporateCustomer.delete": result = dataService.corporateCustomer.delete(input); await removeCorporateCustomer(input); await removeOneCustomer(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break;
-              case "purchaseOrder.list": result = dataService.purchaseOrder.list(); break;
-              case "purchaseOrder.getById": result = dataService.purchaseOrder.getById(input); break;
+              case "purchaseOrder.list": await syncFromCloud("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.list(); break;
+              case "purchaseOrder.getById": await syncFromCloud("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.getById(input); break;
               case "purchaseOrder.create": result = dataService.purchaseOrder.create(input); await pushPurchaseOrder(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break;
               case "purchaseOrder.update": { const { id, data } = input; result = dataService.purchaseOrder.update({ id, data }); if (result) await pushPurchaseOrder(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break; }
               case "purchaseOrder.updateStatus": result = dataService.purchaseOrder.updateStatus(input); await pushPurchaseOrder(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break;
               case "purchaseOrder.delete": result = dataService.purchaseOrder.delete(input); await removePurchaseOrder(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break;
-              case "barrel.list": result = dataService.barrel.list(); break;
+              case "barrel.list": await syncFromCloud("barrels", "sgf_barrels"); result = dataService.barrel.list(); break;
               case "barrel.listByPurchaseOrder": result = dataService.barrel.listByPurchaseOrder(input); break;
-              case "barrel.getById": result = dataService.barrel.getById(input); break;
+              case "barrel.getById": await syncFromCloud("barrels", "sgf_barrels"); result = dataService.barrel.getById(input); break;
               case "barrel.create": result = dataService.barrel.create(input); await pushBarrel(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break;
               case "barrel.update": { const { id, data } = input; result = dataService.barrel.update({ id, data }); if (result) await pushBarrel(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break; }
               case "barrel.delete": result = dataService.barrel.delete(input); await removeBarrel(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } })); break;
-              case "coc.list": result = dataService.coc.list(); break;
+              case "coc.list": await syncFromCloud("cocs", "sgf_cocs"); result = dataService.coc.list(); break;
               case "coc.listByBarrel": result = dataService.coc.listByBarrel(input); break;
               case "coc.listByPurchaseOrder": result = dataService.coc.listByPurchaseOrder(input); break;
-              case "coc.getById": result = dataService.coc.getById(input); break;
+              case "coc.getById": await syncFromCloud("cocs", "sgf_cocs"); result = dataService.coc.getById(input); break;
               case "coc.create": result = dataService.coc.create(input); await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;
               case "coc.update": { const { id, data } = input; result = dataService.coc.update({ id, data }); if (result) await pushCOC(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.delete": result = dataService.coc.delete(input); await removeCOC(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break;

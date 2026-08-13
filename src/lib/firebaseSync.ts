@@ -380,7 +380,16 @@ export async function pushCustomers(customers: any[]): Promise<void> {
  *  NEVER use after a single create/update — it will delete other users' stock items. */
 export async function pushStock(stock: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, "stock"), stock); } catch { /* ignore */ }
+  try {
+    // Push each item individually using safeFbKey (consistent with other push operations)
+    for (const item of stock) {
+      if (item && item.id != null) {
+        await set(ref(db, `stock/${safeFbKey(item.id)}`), { ...item, _syncedAt: Date.now() });
+      }
+    }
+  } catch (e: any) {
+    console.error("[pushStock] FAILED:", e.message);
+  }
 }
 
 export async function pushUser(user: any): Promise<void> {

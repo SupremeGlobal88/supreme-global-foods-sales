@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, pullFromCloud, isFirebaseReady } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -100,14 +100,13 @@ export default function App() {
           reloadFromStorage();
           console.log("[Sync] Local data loaded first");
 
-          const counts = await pullFromCloud();
-          reloadFromStorage();
-          queryClient.clear();
-          console.log("[Sync] Merged with cloud:", counts);
+          // Subscriptions below will handle the initial cloud sync via onValue.
+          // pullFromCloud() removed — subscriptions download all data on initial attach
+          // and keep it updated live, eliminating redundant full-collection downloads.
+          setIsCloudReady(true);
         }
       } catch (e) {
         console.warn("[Sync] Error:", e);
-      } finally {
         setIsCloudReady(true);
       }
     }
@@ -119,23 +118,14 @@ export default function App() {
   // POST-LOGIN SYNC: Re-sync after user logs in.
   // The mount sync may have run before Firebase was ready or before login.
   // This ensures fresh data is loaded AFTER authentication.
+  // NOTE: pullFromCloud removed — subscriptions handle all sync automatically.
+  // Only reload from localStorage to refresh dataService in-memory arrays.
   useEffect(() => {
     if (isAuthenticated && isCloudReady) {
       console.log("[Sync] Post-login sync triggered");
-      async function postLoginSync() {
-        try {
-          if (isFirebaseReady()) {
-            reloadFromStorage();
-            const counts = await pullFromCloud();
-            reloadFromStorage();
-            queryClient.clear();
-            console.log("[Sync] Post-login merged:", counts);
-          }
-        } catch (e) {
-          console.warn("[Sync] Post-login error:", e);
-        }
-      }
-      postLoginSync();
+      reloadFromStorage();
+      queryClient.clear();
+      console.log("[Sync] Post-login complete");
     }
   }, [isAuthenticated, isCloudReady]);
 

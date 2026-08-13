@@ -5,7 +5,6 @@ import {
   Shield, Calendar, MapPin, Clock, User, Filter, CheckCircle,
   LogIn, LogOut, AlertTriangle, ExternalLink, RefreshCw, Wifi, WifiOff,
 } from "lucide-react";
-import { syncService } from "@/lib/syncService";
 import DatePicker from "@/components/DatePicker";
 
 export default function AdminAuditPage() {
@@ -43,15 +42,17 @@ export default function AdminAuditPage() {
     setIsRefreshing(true);
     setCloudError("");
     try {
-      await syncService.refresh();
-      await refetchAppts();
-      await refetchCheckinsList();
-      if (tab === "trail") await refetchTrail();
-      if (tab === "checkins") await refetchCheckins();
-      if (tab === "missed") await refetchMissed();
-      if (tab === "followups") await refetchFollowUps();
+      // Re-fetch all data from local dataService (kept in sync by Firebase subscriptions)
+      await Promise.all([
+        refetchAppts(),
+        refetchCheckinsList(),
+        tab === "trail" ? refetchTrail() : Promise.resolve(),
+        tab === "checkins" ? refetchCheckins() : Promise.resolve(),
+        tab === "missed" ? refetchMissed() : Promise.resolve(),
+        tab === "followups" ? refetchFollowUps() : Promise.resolve(),
+      ]);
     } catch (err: any) {
-      setCloudError("Could not connect to cloud. Data shown is from local cache.");
+      setCloudError("Could not refresh data. Please check your connection.");
     }
     setIsRefreshing(false);
   }

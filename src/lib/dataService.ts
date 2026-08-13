@@ -3124,7 +3124,7 @@ export const dataService = {
 
     // CRUD for sales reps
     create: (data: { name: string }) => {
-      const reps = getCurrentSalesReps();
+      const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
       const name = (data.name || "").trim();
       if (!name) return null;
       if (reps.includes(name)) return null;
@@ -3136,7 +3136,7 @@ export const dataService = {
       return { id: reps.length, name, isActive: true };
     },
     update: ({ id, data }: { id: number; data: { name: string } }) => {
-      const reps = getCurrentSalesReps();
+      const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
       const newName = (data.name || "").trim();
@@ -3152,13 +3152,14 @@ export const dataService = {
       return { id, name: newName, isActive: true };
     },
     toggleActive: ({ id }: { id: number }) => {
-      const reps = getCurrentSalesReps();
+      const reps = [...getCurrentSalesReps()]; // COPY
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
+      // Legacy string-array reps have no active flag; return valid rep object for UI compatibility
       return { id, name: reps[idx], isActive: true };
     },
     delete: ({ id }: { id: number }) => {
-      const reps = getCurrentSalesReps();
+      const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
       reps.splice(idx, 1);

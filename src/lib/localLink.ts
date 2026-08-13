@@ -348,8 +348,8 @@ export function createLocalLink() {
               case "salesRep.getSalesBreakdown": result = dataService.salesRep.getSalesBreakdown(); break;
               case "salesRep.create": result = dataService.salesRep.create(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break; }
-              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
-              case "salesRep.delete": result = dataService.salesRep.delete(input); await removeSalesRep(input); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
+              case "salesRep.delete": result = dataService.salesRep.delete(input); if (result) await removeSalesRep(input.id); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               // DASHBOARD — cloud first (orders + invoices)
               case "dashboard.stats": result = dataService.dashboard.stats(); break;
               case "audit.list": result = dataService.audit.list(); break;

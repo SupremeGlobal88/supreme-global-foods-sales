@@ -18,7 +18,7 @@ const BUCKET_CONFIG: Record<string, { label: string; color: string; bg: string; 
   days_3_5: { label: "3-5 Days Over", color: "#F97316", bg: "rgba(249,115,22,0.12)", desc: "Phone call required" },
   days_6_10: { label: "6-10 Days Over", color: "#EF4444", bg: "rgba(239,68,68,0.12)", desc: "Formal follow-up" },
   days_11_20: { label: "11-20 Days Over", color: "#EF4444", bg: "rgba(239,68,68,0.15)", desc: "Final notice" },
-  days_21_plus: { label: "21+ Days Over", color: "#DC2626", bg: "rgba(220,38,38,0.2)", desc: "Legal/Management" },
+  days_21_plus: { label: "21+ Days Over", color: "#DC2626", bg: "rgba(220,38,38,0.2)", desc: "Management follow-up" }, 
 };
 
 const REMINDER_TEMPLATES: Record<string, { subject: string; body: string }> = {
@@ -35,16 +35,16 @@ const REMINDER_TEMPLATES: Record<string, { subject: string; body: string }> = {
     body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on 083 293 0644 to discuss.\n\nSupreme Global Foods`,
   },
   days_6_10: {
-    subject: "FINAL NOTICE - Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-    body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nUnless payment is received or a satisfactory arrangement is made within 48 hours, we will regrettably have to place your account on hold, which will prevent future deliveries.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: 083 293 0644\n\nSupreme Global Foods`,
+    subject: "FOLLOW-UP REQUIRED - Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
+    body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nTo continue enjoying our services, please arrange payment or contact us to discuss a payment plan.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: 083 293 0644\n\nSupreme Global Foods`,
   },
   days_11_20: {
-    subject: "ACCOUNT HOLD PENDING - Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have attempted to contact you on several occasions without success.\n\nOUTSTANDING: R {balanceDue}\n\nYour account has been flagged for immediate hold. No further orders will be processed until this matter is resolved.\n\nPlease contact management urgently: 083 293 0644\n\nSupreme Global Foods`,
+    subject: "URGENT FOLLOW-UP - Invoice {invoiceNumber}",
+    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have attempted to contact you on several occasions without success.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently to resolve this matter: 083 293 0644\n\nSupreme Global Foods`,
   },
   days_21_plus: {
-    subject: "LEGAL NOTICE PENDING - Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nThis matter has been escalated to management for legal action consideration.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: 083 293 0644\n\nSupreme Global Foods`,
+    subject: "URGENT: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
+    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have been unable to reach you despite several attempts.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: 083 293 0644\n\nSupreme Global Foods`,
   },
 };
 

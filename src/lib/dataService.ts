@@ -1,28 +1,43 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 
 // Mutable sales reps — loaded from localStorage if available
+// CRITICAL: Always normalize to strings. Firebase sync may push objects,
+// but the data model for salesReps is a simple string array.
 let SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
 try {
   const stored = localStorage.getItem("sgf_salesReps");
   if (stored) {
     const parsed = JSON.parse(stored);
-    if (Array.isArray(parsed) && parsed.length > 0) SALES_REPS = parsed;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Normalize: Firebase sync may return objects — extract the name string
+      SALES_REPS = parsed.map((r: any) =>
+        typeof r === "string" ? r : (r?.name || String(r || ""))
+      ).filter((n: any) => n && typeof n === "string");
+    }
   }
 } catch { /* ignore */ }
 function saveSalesReps() {
   try { localStorage.setItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
 }
 
-/** Read current sales reps from localStorage (includes Firebase-synced reps) */
+/** Read current sales reps from localStorage (includes Firebase-synced reps).
+ *  ALWAYS returns an array of strings — objects are normalized to their name. */
 function getCurrentSalesReps(): string[] {
   try {
     const raw = localStorage.getItem("sgf_salesReps");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((r: any) =>
+          typeof r === "string" ? r : (r?.name || String(r || ""))
+        ).filter((n: any) => n && typeof n === "string");
+      }
     }
   } catch { /* ignore */ }
-  return SALES_REPS;
+  // Fallback: normalize SALES_REPS in case it was corrupted by reloadFromStorage
+  return SALES_REPS.map((r: any) =>
+    typeof r === "string" ? r : (r?.name || String(r || ""))
+  ).filter((n: any) => n && typeof n === "string");
 }
 
 /** Get fresh static customer data */
@@ -962,8 +977,11 @@ export function reloadFromStorage(): void {
     if (sr) {
       const d = JSON.parse(sr);
       if (Array.isArray(d) && d.length > 0) {
+        // Normalize: Firebase sync may push objects — extract name strings
         SALES_REPS.length = 0;
-        SALES_REPS.push(...d);
+        SALES_REPS.push(...d.map((r: any) =>
+          typeof r === "string" ? r : (r?.name || String(r || ""))
+        ).filter((n: any) => n && typeof n === "string"));
       }
     }
   } catch { /* keep current */ }
@@ -3038,7 +3056,11 @@ export const dataService = {
     list: () => {
       // Always read fresh from localStorage so Firebase-synced reps appear
       const reps = getCurrentSalesReps();
-      return reps.map((name, i) => ({ id: i + 1, name, isActive: true }));
+      return reps.map((name, i) => ({
+        id: i + 1,
+        name: typeof name === "string" ? name : (name?.name || String(name || "Unknown")),
+        isActive: true
+      }));
     },
     getStats: () => {
       const reps = getCurrentSalesReps();
@@ -3149,7 +3171,7 @@ export const dataService = {
       SALES_REPS.push(...reps);
       saveSalesReps();
       saveItem("sgf_customers", customers);
-      return { id, name: newName, isActive: true };
+      return { id, name: newName, isActive: true, oldName };
     },
     toggleActive: ({ id }: { id: number }) => {
       const reps = [...getCurrentSalesReps()]; // COPY
@@ -3162,11 +3184,12 @@ export const dataService = {
       const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
+      const deletedName = reps[idx];
       reps.splice(idx, 1);
       SALES_REPS.length = 0;
       SALES_REPS.push(...reps);
       saveSalesReps();
-      return { success: true };
+      return { success: true, deletedName };
     },
   },
 

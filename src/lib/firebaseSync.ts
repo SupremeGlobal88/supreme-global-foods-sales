@@ -412,16 +412,20 @@ export async function pushUser(user: any): Promise<void> {
 export async function pushSalesRep(rep: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `salesReps/${safeFbKey(rep.id)}`), { ...rep, _syncedAt: Date.now() });
+    // Use the rep NAME as the Firebase key (stable, doesn't change on deletions)
+    const key = safeFbKey(rep.name || rep.id || String(rep));
+    await set(ref(db, `salesReps/${key}`), { name: rep.name, _syncedAt: Date.now() });
   } catch (e: any) {
     console.error("[pushSalesRep] FAILED:", rep?.name, rep?.id, e.message);
   }
 }
 
-export async function removeSalesRep(repId: number): Promise<void> {
+export async function removeSalesRep(repId: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `salesReps/${safeFbKey(repId)}`), null);
+    // repId may be a name string (preferred) or a numeric id (legacy fallback)
+    const key = safeFbKey(typeof repId === "string" ? repId : String(repId));
+    await set(ref(db, `salesReps/${key}`), null);
   } catch (e: any) {
     console.error("[removeSalesRep] FAILED:", repId, e.message);
   }
@@ -551,10 +555,15 @@ function fbToArray(data: any): any[] {
 /** Get the stable key for an item based on its data type */
 function getStableKey(item: any, storageKey: string): string | null {
   if (!item) return null;
+  // For simple string arrays (sales reps), use the string itself as the stable key.
+  if (typeof item === "string") return item;
   // ALWAYS use item.id as the stable key — it's unique and cannot duplicate.
   // Using orderNumber or invoiceNumber caused data loss when two items
   // shared the same number (e.g., duplicate order numbers).
-  return item.id != null ? String(item.id) : null;
+  if (item.id != null) return String(item.id);
+  // For sales reps stored as objects (name-only), use name as stable key.
+  if (storageKey === "sgf_salesReps" && item.name != null) return String(item.name);
+  return null;
 }
 
 /** Smart merge: Firebase is source of truth, but local-only items are preserved.

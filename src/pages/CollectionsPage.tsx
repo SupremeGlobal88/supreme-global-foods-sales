@@ -44,7 +44,7 @@ const REMINDER_TEMPLATES: Record<string, { subject: string; body: string }> = {
   },
   days_21_plus: {
     subject: "LEGAL NOTICE PENDING - Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nThis matter has been escalated to management for legal action consideration.\n\nOUTSTANDING: R {balanceDue}\n\nTo avoid legal proceedings, please make immediate payment or contact our legal department within 24 hours.\n\nContact: 083 293 0644\n\nSupreme Global Foods`,
+    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nThis matter has been escalated to management for legal action consideration.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: 083 293 0644\n\nSupreme Global Foods`,
   },
 };
 

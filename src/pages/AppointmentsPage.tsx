@@ -19,8 +19,16 @@ export default function AppointmentsPage() {
 
   // ===================== STATE =====================
 
-  // Tabs: visits (checkins), schedule (appointments), followups
-  const [activeTab, setActiveTab] = useState<"visits" | "schedule" | "followups">("visits");
+  // Tabs: visits (checkins), schedule (appointments), followups, geoAudit
+  const [activeTab, setActiveTab] = useState<"visits" | "schedule" | "followups" | "geoAudit">("visits");
+
+  // Geo Audit state
+  const [geoAuditMonth, setGeoAuditMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [geoAuditFlagOnly, setGeoAuditFlagOnly] = useState(false);
+  const [geoAuditRepFilter, setGeoAuditRepFilter] = useState<string>("all");
 
   // Schedule form
   const [showForm, setShowForm] = useState(false);
@@ -183,6 +191,103 @@ export default function AppointmentsPage() {
   const myFollowUps = isAdmin
     ? (filterRep === "all" ? (followUpCustomers || []) : (followUpCustomers || []).filter((c: any) => c.salesRepName === filterRep))
     : (followUpCustomers || []).filter((c: any) => c.salesRepName === myRepName);
+
+  // ===================== GEO AUDIT CLUSTERING =====================
+
+  type GeoCluster = {
+    key: string; // "rep|lat|lng"
+    repName: string;
+    roundedLat: number;
+    roundedLng: number;
+    visits: any[];
+    uniqueCustomers: Set<string>;
+    isFlagged: boolean;
+  };
+
+  const geoAuditClusters = useMemo<GeoCluster[]>(() => {
+    const allCheckins = checkins || [];
+    const [y, m] = geoAuditMonth.split("-").map(Number);
+    const monthStart = new Date(y, m - 1, 1);
+    const monthEnd = new Date(y, m, 1);
+
+    // Filter by month and rep (admin only; sales reps see their own)
+    let filtered = allCheckins.filter((ci: any) => {
+      const d = new Date(ci.createdAt || 0);
+      return d >= monthStart && d < monthEnd;
+    });
+
+    if (!isAdmin) {
+      filtered = filtered.filter((ci: any) => ci.salesRepName === myRepName);
+    } else if (geoAuditRepFilter !== "all") {
+      filtered = filtered.filter((ci: any) => ci.salesRepName === geoAuditRepFilter);
+    }
+
+    // Round to 3 decimal places ≈ 100m precision
+    const round3 = (n: number) => Math.round((n || 0) * 1000) / 1000;
+
+    const clusters = new Map<string, GeoCluster>();
+
+    filtered.forEach((ci: any) => {
+      const rep = ci.salesRepName || "Unknown";
+      const lat = round3(ci.latitude);
+      const lng = round3(ci.longitude);
+      // Skip check-ins without GPS
+      if (!lat && !lng) return;
+      const key = `${rep}|${lat}|${lng}`;
+      const cName = ci.customer?.name || ci.location || "Unknown";
+
+      if (!clusters.has(key)) {
+        clusters.set(key, {
+          key,
+          repName: rep,
+          roundedLat: lat,
+          roundedLng: lng,
+          visits: [],
+          uniqueCustomers: new Set<string>(),
+          isFlagged: false,
+        });
+      }
+      const cluster = clusters.get(key)!;
+      cluster.visits.push(ci);
+      cluster.uniqueCustomers.add(cName);
+    });
+
+    // Flag clusters where same rep at same GPS visited 2+ different customer names
+    const result = Array.from(clusters.values()).map((c) => ({
+      ...c,
+      isFlagged: c.uniqueCustomers.size >= 2,
+    }));
+
+    // Sort: flagged first, then by rep name, then by visit count desc
+    result.sort((a, b) => {
+      if (a.isFlagged !== b.isFlagged) return a.isFlagged ? -1 : 1;
+      if (a.repName !== b.repName) return a.repName.localeCompare(b.repName);
+      return b.visits.length - a.visits.length;
+    });
+
+    return result;
+  }, [checkins, geoAuditMonth, geoAuditRepFilter, isAdmin, myRepName]);
+
+  // Flatten flagged visits for table display (flagged clusters only, or all visits)
+  const geoAuditRows = useMemo(() => {
+    const rows: any[] = [];
+    geoAuditClusters.forEach((cluster) => {
+      if (geoAuditFlagOnly && !cluster.isFlagged) return;
+      cluster.visits.forEach((visit) => {
+        rows.push({
+          ...visit,
+          _clusterKey: cluster.key,
+          _isFlagged: cluster.isFlagged,
+          _roundedLat: cluster.roundedLat,
+          _roundedLng: cluster.roundedLng,
+          _uniqueCustomers: cluster.uniqueCustomers.size,
+        });
+      });
+    });
+    // Sort by date desc
+    rows.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return rows;
+  }, [geoAuditClusters, geoAuditFlagOnly]);
 
   // ===================== CHECK-IN FLOW =====================
 
@@ -379,7 +484,7 @@ export default function AppointmentsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
-        {(["visits", "schedule", "followups"] as const).map((tab) => (
+        {(["visits", "schedule", "followups", "geoAudit"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -392,6 +497,7 @@ export default function AppointmentsPage() {
             {tab === "visits" && `Visits (${myCheckins.length})`}
             {tab === "schedule" && `Schedule (${myAppointments.length})`}
             {tab === "followups" && `Follow-ups (${myFollowUps?.length || 0})`}
+            {tab === "geoAudit" && `Geo Audit`}
           </button>
         ))}
       </div>
@@ -712,6 +818,238 @@ export default function AppointmentsPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ===================== GEO AUDIT TAB ===================== */}
+      {activeTab === "geoAudit" && (
+        <div className="space-y-6">
+          {/* Controls */}
+          <div className="card-surface p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#8A8B8C]" />
+                <label className="label-text">Month:</label>
+                <input
+                  type="month"
+                  value={geoAuditMonth}
+                  onChange={(e) => setGeoAuditMonth(e.target.value)}
+                  className="input-field w-auto"
+                />
+              </div>
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-[#8A8B8C]" />
+                  <label className="label-text">Rep:</label>
+                  <select
+                    value={geoAuditRepFilter}
+                    onChange={(e) => setGeoAuditRepFilter(e.target.value)}
+                    className="input-field w-auto"
+                  >
+                    <option value="all">All Reps</option>
+                    {(salesReps || []).map((rep: string) => (
+                      <option key={rep} value={rep}>{rep}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setGeoAuditFlagOnly(!geoAuditFlagOnly)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-body font-medium cursor-pointer transition-all"
+                  style={{
+                    backgroundColor: geoAuditFlagOnly ? "rgba(239,68,68,0.15)" : "#222324",
+                    color: geoAuditFlagOnly ? "#EF4444" : "#8A8B8C",
+                    border: geoAuditFlagOnly ? "1px solid rgba(239,68,68,0.3)" : "1px solid transparent",
+                  }}
+                >
+                  {geoAuditFlagOnly ? "Showing Only Flagged" : "Show All Visits"}
+                </button>
+              </div>
+              <div className="ml-auto text-xs text-[#8A8B8C]">
+                {geoAuditClusters.filter((c) => c.isFlagged).length} flagged cluster{geoAuditClusters.filter((c) => c.isFlagged).length !== 1 ? "s" : ""} &middot; {geoAuditRows.length} visit{geoAuditRows.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="card-surface p-4">
+              <div className="label-text mb-1">TOTAL CLUSTERS</div>
+              <div className="stat-number">{geoAuditClusters.length}</div>
+            </div>
+            <div className="card-surface p-4">
+              <div className="label-text mb-1">FLAGGED</div>
+              <div className="stat-number" style={{ color: "#EF4444" }}>
+                {geoAuditClusters.filter((c) => c.isFlagged).length}
+              </div>
+            </div>
+            <div className="card-surface p-4">
+              <div className="label-text mb-1">TOTAL VISITS</div>
+              <div className="stat-number" style={{ color: "#D4A843" }}>
+                {geoAuditClusters.reduce((sum, c) => sum + c.visits.length, 0)}
+              </div>
+            </div>
+            <div className="card-surface p-4">
+              <div className="label-text mb-1">REPS WITH FLAGS</div>
+              <div className="stat-number" style={{ color: "#F59E0B" }}>
+                {new Set(geoAuditClusters.filter((c) => c.isFlagged).map((c) => c.repName)).size}
+              </div>
+            </div>
+          </div>
+
+          {/* Flagged Alert Banner */}
+          {geoAuditClusters.filter((c) => c.isFlagged).length > 0 && (
+            <div className="card-surface p-4" style={{ backgroundColor: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-[#EF4444]" />
+                <p className="text-sm font-body font-medium text-[#EF4444]">
+                  {geoAuditClusters.filter((c) => c.isFlagged).length} location cluster{geoAuditClusters.filter((c) => c.isFlagged).length > 1 ? "s" : ""} flagged:
+                  same GPS coordinates, different customer names. Tap "Show All Visits" to see every visit, or keep "Showing Only Flagged" to focus on suspicious activity.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Geo Audit Table */}
+          {geoAuditRows.length === 0 ? (
+            <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">
+              <MapPin className="w-12 h-12 mx-auto mb-3 text-[#8A8B8C]" />
+              <p className="font-medium mb-1">No visits found</p>
+              <p className="text-sm">No check-ins with GPS for {geoAuditMonth}.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Group by cluster for flagged items, flat list for all */}
+              {geoAuditFlagOnly ? (
+                // Flagged clusters: grouped view
+                geoAuditClusters.filter((c) => c.isFlagged).map((cluster) => (
+                  <div key={cluster.key} className="card-surface p-4" style={{ borderLeft: "3px solid #EF4444" }}>
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
+                          <span className="text-sm font-body font-semibold text-white">{cluster.repName}</span>
+                          <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
+                            FLAGGED
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#8A8B8C]">
+                          GPS: {cluster.roundedLat.toFixed(3)}, {cluster.roundedLng.toFixed(3)} &middot; {cluster.visits.length} visits &middot; {cluster.uniqueCustomers.size} different customer names
+                        </p>
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps?q=${cluster.roundedLat},${cluster.roundedLng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#D4A843] underline flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" /> View Map
+                      </a>
+                    </div>
+                    <div className="space-y-2">
+                      {cluster.visits.map((visit: any) => (
+                        <div key={visit.id} className="flex items-center justify-between p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}>
+                          <div className="flex items-center gap-3">
+                            <User className="w-4 h-4 text-[#8A8B8C]" />
+                            <div>
+                              <p className="text-sm font-body text-[#E8E8E9]">
+                                {visit.customer?.name || visit.location || "Unknown Customer"}
+                              </p>
+                              <p className="text-xs text-[#8A8B8C]">
+                                {new Date(visit.createdAt).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                {visit.outcome && ` · ${visit.outcome}`}
+                              </p>
+                            </div>
+                          </div>
+                          <a
+                            href={visit.latitude && visit.longitude ? `https://www.google.com/maps?q=${visit.latitude},${visit.longitude}` : `https://www.google.com/maps?q=${cluster.roundedLat},${cluster.roundedLng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-[#D4A843] underline"
+                          >
+                            Map
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                // All visits: flat table
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left" style={{ borderBottom: "1px solid #222324" }}>
+                        <th className="pb-3 pr-4 label-text">Status</th>
+                        <th className="pb-3 pr-4 label-text">Sales Rep</th>
+                        <th className="pb-3 pr-4 label-text">Customer</th>
+                        <th className="pb-3 pr-4 label-text">Date & Time</th>
+                        <th className="pb-3 pr-4 label-text">GPS Location</th>
+                        <th className="pb-3 pr-4 label-text">Outcome</th>
+                        <th className="pb-3 label-text text-right">Map</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {geoAuditRows.map((row: any) => (
+                        <tr
+                          key={row.id}
+                          className="font-body transition-colors"
+                          style={{
+                            borderBottom: "1px solid #18191A",
+                            backgroundColor: row._isFlagged ? "rgba(239,68,68,0.04)" : "transparent",
+                          }}
+                        >
+                          <td className="py-3 pr-4">
+                            {row._isFlagged ? (
+                              <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
+                                FLAGGED
+                              </span>
+                            ) : (
+                              <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(74,222,128,0.15)", color: "#4ADE80" }}>
+                                OK
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4 text-white">{row.salesRepName || "Unknown"}</td>
+                          <td className="py-3 pr-4 text-[#E8E8E9]">{row.customer?.name || row.location || "Unknown"}</td>
+                          <td className="py-3 pr-4 text-[#8A8B8C]">
+                            {new Date(row.createdAt).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </td>
+                          <td className="py-3 pr-4 text-[#8A8B8C] font-mono-data">
+                            {row.latitude != null && row.longitude != null ? (
+                              <span>{row.latitude.toFixed(6)}, {row.longitude.toFixed(6)}</span>
+                            ) : (
+                              <span>No GPS</span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
+                              {row.outcome || "visit"}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            {row.latitude != null && row.longitude != null ? (
+                              <a
+                                href={`https://www.google.com/maps?q=${row.latitude},${row.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-[#D4A843] underline inline-flex items-center gap-1"
+                              >
+                                <ExternalLink className="w-3 h-3" /> Map
+                              </a>
+                            ) : (
+                              <span className="text-xs text-[#8A8B8C]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

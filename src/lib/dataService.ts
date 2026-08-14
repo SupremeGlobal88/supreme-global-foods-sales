@@ -1,43 +1,90 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 
-// Mutable sales reps — loaded from localStorage if available
-// CRITICAL: Always normalize to strings. Firebase sync may push objects,
-// but the data model for salesReps is a simple string array.
-let SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
-try {
-  const stored = localStorage.getItem("sgf_salesReps");
-  if (stored) {
-    const parsed = JSON.parse(stored);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      // Normalize: Firebase sync may return objects — extract the name string
-      SALES_REPS = parsed.map((r: any) =>
-        typeof r === "string" ? r : (r?.name || String(r || ""))
-      ).filter((n: any) => n && typeof n === "string");
+// ═══════════════════════════════════════════════════════════════
+//  SALES REP DATA MODEL — Object-based with full metadata
+// ═══════════════════════════════════════════════════════════════
+
+type SalesRep = {
+  name: string;
+  email?: string;
+  phone?: string;
+  region?: string;
+  vehicleReg?: string;
+  isActive?: boolean;
+};
+
+// Default sales reps as objects (not strings) — backward-compatible migration
+let SALES_REPS: SalesRep[] = [
+  { name: "Adeli", isActive: true },
+  { name: "Inhouse", isActive: true },
+  { name: "Michael", isActive: true },
+  { name: "Nkosana", isActive: true },
+  { name: "Shanelle", isActive: true },
+  { name: "Tebogo Bila", isActive: true },
+];
+
+// Load from localStorage with backward compat for old string arrays
+function loadSalesRepsFromStorage(): SalesRep[] {
+  try {
+    const stored = localStorage.getItem("sgf_salesReps");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((r: any): SalesRep => {
+          // Legacy: stored as plain string
+          if (typeof r === "string") return { name: r, isActive: true };
+          // Current: stored as object
+          return {
+            name: r?.name || String(r || ""),
+            email: r?.email || "",
+            phone: r?.phone || "",
+            region: r?.region || "",
+            vehicleReg: r?.vehicleReg || "",
+            isActive: r?.isActive !== false,
+          };
+        }).filter((r: SalesRep) => r.name);
+      }
     }
+  } catch { /* ignore */ }
+  return [...SALES_REPS];
+}
+
+// Initialize from storage on module load
+try {
+  const loaded = loadSalesRepsFromStorage();
+  if (loaded.length > 0) {
+    SALES_REPS = loaded;
   }
-} catch { /* ignore */ }
+} catch { /* keep defaults */ }
+
 function saveSalesReps() {
   try { localStorage.setItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
 }
 
 /** Read current sales reps from localStorage (includes Firebase-synced reps).
- *  ALWAYS returns an array of strings — objects are normalized to their name. */
-function getCurrentSalesReps(): string[] {
+ *  Returns full SalesRep objects. Backward-compatible with legacy string arrays. */
+function getCurrentSalesReps(): SalesRep[] {
   try {
     const raw = localStorage.getItem("sgf_salesReps");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((r: any) =>
-          typeof r === "string" ? r : (r?.name || String(r || ""))
-        ).filter((n: any) => n && typeof n === "string");
+        return parsed.map((r: any): SalesRep => {
+          if (typeof r === "string") return { name: r, isActive: true };
+          return {
+            name: r?.name || String(r || ""),
+            email: r?.email || "",
+            phone: r?.phone || "",
+            region: r?.region || "",
+            vehicleReg: r?.vehicleReg || "",
+            isActive: r?.isActive !== false,
+          };
+        }).filter((r: SalesRep) => r.name);
       }
     }
   } catch { /* ignore */ }
-  // Fallback: normalize SALES_REPS in case it was corrupted by reloadFromStorage
-  return SALES_REPS.map((r: any) =>
-    typeof r === "string" ? r : (r?.name || String(r || ""))
-  ).filter((n: any) => n && typeof n === "string");
+  // Fallback: return in-memory copy
+  return SALES_REPS.map((r) => ({ ...r }));
 }
 
 /** Get fresh static customer data */
@@ -977,11 +1024,19 @@ export function reloadFromStorage(): void {
     if (sr) {
       const d = JSON.parse(sr);
       if (Array.isArray(d) && d.length > 0) {
-        // Normalize: Firebase sync may push objects — extract name strings
+        // Backward compat: migrate legacy string arrays to objects
         SALES_REPS.length = 0;
-        SALES_REPS.push(...d.map((r: any) =>
-          typeof r === "string" ? r : (r?.name || String(r || ""))
-        ).filter((n: any) => n && typeof n === "string"));
+        SALES_REPS.push(...d.map((r: any): SalesRep => {
+          if (typeof r === "string") return { name: r, isActive: true };
+          return {
+            name: r?.name || String(r || ""),
+            email: r?.email || "",
+            phone: r?.phone || "",
+            region: r?.region || "",
+            vehicleReg: r?.vehicleReg || "",
+            isActive: r?.isActive !== false,
+          };
+        }).filter((r: SalesRep) => r.name));
       }
     }
   } catch { /* keep current */ }
@@ -1804,7 +1859,8 @@ export const dataService = {
       const fromUsers = users
         .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
         .map((u: any) => u.name);
-      const fromLegacy = getCurrentSalesReps();
+      // Extract names from SalesRep objects for dropdown compatibility
+      const fromLegacy = getCurrentSalesReps().map((r) => r.name);
       // Deduplicate and sort
       const allReps = Array.from(new Set([...fromUsers, ...fromLegacy]))
         .sort((a: string, b: string) => a.localeCompare(b));
@@ -3056,15 +3112,21 @@ export const dataService = {
     list: () => {
       // Always read fresh from localStorage so Firebase-synced reps appear
       const reps = getCurrentSalesReps();
-      return reps.map((name, i) => ({
+      return reps.map((rep, i) => ({
         id: i + 1,
-        name: typeof name === "string" ? name : (name?.name || String(name || "Unknown")),
-        isActive: true
+        name: rep.name,
+        email: rep.email || "",
+        phone: rep.phone || "",
+        region: rep.region || "",
+        vehicleReg: rep.vehicleReg || "",
+        role: "USER",
+        isActive: rep.isActive !== false,
       }));
     },
     getStats: () => {
       const reps = getCurrentSalesReps();
-      const repStats = reps.map((name) => {
+      const repStats = reps.map((rep) => {
+        const name = rep.name;
         const repCustomers = customers.filter((c) => c.salesRepName === name);
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id === o.customerId);
@@ -3084,7 +3146,8 @@ export const dataService = {
         }, 0);
         return { name, customerCount: repCustomers.length, orderCount: repOrders.length, sampleCount: repSamples.length, totalSales, sampleCost };
       });
-      return { total: reps.length, active: reps.length, inactive: 0, repStats };
+      const activeCount = reps.filter((r) => r.isActive !== false).length;
+      return { total: reps.length, active: activeCount, inactive: reps.length - activeCount, repStats };
     },
 
     /** Sales breakdown per rep: today, this week, this month */
@@ -3104,7 +3167,8 @@ export const dataService = {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-      const repSales = getCurrentSalesReps().map((name) => {
+      const repSales = getCurrentSalesReps().map((rep) => {
+        const name = rep.name;
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id === o.customerId);
           return cust?.salesRepName === name && o.orderType !== "sample";
@@ -3145,46 +3209,73 @@ export const dataService = {
     },
 
     // CRUD for sales reps
-    create: (data: { name: string }) => {
-      const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
+    create: (data: any) => {
+      const reps = [...getCurrentSalesReps()]; // COPY
       const name = (data.name || "").trim();
       if (!name) return null;
-      if (reps.includes(name)) return null;
-      reps.push(name);
+      // Prevent duplicate names (case-insensitive)
+      if (reps.some((r) => r.name.toLowerCase() === name.toLowerCase())) return null;
+      const newRep: SalesRep = {
+        name,
+        email: data.email || "",
+        phone: data.phone || "",
+        region: data.region || "",
+        vehicleReg: data.vehicleReg || "",
+        isActive: true,
+      };
+      reps.push(newRep);
       // Update both localStorage and in-memory
       SALES_REPS.length = 0;
       SALES_REPS.push(...reps);
       saveSalesReps();
-      return { id: reps.length, name, isActive: true };
+      return { id: reps.length, ...newRep };
     },
-    update: ({ id, data }: { id: number; data: { name: string } }) => {
-      const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
+    update: ({ id, data }: { id: number; data: any }) => {
+      const reps = [...getCurrentSalesReps()]; // COPY
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
-      const newName = (data.name || "").trim();
+      const oldName = reps[idx].name;
+      const newName = (data.name || reps[idx].name).trim();
       if (!newName) return null;
-      const oldName = reps[idx];
-      // Update customers who had the old rep
-      customers.filter(c => c.salesRepName === oldName).forEach(c => c.salesRepName = newName);
-      reps[idx] = newName;
+      // If renaming, ensure no duplicate
+      if (newName.toLowerCase() !== oldName.toLowerCase()) {
+        if (reps.some((r, i) => i !== idx && r.name.toLowerCase() === newName.toLowerCase())) {
+          return null; // would create duplicate
+        }
+      }
+      reps[idx] = {
+        ...reps[idx],
+        name: newName,
+        email: data.email !== undefined ? data.email : reps[idx].email,
+        phone: data.phone !== undefined ? data.phone : reps[idx].phone,
+        region: data.region !== undefined ? data.region : reps[idx].region,
+        vehicleReg: data.vehicleReg !== undefined ? data.vehicleReg : reps[idx].vehicleReg,
+      };
+      // Update customers who had the old rep name
+      if (oldName !== newName) {
+        customers.filter((c) => c.salesRepName === oldName).forEach((c) => (c.salesRepName = newName));
+        saveItem("sgf_customers", customers);
+      }
       SALES_REPS.length = 0;
       SALES_REPS.push(...reps);
       saveSalesReps();
-      saveItem("sgf_customers", customers);
-      return { id, name: newName, isActive: true, oldName };
+      return { id, ...reps[idx], oldName };
     },
     toggleActive: ({ id }: { id: number }) => {
       const reps = [...getCurrentSalesReps()]; // COPY
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
-      // Legacy string-array reps have no active flag; return valid rep object for UI compatibility
-      return { id, name: reps[idx], isActive: true };
+      reps[idx].isActive = !reps[idx].isActive;
+      SALES_REPS.length = 0;
+      SALES_REPS.push(...reps);
+      saveSalesReps();
+      return { id, ...reps[idx] };
     },
     delete: ({ id }: { id: number }) => {
-      const reps = [...getCurrentSalesReps()]; // COPY — must not mutate SALES_REPS directly
+      const reps = [...getCurrentSalesReps()]; // COPY
       const idx = id - 1;
       if (idx < 0 || idx >= reps.length) return null;
-      const deletedName = reps[idx];
+      const deletedName = reps[idx].name;
       reps.splice(idx, 1);
       SALES_REPS.length = 0;
       SALES_REPS.push(...reps);

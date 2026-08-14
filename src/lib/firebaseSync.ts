@@ -413,18 +413,22 @@ export async function pushSalesRep(rep: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
     // Use the rep NAME as the Firebase key (stable, doesn't change on deletions)
-    const key = safeFbKey(rep.name || rep.id || String(rep));
-    await set(ref(db, `salesReps/${key}`), { name: rep.name, _syncedAt: Date.now() });
+    const key = safeFbKey(rep.name || String(rep));
+    // Push the FULL rep object (including email, phone, etc.) plus sync timestamp
+    const payload = { ...rep, _syncedAt: Date.now() };
+    delete payload.id; // Don't store UI-only id in Firebase
+    await set(ref(db, `salesReps/${key}`), cleanForFirebase(payload));
   } catch (e: any) {
-    console.error("[pushSalesRep] FAILED:", rep?.name, rep?.id, e.message);
+    console.error("[pushSalesRep] FAILED:", rep?.name, e.message);
   }
 }
 
 export async function removeSalesRep(repId: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    // repId may be a name string (preferred) or a numeric id (legacy fallback)
-    const key = safeFbKey(typeof repId === "string" ? repId : String(repId));
+    // repId may be a SalesRep object, a name string, or a numeric id
+    const name = typeof repId === "string" ? repId : repId?.name;
+    const key = safeFbKey(name || String(repId));
     await set(ref(db, `salesReps/${key}`), null);
   } catch (e: any) {
     console.error("[removeSalesRep] FAILED:", repId, e.message);
@@ -555,14 +559,16 @@ function fbToArray(data: any): any[] {
 /** Get the stable key for an item based on its data type */
 function getStableKey(item: any, storageKey: string): string | null {
   if (!item) return null;
-  // For simple string arrays (sales reps), use the string itself as the stable key.
+  // For sales reps (objects or strings), use name as the unique identifier
+  if (storageKey === "sgf_salesReps" || storageKey === "sgf_salesReps_data") {
+    if (item.name != null) return String(item.name);
+    if (typeof item === "string") return item;
+    return null;
+  }
+  // For simple string arrays, use the string itself as the stable key
   if (typeof item === "string") return item;
-  // ALWAYS use item.id as the stable key — it's unique and cannot duplicate.
-  // Using orderNumber or invoiceNumber caused data loss when two items
-  // shared the same number (e.g., duplicate order numbers).
+  // ALWAYS use item.id as the stable key for all other data types
   if (item.id != null) return String(item.id);
-  // For sales reps stored as objects (name-only), use name as stable key.
-  if (storageKey === "sgf_salesReps" && item.name != null) return String(item.name);
   return null;
 }
 
@@ -792,17 +798,10 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
   const unsub = onValue(repsRef, (snapshot) => {
     const data = snapshot.val();
     const reps = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_salesReps_data", reps);
-    try { localStorage.setItem("sgf_salesReps_data", JSON.stringify(merged)); } catch { /* ignore */ }
-    // CRITICAL: Also update SALES_REPS in dataService so list() and getSalesReps() are in sync
-    try {
-      const names = reps.map((r: any) => r.name).filter((n: any) => typeof n === "string");
-      if (names.length > 0) {
-        // Update dataService's SALES_REPS via the shared localStorage key
-        localStorage.setItem("sgf_salesReps", JSON.stringify(names));
-      }
-    } catch { /* ignore */ }
-    reloadFromStorage(); // Update in-memory SALES_REPS array
+    // CRITICAL: Use the SAME storage key as dataService (sgf_salesReps) for consistency
+    const merged = mergeWithCloudData("sgf_salesReps", reps);
+    try { localStorage.setItem("sgf_salesReps", JSON.stringify(merged)); } catch { /* ignore */ }
+    reloadFromStorage(); // Update in-memory SALES_REPS array from localStorage
     if (onData) onData(reps);
   });
   listeners.push(unsub);
@@ -1006,7 +1005,7 @@ export async function diagnoseSync(): Promise<{
     { path: "receipts", key: "sgf_receipts" },
     { path: "creditNotes", key: "sgf_creditNotes" },
     { path: "users", key: "sgf_users" },
-    { path: "salesReps", key: "sgf_salesReps_data" },
+    { path: "salesReps", key: "sgf_salesReps" },
   ];
 
   // Check Firebase

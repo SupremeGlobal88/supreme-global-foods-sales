@@ -575,6 +575,85 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
   return unsub;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CORPORATE MODULE SUBSCRIPTIONS
+// ═══════════════════════════════════════════════════════════════
+
+export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const fbRef = ref(db, "corporateCustomers");
+  const unsub = onValue(fbRef, (snapshot) => {
+    const data = snapshot.val();
+    const items = fbToArray(data);
+    const merged = mergeWithCloudData("sgf_corporateCustomers", items);
+    try { localStorage.setItem("sgf_corporateCustomers", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataService.reloadFromStorage();
+    if (onData) onData(items);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
+export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const fbRef = ref(db, "purchaseOrders");
+  const unsub = onValue(fbRef, (snapshot) => {
+    const data = snapshot.val();
+    const items = fbToArray(data);
+    const merged = mergeWithCloudData("sgf_purchaseOrders", items);
+    try { localStorage.setItem("sgf_purchaseOrders", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataService.reloadFromStorage();
+    if (onData) onData(items);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
+export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const fbRef = ref(db, "barrels");
+  const unsub = onValue(fbRef, (snapshot) => {
+    const data = snapshot.val();
+    const items = fbToArray(data);
+    const merged = mergeWithCloudData("sgf_barrels", items);
+    try { localStorage.setItem("sgf_barrels", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataService.reloadFromStorage();
+    if (onData) onData(items);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
+export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const fbRef = ref(db, "certificatesOfCompliance");
+  const unsub = onValue(fbRef, (snapshot) => {
+    const data = snapshot.val();
+    const items = fbToArray(data);
+    const merged = mergeWithCloudData("sgf_cocs", items);
+    try { localStorage.setItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataService.reloadFromStorage();
+    if (onData) onData(items);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
+export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const fbRef = ref(db, "packingListLines");
+  const unsub = onValue(fbRef, (snapshot) => {
+    const data = snapshot.val();
+    const items = fbToArray(data);
+    const merged = mergeWithCloudData("sgf_packingListLines", items);
+    try { localStorage.setItem("sgf_packingListLines", JSON.stringify(merged)); } catch { /* ignore */ }
+    dataService.reloadFromStorage();
+    if (onData) onData(items);
+  });
+  listeners.push(unsub);
+  return unsub;
+}
+
 // =============================================================================
 // MANUAL PULL: Force-fetch all data from Firebase into localStorage
 // =============================================================================
@@ -1390,7 +1469,7 @@ export function initAutoSync(): () => void {
     dataServiceRefresh?.();
 
     // Step 5: Dispatch event to invalidate tRPC cache
-    if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes"].includes(type)) {
+    if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes", "corporateCustomers", "purchaseOrders", "barrels", "certificatesOfCompliance", "packingListLines"].includes(type)) {
       const prev = lastCounts[type] || 0;
       lastCounts[type] = cloudCount;
       try {
@@ -1415,6 +1494,12 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
   unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps")));
   unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
+  // ═══ CORPORATE MODULE — real-time subscriptions
+  unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
+  unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));
+  unsubs.push(subscribeToBarrels(handleReceived("barrels", "sgf_barrels")));
+  unsubs.push(subscribeToCOCs(handleReceived("certificatesOfCompliance", "sgf_cocs")));
+  unsubs.push(subscribeToPackingListLines(handleReceived("packingListLines", "sgf_packingListLines")));
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

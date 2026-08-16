@@ -54,9 +54,10 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
   }
 }
 
-/** Push data to Firebase after local write. All pushes are awaited with error logging. */
+/** Push data to Firebase after local write. All pushes are awaited with error logging.
+ *  If Firebase is not ready, the individual push functions will queue items for later sync.
+ */
 async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
-  if (!isFirebaseReady()) return;
   try {
     switch (type) {
       case "order": {
@@ -119,9 +120,9 @@ export function createLocalLink() {
               case "customer.list": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.list(); break;
               case "customer.search": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.search(input || { query: "" }); break;
               case "customer.getById": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getById(input); break;
-              case "customer.create": result = dataService.customer.create(input); await fbPush("customer", result); break;
-              case "customer.update": { const { id, data } = input; result = dataService.customer.update({ id, data }); if (result) await pushOneCustomer(result); break; }
-              case "customer.delete": result = dataService.customer.delete(input); await removeOneCustomer(input); break;
+              case "customer.create": { result = dataService.customer.create(input); await fbPush("customer", result); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
+              case "customer.update": { const { id, data } = input; result = dataService.customer.update({ id, data }); if (result) { await pushOneCustomer(result); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); } break; }
+              case "customer.delete": { result = dataService.customer.delete(input); await removeOneCustomer(input); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
               case "customer.getStats": await syncFromCloud("customers", "sgf_customers"); result = dataService.customer.getStats(); break;
               case "customer.getSalesReps": result = dataService.customer.getSalesReps(); break;
               case "customer.bulkUpload": result = dataService.customer.bulkUpload(input || []); break;

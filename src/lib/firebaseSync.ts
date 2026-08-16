@@ -162,11 +162,95 @@ export function clearFirebaseConfig(): void {
 }
 
 // =============================================================================
+// PENDING PUSH QUEUE: Store items that couldn't be pushed because Firebase was
+// offline. When Firebase comes back online, we flush the queue automatically.
+// =============================================================================
+const PENDING_QUEUE_KEY = "sgf_pendingPushQueue";
+
+type PendingPush = { type: string; item: any; timestamp: number };
+
+function getPendingQueue(): PendingPush[] {
+  try {
+    const raw = localStorage.getItem(PENDING_QUEUE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return [];
+}
+
+function savePendingQueue(queue: PendingPush[]): void {
+  try {
+    localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
+  } catch { /* ignore */ }
+}
+
+function addToPendingQueue(type: string, item: any): void {
+  const queue = getPendingQueue();
+  // Don't add duplicates for the same item (by id)
+  const existingIdx = queue.findIndex(
+    (p) => p.item?.id != null && p.item.id == item?.id && p.type === type
+  );
+  if (existingIdx >= 0) {
+    queue[existingIdx] = { type, item, timestamp: Date.now() };
+  } else {
+    queue.push({ type, item, timestamp: Date.now() });
+  }
+  savePendingQueue(queue);
+  console.warn(
+    `[FirebaseSync] Queued ${type} for later sync (Firebase not ready):`,
+    item?.name || item?.id
+  );
+}
+
+/** Flush all pending pushes to Firebase. Called when Firebase becomes ready. */
+export async function flushPendingPushes(): Promise<void> {
+  if (!isFirebaseReady()) {
+    console.warn("[FirebaseSync] Cannot flush pending pushes — Firebase not ready");
+    return;
+  }
+  const queue = getPendingQueue();
+  if (queue.length === 0) return;
+
+  console.log(`[FirebaseSync] Flushing ${queue.length} pending pushes...`);
+  const remaining: PendingPush[] = [];
+
+  for (const { type, item } of queue) {
+    try {
+      switch (type) {
+        case "customer": await pushOneCustomer(item); break;
+        case "order": await pushOrder(item); break;
+        case "invoice": await pushInvoice(item); break;
+        case "appointment": await pushAppointment(item); break;
+        case "checkin": await pushCheckin(item); break;
+        case "user": await pushUser(item); break;
+        case "salesRep": await pushSalesRep(item); break;
+        case "stock": await pushOneStockItem(item); break;
+        case "corporateCustomer": await pushCorporateCustomer(item); break;
+        case "purchaseOrder": await pushPurchaseOrder(item); break;
+        case "barrel": await pushBarrel(item); break;
+        case "coc": await pushCOC(item); break;
+        case "followUp": await pushFollowUp(item); break;
+        case "followUpAction": await pushFollowUpAction(item); break;
+        case "receipt": await pushOneReceipt(item); break;
+        default: console.warn("[flushPendingPushes] Unknown type:", type);
+      }
+    } catch (e: any) {
+      console.error(`[flushPendingPushes] FAILED ${type}:`, e.message);
+      remaining.push({ type, item, timestamp: Date.now() });
+    }
+  }
+
+  savePendingQueue(remaining);
+  console.log(
+    `[FirebaseSync] Flushed ${queue.length - remaining.length}/${queue.length} pending pushes. ${remaining.length} remaining.`
+  );
+}
+
+// =============================================================================
 // PUSH: Save a single item to Firebase
 // =============================================================================
 
 export async function pushOrder(order: any): Promise<boolean> {
-  if (!isFirebaseReady()) return false;
+  if (!isFirebaseReady()) { addToPendingQueue("order", order); return false; }
   try {
     await set(ref(db, `orders/${safeFbKey(order.id)}`), { ...order, _syncedAt: Date.now() });
     return true;
@@ -174,21 +258,21 @@ export async function pushOrder(order: any): Promise<boolean> {
 }
 
 export async function pushCheckin(checkin: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("checkin", checkin); return; }
   try {
     await set(ref(db, `checkins/${safeFbKey(checkin.id)}`), { ...checkin, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
 export async function pushAppointment(appointment: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("appointment", appointment); return; }
   try {
     await set(ref(db, `appointments/${safeFbKey(appointment.id)}`), { ...appointment, _syncedAt: Date.now() });
   } catch (e: any) { console.error(`[pushAppointment] FAILED: ${appointment?.id}:`, e.message); }
 }
 
 export async function pushInvoice(invoice: any): Promise<{ success: boolean; error?: string }> {
-  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
+  if (!isFirebaseReady()) { addToPendingQueue("invoice", invoice); return { success: false, error: "Firebase not ready — queued for sync" }; }
   if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
     await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), { ...invoice, _syncedAt: Date.now() });
@@ -212,14 +296,14 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
 }
 
 export async function pushFollowUpAction(action: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("followUpAction", action); return; }
   try {
     await set(ref(db, `followUpActions/${safeFbKey(action.id)}`), { ...action, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
 export async function pushFollowUp(followUp: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("followUp", followUp); return; }
   try {
     await set(ref(db, `followUps/${safeFbKey(followUp.id)}`), { ...followUp, _syncedAt: Date.now() });
   } catch { /* ignore */ }
@@ -229,7 +313,7 @@ export async function pushFollowUp(followUp: any): Promise<void> {
  *  Use this for individual payment recording operations.
  *  Only use pushReceiptsFullList for explicit bulk operations. */
 export async function pushOneReceipt(receipt: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("receipt", receipt); return; }
   try { await set(ref(db, `receipts/${safeFbKey(receipt.id)}`), { ...receipt, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 
@@ -303,12 +387,18 @@ export async function pushCheckinDelete(id: number): Promise<void> {
 
 // Customer and Stock sync — admin pushes, sales reps pull
 /** Push a single customer to Firebase (safe — won't overwrite other users' data).
- *  Use this for individual create/update/delete operations.
+ *  If Firebase is not ready, the customer is queued for later sync.
  *  Only use pushCustomersFullList for explicit bulk operations. */
 export async function pushOneCustomer(customer: any): Promise<void> {
-  if (!isFirebaseReady()) return;
-  try { await set(ref(db, `customers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() }); }
-  catch (e: any) { console.error(`[pushOneCustomer] FAILED: ${customer?.name} (${customer?.id}):`, e.message); }
+  if (!isFirebaseReady()) {
+    addToPendingQueue("customer", customer);
+    return;
+  }
+  try {
+    await set(ref(db, `customers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() });
+  } catch (e: any) {
+    console.error(`[pushOneCustomer] FAILED: ${customer?.name} (${customer?.id}):`, e.message);
+  }
 }
 
 /** Remove a single customer from Firebase by ID */
@@ -321,7 +411,7 @@ export async function removeOneCustomer(customerId: number): Promise<void> {
  *  Use this for individual create/update/delete operations.
  *  Only use pushStockFullList for explicit bulk operations. */
 export async function pushOneStockItem(item: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("stock", item); return; }
   try { await set(ref(db, `stock/${safeFbKey(item.id)}`), { ...item, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 
@@ -335,7 +425,7 @@ export async function removeOneStockItem(itemId: number): Promise<void> {
 // CORPORATE MODULE PUSH
 // ═══════════════════════════════════════════════════════════════
 export async function pushCorporateCustomer(customer: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("corporateCustomer", customer); return; }
   try { await set(ref(db, `corporateCustomers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 export async function removeCorporateCustomer(id: number): Promise<void> {
@@ -343,7 +433,7 @@ export async function removeCorporateCustomer(id: number): Promise<void> {
   try { await set(ref(db, `corporateCustomers/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 export async function pushPurchaseOrder(po: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("purchaseOrder", po); return; }
   try { await set(ref(db, `purchaseOrders/${safeFbKey(po.id)}`), { ...po, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 export async function removePurchaseOrder(id: number): Promise<void> {
@@ -351,7 +441,7 @@ export async function removePurchaseOrder(id: number): Promise<void> {
   try { await set(ref(db, `purchaseOrders/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 export async function pushBarrel(barrel: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("barrel", barrel); return; }
   try { await set(ref(db, `barrels/${safeFbKey(barrel.id)}`), { ...barrel, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 export async function removeBarrel(id: number): Promise<void> {
@@ -359,7 +449,7 @@ export async function removeBarrel(id: number): Promise<void> {
   try { await set(ref(db, `barrels/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 export async function pushCOC(coc: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("coc", coc); return; }
   try { await set(ref(db, `certificatesOfCompliance/${safeFbKey(coc.id)}`), { ...coc, _syncedAt: Date.now() }); } catch { /* ignore */ }
 }
 export async function removeCOC(id: number): Promise<void> {
@@ -401,7 +491,7 @@ export async function pushStock(stock: any[]): Promise<void> {
 }
 
 export async function pushUser(user: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("user", user); return; }
   try {
     await set(ref(db, `users/${safeFbKey(user.id)}`), { ...user, _syncedAt: Date.now() });
   } catch (e: any) {
@@ -410,7 +500,7 @@ export async function pushUser(user: any): Promise<void> {
 }
 
 export async function pushSalesRep(rep: any): Promise<void> {
-  if (!isFirebaseReady()) return;
+  if (!isFirebaseReady()) { addToPendingQueue("salesRep", rep); return; }
   try {
     // Use the rep NAME as the Firebase key (stable, doesn't change on deletions)
     const key = safeFbKey(rep.name || String(rep));
@@ -1255,6 +1345,9 @@ export function initAutoSync(): () => void {
 
   autoSyncInitialized = true;
   console.log("[FirebaseSync] Auto-sync initializing...");
+
+  // CRITICAL: Flush any pending pushes that were queued while offline
+  flushPendingPushes().catch((e) => console.error("[FirebaseSync] flushPendingPushes error:", e));
 
   const unsubs: Array<() => void> = [];
   const lastCounts: Record<string, number> = {};

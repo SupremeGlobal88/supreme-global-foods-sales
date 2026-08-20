@@ -1357,6 +1357,34 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
   }
 }
 
+/** Force-correct invoice company based on invoice number prefix.
+ *  SGF* -> "sgf", RC-* -> "recircle". Prevents badge/number mismatches. */
+function repairInvoiceCompany(inv: any): any {
+  if (!inv || !inv.invoiceNumber) return inv;
+  const num = inv.invoiceNumber;
+  if (num.startsWith("SGF")) return { ...inv, company: "sgf" };
+  if (num.startsWith("RC-")) return { ...inv, company: "recircle" };
+  return inv;
+}
+
+/** Repair ALL invoices on startup — fixes historical data mismatches
+ *  where company field doesn't match invoice number prefix. */
+export function repairInvoiceCompanies(): { repaired: number } {
+  let repaired = 0;
+  for (let i = 0; i < invoices.length; i++) {
+    const fixed = repairInvoiceCompany(invoices[i]);
+    if (fixed.company !== invoices[i].company) {
+      invoices[i] = fixed;
+      repaired++;
+    }
+  }
+  if (repaired > 0) {
+    saveItem("sgf_invoices", invoices);
+    console.log(`[repairInvoiceCompanies] Fixed ${repaired} invoices with mismatched company field`);
+  }
+  return { repaired };
+}
+
 /** Generate an invoice for an existing order that doesn't have one.
  *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {
@@ -1411,7 +1439,9 @@ export function generateInvoiceForOrder(orderId: number): string | null {
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;
   }
-  return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, undefined, vatRate);
+  // SAMPLE ORDERS ARE ALWAYS SGF — force company to "sgf" regardless of order.company
+  const invoiceCompany = isSample ? "sgf" : (order.company || "sgf");
+  return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, invoiceCompany, vatRate);
 }
 
 /** Generate invoices for all orders that don't have one. Returns count created. */
@@ -1431,7 +1461,9 @@ export function generateMissingInvoices(): { created: number; details: string[] 
       const vatAmount = subtotal * vatRate;
       const total = subtotal + vatAmount;
       const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
-      const invNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, undefined, vatRate);
+      // Sample orders are always SGF
+      const invoiceCompany = isSample ? "sgf" : (order.company || "sgf");
+      const invNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, invoiceCompany, vatRate);
       if (invNum) {
         created++;
         details.push(`${order.orderNumber} -> ${invNum}`);

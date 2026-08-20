@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, repairInvoiceCompanies } from "@/lib/dataService";
 import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -98,6 +98,8 @@ export default function App() {
           // This prevents a major data-loss bug: if we pushed local data here, a device
           // with stale data could overwrite fresh data created by another user.
           reloadFromStorage();
+          // Fix any invoices where company field doesn't match invoice number prefix
+          repairInvoiceCompanies();
           console.log("[Sync] Local data loaded first");
 
           // CRITICAL: Pull from cloud at startup to ensure all devices start with fresh data.

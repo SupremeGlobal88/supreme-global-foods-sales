@@ -1635,9 +1635,31 @@ export const dataService = {
         const incoming = items[i];
         // Check if product already exists by productName (case-insensitive)
         // productCode can differ between uploads, but productName is the reliable identifier
-        const existingIdx = products.findIndex(
+        let existingIdx = products.findIndex(
           (p) => (p.productName || "").toLowerCase().trim() === (incoming.productName || "").toLowerCase().trim()
         );
+        // Fallback: if no name match, try matching by ALL non-empty shared attributes
+        if (existingIdx < 0) {
+          const inStrands = String(incoming.strands || "").trim().toLowerCase();
+          const inSize    = String(incoming.size    || "").trim().toLowerCase();
+          const inGrade   = String(incoming.grade   || "").trim().toLowerCase();
+          const inColor   = String(incoming.color   || "").trim().toLowerCase();
+          const inSpecies = String(incoming.species || "").trim().toLowerCase();
+          existingIdx = products.findIndex((p) => {
+            const pStrands = String(p.strands || "").trim().toLowerCase();
+            const pSize    = String(p.size    || "").trim().toLowerCase();
+            const pGrade   = String(p.grade   || "").trim().toLowerCase();
+            const pColor   = String(p.color   || "").trim().toLowerCase();
+            const pSpecies = String(p.species || "").trim().toLowerCase();
+            let possible = 0, matched = 0;
+            if (pStrands && inStrands) { possible++; if (pStrands === inStrands) matched++; }
+            if (pSize    && inSize)    { possible++; if (pSize    === inSize)    matched++; }
+            if (pGrade   && inGrade)   { possible++; if (pGrade   === inGrade)   matched++; }
+            if (pColor   && inColor)   { possible++; if (pColor   === inColor)   matched++; }
+            if (pSpecies && inSpecies) { possible++; if (pSpecies === inSpecies) matched++; }
+            return possible >= 2 && matched === possible;
+          });
+        }
         if (existingIdx >= 0) {
           // Update existing product: new SOH, update prices if provided, keep id
           const existing = products[existingIdx];

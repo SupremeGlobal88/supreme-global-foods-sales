@@ -86,8 +86,8 @@ function useSyncUsersFromCloud() {
   });
 }
 
-const DEFAULT_ADMINS = ["Collin", "Ryleigh", "Aggie", "Ronald", "Jolene", "David"];
-const DEFAULT_SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Shanelle", "Tebogo Bila"];
+const DEFAULT_ADMINS = ["Collin", "Aggie", "Ronald", "Jolene", "David"];
+const DEFAULT_SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Tebogo Bila"];
 
 function getAdminUsers(): string[] {
   try {
@@ -132,26 +132,30 @@ export default function Login() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load admin users from localStorage when admin tab is selected
+  // Refresh user lists from localStorage/Firebase on mount AND when sync completes
   useEffect(() => {
-    if (roleTab === "admin") {
+    function refreshLists() {
       const admins = getAdminUsers();
       setAdminUsers(admins);
-      if (!selectedAdmin || !admins.includes(selectedAdmin)) {
+      if (roleTab === "admin" && (!selectedAdmin || !admins.includes(selectedAdmin))) {
         setSelectedAdmin(admins[0] || "");
       }
-    }
-  }, [roleTab]);
-
-  // Load sales reps from localStorage when sales rep tab is selected
-  useEffect(() => {
-    if (roleTab === "sales_rep") {
       const reps = getSalesReps();
-      if (!selectedRep || !reps.includes(selectedRep)) {
+      if (roleTab === "sales" && (!selectedRep || !reps.includes(selectedRep))) {
         setSelectedRep(reps[0] || "Adeli");
       }
     }
-  }, [roleTab]);
+    // Refresh immediately
+    refreshLists();
+    // Refresh when Firebase sync completes
+    window.addEventListener("firebaseDataReceived", refreshLists);
+    // Refresh when localStorage changes (cross-tab sync)
+    window.addEventListener("storage", refreshLists);
+    return () => {
+      window.removeEventListener("firebaseDataReceived", refreshLists);
+      window.removeEventListener("storage", refreshLists);
+    };
+  }, [roleTab, selectedAdmin, selectedRep]);
 
   const bgImageRef = useRef<HTMLDivElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);

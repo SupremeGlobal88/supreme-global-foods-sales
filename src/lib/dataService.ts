@@ -2483,9 +2483,15 @@ export const dataService = {
         creditTotal = lineItems.reduce((sum: number, li: any) => sum + (li.creditAmount || 0), 0);
       }
 
+      // Use max existing number + 1 (NOT count-based) — voided notes must NOT reuse numbers
+      const existingNumbers = creditNotes
+        .map((cn) => { const m = (cn.creditNoteNumber || "").match(/CN-(\d+)/); return m ? parseInt(m[1], 10) : 0; })
+        .filter((n) => !isNaN(n) && n > 0);
+      const nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+
       const creditNote = {
         id: Date.now() + Math.random(),
-        creditNoteNumber: `CN-${String(creditNotes.filter((cn) => !cn.voided).length + 1).padStart(3, "0")}`,
+        creditNoteNumber: `CN-${String(nextNumber).padStart(3, "0")}`,
         ...data,
         amount: creditTotal, // ensure total is calculated from line items
         lineItems,

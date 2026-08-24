@@ -1605,7 +1605,7 @@ export const dataService = {
     list: () => products,
     search: ({ query }: { query: string }) => searchItems(products, query),
     getById: (id: number) => products.find((p) => p.id === id) || null,
-    getCategories: () => [...new Set(products.map((p) => p.category))],
+    getCategories: () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
     getStats: () => ({
       totalProducts: products.length,
       totalRetailValue: products.reduce((sum, p) => sum + Number(p.retailPrice || 0) * (p.quantity || 0), 0),

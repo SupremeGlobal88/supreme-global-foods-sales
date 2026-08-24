@@ -9,12 +9,14 @@ import App from './App.tsx'
 // ═══════════════════════════════════════════════════════════════
 // APP VERSION CHECK — Forces browser to reload when app updates
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = "2026-08-25-stable-v21"; // Change this on every deploy
+// Version is set in index.html <script>window.SGF_APP_VERSION="..."</script>
+// This allows us to detect new versions by fetching the small HTML file.
+const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v22";
 const storedVersion = localStorage.getItem("sgf_app_version");
 
-// Helper: extract version from HTML string
+// Helper: extract version from fetched HTML string
 function extractVersion(html: string): string | null {
-  const m = html.match(/APP_VERSION\s*=\s*"([^"]+)"/);
+  const m = html.match(/window\.SGF_APP_VERSION\s*=\s*"([^"]+)"/);
   return m ? m[1] : null;
 }
 
@@ -29,7 +31,6 @@ function forceReload() {
 if (storedVersion && storedVersion !== APP_VERSION) {
   console.log(`[AppVersion] New version ${APP_VERSION} detected (was ${storedVersion}). Reloading...`);
   localStorage.setItem("sgf_app_version", APP_VERSION);
-  // Aggressive cache bypass: add timestamp to URL
   forceReload();
 } else {
   localStorage.setItem("sgf_app_version", APP_VERSION);

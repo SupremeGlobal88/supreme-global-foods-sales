@@ -7,42 +7,16 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import App from './App.tsx'
 
 // ═══════════════════════════════════════════════════════════════
-// APP VERSION — Pulled from index.html inline script
+// APP VERSION — simple check, reloads only on mismatch
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v28";
-
-// Background polling: check every 30s for new version while tab is visible
-let updateBannerShown = false;
-async function checkForUpdate() {
-  if (document.hidden || updateBannerShown) return;
-  try {
-    const res = await fetch("/?_cb=" + Date.now(), { cache: "no-store", credentials: "same-origin" });
-    const html = await res.text();
-    const m = html.match(/window\.SGF_APP_VERSION\s*=\s*"([^"]+)"/);
-    const liveVersion = m ? m[1] : null;
-    if (liveVersion && liveVersion !== APP_VERSION) {
-      console.log(`[AppVersion] Live version ${liveVersion} differs from running ${APP_VERSION}. Reloading...`);
-      updateBannerShown = true;
-      localStorage.setItem("sgf_app_version", liveVersion);
-      const banner = document.createElement("div");
-      banner.innerHTML = `
-        <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#D4A843;color:#0C0D0E;padding:10px 16px;text-align:center;font-family:sans-serif;font-size:14px;font-weight:600;">
-          🔄 Update available — reloading in 3 seconds...
-        </div>
-      `;
-      document.body.appendChild(banner);
-      setTimeout(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.set("_r", Date.now().toString());
-        window.location.href = url.toString();
-      }, 3000);
-    }
-  } catch (e) {
-    // offline or error — ignore
-  }
+const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v29";
+const storedVersion = localStorage.getItem("sgf_app_version");
+if (storedVersion && storedVersion !== APP_VERSION) {
+  localStorage.setItem("sgf_app_version", APP_VERSION);
+  window.location.reload();
+} else {
+  localStorage.setItem("sgf_app_version", APP_VERSION);
 }
-window.addEventListener("focus", checkForUpdate);
-setInterval(checkForUpdate, 30000);
 
 // Catch any render errors and show something instead of blank screen
 try {

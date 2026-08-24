@@ -9,17 +9,61 @@ import App from './App.tsx'
 // ═══════════════════════════════════════════════════════════════
 // APP VERSION CHECK — Forces browser to reload when app updates
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = "2026-08-25-stable-v20"; // Change this on every deploy
+const APP_VERSION = "2026-08-25-stable-v21"; // Change this on every deploy
 const storedVersion = localStorage.getItem("sgf_app_version");
+
+// Helper: extract version from HTML string
+function extractVersion(html: string): string | null {
+  const m = html.match(/APP_VERSION\s*=\s*"([^"]+)"/);
+  return m ? m[1] : null;
+}
+
+// Helper: force reload bypassing all caches
+function forceReload() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("_v", Date.now().toString());
+  window.location.href = url.toString();
+}
+
+// On load: if stored version differs, force cache-bypass reload
 if (storedVersion && storedVersion !== APP_VERSION) {
-  // New version detected — clear cached JS and reload
   console.log(`[AppVersion] New version ${APP_VERSION} detected (was ${storedVersion}). Reloading...`);
   localStorage.setItem("sgf_app_version", APP_VERSION);
-  // Force hard reload bypassing cache
-  window.location.reload();
+  // Aggressive cache bypass: add timestamp to URL
+  forceReload();
 } else {
   localStorage.setItem("sgf_app_version", APP_VERSION);
 }
+
+// Background polling: check every 30s for new version while tab is visible
+let updateBannerShown = false;
+async function checkForUpdate() {
+  if (document.hidden || updateBannerShown) return;
+  try {
+    const res = await fetch("/?_cb=" + Date.now(), { cache: "no-store", credentials: "same-origin" });
+    const html = await res.text();
+    const liveVersion = extractVersion(html);
+    if (liveVersion && liveVersion !== APP_VERSION) {
+      console.log(`[AppVersion] Live version ${liveVersion} differs from running ${APP_VERSION}. Reloading...`);
+      updateBannerShown = true;
+      localStorage.setItem("sgf_app_version", liveVersion);
+      // Show brief banner then reload
+      const banner = document.createElement("div");
+      banner.innerHTML = `
+        <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#D4A843;color:#0C0D0E;padding:10px 16px;text-align:center;font-family:sans-serif;font-size:14px;font-weight:600;">
+          🔄 Update available — reloading in 3 seconds...
+        </div>
+      `;
+      document.body.appendChild(banner);
+      setTimeout(() => forceReload(), 3000);
+    }
+  } catch (e) {
+    // offline or error — ignore
+  }
+}
+// Check on focus and every 30s
+window.addEventListener("focus", checkForUpdate);
+setInterval(checkForUpdate, 30000);
 
 // Catch any render errors and show something instead of blank screen
 try {

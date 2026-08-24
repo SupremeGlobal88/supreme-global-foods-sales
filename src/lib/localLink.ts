@@ -257,7 +257,7 @@ export function createLocalLink() {
                 result = allocateBankPayments(input || []);
                 if (result?.processed > 0) {
                   const allInvs = dataService.invoice.list();
-                  const changedInvs = allInvs.filter((i: any) => (input || []).some((a: any) => a.invoiceId === i.id));
+                  const changedInvs = allInvs.filter((i: any) => (input || []).some((a: any) => a.invoiceId == i.id));
                   await Promise.all(changedInvs.map((inv: any) =>
                     pushInvoice(inv).catch((e: any) => console.warn("[bankAlloc] push failed for", inv.invoiceNumber, e))
                   ));
@@ -417,8 +417,8 @@ export function createLocalLink() {
               case "corporateCustomer.list": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.list(); break;
               case "corporateCustomer.listByCompany": result = dataService.corporateCustomer.listByCompany(input); break;
               case "corporateCustomer.getById": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.getById(input); break;
-              case "corporateCustomer.create": { result = dataService.corporateCustomer.create(input); await pushCorporateCustomer(result); await pushOneCustomer(dataService.customer.list().find((c: any) => c.id === result.id)); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
-              case "corporateCustomer.update": { const { id, data } = input; result = dataService.corporateCustomer.update({ id, data }); if (result) { await pushCorporateCustomer(result); } const updCust = dataService.customer.list().find((c: any) => c.id === id); if (updCust) await pushOneCustomer(updCust); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
+              case "corporateCustomer.create": { result = dataService.corporateCustomer.create(input); await pushCorporateCustomer(result); await pushOneCustomer(dataService.customer.list().find((c: any) => c.id == result.id)); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
+              case "corporateCustomer.update": { const { id, data } = input; result = dataService.corporateCustomer.update({ id, data }); if (result) { await pushCorporateCustomer(result); } const updCust = dataService.customer.list().find((c: any) => c.id == id); if (updCust) await pushOneCustomer(updCust); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
               case "corporateCustomer.delete": { result = dataService.corporateCustomer.delete(input); await removeCorporateCustomer(input); await removeOneCustomer(input); reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
               case "purchaseOrder.list": await syncFromCloud("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.list(); break;
               case "purchaseOrder.getById": await syncFromCloud("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.getById(input); break;
@@ -443,7 +443,7 @@ export function createLocalLink() {
                 // Step 1: Read ALL COCs directly from Firebase (bypasses syncFromCloud cooldown)
                 const allFirebaseCOCs = await readFromFirebase("certificatesOfCompliance");
                 // Step 2: Find ALL COCs for this PO in Firebase (including stale ones localStorage doesn't know about)
-                const firebasePOCOCs = allFirebaseCOCs.filter((c: any) => c.purchaseOrderId === poId);
+                const firebasePOCOCs = allFirebaseCOCs.filter((c: any) => c.purchaseOrderId == poId);
                 // Step 3: Delete EVERY COC for this PO from Firebase
                 for (const c of firebasePOCOCs) { await removeCOC(c.id); }
                 // Step 4: Also read localStorage COCs for this PO and clear them

@@ -709,7 +709,7 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
   for (const alloc of allocations) {
     try {
       const { invoiceId, amount, paidDate, customerName, invoiceNumber } = alloc;
-      const idx = invoices.findIndex((i) => i.id === invoiceId);
+      const idx = invoices.findIndex((i) => i.id == invoiceId);
       if (idx < 0) { errors.push(`Invoice ${invoiceNumber} not found`); continue; }
       const inv = invoices[idx];
       // Auto-activate draft invoices
@@ -897,7 +897,7 @@ function logAudit(action: string, entityType: string, entityId: number | string,
 // getAvailableStock: returns the live product.quantity which is already
 // deducted when orders are created and restored when delivered/cancelled
 function getAvailableStock(productId: number): number {
-  const product = products.find((p) => p.id === productId);
+  const product = products.find((p) => p.id == productId);
   return product ? Math.max(0, product.quantity || 0) : 0;
 }
 
@@ -906,7 +906,7 @@ function getCommittedStock(productId: number): number {
   return orders
     .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
     .flatMap((o) => o.items || [])
-    .filter((item: any) => item.stockItemId === productId)
+    .filter((item: any) => item.stockItemId == productId)
     .reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
 }
 
@@ -915,7 +915,7 @@ function hasExistingSample(customerId: number, stockItemId: number): boolean {
   return orders.some((o) =>
     o.customerId == customerId &&
     o.orderType === "sample" &&
-    o.items?.some((item: any) => item.stockItemId === stockItemId)
+    o.items?.some((item: any) => item.stockItemId == stockItemId)
   );
 }
 
@@ -1140,7 +1140,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
         invoiceNumber,
         deliveryNoteNumber: `DN-${order.orderNumber}`,
         customerId: order.customerId,
-        customer: customers.find((c) => c.id === order.customerId) || null,
+        customer: customers.find((c) => c.id == order.customerId) || null,
         subtotal,
         vatAmount,
         total,
@@ -1394,7 +1394,7 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   // Detect sample orders
   const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
   // Check if customer is VAT exempt
-  const customer = customers.find((c) => c.id === order.customerId);
+  const customer = customers.find((c) => c.id == order.customerId);
   const vatRate = customer?.vatExempt ? 0 : 0.15;
   // Calculate totals
   const items = order.items || [];
@@ -1721,10 +1721,10 @@ export const dataService = {
         const invTs = new Date(inv.createdAt || inv.invoiceDate).getTime();
         if (invTs < fromTs || invTs > toTs) continue;
 
-        const order = orders.find((o) => o.id === inv.orderId);
+        const order = orders.find((o) => o.id == inv.orderId);
         if (!order) continue;
 
-        const customer = customers.find((c) => c.id === inv.customerId || c.id === order.customerId);
+        const customer = customers.find((c) => c.id == inv.customerId || c.id == order.customerId);
         if (!customer) continue;
 
         const repName = customer.salesRepName || customer.salesRep || "";
@@ -1986,7 +1986,7 @@ export const dataService = {
         .map((c) => {
           // Find most recent order for this customer
           const custOrders = orders
-            .filter((o) => o.customerId === c.id)
+            .filter((o) => o.customerId == c.id)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           const lastOrder = custOrders[0] || null;
           const lastOrderDate = lastOrder ? new Date(lastOrder.createdAt).getTime() : 0;
@@ -2012,7 +2012,7 @@ export const dataService = {
   order: {
     list: () => orders
       .map((o) => {
-        const customer = customers.find((c) => c.id === o.customerId);
+        const customer = customers.find((c) => c.id == o.customerId);
         return { ...o, customer: customer || null };
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -2230,10 +2230,10 @@ export const dataService = {
     /** Create a new order from an existing invoice that has no linked order.
      *  This fixes the case where an invoice exists but its order was lost. */
     createFromInvoice: (invoiceId: number) => {
-      const inv = invoices.find((i) => i.id === invoiceId);
+      const inv = invoices.find((i) => i.id == invoiceId);
       if (!inv) return null;
       // Check if order already exists
-      const existingOrder = orders.find((o) => o.id === inv.orderId);
+      const existingOrder = orders.find((o) => o.id == inv.orderId);
       if (existingOrder) return { error: "Order already exists", order: existingOrder };
 
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -2288,7 +2288,7 @@ export const dataService = {
   invoice: {
     list: () => invoices
       .map((inv) => {
-        const customer = customers.find((c) => c.id === inv.customerId);
+        const customer = customers.find((c) => c.id == inv.customerId);
         return {
           ...inv,
           customer: customer || null,
@@ -2304,14 +2304,14 @@ export const dataService = {
       })
       .sort((a, b) => new Date(b.invoiceDate || b.createdAt).getTime() - new Date(a.invoiceDate || a.createdAt).getTime()),
     getById: (id: number) => {
-      const inv = invoices.find((i) => i.id === id);
+      const inv = invoices.find((i) => i.id == id);
       if (!inv) return null;
-      const customer = customers.find((c) => c.id === inv.customerId);
+      const customer = customers.find((c) => c.id == inv.customerId);
       return { ...inv, customer: customer || null };
     },
     create: (data: any) => {
       const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(invoices.length + 1).padStart(4, "0")}`;
-      const customer = customers.find((c) => c.id === data.customerId);
+      const customer = customers.find((c) => c.id == data.customerId);
       const now = new Date().toISOString();
       const newInvoice = {
         ...data,
@@ -2336,12 +2336,12 @@ export const dataService = {
       return newInvoice;
     },
     updateStatus: ({ id, status, amountPaid }: { id: number; status: string; amountPaid?: number }) => {
-      const idx = invoices.findIndex((i) => i.id === id);
+      const idx = invoices.findIndex((i) => i.id == id);
       if (idx >= 0) { invoices[idx].status = status; invoices[idx].amountPaid = amountPaid || 0; saveItem("sgf_invoices", invoices); return invoices[idx]; }
       return null;
     },
     recordPayment: ({ invoiceId, amount, paymentMethod, paymentDate, referenceNumber, notes }: any) => {
-      const idx = invoices.findIndex((i) => i.id === invoiceId);
+      const idx = invoices.findIndex((i) => i.id == invoiceId);
       if (idx < 0) return null;
       const inv = invoices[idx];
       // Auto-activate draft invoices when payment is recorded
@@ -2390,7 +2390,7 @@ export const dataService = {
         invoiceNumber: inv.invoiceNumber,
         orderNumber: inv.orderNumber,
         customerId: inv.customerId,
-        customerName: (customers.find((c) => c.id === inv.customerId) || {}).name || "",
+        customerName: (customers.find((c) => c.id == inv.customerId) || {}).name || "",
         amount,
         paymentMethod: paymentMethod || "cash",
         paymentDate: paymentDate || new Date().toISOString(),
@@ -2409,11 +2409,11 @@ export const dataService = {
       return { invoice: inv, receipt };
     },
     editPayment: ({ invoiceId, paymentId, amount, paymentMethod, paymentDate, referenceNumber, notes }: any) => {
-      const invIdx = invoices.findIndex((i) => i.id === invoiceId);
+      const invIdx = invoices.findIndex((i) => i.id == invoiceId);
       if (invIdx < 0) return null;
       const inv = invoices[invIdx];
       if (!inv.payments) return null;
-      const payIdx = inv.payments.findIndex((p: any) => p.id === paymentId);
+      const payIdx = inv.payments.findIndex((p: any) => p.id == paymentId);
       if (payIdx < 0) return null;
       // Update the payment
       inv.payments[payIdx] = {
@@ -2441,7 +2441,7 @@ export const dataService = {
       return inv;
     },
     deletePayment: ({ invoiceId, paymentId }: { invoiceId: number; paymentId: number }) => {
-      const invIdx = invoices.findIndex((i) => i.id === invoiceId);
+      const invIdx = invoices.findIndex((i) => i.id == invoiceId);
       if (invIdx < 0) return null;
       const inv = invoices[invIdx];
       if (!inv.payments) return null;
@@ -2771,7 +2771,7 @@ export const dataService = {
 
     /** Update invoice fields (admin only) — for correcting historical data */
     updateInvoice: ({ id, data }: { id: number; data: any }) => {
-      const idx = invoices.findIndex((i) => i.id === id);
+      const idx = invoices.findIndex((i) => i.id == id);
       if (idx < 0) return null;
       const inv = invoices[idx];
       // Audit log: invoice number change
@@ -2782,7 +2782,7 @@ export const dataService = {
       // Update allowed fields
       if (data.customerId !== undefined) {
         inv.customerId = data.customerId;
-        inv.customer = customers.find((c) => c.id === data.customerId) || null;
+        inv.customer = customers.find((c) => c.id == data.customerId) || null;
       }
       if (data.invoiceDate !== undefined) inv.invoiceDate = data.invoiceDate;
       if (data.total !== undefined) {
@@ -2938,7 +2938,7 @@ export const dataService = {
           orderNumber: hist.orderNumber || hist.invoiceNumber,
           orderId: null,
           customerId: customerId || 0,
-          customer: customerId ? customers.find((c) => c.id === customerId) : null,
+          customer: customerId ? customers.find((c) => c.id == customerId) : null,
           customerCode: hist.customerCode || null, // PRESERVE Sage customerCode for statement matching
           items: hist.items || [],
           subtotal,
@@ -3090,13 +3090,13 @@ export const dataService = {
   appointment: {
     list: () => appointments.map((a) => ({
       ...a,
-      customer: customers.find((c) => c.id === a.customerId) || null,
+      customer: customers.find((c) => c.id == a.customerId) || null,
     })),
     create: (data: any) => {
       const newItem = { ...data, id: Date.now(), status: "scheduled", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       // Auto-populate salesRepName from customer if not provided
       if (!newItem.salesRepName && newItem.customerId) {
-        const cust = customers.find((c) => c.id === newItem.customerId);
+        const cust = customers.find((c) => c.id == newItem.customerId);
         if (cust?.salesRepName) newItem.salesRepName = cust.salesRepName;
       }
       appointments.push(newItem);
@@ -3104,17 +3104,17 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = appointments.findIndex((a) => a.id === id);
+      const idx = appointments.findIndex((a) => a.id == id);
       if (idx >= 0) { appointments[idx] = { ...appointments[idx], ...data, updatedAt: new Date().toISOString() }; saveItem("sgf_appointments", appointments); return appointments[idx]; }
       return null;
     },
     delete: (id: number) => {
-      const idx = appointments.findIndex((a) => a.id === id);
+      const idx = appointments.findIndex((a) => a.id == id);
       if (idx >= 0) { const deleted = appointments[idx]; appointments.splice(idx, 1); saveItem("sgf_appointments", appointments); return deleted; }
       return null;
     },
     updateStatus: ({ id, status }: { id: number; status: string }) => {
-      const idx = appointments.findIndex((a) => a.id === id);
+      const idx = appointments.findIndex((a) => a.id == id);
       if (idx >= 0) { appointments[idx].status = status; saveItem("sgf_appointments", appointments); return appointments[idx]; }
       return null;
     },
@@ -3129,15 +3129,15 @@ export const dataService = {
   checkin: {
     list: () => checkins.map((ci) => ({
       ...ci,
-      customer: customers.find((c) => c.id === ci.customerId) || null,
+      customer: customers.find((c) => c.id == ci.customerId) || null,
     })),
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = checkins.findIndex((c) => c.id === id);
+      const idx = checkins.findIndex((c) => c.id == id);
       if (idx >= 0) { checkins[idx] = { ...checkins[idx], ...data, updatedAt: new Date().toISOString() }; saveItem("sgf_checkins", checkins); return checkins[idx]; }
       return null;
     },
     delete: (id: number) => {
-      const idx = checkins.findIndex((c) => c.id === id);
+      const idx = checkins.findIndex((c) => c.id == id);
       if (idx >= 0) { const deleted = checkins[idx]; checkins.splice(idx, 1); saveItem("sgf_checkins", checkins); return deleted; }
       return null;
     },
@@ -3145,7 +3145,7 @@ export const dataService = {
       const newItem = { ...data, id: Date.now(), status: "checked_in", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       // Auto-populate salesRepName from customer if not provided
       if (!newItem.salesRepName && newItem.customerId) {
-        const cust = customers.find((c) => c.id === newItem.customerId);
+        const cust = customers.find((c) => c.id == newItem.customerId);
         if (cust?.salesRepName) newItem.salesRepName = cust.salesRepName;
       }
       // If notes contains location info, also store it as location
@@ -3157,7 +3157,7 @@ export const dataService = {
       return newItem;
     },
     checkout: ({ id, notes }: { id: number; notes?: string }) => {
-      const idx = checkins.findIndex((ci) => ci.id === id);
+      const idx = checkins.findIndex((ci) => ci.id == id);
       if (idx >= 0) {
         checkins[idx].status = "checked_out";
         checkins[idx].checkedOutAt = new Date().toISOString();
@@ -3221,14 +3221,14 @@ export const dataService = {
   followUpAction: {
     list: () => followUpActions.map((fa) => ({
       ...fa,
-      customer: customers.find((c) => c.id === fa.customerId) || null,
+      customer: customers.find((c) => c.id == fa.customerId) || null,
     })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     listByCustomer: ({ customerId }: { customerId: number }) =>
       followUpActions
         .filter((fa) => fa.customerId == customerId)
         .map((fa) => ({
           ...fa,
-          customer: customers.find((c) => c.id === fa.customerId) || null,
+          customer: customers.find((c) => c.id == fa.customerId) || null,
         }))
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     create: (data: any) => {
@@ -3258,7 +3258,7 @@ export const dataService = {
         .filter((sp) => sp.customerId == customerId)
         .map((sp) => ({
           ...sp,
-          stockItem: products.find((p) => p.id === sp.stockItemId) || null,
+          stockItem: products.find((p) => p.id == sp.stockItemId) || null,
         })),
     set: ({ customerId, stockItemId, specialPrice: price }: { customerId: number; stockItemId: number; specialPrice: number }) => {
       const existing = specialPrices.find((sp) => sp.customerId == customerId && sp.stockItemId == stockItemId);
@@ -3299,11 +3299,11 @@ export const dataService = {
         const name = rep.name;
         const repCustomers = customers.filter((c) => c.salesRepName === name);
         const repOrders = orders.filter((o) => {
-          const cust = customers.find((c) => c.id === o.customerId);
+          const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType !== "sample";
         });
         const repSamples = orders.filter((o) => {
-          const cust = customers.find((c) => c.id === o.customerId);
+          const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType === "sample";
         });
         const totalSales = repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
@@ -3340,7 +3340,7 @@ export const dataService = {
       const repSales = getCurrentSalesReps().map((rep) => {
         const name = rep.name;
         const repOrders = orders.filter((o) => {
-          const cust = customers.find((c) => c.id === o.customerId);
+          const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType !== "sample";
         });
 
@@ -3460,8 +3460,8 @@ export const dataService = {
       return followUps
         .filter((fu) => fu.status === "pending")
         .map((fu) => {
-          const order = orders.find((o) => o.id === fu.orderId);
-          const customer = customers.find((c) => c.id === fu.customerId);
+          const order = orders.find((o) => o.id == fu.orderId);
+          const customer = customers.find((c) => c.id == fu.customerId);
           return {
             ...fu,
             customer: customer || null,
@@ -3470,7 +3470,7 @@ export const dataService = {
         });
     },
     update: ({ id, status, reason, expectedOrderDate }: { id: number; status: string; reason?: string; expectedOrderDate?: string }) => {
-      const idx = followUps.findIndex((fu) => fu.id === id);
+      const idx = followUps.findIndex((fu) => fu.id == id);
       if (idx >= 0) {
         followUps[idx] = { ...followUps[idx], status, reason, expectedOrderDate, updatedAt: new Date().toISOString() };
         saveItem("sgf_followUps", followUps);
@@ -3491,7 +3491,7 @@ export const dataService = {
       return invoices
         .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
         .map((inv) => {
-          const customer = customers.find((c) => c.id === inv.customerId);
+          const customer = customers.find((c) => c.id == inv.customerId);
           // Use invoiceDate (actual invoice date) not createdAt (import date)
           const invoiceDate = new Date(inv.invoiceDate || inv.createdAt);
           // Calculate due date from payment terms
@@ -3578,7 +3578,7 @@ export const dataService = {
       return hold;
     },
     releaseHold: ({ holdId }: { holdId: number }) => {
-      const idx = accountHolds.findIndex((h) => h.id === holdId);
+      const idx = accountHolds.findIndex((h) => h.id == holdId);
       if (idx >= 0) {
         accountHolds[idx] = { ...accountHolds[idx], status: "released", releasedAt: new Date().toISOString() };
         collectionNotes.push({ id: Date.now() + Math.random(), invoiceId: null, customerId: accountHolds[idx].customerId, type: "hold", notes: "Account hold released", contactMethod: "manual", contactPerson: "", followUpDate: null, createdAt: new Date().toISOString() });
@@ -3623,7 +3623,7 @@ export const dataService = {
       const sampleOrders = orders.filter((o) => o.orderType === "sample");
       const report = [] as any[];
       for (const customer of [...customers].sort((a, b) => (a.name || "").localeCompare(b.name || ""))) {
-        const custSamples = sampleOrders.filter((o) => o.customerId === customer.id);
+        const custSamples = sampleOrders.filter((o) => o.customerId == customer.id);
         if (custSamples.length === 0) continue;
         const items = custSamples.flatMap((o) =>
           (o.items || []).map((item: any) => {
@@ -3691,7 +3691,7 @@ export const dataService = {
   /* ─── User Management with Roles ─── */
   user: {
     list: () => users.filter((u) => u.isActive !== false),
-    getById: (id: number) => users.find((u) => u.id === id) || null,
+    getById: (id: number) => users.find((u) => u.id == id) || null,
     getByName: (name: string) => users.find((u) => u.name?.toLowerCase() === name.toLowerCase() && u.isActive !== false) || null,
     authenticate: ({ name, pin }: { name: string; pin: string }) => {
       const DEFAULT_USERS = [
@@ -3749,7 +3749,7 @@ export const dataService = {
       return newUser;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = users.findIndex((u) => u.id === id);
+      const idx = users.findIndex((u) => u.id == id);
       if (idx >= 0) {
         // Never allow changing a super_admin's role away from super_admin via update
         if (users[idx].role === "super_admin" && data.role && data.role !== "super_admin") {
@@ -3767,7 +3767,7 @@ export const dataService = {
     },
     delete: ({ id }: { id: number }) => {
       // Prevent deleting the last super admin
-      const target = users.find((u) => u.id === id);
+      const target = users.find((u) => u.id == id);
       if (target?.role === "super_admin") {
         const superAdminCount = users.filter((u) => u.role === "super_admin").length;
         if (superAdminCount <= 1) return { success: false, error: "Cannot delete the last super admin" };
@@ -3777,7 +3777,7 @@ export const dataService = {
       return { success: true };
     },
     toggleActive: ({ id }: { id: number }) => {
-      const idx = users.findIndex((u) => u.id === id);
+      const idx = users.findIndex((u) => u.id == id);
       if (idx >= 0) {
         // Prevent deactivating the last super admin
         if (users[idx].role === "super_admin" && users[idx].isActive !== false) {
@@ -3791,7 +3791,7 @@ export const dataService = {
       return { success: false };
     },
     resetPin: ({ id, pin }: { id: number; pin: string }) => {
-      const idx = users.findIndex((u) => u.id === id);
+      const idx = users.findIndex((u) => u.id == id);
       if (idx >= 0) {
         users[idx].pin = pin;
         users[idx].updatedAt = new Date().toISOString();
@@ -3808,7 +3808,7 @@ export const dataService = {
   corporateCustomer: {
     list: () => corporateCustomers,
     listByCompany: (company: string) => corporateCustomers.filter((c) => c.company === company || (!c.company && company === "sgf")),
-    getById: (id: number) => corporateCustomers.find((c) => c.id === id) || null,
+    getById: (id: number) => corporateCustomers.find((c) => c.id == id) || null,
     create: (data: any) => {
       const newItem = {
         ...data,
@@ -3845,12 +3845,12 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = corporateCustomers.findIndex((c) => c.id === id);
+      const idx = corporateCustomers.findIndex((c) => c.id == id);
       if (idx >= 0) {
         corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_corporateCustomers", corporateCustomers);
         // Sync updates to main customers list
-        const cIdx = customers.findIndex((c) => c.id === id && c.isCorporate);
+        const cIdx = customers.findIndex((c) => c.id == id && c.isCorporate);
         if (cIdx >= 0) {
           customers[cIdx] = {
             ...customers[cIdx],
@@ -3879,7 +3879,7 @@ export const dataService = {
       corporateCustomers = corporateCustomers.filter((c) => c.id !== id);
       saveItem("sgf_corporateCustomers", corporateCustomers);
       // Also remove from main customers list
-      customers = customers.filter((c) => !(c.id === id && c.isCorporate));
+      customers = customers.filter((c) => !(c.id == id && c.isCorporate));
       saveItem("sgf_customers", customers);
       return { success: true };
     },
@@ -3888,12 +3888,12 @@ export const dataService = {
   purchaseOrder: {
     list: () => purchaseOrders,
     listByCompany: (company: string) => purchaseOrders.filter((po) => po.company === company || (!po.company && company === "sgf")),
-    getById: (id: number) => purchaseOrders.find((po) => po.id === id) || null,
+    getById: (id: number) => purchaseOrders.find((po) => po.id == id) || null,
     create: (data: any) => {
       // Auto-inherit company from linked corporate customer if not explicitly set
       let company = data.company;
       if (!company && data.corporateCustomerId) {
-        const cust = corporateCustomers.find((c) => c.id === data.corporateCustomerId);
+        const cust = corporateCustomers.find((c) => c.id == data.corporateCustomerId);
         if (cust?.company) company = cust.company;
       }
       const newItem = {
@@ -3909,7 +3909,7 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = purchaseOrders.findIndex((po) => po.id === id);
+      const idx = purchaseOrders.findIndex((po) => po.id == id);
       if (idx >= 0) {
         purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_purchaseOrders", purchaseOrders);
@@ -3918,7 +3918,7 @@ export const dataService = {
       return null;
     },
     updateStatus: ({ id, status }: { id: number; status: string }) => {
-      const idx = purchaseOrders.findIndex((po) => po.id === id);
+      const idx = purchaseOrders.findIndex((po) => po.id == id);
       if (idx >= 0) {
         purchaseOrders[idx].status = status;
         purchaseOrders[idx].updatedAt = new Date().toISOString();
@@ -3937,12 +3937,12 @@ export const dataService = {
   barrel: {
     list: () => barrels,
     listByPurchaseOrder: (poId: number) => barrels.filter((b) => b.purchaseOrderId === poId),
-    getById: (id: number) => barrels.find((b) => b.id === id) || null,
+    getById: (id: number) => barrels.find((b) => b.id == id) || null,
     create: (data: any) => {
       // Auto-inherit company from linked PO if not explicitly set
       let company = data.company;
       if (!company && data.purchaseOrderId) {
-        const po = purchaseOrders.find((p) => p.id === data.purchaseOrderId);
+        const po = purchaseOrders.find((p) => p.id == data.purchaseOrderId);
         if (po?.company) company = po.company;
       }
       const newItem = {
@@ -3957,7 +3957,7 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = barrels.findIndex((b) => b.id === id);
+      const idx = barrels.findIndex((b) => b.id == id);
       if (idx >= 0) {
         barrels[idx] = { ...barrels[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_barrels", barrels);
@@ -3976,15 +3976,15 @@ export const dataService = {
     list: () => certificatesOfCompliance,
     listByBarrel: (barrelId: number) => certificatesOfCompliance.filter((c) => c.barrelId === barrelId),
     listByPurchaseOrder: (poId: number) => certificatesOfCompliance.filter((c) => c.purchaseOrderId === poId),
-    getById: (id: number) => certificatesOfCompliance.find((c) => c.id === id) || null,
+    getById: (id: number) => certificatesOfCompliance.find((c) => c.id == id) || null,
     create: (data: any) => {
       let company = data.company;
       if (!company && data.barrelId) {
-        const b = barrels.find((br) => br.id === data.barrelId);
+        const b = barrels.find((br) => br.id == data.barrelId);
         if (b?.company) company = b.company;
       }
       if (!company && data.purchaseOrderId) {
-        const po = purchaseOrders.find((p) => p.id === data.purchaseOrderId);
+        const po = purchaseOrders.find((p) => p.id == data.purchaseOrderId);
         if (po?.company) company = po.company;
       }
       const newItem = {
@@ -3999,7 +3999,7 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = certificatesOfCompliance.findIndex((c) => c.id === id);
+      const idx = certificatesOfCompliance.findIndex((c) => c.id == id);
       if (idx >= 0) {
         certificatesOfCompliance[idx] = { ...certificatesOfCompliance[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
@@ -4031,7 +4031,7 @@ export const dataService = {
       for (let i = 0; i < cocDataList.length; i++) {
         const data = cocDataList[i];
         const company = data.company || (() => {
-          const po = purchaseOrders.find((p) => p.id === poId);
+          const po = purchaseOrders.find((p) => p.id == poId);
           return po?.company || "sgf";
         })();
         const newCOC = {
@@ -4057,7 +4057,7 @@ export const dataService = {
   packingList: {
     list: () => packingListLines,
     listByPurchaseOrder: (poId: number) => packingListLines.filter((pl) => pl.purchaseOrderId === poId),
-    getById: (id: number) => packingListLines.find((pl) => pl.id === id) || null,
+    getById: (id: number) => packingListLines.find((pl) => pl.id == id) || null,
     create: (data: any) => {
       const newItem = {
         ...data,
@@ -4070,7 +4070,7 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = packingListLines.findIndex((pl) => pl.id === id);
+      const idx = packingListLines.findIndex((pl) => pl.id == id);
       if (idx >= 0) {
         packingListLines[idx] = { ...packingListLines[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_packingListLines", packingListLines);
@@ -4340,9 +4340,9 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
 // Do NOT call load() again here — it would overwrite in-memory data with stale localStorage.
 
 function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number): number {
-  const sp = specialPrices.find((p) => p.customerId === customerId && p.stockItemId === stockItemId);
+  const sp = specialPrices.find((p) => p.customerId == customerId && p.stockItemId == stockItemId);
   if (sp) return Number(sp.specialPrice);
-  const stock = products.find((p) => p.id === stockItemId);
+  const stock = products.find((p) => p.id == stockItemId);
   if (!stock) return 0;
   switch (priceTier) {
     case "corporate": return Number(stock.corporatePrice);

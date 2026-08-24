@@ -9,7 +9,7 @@ import App from './App.tsx'
 // ═══════════════════════════════════════════════════════════════
 // APP VERSION — Pulled from index.html inline script
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v24";
+const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v25";
 
 // Background polling: check every 30s for new version while tab is visible
 let updateBannerShown = false;

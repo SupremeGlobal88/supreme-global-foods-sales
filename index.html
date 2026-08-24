@@ -9,41 +9,62 @@
     <title>Supreme Sales Command</title>
     <script>
       // ═══════════════════════════════════════════════════════════════
-      // CRITICAL: Auto-reload on version change — runs BEFORE JS bundle
+      // CRITICAL: Version gate + cache purge — runs BEFORE anything else
       // ═══════════════════════════════════════════════════════════════
-      window.SGF_APP_VERSION="2026-08-25-stable-v24";
+      window.SGF_APP_VERSION="2026-08-25-stable-v25";
       (function(){
-        var stored = localStorage.getItem("sgf_app_version");
         var current = window.SGF_APP_VERSION;
-        if (stored && stored !== current) {
-          // Version mismatch — WIPE ALL cached sgf_* data and reload
-          var keysToRemove = [];
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (k && (k.indexOf("sgf_") === 0 || k.indexOf("trpc-") === 0 || k.indexOf("react-query-") === 0)) {
-              keysToRemove.push(k);
-            }
+        var stored = localStorage.getItem("sgf_app_version");
+
+        // ALWAYS purge React Query / tRPC cache on every load (safe, fast)
+        var purgeKeys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && (k.indexOf("trpc-") === 0 || k.indexOf("react-query-") === 0)) {
+            purgeKeys.push(k);
           }
-          keysToRemove.forEach(function(k){ localStorage.removeItem(k); });
+        }
+        purgeKeys.forEach(function(k){ localStorage.removeItem(k); });
+
+        // ALWAYS purge stale sgf data keys that contain old cached records
+        // (users list, products, invoices — these will re-sync from Firebase)
+        var staleDataKeys = ["sgf_users","sgf_products","sgf_invoices","sgf_orders","sgf_creditNotes","sgf_customers","sgf_stockItems"];
+        staleDataKeys.forEach(function(k){ localStorage.removeItem(k); });
+
+        // Version mismatch: force hard reload with cache-buster
+        if (stored && stored !== current) {
           localStorage.setItem("sgf_app_version", current);
           var url = new URL(window.location.href);
           url.searchParams.set("_r", Date.now().toString());
           window.location.replace(url.toString());
-          return; // Stop everything, page is reloading
+          return;
         }
         localStorage.setItem("sgf_app_version", current);
       })();
+
+      // Detect back-forward cache (bfcache) restore and force reload
+      window.addEventListener("pageshow", function(e) {
+        if (e.persisted) {
+          window.location.reload();
+        }
+      });
     </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Unregister any service workers that might cache old versions
+      // Aggressively nuke any service workers
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(regs) {
           regs.forEach(function(r) { r.unregister(); });
         });
+        // Also clear caches
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            names.forEach(function(n) { caches.delete(n); });
+          });
+        }
       }
     </script>
   </body>

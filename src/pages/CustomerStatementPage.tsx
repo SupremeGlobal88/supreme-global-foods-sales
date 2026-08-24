@@ -87,6 +87,15 @@ export default function CustomerStatementPage() {
     }).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [allCreditNotes, selectedCustomer, invoices, stmtFrom, stmtTo]);
 
+  // Total available credit for this customer
+  const availableCredit = useMemo(() => {
+    if (!custCreditNotes.length) return 0;
+    return custCreditNotes.reduce((sum: number, cn: any) => {
+      const remaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
+      return sum + remaining;
+    }, 0);
+  }, [custCreditNotes]);
+
   // Build running balance ledger lines — includes invoices, payments, AND credit notes
   const lines = useMemo(() => {
     const result: any[] = [];
@@ -130,7 +139,7 @@ export default function CustomerStatementPage() {
       result.push({
         date: cn.createdAt,
         ref: cn.creditNoteNumber || "CN",
-        desc: `Credit Note — ${cn.reason || "Adjustment"}`,
+        desc: `Credit Note — ${cn.reason || "Adjustment"}${(cn.remainingAmount !== undefined && cn.remainingAmount > 0) ? ` (R ${cn.remainingAmount.toFixed(2)} remaining)` : ''}`,
         terms: "",
         debit: 0,
         credit: Number(cn.amount || 0),
@@ -470,6 +479,22 @@ export default function CustomerStatementPage() {
                       R {(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
+                  {availableCredit > 0 && (
+                    <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px dashed rgba(245,158,11,0.3)" }}>
+                      <span className="text-[#F59E0B] font-semibold">Available Credit:</span>
+                      <span className="font-bold text-[#F59E0B]">
+                        R {availableCredit.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+                  {availableCredit > 0 && (
+                    <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px solid #4ADE80" }}>
+                      <span className="text-[#4ADE80] font-semibold">Net Balance (After Credit):</span>
+                      <span className="font-bold text-[#4ADE80]">
+                        R {Math.max(0, (totalDebit - totalCredit) - availableCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -55,6 +55,16 @@ export default function InvoicesPage() {
   const [cnReason, setCnReason] = useState("");
   const [cnLineItems, setCnLineItems] = useState<any[]>([]);
 
+  /* Credit allocation form */
+  const [showAllocCredit, setShowAllocCredit] = useState(false);
+  const [allocInvId, setAllocInvId] = useState(0);
+  const [allocInvNumber, setAllocInvNumber] = useState("");
+  const [allocCustId, setAllocCustId] = useState(0);
+  const [allocCustName, setAllocCustName] = useState("");
+  const [allocBal, setAllocBal] = useState(0);
+  const [allocAmt, setAllocAmt] = useState("");
+  const [allocCnId, setAllocCnId] = useState(0);
+
   /* Admin edit invoice form */
   const [showEditInv, setShowEditInv] = useState(false);
   const [editInvId, setEditInvId] = useState(0);
@@ -115,6 +125,15 @@ export default function InvoicesPage() {
   });
   const voidCreditNote = trpc.invoice.voidCreditNote.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+  });
+  const allocateCredit = trpc.invoice.allocateCredit.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.invoice.list.invalidate();
+      await utils.invoice.getCreditNotes.invalidate();
+      closeAllocCredit();
+    },
+    onError: (err: any) => { alert("Credit allocation failed: " + (err.message || "Unknown error")); },
   });
   const updateInvoice = trpc.invoice.update.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowEditInv(false); },
@@ -178,6 +197,26 @@ export default function InvoicesPage() {
     });
     setCnLineItems(items);
     setShowCreditNote(true);
+  }
+
+  function openAllocCredit(inv: any) {
+    const custId = inv.customerId || (inv.customer && inv.customer.id);
+    if (!custId) return;
+    setAllocInvId(inv.id);
+    setAllocInvNumber(inv.invoiceNumber);
+    setAllocCustId(custId);
+    setAllocCustName(inv.customer?.name || "Customer");
+    const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+    setAllocBal(bal);
+    setAllocAmt("");
+    setAllocCnId(0);
+    setShowAllocCredit(true);
+  }
+
+  function closeAllocCredit() {
+    setShowAllocCredit(false); setAllocInvId(0); setAllocInvNumber("");
+    setAllocCustId(0); setAllocCustName(""); setAllocBal(0);
+    setAllocAmt(""); setAllocCnId(0);
   }
 
   function openEditPay(invId: number, invNumber: string, custName: string, p: any) {
@@ -1038,6 +1077,15 @@ export default function InvoicesPage() {
                                 <span className="text-[#D4A843] font-semibold">Total:</span><span className="text-[#D4A843] font-bold">R {tot.toFixed(2)}</span>
                               </div>
                               {paid > 0 && <div className="flex justify-between"><span className="text-[#8A8B8C]">Paid:</span><span className="text-[#4ADE80]">R {paid.toFixed(2)}</span></div>}
+                              {(() => {
+                                const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+                                return creditsApplied > 0 ? (
+                                  <div className="flex justify-between">
+                                    <span className="text-[#8A8B8C]">Credits Applied:</span>
+                                    <span className="text-[#F59E0B]">R {creditsApplied.toFixed(2)}</span>
+                                  </div>
+                                ) : null;
+                              })()}
                               {bal > 0 && (
                                 <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #EF4444" }}>
                                   <span className="text-[#EF4444] font-bold">Balance Due:</span><span className="text-[#EF4444] font-bold">R {bal.toFixed(2)}</span>
@@ -1152,6 +1200,9 @@ export default function InvoicesPage() {
                             <button onClick={() => printDoc(inv)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Invoice &amp; DN</button>
                             {isAdmin && bal > 0 && inv.status !== "cancelled" && (
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
+                            )}
+                            {isAdmin && bal > 0 && inv.status !== "cancelled" && inv.status !== "draft" && (
+                              <button onClick={() => openAllocCredit(inv)} className="btn-primary text-xs" style={{ background: "rgba(245,158,11,0.15)", borderColor: "rgba(245,158,11,0.4)" }}><RotateCcw className="w-3 h-3" /> Apply Credit</button>
                             )}
                             {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
                               <button onClick={() => openCreditNote(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
@@ -1441,6 +1492,106 @@ export default function InvoicesPage() {
             >
               <RotateCcw className="w-4 h-4" /> {cnLineItems.some((li) => li.isSample) ? "Record Stock Return" : "Create Credit Note"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ ALLOCATE CREDIT MODAL ═══════ */}
+      {showAllocCredit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-[#F59E0B]" /> Apply Available Credit
+                </h2>
+                <p className="text-xs text-[#8A8B8C] mt-0.5">Invoice: {allocInvNumber} | Balance: R {allocBal.toFixed(2)}</p>
+              </div>
+              <button onClick={closeAllocCredit} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            {(() => {
+              const customerCns = (allInvoices || [])
+                .filter((inv: any) => inv.customerId == allocCustId)
+                .flatMap((inv: any) => (inv.creditNotes || [])
+                  .map((cnId: any) => {
+                    const cn = (allCreditNotes || []).find((c: any) => c.id == cnId);
+                    return cn;
+                  }).filter(Boolean)
+                );
+              // Also fetch all credit notes for this customer directly
+              const allCustCns = (allCreditNotes || []).filter((cn: any) => cn.customerId == allocCustId && !cn.voided);
+              const availableCns = allCustCns.filter((cn: any) => {
+                const remaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
+                return remaining > 0.01;
+              });
+              const totalAvailable = availableCns.reduce((sum: number, cn: any) => sum + (cn.remainingAmount || 0), 0);
+              if (availableCns.length === 0) {
+                return (
+                  <div className="p-4 rounded-lg text-center" style={{ backgroundColor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    <p className="text-sm text-[#EF4444] font-semibold mb-1">No Available Credits</p>
+                    <p className="text-xs text-[#8A8B8C]">This customer has no unallocated credit notes.</p>
+                  </div>
+                );
+              }
+              return (
+                <div>
+                  <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                    <p className="text-sm text-[#F59E0B] font-semibold">Total Available Credit: R {totalAvailable.toFixed(2)}</p>
+                    <p className="text-xs text-[#8A8B8C] mt-0.5">Invoice Balance: R {allocBal.toFixed(2)}</p>
+                  </div>
+                  <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                    {availableCns.map((cn: any) => (
+                      <div
+                        key={cn.id}
+                        onClick={() => { setAllocCnId(cn.id); const maxAmt = Math.min(cn.remainingAmount || 0, allocBal); setAllocAmt(maxAmt > 0 ? maxAmt.toFixed(2) : ""); }}
+                        className={`p-3 rounded-lg cursor-pointer transition-all ${allocCnId == cn.id ? "ring-1 ring-[#D4A843]" : ""}`}
+                        style={{ backgroundColor: allocCnId == cn.id ? "rgba(212,168,67,0.08)" : "#0A0A0B", border: "1px solid #222324" }}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-sm font-medium text-white">{cn.creditNoteNumber || "Credit Note"}</p>
+                            <p className="text-xs text-[#8A8B8C]">{cn.reason || "No reason"}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-[#4ADE80]">R {(cn.remainingAmount || 0).toFixed(2)} avail</p>
+                            <p className="text-xs text-[#8A8B8C]">of R {(cn.amount || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {allocCnId > 0 && (
+                    <div className="mb-4">
+                      <label className="label-text block mb-1.5">Amount to Allocate *</label>
+                      <input
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={allocAmt}
+                        onChange={(e) => setAllocAmt(e.target.value)}
+                        className="input-field w-full"
+                        placeholder="Enter amount..."
+                      />
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      const amount = parseFloat(allocAmt);
+                      if (!amount || amount <= 0) { alert("Please enter a valid amount."); return; }
+                      const cn = availableCns.find((c: any) => c.id == allocCnId);
+                      if (!cn) { alert("Please select a credit note."); return; }
+                      if (amount > (cn.remainingAmount || 0) + 0.01) { alert("Amount exceeds available credit."); return; }
+                      if (amount > allocBal + 0.01) { alert("Amount exceeds invoice balance."); return; }
+                      allocateCredit.mutate({ creditNoteId: allocCnId, invoiceId: allocInvId, amount });
+                    }}
+                    disabled={!allocCnId || !allocAmt || allocateCredit.isLoading}
+                    className="btn-primary w-full justify-center"
+                  >
+                    {allocateCredit.isLoading ? "Processing..." : "Apply Credit to Invoice"}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

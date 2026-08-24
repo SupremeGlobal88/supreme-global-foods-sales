@@ -2472,6 +2472,14 @@ export const dataService = {
     // Use loose equality (==) — Firebase may convert number IDs to strings
     getCreditNotesByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId == invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getCreditNotesByCustomer: (customerId: number) => creditNotes.filter((cn) => cn.customerId == customerId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getCustomerCreditBalance: (customerId: number) => {
+      return creditNotes
+        .filter((cn) => cn.customerId == customerId && !cn.voided)
+        .reduce((sum: number, cn: any) => {
+          const remaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
+          return sum + remaining;
+        }, 0);
+    },
     createCreditNote: (data: any) => {
       // Calculate total credit from line items if provided
       let lineItems = data.lineItems || [];
@@ -2493,7 +2501,9 @@ export const dataService = {
         id: Date.now() + Math.random(),
         creditNoteNumber: `CN-${String(nextNumber).padStart(3, "0")}`,
         ...data,
-        amount: creditTotal, // ensure total is calculated from line items
+        amount: creditTotal,
+        remainingAmount: creditTotal, // NEW: credit is not yet allocated to any invoice
+        allocations: [], // NEW: tracks which invoices this credit is applied to
         lineItems,
         createdAt: new Date().toISOString(),
       };
@@ -2501,7 +2511,8 @@ export const dataService = {
       saveItem("sgf_creditNotes", creditNotes);
       let updatedInvoice = null;
 
-      // Helper: find and update invoice, searching multiple sources
+      // Helper: find and update invoice — credit note is created but NOT auto-applied
+      // The credit sits as "available" for the customer to allocate later
       const findAndUpdateInvoice = (): any | null => {
         if (!data.invoiceId) return null;
 
@@ -2546,21 +2557,13 @@ export const dataService = {
 
         if (idx < 0) return null;
 
-        // Apply credit note to invoice
         const inv = invoices[idx];
-        // SAMPLE ORDER: credit note is stock return only — NO monetary impact on balance
-        const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
-        if (!isSampleInvoice) {
-          // Normal order: subtract credit amount from balance
-          const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-          inv.balanceDue = currentBalance - creditTotal;
-        }
-        // For samples, balanceDue stays as-is (already 0)
+        // Credit note is linked to original invoice for REFERENCE only
+        // Balance is NOT reduced here — user allocates credit manually
         if (!inv.creditNotes) inv.creditNotes = [];
         inv.creditNotes.push(creditNote.id);
 
         // Store credited line items on the invoice for display
-        // GUARD: prevent duplicate entries for the same credit note + product
         if (!inv.creditedLines) inv.creditedLines = [];
         for (const li of lineItems) {
           const alreadyExists = inv.creditedLines.some((cl: any) =>
@@ -2582,14 +2585,6 @@ export const dataService = {
           }
         }
 
-        // Sample orders always stay "paid" — credit notes are stock returns only
-        if (!isSampleInvoice) {
-          if (inv.balanceDue > 0.01) {
-            inv.status = (inv.amountPaid || 0) > 0 ? "partially_paid" : "sent";
-          } else {
-            inv.status = "paid";
-          }
-        }
         inv.updatedAt = new Date().toISOString();
         saveItem("sgf_invoices", invoices);
         return inv;
@@ -2615,32 +2610,132 @@ export const dataService = {
       logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${creditTotal} invoice=${data.invoiceId} lines=${lineItems.length} found=${!!updatedInvoice}`);
       return { creditNote, updatedInvoice };
     },
+    allocateCredit: ({ creditNoteId, invoiceId, amount }: { creditNoteId: number; invoiceId: number; amount: number }) => {
+      const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNoteId);
+      if (cnIdx < 0) return { success: false, error: "Credit note not found" };
+      const cn = creditNotes[cnIdx];
+      if (cn.voided) return { success: false, error: "Credit note is voided" };
+
+      const remaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
+      if (amount > remaining + 0.01) return { success: false, error: "Amount exceeds remaining credit" };
+
+      const invIdx = invoices.findIndex((i) => i.id == invoiceId);
+      if (invIdx < 0) return { success: false, error: "Invoice not found" };
+      const inv = invoices[invIdx];
+
+      const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+      if (amount > currentBalance + 0.01) return { success: false, error: "Amount exceeds invoice balance" };
+
+      // Deduct from credit note
+      creditNotes[cnIdx] = {
+        ...cn,
+        remainingAmount: Math.max(0, remaining - amount),
+        allocations: [...(cn.allocations || []), { invoiceId, amount, allocatedAt: new Date().toISOString() }],
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Add to invoice
+      const newBalance = Math.max(0, currentBalance - amount);
+      invoices[invIdx] = {
+        ...inv,
+        balanceDue: newBalance,
+        creditAllocations: [...(inv.creditAllocations || []), { creditNoteId, amount, allocatedAt: new Date().toISOString() }],
+        status: newBalance <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+        updatedAt: new Date().toISOString(),
+      };
+
+      saveItem("sgf_creditNotes", creditNotes);
+      saveItem("sgf_invoices", invoices);
+
+      logAudit("UPDATE", "creditNote", creditNoteId, `Allocated R${amount.toFixed(2)} to invoice ${invoiceId}. Remaining: R${(remaining - amount).toFixed(2)}`);
+      return { success: true, creditNote: creditNotes[cnIdx], invoice: invoices[invIdx] };
+    },
+    voidCreditNoteAllocation: ({ creditNoteId, invoiceId }: { creditNoteId: number; invoiceId: number }) => {
+      const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNoteId);
+      if (cnIdx < 0) return { success: false, error: "Credit note not found" };
+      const cn = creditNotes[cnIdx];
+
+      const alloc = (cn.allocations || []).find((a: any) => a.invoiceId == invoiceId);
+      if (!alloc) return { success: false, error: "Allocation not found" };
+      const amount = alloc.amount;
+
+      // Restore credit note
+      const currentRemaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
+      creditNotes[cnIdx] = {
+        ...cn,
+        remainingAmount: currentRemaining + amount,
+        allocations: (cn.allocations || []).filter((a: any) => a.invoiceId != invoiceId),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Restore invoice
+      const invIdx = invoices.findIndex((i) => i.id == invoiceId);
+      if (invIdx >= 0) {
+        const inv = invoices[invIdx];
+        const newBal = (typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0)) + amount;
+        invoices[invIdx] = {
+          ...inv,
+          balanceDue: newBal,
+          creditAllocations: (inv.creditAllocations || []).filter((a: any) => a.creditNoteId != creditNoteId),
+          status: newBal <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+          updatedAt: new Date().toISOString(),
+        };
+        saveItem("sgf_invoices", invoices);
+      }
+
+      saveItem("sgf_creditNotes", creditNotes);
+      logAudit("UPDATE", "creditNote", creditNoteId, `Voided allocation of R${amount.toFixed(2)} from invoice ${invoiceId}`);
+      return { success: true, creditNote: creditNotes[cnIdx] };
+    },
     voidCreditNote: (id: number) => {
       // Use loose equality (==) because Firebase may convert number IDs to strings
       const idx = creditNotes.findIndex((cn) => cn.id == id);
       if (idx >= 0) {
         const cn = creditNotes[idx];
+
+        // NEW: if credit note has allocations, void them first
+        const hasAllocations = cn.allocations && cn.allocations.length > 0;
+        if (hasAllocations) {
+          for (const alloc of cn.allocations) {
+            const invIdx = invoices.findIndex((i) => i.id == alloc.invoiceId);
+            if (invIdx >= 0) {
+              const inv = invoices[invIdx];
+              const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+              const newBal = currentBal + alloc.amount;
+              invoices[invIdx] = {
+                ...inv,
+                balanceDue: newBal,
+                creditAllocations: (inv.creditAllocations || []).filter((a: any) => a.creditNoteId != cn.id),
+                status: newBal <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+                updatedAt: new Date().toISOString(),
+              };
+            }
+          }
+          saveItem("sgf_invoices", invoices);
+        }
+
         cn.voided = true;
         cn.voidedAt = new Date().toISOString();
+
         if (cn.invoiceId) {
           // Use loose equality (==) because Firebase may convert number IDs to strings
           const inv = invoices.find((i) => i.id == cn.invoiceId);
           if (inv) {
-            // SAMPLE ORDER: credit note was stock return only — do NOT restore balance
-            const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
-            if (!isSampleInvoice) {
-              // Normal order: restore the balance by adding the credit note amount back
-              const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
-              inv.balanceDue = currentBal + (cn.amount || 0);
-              // Recalculate status based on restored balance
-              const total = Number(inv.total || inv.totalAmount || 0);
-              const paid = Number(inv.amountPaid || 0);
-              if (inv.balanceDue >= total - 0.01) {
-                inv.status = "sent"; // No payment, full balance restored
-              } else if (inv.balanceDue > 0.01) {
-                inv.status = "partially_paid"; // Some payment, some balance
-              } else {
-                inv.status = "paid"; // Fully paid or credit
+            // OLD credit notes (no allocations): restore balance to original invoice
+            if (!hasAllocations) {
+              const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+              if (!isSampleInvoice) {
+                const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
+                inv.balanceDue = currentBal + (cn.amount || 0);
+                const total = Number(inv.total || inv.totalAmount || 0);
+                const paid = Number(inv.amountPaid || 0);
+                if (inv.balanceDue >= total - 0.01) {
+                  inv.status = "sent";
+                } else if (inv.balanceDue > 0.01) {
+                  inv.status = "partially_paid";
+                } else {
+                  inv.status = "paid";
+                }
               }
             }
             // Remove credit note ID from invoice tracking

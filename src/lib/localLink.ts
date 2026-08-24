@@ -268,6 +268,7 @@ export function createLocalLink() {
               case "invoice.getCreditNotes": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotes(); break;
               case "invoice.getCreditNotesByInvoice": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCreditNotesByCustomer(input); break;
+              case "invoice.getCustomerCreditBalance": await syncFromCloud("creditNotes", "sgf_creditNotes"); result = dataService.invoice.getCustomerCreditBalance(input); break;
               case "invoice.createCreditNote": {
                 result = dataService.invoice.createCreditNote(input);
                 if (result?.creditNote) {
@@ -288,13 +289,48 @@ export function createLocalLink() {
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;
               }
+              case "invoice.allocateCredit": {
+                result = dataService.invoice.allocateCredit(input);
+                if (result && result.success) {
+                  await pushCreditNote(result.creditNote);
+                  await pushInvoice(result.invoice);
+                  // Push updated stock quantities back to Firebase
+                  for (const li of (result.creditNote.lineItems || [])) {
+                    if (li.stockItemId) {
+                      const prod = dataService.stock.getById(li.stockItemId);
+                      if (prod) await pushOneStockItem(prod);
+                    }
+                  }
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                break;
+              }
+              case "invoice.voidCreditNoteAllocation": {
+                result = dataService.invoice.voidCreditNoteAllocation(input);
+                if (result && result.success) {
+                  await pushCreditNote(result.creditNote);
+                  // Push all affected invoices back
+                  const inv = dataService.invoice.list().find((i: any) => i.id == input.invoiceId);
+                  if (inv) await pushInvoice(inv);
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+                break;
+              }
               case "invoice.voidCreditNote": {
                 result = dataService.invoice.voidCreditNote(input);
                 if (result) {
                   await pushCreditNote(result);
+                  // Push all affected invoices (original + any allocated)
                   if (result.invoiceId) {
                     const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
                     if (inv) await pushInvoice(inv);
+                  }
+                  // Also push invoices that had allocations from this credit note
+                  if (result.allocations && result.allocations.length > 0) {
+                    for (const alloc of result.allocations) {
+                      const inv = dataService.invoice.list().find((i: any) => i.id == alloc.invoiceId);
+                      if (inv) await pushInvoice(inv);
+                    }
                   }
                   // Push updated stock quantities back to Firebase (stock restored from void)
                   for (const li of (result.lineItems || [])) {

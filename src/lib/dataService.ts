@@ -2477,8 +2477,9 @@ export const dataService = {
       let lineItems = data.lineItems || [];
       let creditTotal = data.amount || 0;
 
-      // If line items provided, recalculate total from them
-      if (lineItems.length > 0) {
+      // If line items provided AND no explicit amount was given, recalculate total from them
+      // The UI sends amount = totalInclVAT (ex-VAT × 1.15) — do NOT override it
+      if (lineItems.length > 0 && data.amount === undefined) {
         creditTotal = lineItems.reduce((sum: number, li: any) => sum + (li.creditAmount || 0), 0);
       }
 
@@ -2594,7 +2595,7 @@ export const dataService = {
       if (lineItems.length > 0) {
         for (const li of lineItems) {
           if (li.stockItemId && li.returnedQty > 0) {
-            const prodIdx = products.findIndex((p) => p.id === li.stockItemId);
+            const prodIdx = products.findIndex((p) => p.id == li.stockItemId);
             if (prodIdx >= 0) {
               const newQty = (products[prodIdx].quantity || 0) + li.returnedQty;
               products[prodIdx].quantity = newQty;
@@ -2638,7 +2639,7 @@ export const dataService = {
             }
             // Remove credit note ID from invoice tracking
             if (inv.creditNotes) {
-              inv.creditNotes = inv.creditNotes.filter((cnId: any) => cnId !== cn.id);
+              inv.creditNotes = inv.creditNotes.filter((cnId: any) => cnId != cn.id);
             }
             // Remove credited lines for this credit note
             if (inv.creditedLines) {

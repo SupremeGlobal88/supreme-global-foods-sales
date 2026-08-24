@@ -352,7 +352,7 @@ export function createLocalLink() {
                 break;
               }
               // USERS
-              case "user.list": await syncFromCloud("users", "sgf_users"); result = dataService.user.list(); break;
+              case "user.list": await syncFromCloud("users", "sgf_users"); result = dataService.user.list(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: result.length } })); break;
               case "user.getById": result = dataService.user.getById(input); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
               case "user.create": result = dataService.user.create(input); await fbPush("user", result); break;

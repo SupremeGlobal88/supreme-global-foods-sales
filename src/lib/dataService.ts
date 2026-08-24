@@ -1120,7 +1120,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
     const items = order.items || [];
     const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
     // Check if customer is VAT exempt
-    const customer = customers.find((c) => c.id === order.customerId);
+    const customer = customers.find((c) => c.id == order.customerId);
     const vatRate = customer?.vatExempt ? 0 : 0.15;
     const vatAmount = subtotal * vatRate;
     const total = subtotal + vatAmount;
@@ -1288,7 +1288,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
 
   try {
     const now = new Date();
-    const customer = customers.find((c) => c.id === order.customerId);
+    const customer = customers.find((c) => c.id == order.customerId);
 
     // Calculate due date from payment terms
     const paymentTerms = order.paymentTerms || "cod";
@@ -1454,7 +1454,7 @@ export function generateMissingInvoices(): { created: number; details: string[] 
     // Use loose equality (==) because Firebase may convert number IDs to strings
     const existing = invoices.find((i) => i.orderId == order.id && i.invoiceNumber && i.invoiceNumber.startsWith("SGF"));
     if (!existing) {
-      const customer = customers.find((c) => c.id === order.customerId);
+      const customer = customers.find((c) => c.id == order.customerId);
       const vatRate = customer?.vatExempt ? 0 : 0.15;
       const items = order.items || [];
       const subtotal = items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
@@ -1493,11 +1493,11 @@ export function deduplicateData(): { ordersRemoved: number; invoicesRemoved: num
 
 /** Update an existing invoice when its order is edited */
 function updateInvoiceFromOrder(order: any) {
-  const idx = invoices.findIndex((i) => i.orderId === order.id);
+  const idx = invoices.findIndex((i) => i.orderId == order.id);
   if (idx < 0) return; // No invoice exists for this order
 
   const inv = invoices[idx];
-  const customer = customers.find((c) => c.id === order.customerId);
+  const customer = customers.find((c) => c.id == order.customerId);
 
   // Recalculate totals
   const subtotal = Number(order.subtotal || 0);
@@ -1604,7 +1604,7 @@ export const dataService = {
   stock: {
     list: () => products,
     search: ({ query }: { query: string }) => searchItems(products, query),
-    getById: (id: number) => products.find((p) => p.id === id) || null,
+    getById: (id: number) => products.find((p) => p.id == id) || null,
     getCategories: () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
     getStats: () => ({
       totalProducts: products.length,
@@ -1619,12 +1619,12 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = products.findIndex((p) => p.id === id);
+      const idx = products.findIndex((p) => p.id == id);
       if (idx >= 0) { products[idx] = { ...products[idx], ...data, updatedAt: new Date().toISOString() }; saveItem("sgf_products", products); return products[idx]; }
       return null;
     },
     delete: (id: number) => {
-      products = products.filter((p) => p.id !== id);
+      products = products.filter((p) => p.id != id);
       saveItem("sgf_products", products);
       return { success: true };
     },
@@ -1731,9 +1731,9 @@ export const dataService = {
         const priceTier = customer.priceTier || "retail";
 
         for (const item of inv.items || order.items || []) {
-          const product = products.find((p) => p.id === item.stockItemId);
+          const product = products.find((p) => p.id == item.stockItemId);
           const specialPrice = specialPrices.find(
-            (sp: any) => sp.customerId === customer.id && sp.stockItemId === item.stockItemId
+            (sp: any) => sp.customerId == customer.id && sp.stockItemId == item.stockItemId
           );
 
           const unitPrice = Number(item.unitPrice || 0);
@@ -1844,7 +1844,7 @@ export const dataService = {
   customer: {
     list: () => customers,
     search: ({ query }: { query: string }) => searchItems(customers, query),
-    getById: (id: number) => customers.find((c) => c.id === id) || null,
+    getById: (id: number) => customers.find((c) => c.id == id) || null,
     create: (data: any) => {
       const normName = (data.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
       // Prevent duplicate: check if customer with same normalized name already exists
@@ -1878,7 +1878,7 @@ export const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = customers.findIndex((c) => c.id === id);
+      const idx = customers.findIndex((c) => c.id == id);
       if (idx >= 0) {
         const oldCust = { ...customers[idx] };
         customers[idx] = { ...customers[idx], ...data, updatedAt: new Date().toISOString() };
@@ -1891,11 +1891,11 @@ export const dataService = {
       return null;
     },
     delete: ({ id }: { id: number }) => {
-      const cust = customers.find((c) => c.id === id);
+      const cust = customers.find((c) => c.id == id);
       if (cust) {
         logAudit("DELETE", "customer", id, `Deleted customer: ${cust.name} (${cust.customerCode}) \u2014 Sales Rep: ${cust.salesRepName || "Unassigned"}`);
       }
-      customers = customers.filter((c) => c.id !== id);
+      customers = customers.filter((c) => c.id != id);
       saveItem("sgf_customers", customers);
       return { success: true };
     },
@@ -2017,9 +2017,9 @@ export const dataService = {
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getById: (id: number) => {
-      const order = orders.find((o) => o.id === id);
+      const order = orders.find((o) => o.id == id);
       if (!order) return null;
-      const customer = customers.find((c) => c.id === order.customerId);
+      const customer = customers.find((c) => c.id == order.customerId);
       return { ...order, customer: customer || null };
     },
     create: (data: any) => {
@@ -2028,13 +2028,13 @@ export const dataService = {
       // STOCK VALIDATION: Check availability before creating order
       const requestedItems = data.items || [];
       for (const item of requestedItems) {
-        const product = products.find((p) => p.id === item.stockItemId);
+        const product = products.find((p) => p.id == item.stockItemId);
         if (!product) continue;
         // Calculate committed stock (non-delivered/cancelled orders)
         const committed = orders
           .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
           .flatMap((o) => o.items || [])
-          .filter((it: any) => it.stockItemId === item.stockItemId)
+          .filter((it: any) => it.stockItemId == item.stockItemId)
           .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
         const available = Math.max(0, (product.quantity || 0) - committed);
         const requestedQty = isSample ? 1 : (item.quantity || 0);
@@ -2053,7 +2053,7 @@ export const dataService = {
       const orderNumber = `${isSample ? "SMP" : "ORD"}-${dateStr}-${hhmm}${msCounter}`;
       
       const items = (data.items || []).map((item: any) => {
-        const product = products.find((p) => p.id === item.stockItemId);
+        const product = products.find((p) => p.id == item.stockItemId);
         const conversion = item.conversion || 1;
         // unitPrice from frontend is per-SELECTED-UNIT (e.g., per box).
         // If no custom price entered, calculate from tier price × conversion.
@@ -2093,7 +2093,7 @@ export const dataService = {
       // DEDUCT STOCK for each item (both regular and sample orders)
       // Use conversion factor for products sold by box/bundle/etc.
       for (const item of items) {
-        const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
+        const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
         if (prodIdx >= 0) {
           const conversion = item.conversion || 1;
           const deductQty = item.quantity * conversion;
@@ -2131,12 +2131,12 @@ export const dataService = {
       return newOrder;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = orders.findIndex((o) => o.id === id);
+      const idx = orders.findIndex((o) => o.id == id);
       if (idx >= 0) {
         const oldOrder = orders[idx];
         // RESTORE old stock first (using conversion factor)
         for (const item of (oldOrder.items || [])) {
-          const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
+          const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
           if (prodIdx >= 0) {
             const conversion = item.conversion || 1;
             const restoreQty = item.quantity * conversion;
@@ -2148,7 +2148,7 @@ export const dataService = {
         // Apply new items with fresh calculations
         const isSample = data.orderType === "sample";
         const items = (data.items || []).map((item: any) => {
-          const product = products.find((p) => p.id === item.stockItemId);
+          const product = products.find((p) => p.id == item.stockItemId);
           const conversion = item.conversion || 1;
           // unitPrice from frontend is per-SELECTED-UNIT (e.g., per box).
           // If no custom price entered, calculate from tier price × conversion.
@@ -2161,7 +2161,7 @@ export const dataService = {
         const total = isSample ? 0 : subtotal + vatAmount;
         // DEDUCT new stock (using conversion factor)
         for (const item of items) {
-          const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
+          const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
           if (prodIdx >= 0) {
             const conversion = item.conversion || 1;
             const deductQty = item.quantity * conversion;
@@ -2180,7 +2180,7 @@ export const dataService = {
       return null;
     },
     updateStatus: ({ id, status }: { id: number; status: string }) => {
-      const idx = orders.findIndex((o) => o.id === id);
+      const idx = orders.findIndex((o) => o.id == id);
       if (idx >= 0) {
         const oldStatus = orders[idx].status;
         const order = orders[idx];
@@ -2192,7 +2192,7 @@ export const dataService = {
         // return stock to inventory.
         if (status === "cancelled" && oldStatus !== "cancelled" && oldStatus !== "delivered") {
           for (const item of (order.items || [])) {
-            const prodIdx = products.findIndex((p) => p.id === item.stockItemId);
+            const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
             if (prodIdx >= 0) {
               const conversion = item.conversion || 1;
               const restoreQty = item.quantity * conversion;
@@ -3214,7 +3214,7 @@ export const dataService = {
         const totalSales = repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
         const sampleCost = repSamples.reduce((sum, o) => {
           const cost = o.items?.reduce((s: number, item: any) => {
-            const prod = products.find((p) => p.id === item.stockItemId);
+            const prod = products.find((p) => p.id == item.stockItemId);
             return s + (Number(prod?.wholesalePrice || 0) * item.quantity);
           }, 0) || 0;
           return sum + cost;
@@ -3499,8 +3499,8 @@ export const dataService = {
       const customerOrders = orders.filter((o) => o.customerId == customerId && o.orderType === "sample");
       const report = customerOrders.flatMap((o) =>
         (o.items || []).map((item: any) => {
-          const product = products.find((p) => p.id === item.stockItemId);
-          const invoice = invoices.find((i) => i.orderId === o.id);
+          const product = products.find((p) => p.id == item.stockItemId);
+          const invoice = invoices.find((i) => i.orderId == o.id);
           const unitCost = Number(item.unitPrice || product?.corporatePrice || 0);
           const lineSubtotal = unitCost * item.quantity;
           const lineVat = lineSubtotal * 0.15;
@@ -3532,8 +3532,8 @@ export const dataService = {
         if (custSamples.length === 0) continue;
         const items = custSamples.flatMap((o) =>
           (o.items || []).map((item: any) => {
-            const product = products.find((p) => p.id === item.stockItemId);
-            const invoice = invoices.find((i) => i.orderId === o.id);
+            const product = products.find((p) => p.id == item.stockItemId);
+            const invoice = invoices.find((i) => i.orderId == o.id);
             const unitCost = Number(item.unitPrice || product?.corporatePrice || 0);
             const lineSubtotal = unitCost * item.quantity;
             const lineVat = lineSubtotal * 0.15;

@@ -138,7 +138,7 @@ export function createLocalLink() {
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
                 // If sample order: push the follow-up to Firebase so all devices see it
                 if (input?.orderType === "sample" && result?.id) {
-                  const fu = dataService.followUp.list().find((f: any) => f.orderId === result.id);
+                  const fu = dataService.followUp.list().find((f: any) => f.orderId == result.id);
                   if (fu) await pushFollowUp(fu);
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUps", count: 1 } }));
                 }
@@ -152,7 +152,7 @@ export function createLocalLink() {
                 await pushStock(dataService.stock.list());
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
                 if (data?.orderType === "sample" && result?.id) {
-                  const fu = dataService.followUp.list().find((f: any) => f.orderId === result.id);
+                  const fu = dataService.followUp.list().find((f: any) => f.orderId == result.id);
                   if (fu) await pushFollowUp(fu);
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUps", count: 1 } }));
                 }

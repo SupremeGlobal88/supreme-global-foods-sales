@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
@@ -6,9 +6,7 @@ import { directAuthenticate } from "@/lib/dataService";
 import { Globe, Lock, Eye, EyeOff, User, Shield } from "lucide-react";
 import gsap from "gsap";
 
-/** Emergency Access — PIN protected, Collin only.
- *  Hidden behind a PIN prompt so users cannot bypass login.
- *  Only Collin's PIN (2580) grants emergency super_admin access. */
+/** Emergency Access — PIN protected, Collin only. */
 function EmergencyAccess() {
   const [showPinInput, setShowPinInput] = useState(false);
   const [emergencyPin, setEmergencyPin] = useState("");
@@ -16,7 +14,6 @@ function EmergencyAccess() {
   const attemptsRef = useRef(0);
 
   function verifyPin() {
-    // Collin's PIN only — hardcoded to prevent tampering with user data
     if (emergencyPin === "2580") {
       localStorage.setItem("demo_user", JSON.stringify({
         id: 1,
@@ -75,21 +72,10 @@ function EmergencyAccess() {
   );
 }
 
-// Sync users from Firebase on login page load
-// This ensures users created on other devices are available for login
-function useSyncUsersFromCloud() {
-  // This query triggers syncFromCloud("users", "sgf_users") which reads
-  // users from Firebase and updates localStorage before login
-  trpc.user.list.useQuery(undefined, {
-    refetchInterval: 5000,
-    retry: 1,
-  });
-}
-
 const DEFAULT_ADMINS = ["Collin", "Aggie", "Ronald", "Jolene", "David"];
 const DEFAULT_SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Tebogo Bila"];
 
-function getAdminUsers(): string[] {
+function readAdminUsers(): string[] {
   try {
     const raw = localStorage.getItem("sgf_users");
     if (raw) {
@@ -103,7 +89,7 @@ function getAdminUsers(): string[] {
   return DEFAULT_ADMINS;
 }
 
-function getSalesReps(): string[] {
+function readSalesReps(): string[] {
   try {
     const raw = localStorage.getItem("sgf_users");
     if (raw) {
@@ -118,44 +104,46 @@ function getSalesReps(): string[] {
 }
 
 export default function Login() {
-  // Sync users from Firebase on page load — ensures new users from other devices can log in
-  useSyncUsersFromCloud();
-
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+
   const [roleTab, setRoleTab] = useState<"sales" | "admin">("sales");
-  const [selectedRep, setSelectedRep] = useState(getSalesReps()[0] || "Adeli");
-  const [selectedAdmin, setSelectedAdmin] = useState("");
-  const [adminUsers, setAdminUsers] = useState<string[]>(DEFAULT_ADMINS);
+  const [selectedRep, setSelectedRep] = useState(readSalesReps()[0] || "Adeli");
+  const [selectedAdmin, setSelectedAdmin] = useState(readAdminUsers()[0] || "");
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Refresh user lists from localStorage/Firebase on mount AND when sync completes
+  // ONE-TIME sync from Firebase on mount only — no interval, no event listeners
   useEffect(() => {
-    function refreshLists() {
-      const admins = getAdminUsers();
-      setAdminUsers(admins);
-      if (roleTab === "admin" && (!selectedAdmin || !admins.includes(selectedAdmin))) {
-        setSelectedAdmin(admins[0] || "");
-      }
-      const reps = getSalesReps();
-      if (roleTab === "sales" && (!selectedRep || !reps.includes(selectedRep))) {
-        setSelectedRep(reps[0] || "Adeli");
-      }
+    let cancelled = false;
+    async function syncOnce() {
+      try {
+        // Force a single sync from Firebase
+        await fetch("https://supreme-global-foods-835b0-default-rtdb.firebaseio.com/users.json")
+          .then(r => r.json())
+          .then(data => {
+            if (!data || cancelled) return;
+            const users = Object.values(data).filter((u: any) => u && typeof u === "object");
+            if (users.length > 0) {
+              localStorage.setItem("sgf_users", JSON.stringify(users));
+              // Refresh dropdowns with synced data
+              const admins = users
+                .filter((u: any) => (u.role === "admin" || u.role === "super_admin") && u.isActive !== false)
+                .map((u: any) => u.name);
+              const reps = users
+                .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
+                .map((u: any) => u.name);
+              if (admins.length > 0 && !cancelled) setSelectedAdmin(admins[0]);
+              if (reps.length > 0 && !cancelled) setSelectedRep(reps[0]);
+            }
+          });
+      } catch { /* ignore — fall back to defaults */ }
     }
-    // Refresh immediately
-    refreshLists();
-    // Refresh when Firebase sync completes
-    window.addEventListener("firebaseDataReceived", refreshLists);
-    // Refresh when localStorage changes (cross-tab sync)
-    window.addEventListener("storage", refreshLists);
-    return () => {
-      window.removeEventListener("firebaseDataReceived", refreshLists);
-      window.removeEventListener("storage", refreshLists);
-    };
-  }, [roleTab, selectedAdmin, selectedRep]);
+    syncOnce();
+    return () => { cancelled = true; };
+  }, []);
 
   const bgImageRef = useRef<HTMLDivElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);
@@ -192,7 +180,7 @@ export default function Login() {
     return () => { tl.kill(); };
   }, [isAuthenticated, navigate]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
@@ -201,7 +189,7 @@ export default function Login() {
       const name = roleTab === "sales" ? selectedRep : selectedAdmin;
       if (!name || !pin) { setError("Please enter your name and PIN."); setIsLoading(false); return; }
 
-      // Try direct authenticate FIRST (always works for default users — most reliable)
+      // Try direct authenticate FIRST (always works for default users)
       let result = directAuthenticate(name, pin);
 
       // Fallback: tRPC (for custom users from User Management)
@@ -222,7 +210,10 @@ export default function Login() {
       setError("Login failed. Please try again.");
       setIsLoading(false);
     }
-  };
+  }, [roleTab, selectedRep, selectedAdmin, pin, authMutation]);
+
+  const adminUsers = readAdminUsers();
+  const salesReps = readSalesReps();
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: "#0C0D0E" }}>
@@ -261,7 +252,7 @@ export default function Login() {
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
                 <select value={selectedRep} onChange={(e) => setSelectedRep(e.target.value)} className="input-field pl-11">
-                  {getSalesReps().map((rep) => <option key={rep} value={rep}>{rep}</option>)}
+                  {salesReps.map((rep) => <option key={rep} value={rep}>{rep}</option>)}
                 </select>
               </div>
             </div>
@@ -299,7 +290,6 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Emergency access — PIN protected, Collin only */}
           <EmergencyAccess />
         </div>
 

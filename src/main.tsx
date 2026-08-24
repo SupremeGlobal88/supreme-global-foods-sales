@@ -9,7 +9,7 @@ import App from './App.tsx'
 // ═══════════════════════════════════════════════════════════════
 // APP VERSION CHECK — Forces browser to reload when app updates
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = "2026-08-21-stable-v17"; // Change this on every deploy
+const APP_VERSION = "2026-08-25-stable-v18"; // Change this on every deploy
 const storedVersion = localStorage.getItem("sgf_app_version");
 if (storedVersion && storedVersion !== APP_VERSION) {
   // New version detected — clear cached JS and reload

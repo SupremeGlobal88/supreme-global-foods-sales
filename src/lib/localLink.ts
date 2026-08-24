@@ -296,6 +296,13 @@ export function createLocalLink() {
                     const inv = dataService.invoice.list().find((i: any) => i.id == result.invoiceId);
                     if (inv) await pushInvoice(inv);
                   }
+                  // Push updated stock quantities back to Firebase (stock restored from void)
+                  for (const li of (result.lineItems || [])) {
+                    if (li.stockItemId) {
+                      const prod = dataService.stock.getById(li.stockItemId);
+                      if (prod) await pushOneStockItem(prod);
+                    }
+                  }
                 }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 break;

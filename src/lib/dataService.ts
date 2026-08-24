@@ -2654,6 +2654,20 @@ export const dataService = {
             saveItem("sgf_invoices", invoices);
           }
         }
+        // Reverse stock return: deduct the returned quantities back from inventory
+        if (cn.lineItems && cn.lineItems.length > 0) {
+          for (const li of cn.lineItems) {
+            if (li.stockItemId && li.returnedQty > 0) {
+              const prodIdx = products.findIndex((p) => p.id == li.stockItemId);
+              if (prodIdx >= 0) {
+                const newQty = Math.max(0, (products[prodIdx].quantity || 0) - li.returnedQty);
+                products[prodIdx].quantity = newQty;
+                products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+              }
+            }
+          }
+          saveItem("sgf_products", products);
+        }
         saveItem("sgf_creditNotes", creditNotes);
         return cn;
       }

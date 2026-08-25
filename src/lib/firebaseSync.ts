@@ -761,6 +761,15 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       if (k !== null) incomingMap.set(k, item);
     }
 
+    // SAFETY GUARD: If Firebase returns 0 items but local has synced data,
+    // preserve local data. A null snapshot during initial connection should
+    // NEVER wipe all synced local data. Legitimate mass-deletes are extremely
+    // rare and should use forceResetAndSync(), not automatic sync.
+    if (incoming.length === 0 && local.some((item) => item && item._syncedAt)) {
+      console.warn(`[mergeWithCloudData] SAFETY: Firebase returned 0 ${key} but local has ${local.length} synced items. Preserving local data.`);
+      return local;
+    }
+
     // Start with all Firebase items (source of truth)
     const merged = new Map<string, any>(incomingMap);
 

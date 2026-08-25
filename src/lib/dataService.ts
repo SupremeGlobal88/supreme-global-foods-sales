@@ -225,7 +225,7 @@ function load() {
   } catch { /* ignore */ }
 
   // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
-  deduplicateAll();
+  try { deduplicateAll(); } catch (e) { console.error("[load] deduplicateAll failed:", e); }
 
   // AUTO-LINK: Match Sage invoices to customers by customerCode.
   // This runs on every startup so ALL devices get linked Sage invoices
@@ -808,6 +808,7 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   // Deduplicate orders: group by orderNumber, keep most recent
   const orderMap = new Map<string, any>();
   for (const o of orders) {
+    if (!o) continue; // null-guard
     const key = o.orderNumber || o.id;
     const existing = orderMap.get(key);
     if (!existing || isMoreRecent(o, existing)) {
@@ -819,6 +820,7 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   // Deduplicate invoices: group by invoiceNumber (for SGF), keep most recent
   const invMap = new Map<string, any>();
   for (const inv of invoices) {
+    if (!inv) continue; // null-guard
     const key = inv.invoiceNumber || inv.id;
     const existing = invMap.get(key);
     if (!existing || isMoreRecent(inv, existing)) {

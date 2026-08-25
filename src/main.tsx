@@ -9,7 +9,7 @@ import App from './App.tsx'
 // ═══════════════════════════════════════════════════════════════
 // APP VERSION — simple check, reloads only on mismatch
 // ═══════════════════════════════════════════════════════════════
-const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v31b";
+const APP_VERSION = (window as any).SGF_APP_VERSION || "2026-08-25-stable-v31c";
 const storedVersion = localStorage.getItem("sgf_app_version");
 if (storedVersion && storedVersion !== APP_VERSION) {
   localStorage.setItem("sgf_app_version", APP_VERSION);

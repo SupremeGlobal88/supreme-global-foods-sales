@@ -194,31 +194,6 @@ function load() {
     const crn = localStorage.getItem("sgf_creditNotes");
     if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
     else creditNotes = [];
-    // ═══════════════════════════════════════════════════════════════
-    // MIGRATE: Old credit notes (pre-allocation system) need
-    // remainingAmount, allocations, and customerId backfilled
-    // ═══════════════════════════════════════════════════════════════
-    let cnMigrated = false;
-    for (const cn of creditNotes) {
-      if (cn.remainingAmount === undefined) {
-        cn.remainingAmount = cn.amount || 0;
-        cnMigrated = true;
-      }
-      if (!cn.allocations) {
-        cn.allocations = [];
-        cnMigrated = true;
-      }
-      if (!cn.customerId && cn.invoiceId) {
-        const linkedInv = invoices.find((i) => i.id == cn.invoiceId);
-        if (linkedInv && linkedInv.customerId) {
-          cn.customerId = linkedInv.customerId;
-          cnMigrated = true;
-        }
-      }
-    }
-    if (cnMigrated) {
-      saveItem("sgf_creditNotes", creditNotes);
-    }
     // USERS: always load and merge with defaults
     const u = localStorage.getItem("sgf_users");
     if (u) { try { const d = JSON.parse(u); if (Array.isArray(d)) users = d; } catch { users = []; } }

@@ -356,8 +356,9 @@ const FB_PATHS: Record<string, string> = {
 export async function readFromFirebase(path: string): Promise<any[]> {
   if (!isFirebaseReady()) return [];
   try {
-    // Race Firebase get() against a 10-second timeout to prevent indefinite hangs
-    const timeoutMs = 10000;
+    // Race Firebase get() against a 30-second timeout to prevent indefinite hangs.
+    // 30 seconds is needed for large datasets (300+ invoices, 500+ orders).
+    const timeoutMs = 30000;
     const snapshot = await Promise.race([
       get(ref(db, FB_PATHS[path] || path)),
       new Promise<never>((_, reject) =>
@@ -665,8 +666,9 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
 
   const pullType = async (path: string, storageKey: string, postProcess?: (items: any[]) => any[]) => {
     try {
-      // CRITICAL: 10-second timeout prevents the app from hanging forever if Firebase is slow
-      const timeoutMs = 10000;
+      // CRITICAL: 30-second timeout prevents the app from hanging forever if Firebase is slow.
+      // Large datasets (300+ invoices) need more than 10 seconds to download.
+      const timeoutMs = 30000;
       const snapshot = await Promise.race([
         get(ref(db, path)),
         new Promise<never>((_, reject) =>

@@ -8,6 +8,28 @@
     <meta http-equiv="Expires" content="0" />
     <title>Supreme Sales Command</title>
     <script>window.SGF_APP_VERSION="2026-08-25-stable-v31l";</script>
+    <!-- Cache-bust: if loaded JS references old patterns, force reload -->
+    <script>
+      (function(){
+        try {
+          var lastVer = localStorage.getItem("sgf_app_version");
+          if (lastVer && lastVer !== window.SGF_APP_VERSION) {
+            console.log("[CacheBust] Version changed from " + lastVer + " to " + window.SGF_APP_VERSION + " — clearing cache");
+            localStorage.setItem("sgf_app_version", window.SGF_APP_VERSION);
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({action:"skipWaiting"});
+            }
+            // Only reload once per version change
+            if (!sessionStorage.getItem("sgf_reloaded_" + window.SGF_APP_VERSION)) {
+              sessionStorage.setItem("sgf_reloaded_" + window.SGF_APP_VERSION, "1");
+              window.location.reload(true);
+            }
+          } else {
+            localStorage.setItem("sgf_app_version", window.SGF_APP_VERSION);
+          }
+        } catch(e) { console.error("[CacheBust]", e); }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

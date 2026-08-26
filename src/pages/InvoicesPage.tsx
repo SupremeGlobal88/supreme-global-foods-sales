@@ -51,6 +51,7 @@ export default function InvoicesPage() {
   const [showCreditNote, setShowCreditNote] = useState(false);
   const [cnInvId, setCnInvId] = useState(0);
   const [cnInvNumber, setCnInvNumber] = useState("");
+  const [cnCustomerId, setCnCustomerId] = useState(0);
   const [cnAmount, setCnAmount] = useState("");
   const [cnReason, setCnReason] = useState("");
   const [cnLineItems, setCnLineItems] = useState<any[]>([]);
@@ -173,6 +174,7 @@ export default function InvoicesPage() {
   function openCreditNote(inv: any) {
     setCnInvId(inv.id);
     setCnInvNumber(inv.invoiceNumber);
+    setCnCustomerId(inv.customerId || 0);
     const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setCnAmount(bal > 0 ? String(bal) : "");
     // Detect sample order — samples have $0 prices but still need stock return tracking
@@ -1473,6 +1475,7 @@ export default function InvoicesPage() {
                 createCreditNote.mutate({
                   invoiceId: cnInvId,
                   invoiceNumber: cnInvNumber,
+                  customerId: cnCustomerId,
                   amount: isSample ? 0 : totalInclVAT,
                   reason: isSample ? `Sample Stock Return — ${cnReason}` : cnReason,
                   lineItems: selectedItems.map((li) => ({
@@ -1584,10 +1587,10 @@ export default function InvoicesPage() {
                       if (amount > allocBal + 0.01) { alert("Amount exceeds invoice balance."); return; }
                       allocateCredit.mutate({ creditNoteId: allocCnId, invoiceId: allocInvId, amount });
                     }}
-                    disabled={!allocCnId || !allocAmt || allocateCredit.isLoading}
+                    disabled={!allocCnId || !allocAmt || allocateCredit.isPending}
                     className="btn-primary w-full justify-center"
                   >
-                    {allocateCredit.isLoading ? "Processing..." : "Apply Credit to Invoice"}
+                    {allocateCredit.isPending ? "Processing..." : "Apply Credit to Invoice"}
                   </button>
                 </div>
               );

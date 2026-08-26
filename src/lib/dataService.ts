@@ -1157,6 +1157,9 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
           quantity: item.quantity,
           unitPrice: item.unitPrice || 0,
           lineTotal: item.lineTotal || 0,
+          stockItemId: item.stockItemId || null,
+          productCode: item.productCode || "",
+          productName: item.productName || "",
         })),
         createdAt: order.createdAt || now.toISOString(),
         updatedAt: now.toISOString(),
@@ -1179,6 +1182,9 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
         quantity: item.quantity,
         unitPrice: item.unitPrice || 0,
         lineTotal: item.lineTotal || 0,
+        stockItemId: item.stockItemId || null,
+        productCode: item.productCode || "",
+        productName: item.productName || "",
       }));
       details.push(`Order ${order.orderNumber}: invoice renumbered ${oldNum} → ${existingInvoice.invoiceNumber} with REAL totals R ${total.toFixed(2)}`);
     }
@@ -1345,6 +1351,9 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
         quantity: item.quantity,
         unitPrice: item.unitPrice || 0,
         lineTotal: item.lineTotal || 0,
+        stockItemId: item.stockItemId || null,
+        productCode: item.productCode || "",
+        productName: item.productName || "",
       })),
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -2495,10 +2504,22 @@ export const dataService = {
       let lineItems = data.lineItems || [];
       let creditTotal = data.amount || 0;
 
-      // If line items provided AND no explicit amount was given, recalculate total from them
-      // The UI sends amount = totalInclVAT (ex-VAT × 1.15) — do NOT override it
-      if (lineItems.length > 0 && data.amount === undefined) {
-        creditTotal = lineItems.reduce((sum: number, li: any) => sum + (li.creditAmount || 0), 0);
+      // Calculate subtotal (excl VAT) and vatAmount from line items or amount
+      let subtotal = 0;
+      let vatAmount = 0;
+      if (lineItems.length > 0) {
+        subtotal = lineItems.reduce((sum: number, li: any) => sum + (li.creditAmount || 0), 0);
+        vatAmount = Number((subtotal * 0.15).toFixed(2));
+        // If UI didn't send amount, use subtotal + vat
+        if (data.amount === undefined || data.amount === 0) {
+          creditTotal = Number((subtotal + vatAmount).toFixed(2));
+        } else {
+          creditTotal = data.amount; // UI already calculated incl VAT
+        }
+      } else {
+        // No line items — derive subtotal from total amount
+        subtotal = Number((creditTotal / 1.15).toFixed(2));
+        vatAmount = Number((creditTotal - subtotal).toFixed(2));
       }
 
       // Use max existing number + 1 (NOT count-based) — voided notes must NOT reuse numbers
@@ -2510,11 +2531,17 @@ export const dataService = {
       const creditNote = {
         id: Date.now() + Math.random(),
         creditNoteNumber: `CN-${String(nextNumber).padStart(3, "0")}`,
-        ...data,
+        customerId: data.customerId || 0,
+        invoiceId: data.invoiceId || null,
+        invoiceNumber: data.invoiceNumber || null,
         amount: creditTotal,
-        remainingAmount: creditTotal, // NEW: credit is not yet allocated to any invoice
-        allocations: [], // NEW: tracks which invoices this credit is applied to
+        subtotal,
+        vatAmount,
+        remainingAmount: creditTotal,
+        allocations: [],
         lineItems,
+        reason: data.reason || "",
+        company: data.company || "",
         createdAt: new Date().toISOString(),
       };
       creditNotes.push(creditNote);

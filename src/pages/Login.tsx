@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import { directAuthenticate } from "@/lib/dataService";
-import { Globe, Lock, Eye, EyeOff, User, Shield } from "lucide-react";
+import { Globe, Lock, Eye, EyeOff, User, Shield, Loader2 } from "lucide-react";
 import gsap from "gsap";
 
 /** Emergency Access — PIN protected, Collin only. */
@@ -59,260 +59,264 @@ function EmergencyAccess() {
   }
 
   return (
-    <div className="mt-4 text-center">
-      <button
-        type="button"
-        onClick={() => setShowPinInput(true)}
-        className="text-[10px] text-[#333] hover:text-[#555] transition-colors cursor-pointer"
-        title="Emergency access — Collin only"
-      >
-        Support
-      </button>
-    </div>
+    <button
+      onClick={() => setShowPinInput(true)}
+      className="text-[9px] text-[#9CA3AF] hover:text-[#D4AF37] underline mt-1"
+    >
+      Emergency Access
+    </button>
   );
-}
-
-const DEFAULT_ADMINS = ["Collin", "Aggie", "Ronald", "Jolene", "David"];
-const DEFAULT_SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Tebogo Bila"];
-
-function readAdminUsers(): string[] {
-  try {
-    const raw = getStorageItem("sgf_users");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      const adminNames = stored
-        .filter((u: any) => (u.role === "admin" || u.role === "super_admin") && u.isActive !== false)
-        .map((u: any) => u.name);
-      if (adminNames.length > 0) return adminNames;
-    }
-  } catch { /* ignore */ }
-  return DEFAULT_ADMINS;
-}
-
-function readSalesReps(): string[] {
-  try {
-    const raw = getStorageItem("sgf_users");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      const repNames = stored
-        .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
-        .map((u: any) => u.name);
-      if (repNames.length > 0) return repNames;
-    }
-  } catch { /* ignore */ }
-  return DEFAULT_SALES_REPS;
 }
 
 export default function Login() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { login } = useAuth();
 
-  const [roleTab, setRoleTab] = useState<"sales" | "admin">("sales");
-  const [selectedRep, setSelectedRep] = useState(readSalesReps()[0] || "Adeli");
-  const [selectedAdmin, setSelectedAdmin] = useState(readAdminUsers()[0] || "");
-  const [pin, setPin] = useState("");
+  const [role, setRole] = useState<"admin" | "sales_rep">("admin");
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ONE-TIME sync from Firebase on mount only — no interval, no event listeners
+  /* ── Cloud-first: fetch users via tRPC so smartSync blocks if local empty ── */
+  const usersQuery = trpc.user.list.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: 60000,
+  });
+
+  const allUsers = usersQuery.data || [];
+  const isLoadingUsers = usersQuery.isPending;
+
+  const adminUsers = allUsers
+    .filter((u: any) => u.role === "admin" || u.role === "super_admin")
+    .map((u: any) => u.name);
+
+  const salesReps = allUsers
+    .filter((u: any) => u.role === "sales_rep")
+    .map((u: any) => u.name);
+
+  const [selectedAdmin, setSelectedAdmin] = useState("");
+  const [selectedRep, setSelectedRep] = useState("");
+  const [pin, setPin] = useState("");
+
+  /* Set defaults once data arrives */
   useEffect(() => {
-    let cancelled = false;
-    async function syncOnce() {
-      try {
-        // Force a single sync from Firebase
-        await fetch("https://supreme-global-foods-835b0-default-rtdb.firebaseio.com/users.json")
-          .then(r => r.json())
-          .then(data => {
-            if (!data || cancelled) return;
-            const users = Object.values(data).filter((u: any) => u && typeof u === "object");
-            if (users.length > 0) {
-              setStorageItem("sgf_users", JSON.stringify(users));
-              // Refresh dropdowns with synced data
-              const admins = users
-                .filter((u: any) => (u.role === "admin" || u.role === "super_admin") && u.isActive !== false)
-                .map((u: any) => u.name);
-              const reps = users
-                .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
-                .map((u: any) => u.name);
-              if (admins.length > 0 && !cancelled) setSelectedAdmin(admins[0]);
-              if (reps.length > 0 && !cancelled) setSelectedRep(reps[0]);
-            }
-          });
-      } catch { /* ignore — fall back to defaults */ }
+    if (adminUsers.length > 0 && !selectedAdmin) {
+      setSelectedAdmin(adminUsers[0]);
     }
-    syncOnce();
-    return () => { cancelled = true; };
+  }, [adminUsers, selectedAdmin]);
+
+  useEffect(() => {
+    if (salesReps.length > 0 && !selectedRep) {
+      setSelectedRep(salesReps[0]);
+    }
+  }, [salesReps, selectedRep]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    gsap.fromTo(
+      containerRef.current,
+      { opacity: 0, y: 20 },
+      { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }
+    );
   }, []);
 
-  const bgImageRef = useRef<HTMLDivElement>(null);
-  const circleRef = useRef<HTMLDivElement>(null);
-  const ring1Ref = useRef<HTMLDivElement>(null);
-  const ring2Ref = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLDivElement>(null);
-
-  const authMutation = trpc.user.authenticate.useMutation();
-
-  useEffect(() => {
-    if (isAuthenticated) { navigate("/dashboard"); return; }
-
-    const tl = gsap.timeline();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const targetDiameter = Math.sqrt(vw ** 2 + vh ** 2) * 2;
-    const initialSize = vw * 0.2;
-    const finalScale = targetDiameter / initialSize;
-
-    tl.to(circleRef.current, { scale: finalScale, duration: 2.8, ease: "power3.out", transformOrigin: "center center" }, 0);
-    tl.to(bgImageRef.current, { clipPath: `circle(${targetDiameter / 2}px at 50% 12.5vh)`, opacity: 1, duration: 2.8, ease: "power3.out" }, 0);
-    tl.to(ring1Ref.current, { scale: finalScale * 1.02, opacity: 0.6, duration: 2.8, ease: "power3.out", transformOrigin: "center center" }, 0);
-    tl.to(ring2Ref.current, { scale: finalScale * 1.05, opacity: 0.3, duration: 2.8, ease: "power3.out", transformOrigin: "center center" }, 0.1);
-    tl.to(textRef.current, { opacity: 1, y: 0, duration: 1, ease: "power3.out" }, 1.6);
-    tl.to(circleRef.current, { opacity: 0, duration: 0.5, ease: "power2.out" }, 2.2);
-    tl.to([ring1Ref.current, ring2Ref.current], { opacity: 0, duration: 0.5, ease: "power2.out" }, 2.2);
-
-    tl.eventCallback("onComplete", () => {
-      if (circleRef.current) circleRef.current.style.display = "none";
-      if (ring1Ref.current) ring1Ref.current.style.display = "none";
-      if (ring2Ref.current) ring2Ref.current.style.display = "none";
-    });
-
-    return () => { tl.kill(); };
-  }, [isAuthenticated, navigate]);
-
-  const handleLogin = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
-
-    try {
-      const name = roleTab === "sales" ? selectedRep : selectedAdmin;
-      if (!name || !pin) { setError("Please enter your name and PIN."); setIsLoading(false); return; }
-
-      // Try direct authenticate FIRST (always works for default users)
-      let result = directAuthenticate(name, pin);
-
-      // Fallback: tRPC (for custom users from User Management)
-      if (!result) {
-        try {
-          result = await authMutation.mutateAsync({ name, pin });
-        } catch { /* tRPC failed too */ }
-      }
-
-      if (result) {
-        localStorage.setItem("demo_user", JSON.stringify(result));
-        window.location.href = "/#/dashboard";
+  const authenticate = trpc.user.authenticate.useMutation({
+    onSuccess: (data) => {
+      if (data?.user) {
+        login(data.user);
+        navigate("/dashboard", { replace: true });
       } else {
-        setError("Invalid name or PIN. Please try again.");
-        setIsLoading(false);
+        setError("Invalid credentials. Please try again.");
+        setIsSubmitting(false);
       }
-    } catch {
-      setError("Login failed. Please try again.");
-      setIsLoading(false);
-    }
-  }, [roleTab, selectedRep, selectedAdmin, pin, authMutation]);
+    },
+    onError: () => {
+      setError("Invalid credentials. Please try again.");
+      setIsSubmitting(false);
+    },
+  });
 
-  const adminUsers = readAdminUsers();
-  const salesReps = readSalesReps();
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      setError("");
+      const name = role === "admin" ? selectedAdmin : selectedRep;
+      if (!name || !pin) {
+        setError("Please select a user and enter your PIN.");
+        return;
+      }
+      setIsSubmitting(true);
+      authenticate.mutate({ name, pin });
+    },
+    [role, selectedAdmin, selectedRep, pin, authenticate]
+  );
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: "#0C0D0E" }}>
-      {/* Left Panel - Login Form */}
-      <div className="w-full lg:w-[55%] flex flex-col justify-center items-center px-8 py-12 relative z-10">
-        <div className="absolute top-8 left-12 flex items-center gap-3">
-          <Globe className="w-6 h-6" style={{ color: "#D4A843" }} />
-          <div>
-            <span className="font-display font-semibold text-white text-lg">Supreme</span>
-            <span className="block text-xs text-[#8A8B8C] font-body">Sales Command</span>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0a0a0a] via-[#111111] to-[#0a0a0a] px-4">
+      <div
+        ref={containerRef}
+        className="w-full max-w-md bg-[#111111] border border-[#1F1F1F] rounded-2xl shadow-2xl p-8 relative overflow-hidden"
+      >
+        {/* Ambient glow */}
+        <div className="absolute -top-20 -right-20 w-40 h-40 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-[#D4AF37]/3 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative text-center mb-8">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#D4AF37]/10 flex items-center justify-center">
+            <Globe className="w-6 h-6 text-[#D4AF37]" />
           </div>
+          <h1 className="text-2xl font-light tracking-tight text-[#F5F5F5]">
+            Supreme
+          </h1>
+          <p className="text-xs text-[#9CA3AF] mt-1">Sales Command</p>
         </div>
 
-        <div className="w-full max-w-[380px]">
-          <h1 className="font-display font-bold text-white mb-2" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+        <div className="relative mb-8">
+          <h2 className="text-3xl font-light text-[#F5F5F5] text-center tracking-tight">
             Welcome Back
-          </h1>
-          <p className="text-[#8A8B8C] font-body mb-10" style={{ fontSize: "0.9rem" }}>
+          </h2>
+          <p className="text-xs text-[#9CA3AF] text-center mt-2">
             Sign in with your name and PIN
           </p>
+        </div>
 
-          {/* Role Tabs */}
-          <div className="flex p-1 rounded-full mb-6" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
-            <button onClick={() => { setRoleTab("sales"); setError(""); }} className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer" style={{ backgroundColor: roleTab === "sales" ? "#D4A843" : "transparent", color: roleTab === "sales" ? "#0A0A0B" : "#8A8B8C" }}>
-              <User className="w-3.5 h-3.5 inline mr-1.5" />Sales Rep
-            </button>
-            <button onClick={() => { setRoleTab("admin"); setError(""); }} className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all duration-200 cursor-pointer" style={{ backgroundColor: roleTab === "admin" ? "#D4A843" : "transparent", color: roleTab === "admin" ? "#0A0A0B" : "#8A8B8C" }}>
-              <Shield className="w-3.5 h-3.5 inline mr-1.5" />Admin
-            </button>
+        {/* Role toggle */}
+        <div className="flex gap-1 bg-[#1A1A1A] rounded-full p-1 mb-6 relative">
+          <button
+            onClick={() => setRole("sales_rep")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-xs font-medium transition-all duration-200 ${
+              role === "sales_rep"
+                ? "bg-[#D4AF37] text-[#0a0a0a] shadow-lg"
+                : "text-[#9CA3AF] hover:text-[#F5F5F5]"
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            Sales Rep
+          </button>
+          <button
+            onClick={() => setRole("admin")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-xs font-medium transition-all duration-200 ${
+              role === "admin"
+                ? "bg-[#D4AF37] text-[#0a0a0a] shadow-lg"
+                : "text-[#9CA3AF] hover:text-[#F5F5F5]"
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            Admin
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5 relative">
+          <div>
+            <label className="block text-[10px] font-medium text-[#9CA3AF] uppercase tracking-widest mb-2">
+              Select Your Name
+            </label>
+            <div className="relative">
+              {role === "admin" ? (
+                <select
+                  value={selectedAdmin}
+                  onChange={(e) => { setSelectedAdmin(e.target.value); setError(""); }}
+                  className="input-field appearance-none cursor-pointer pr-10"
+                  disabled={isLoadingUsers}
+                >
+                  {isLoadingUsers ? (
+                    <option>Loading users from cloud...</option>
+                  ) : adminUsers.length === 0 ? (
+                    <option>No admin users found</option>
+                  ) : (
+                    adminUsers.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))
+                  )}
+                </select>
+              ) : (
+                <select
+                  value={selectedRep}
+                  onChange={(e) => { setSelectedRep(e.target.value); setError(""); }}
+                  className="input-field appearance-none cursor-pointer pr-10"
+                  disabled={isLoadingUsers}
+                >
+                  {isLoadingUsers ? (
+                    <option>Loading users from cloud...</option>
+                  ) : salesReps.length === 0 ? (
+                    <option>No sales reps found</option>
+                  ) : (
+                    salesReps.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))
+                  )}
+                </select>
+              )}
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {isLoadingUsers ? (
+                  <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4 text-[#9CA3AF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Sales Rep: select name */}
-          {roleTab === "sales" && (
-            <div className="mb-4">
-              <label className="label-text block mb-1.5">Select Your Name</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-                <select value={selectedRep} onChange={(e) => setSelectedRep(e.target.value)} className="input-field pl-11">
-                  {salesReps.map((rep) => <option key={rep} value={rep}>{rep}</option>)}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Admin: select name */}
-          {roleTab === "admin" && (
-            <div className="mb-4">
-              <label className="label-text block mb-1.5">Select Your Name</label>
-              <div className="relative">
-                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-                <select value={selectedAdmin} onChange={(e) => setSelectedAdmin(e.target.value)} className="input-field pl-11">
-                  {adminUsers.map((admin) => <option key={admin} value={admin}>{admin}</option>)}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#EF4444" }}>
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-medium text-[#9CA3AF] uppercase tracking-widest mb-2">
+              PIN
+            </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8B8C]" />
-              <input type={showPin ? "text" : "password"} placeholder="Enter your PIN" value={pin} onChange={(e) => setPin(e.target.value)} className="input-field pl-11 pr-11" required maxLength={10} />
-              <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer">
-                {showPin ? <EyeOff className="w-5 h-5 text-[#8A8B8C]" /> : <Eye className="w-5 h-5 text-[#8A8B8C]" />}
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
+              <input
+                type={showPin ? "text" : "password"}
+                value={pin}
+                onChange={(e) => { setPin(e.target.value); setError(""); }}
+                placeholder="Enter your 4-digit PIN"
+                className="input-field pl-10 pr-10"
+                maxLength={10}
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPin(!showPin)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#F5F5F5] transition-colors"
+              >
+                {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <button type="submit" disabled={isLoading} className="btn-primary w-full justify-center" style={{ opacity: isLoading ? 0.7 : 1 }}>
-              {isLoading ? <div className="w-5 h-5 border-2 border-[#0A0A0B] border-t-transparent rounded-full animate-spin" /> : "Sign In"}
-            </button>
-          </form>
+          </div>
+
+          {error && (
+            <div className="bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg p-3">
+              <p className="text-xs text-[#EF4444] text-center">{error}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={authenticate.isPending || isSubmitting || isLoadingUsers}
+            className="btn-primary w-full justify-center disabled:opacity-50"
+          >
+            {authenticate.isPending || isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Verifying...
+              </span>
+            ) : isLoadingUsers ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading users...
+              </span>
+            ) : (
+              "Sign In"
+            )}
+          </button>
 
           <EmergencyAccess />
-        </div>
 
-        <div className="absolute bottom-8 left-12">
-          <p className="text-sm text-[#8A8B8C] font-body">
-            Need help? Contact <a href="mailto:admin@supremeglobalfoods.co.za" className="text-[#D4A843] hover:underline">admin@supremeglobalfoods.co.za</a>
+          <p className="text-[10px] text-[#9CA3AF] text-center mt-4">
+            Having trouble? Contact IT support.
           </p>
-        </div>
-      </div>
-
-      {/* Right Panel - Hero */}
-      <div className="hidden lg:block lg:w-[45%] relative overflow-hidden">
-        <div ref={bgImageRef} className="absolute inset-0" style={{ backgroundImage: "url(/hero-bg.jpg)", backgroundSize: "cover", backgroundPosition: "center", clipPath: "circle(10vw at 50% 12.5vh)", opacity: 0, willChange: "clip-path, opacity" }}>
-          <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 30%, rgba(212, 168, 67, 0.08) 0%, transparent 70%)" }} />
-        </div>
-        <div ref={circleRef} className="absolute rounded-full" style={{ width: "20vw", height: "20vw", top: "12.5vh", left: "50%", transform: "translateX(-50%) scale(1)", backgroundColor: "#D4A843", transformOrigin: "center center", willChange: "transform, opacity", zIndex: 5 }} />
-        <div ref={ring1Ref} className="absolute rounded-full" style={{ width: "20vw", height: "20vw", top: "12.5vh", left: "50%", transform: "translate(-50%, -50%) scale(0.2)", border: "3px solid #C9963A", transformOrigin: "center center", opacity: 0, willChange: "transform, opacity", zIndex: 4 }} />
-        <div ref={ring2Ref} className="absolute rounded-full" style={{ width: "20vw", height: "20vw", top: "12.5vh", left: "50%", transform: "translate(-50%, -50%) scale(0.2)", border: "2px solid #B8923A", transformOrigin: "center center", opacity: 0, willChange: "transform, opacity", zIndex: 3 }} />
-        <div ref={textRef} className="absolute text-center" style={{ top: "30vh", left: "50%", transform: "translateX(-50%)", opacity: 0, willChange: "opacity, transform", zIndex: 10 }}>
-          <h2 className="font-display font-bold text-white mb-2" style={{ fontSize: "2rem", textShadow: "0 2px 20px rgba(0,0,0,0.8)" }}>Exquisite Casings for</h2>
-          <h2 className="font-display font-bold mb-4" style={{ fontSize: "2rem", color: "#D4A843", textShadow: "0 2px 20px rgba(0,0,0,0.8)" }}>Culinary Masters</h2>
-          <p className="text-[#E8E8E9] font-body" style={{ fontSize: "1rem", textShadow: "0 1px 10px rgba(0,0,0,0.8)" }}>Your Gourmet Adventure Awaits</p>
-        </div>
+        </form>
       </div>
     </div>
   );

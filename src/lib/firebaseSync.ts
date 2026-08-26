@@ -761,12 +761,13 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       if (k !== null) incomingMap.set(k, item);
     }
 
-    // SAFETY GUARD: If Firebase returns 0 items but local has synced data,
-    // preserve local data. A null snapshot during initial connection should
-    // NEVER wipe all synced local data. Legitimate mass-deletes are extremely
-    // rare and should use forceResetAndSync(), not automatic sync.
-    if (incoming.length === 0 && local.some((item) => item && item._syncedAt)) {
-      console.warn(`[mergeWithCloudData] SAFETY: Firebase returned 0 ${key} but local has ${local.length} synced items. Preserving local data.`);
+    // SAFETY GUARD: If Firebase returns 0 items but local has ANY data,
+    // preserve local data. A null snapshot during initial connection or a
+    // timeout from readFromFirebase should NEVER wipe local data.
+    // Legitimate mass-deletes are extremely rare and should use
+    // forceResetAndSync(), not automatic sync.
+    if (incoming.length === 0 && local.length > 0) {
+      console.warn(`[mergeWithCloudData] SAFETY: Firebase returned 0 ${key} but local has ${local.length} items. Preserving local data.`);
       return local;
     }
 
@@ -812,7 +813,14 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    return Array.from(merged.values());
+    // Mark all merged items as synced so future ghost-removal and safety guards work correctly
+    const result = Array.from(merged.values());
+    for (const item of result) {
+      if (item && typeof item === "object") {
+        item._syncedAt = item._syncedAt || Date.now();
+      }
+    }
+    return result;
   } catch {
     return incoming;
   }

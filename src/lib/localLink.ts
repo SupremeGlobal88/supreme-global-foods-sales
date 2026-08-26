@@ -53,8 +53,14 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     console.log("[syncFromCloud] Reading", type, "from Firebase...");
     const cloudData = await readFromFirebase(type);
     console.log("[syncFromCloud] Firebase returned", cloudData.length, type);
-    // ALWAYS merge — even when cloud is empty, to clear deleted items locally
     const before = JSON.parse(localStorage.getItem(storageKey) || "[]").length;
+    // SAFETY: If Firebase returned 0 items but localStorage already has data,
+    // this is likely a timeout or connection issue — DON'T overwrite local data.
+    if (cloudData.length === 0 && before > 0) {
+      console.warn(`[syncFromCloud] SAFETY: Firebase returned 0 ${type} but local has ${before} items. Skipping overwrite.`);
+      reloadFromStorage();
+      return;
+    }
     const merged = mergeWithCloudData(storageKey, cloudData);
     const after = merged.length;
     localStorage.setItem(storageKey, JSON.stringify(merged));

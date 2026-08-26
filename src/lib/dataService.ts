@@ -1349,6 +1349,16 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       updatedAt: now.toISOString(),
     });
     saveItem("sgf_invoices", invoices);
+
+    // CRITICAL: Link the order to the newly created invoice so the Orders page shows "Invoice Generated"
+    order.invoiceNumber = invoiceNumber;
+    const orderIdx = orders.findIndex((o) => o.id == order.id);
+    if (orderIdx >= 0) {
+      orders[orderIdx].invoiceNumber = invoiceNumber;
+      orders[orderIdx].updatedAt = now.toISOString();
+      saveItem("sgf_orders", orders);
+    }
+
     return invoiceNumber;
   } finally {
     // RELEASE LOCK: always release even if an error occurred

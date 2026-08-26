@@ -1,3 +1,5 @@
+import { getStorageItem, setStorageItem } from "./compressedStorage";
+
 // Cloud Sync Service using JSONBlob + CORS proxy
 // Admin uploads from PC → data goes to cloud → sales reps see it on their phones
 
@@ -26,7 +28,7 @@ async function getBlob(): Promise<any> {
   } catch (e) {
     console.warn("[sync] Cloud fetch failed:", e);
     // Fallback to localStorage
-    const local = localStorage.getItem("sgf_cloud_backup");
+    const local = getStorageItem("sgf_cloud_backup");
     if (local) return JSON.parse(local);
     return { stock: [], orders: [], appointments: [], checkins: [], invoices: [], specialPrices: [], followUps: [], auditLog: [] };
   }
@@ -45,7 +47,7 @@ async function saveBlob(data: any): Promise<void> {
     console.warn("[sync] Cloud save failed:", e);
   }
   // Always save to localStorage as backup
-  localStorage.setItem("sgf_cloud_backup", JSON.stringify(data));
+  setStorageItem("sgf_cloud_backup", JSON.stringify(data));
 }
 
 // Initialize blob if empty
@@ -60,50 +62,63 @@ async function initBlob(): Promise<void> {
   } catch { /* ignore */ }
 }
 
-let writeQueue: Promise<any> = Promise.resolve();
-async function withBlob(mutator: (data: any) => void): Promise<void> {
-  writeQueue = writeQueue.then(async () => {
-    const data = await getBlob();
-    mutator(data);
-    await saveBlob(data);
-  });
-  await writeQueue;
+// Merge cloud data with local, keeping the newer version of each record
+export async function syncFromCloud(): Promise<boolean> {
+  try {
+    const cloud = await getBlob();
+    const types = ["stock", "orders", "appointments", "checkins", "invoices", "specialPrices", "followUps", "auditLog"];
+    let updated = false;
+    for (const type of types) {
+      const cloudData = cloud[type] || [];
+      const storageKey = type === "stock" ? "sgf_products" : `sgf_${type}`;
+      const raw = getStorageItem(storageKey);
+      const local = raw ? JSON.parse(raw) : [];
+      if (cloudData.length > 0) {
+        const merged = [...local];
+        for (const cloudItem of cloudData) {
+          const idx = merged.findIndex((l: any) => l.id === cloudItem.id);
+          if (idx >= 0) {
+            if ((cloudItem.updatedAt || cloudItem.createdAt || 0) > (merged[idx].updatedAt || merged[idx].createdAt || 0)) {
+              merged[idx] = cloudItem;
+              updated = true;
+            }
+          } else {
+            merged.push(cloudItem);
+            updated = true;
+          }
+        }
+        setStorageItem(storageKey, JSON.stringify(merged));
+      }
+    }
+    return updated;
+  } catch (e) {
+    console.error("[sync] syncFromCloud failed:", e);
+    return false;
+  }
 }
 
-export const syncService = {
-  // Initialize
-  init: initBlob,
+// Push local data to cloud
+export async function pushToCloud(): Promise<boolean> {
+  try {
+    const types = ["stock", "orders", "appointments", "checkins", "invoices", "specialPrices", "followUps", "auditLog"];
+    const data: any = {};
+    for (const type of types) {
+      const storageKey = type === "stock" ? "sgf_products" : `sgf_${type}`;
+      const raw = getStorageItem(storageKey);
+      data[type] = raw ? JSON.parse(raw) : [];
+    }
+    await saveBlob(data);
+    return true;
+  } catch (e) {
+    console.error("[sync] pushToCloud failed:", e);
+    return false;
+  }
+}
 
-  // Generic CRUD
-  getAll: async () => await getBlob(),
-
-  // Stock
-  getStock: async () => (await getBlob()).stock || [],
-  saveStock: async (stock: any[]) => { await withBlob((data) => { data.stock = stock; }); },
-
-  // Orders
-  getOrders: async () => (await getBlob()).orders || [],
-  saveOrders: async (orders: any[]) => { await withBlob((data) => { data.orders = orders; }); },
-
-  // Appointments
-  getAppointments: async () => (await getBlob()).appointments || [],
-  saveAppointments: async (appointments: any[]) => { await withBlob((data) => { data.appointments = appointments; }); },
-
-  // Check-ins
-  getCheckins: async () => (await getBlob()).checkins || [],
-  saveCheckins: async (checkins: any[]) => { await withBlob((data) => { data.checkins = checkins; }); },
-
-  // Invoices
-  getInvoices: async () => (await getBlob()).invoices || [],
-  saveInvoices: async (invoices: any[]) => { await withBlob((data) => { data.invoices = invoices; }); },
-
-  // Special Prices
-  getSpecialPrices: async () => (await getBlob()).specialPrices || [],
-  saveSpecialPrices: async (sp: any[]) => { await withBlob((data) => { data.specialPrices = sp; }); },
-
-  // Save entire blob directly (used by localLink for cloud sync)
-  saveBlob: async (data: any) => { await saveBlob(data); },
-
-  // Refresh
-  refresh: async () => { cache = null; lastFetch = 0; return await getBlob(); },
-};
+// Quick sync - runs periodically
+export async function quickSync(): Promise<boolean> {
+  await initBlob();
+  const pulled = await syncFromCloud();
+  const pushed = await pushToCloud();
+  return pulled || pushed;
+}

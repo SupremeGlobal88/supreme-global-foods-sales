@@ -14,6 +14,7 @@
  */
 
 import { dataService, reloadFromStorage, deduplicateData } from "./dataService";
+import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
 import { initializeApp, getApps } from "firebase/app";
 import {
   getDatabase,
@@ -47,7 +48,7 @@ const DEFAULT_CONFIG = {
 
 export function getConfigFromStorage(): any {
   try {
-    const stored = localStorage.getItem(CONFIG_KEY);
+    const stored = getStorageItem(CONFIG_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (parsed && parsed.apiKey && !parsed.apiKey.includes("PLACEHOLDER")) {
@@ -95,7 +96,7 @@ export function initFirebase(userConfig?: any): boolean {
   // If user provides config, save it
   if (userConfig && userConfig.apiKey && !userConfig.apiKey.includes("PLACEHOLDER")) {
     config = userConfig;
-    try { localStorage.setItem(CONFIG_KEY, JSON.stringify(userConfig)); } catch { /* ignore */ }
+    try { setStorageItem(CONFIG_KEY, JSON.stringify(userConfig)); } catch { /* ignore */ }
   }
 
   // Try to get config from storage if not already set
@@ -146,7 +147,7 @@ export function getFirebaseConfig(): { configured: boolean; projectId?: string }
 /** Save config from user input */
 export function saveFirebaseConfig(userConfig: any): boolean {
   try {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(userConfig));
+    setStorageItem(CONFIG_KEY, JSON.stringify(userConfig));
     config = userConfig;
     return initFirebase(userConfig);
   } catch {
@@ -156,7 +157,7 @@ export function saveFirebaseConfig(userConfig: any): boolean {
 
 /** Clear config */
 export function clearFirebaseConfig(): void {
-  localStorage.removeItem(CONFIG_KEY);
+  removeStorageItem(CONFIG_KEY);
   config = null;
   db = null;
 }
@@ -171,7 +172,7 @@ type PendingPush = { type: string; item: any; timestamp: number };
 
 function getPendingQueue(): PendingPush[] {
   try {
-    const raw = localStorage.getItem(PENDING_QUEUE_KEY);
+    const raw = getStorageItem(PENDING_QUEUE_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return [];
@@ -179,7 +180,7 @@ function getPendingQueue(): PendingPush[] {
 
 function savePendingQueue(queue: PendingPush[]): void {
   try {
-    localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
+    setStorageItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
   } catch { /* ignore */ }
 }
 
@@ -568,7 +569,7 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
     const data = snapshot.val();
     const notes = fbToArray(data);
     const merged = mergeWithCloudData("sgf_creditNotes", notes);
-    try { localStorage.setItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage();
     if (onData) onData(notes);
   });
@@ -587,7 +588,7 @@ export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): 
     const data = snapshot.val();
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_corporateCustomers", items);
-    try { localStorage.setItem("sgf_corporateCustomers", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_corporateCustomers", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage();
     if (onData) onData(items);
   });
@@ -602,7 +603,7 @@ export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () =
     const data = snapshot.val();
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_purchaseOrders", items);
-    try { localStorage.setItem("sgf_purchaseOrders", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_purchaseOrders", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage();
     if (onData) onData(items);
   });
@@ -617,7 +618,7 @@ export function subscribeToBarrels(onData?: (items: any[]) => void): () => void 
     const data = snapshot.val();
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_barrels", items);
-    try { localStorage.setItem("sgf_barrels", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_barrels", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage();
     if (onData) onData(items);
   });
@@ -632,7 +633,7 @@ export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
     const data = snapshot.val();
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_cocs", items);
-    try { localStorage.setItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage();
     if (onData) onData(items);
   });
@@ -647,7 +648,7 @@ export function subscribeToPackingListLines(onData?: (items: any[]) => void): ()
     const data = snapshot.val();
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_packingListLines", items);
-    try { localStorage.setItem("sgf_packingListLines", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_packingListLines", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage();
     if (onData) onData(items);
   });
@@ -679,7 +680,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
       // ALWAYS merge — even when cloud is empty, to clear deleted items locally
       let merged = mergeWithCloudData(storageKey, data);
       if (postProcess) merged = postProcess(merged);
-      localStorage.setItem(storageKey, JSON.stringify(merged));
+      setStorageItem(storageKey, JSON.stringify(merged));
       counts[path] = data.length;
       return data;
     } catch (e: any) {
@@ -749,7 +750,7 @@ function getStableKey(item: any, storageKey: string): string | null {
  *  without losing Firebase updates. */
 export function mergeWithCloudData(key: string, incoming: any[]): any[] {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = getStorageItem(key);
     if (!raw) return incoming;
     const local = JSON.parse(raw) as any[];
     if (!Array.isArray(local) || local.length === 0) return incoming;
@@ -846,7 +847,7 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
     }
     merged = Array.from(custMap.values());
     try {
-      localStorage.setItem("sgf_customers", JSON.stringify(merged));
+      setStorageItem("sgf_customers", JSON.stringify(merged));
       console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud, deduped to", merged.length);
     } catch { /* ignore */ }
     if (onData) onData(customers);
@@ -863,7 +864,7 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
     const stock = fbToArray(data);
     const merged = mergeWithCloudData("sgf_products", stock);
     try {
-      localStorage.setItem("sgf_products", JSON.stringify(merged));
+      setStorageItem("sgf_products", JSON.stringify(merged));
       console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
     } catch { /* ignore */ }
     if (onData) onData(stock);
@@ -884,7 +885,7 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
     const orders = fbToArray(data);
     // ALWAYS merge — even when cloud is empty, to clear deleted items locally
     const merged = mergeWithCloudData("sgf_orders", orders);
-    try { localStorage.setItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
     dataServiceRefresh();
     onData(orders);
   });
@@ -899,7 +900,7 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
     const data = snapshot.val();
     const checkins = fbToArray(data);
     const merged = mergeWithCloudData("sgf_checkins", checkins);
-    try { localStorage.setItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
     dataServiceRefresh();
     onData(checkins);
   });
@@ -914,7 +915,7 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
     const data = snapshot.val();
     const appts = fbToArray(data);
     const merged = mergeWithCloudData("sgf_appointments", appts);
-    try { localStorage.setItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
     dataServiceRefresh();
     onData(appts);
   });
@@ -929,7 +930,7 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
     const data = snapshot.val();
     const invoices = fbToArray(data);
     const merged = mergeWithCloudData("sgf_invoices", invoices);
-    try { localStorage.setItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
     dataServiceRefresh();
     onData(invoices);
   });
@@ -944,7 +945,7 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
     const data = snapshot.val();
     const actions = fbToArray(data);
     const merged = mergeWithCloudData("sgf_followUpActions", actions);
-    try { localStorage.setItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
     dataServiceRefresh();
     onData(actions);
   });
@@ -959,7 +960,7 @@ export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () =>
     const data = snapshot.val();
     const followUps = fbToArray(data);
     const merged = mergeWithCloudData("sgf_followUps", followUps);
-    try { localStorage.setItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
     if (onData) onData(followUps);
   });
   listeners.push(unsub);
@@ -973,7 +974,7 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
     const data = snapshot.val();
     const receipts = fbToArray(data);
     const merged = mergeWithCloudData("sgf_receipts", receipts);
-    try { localStorage.setItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
     if (onData) onData(receipts);
   });
   listeners.push(unsub);
@@ -988,7 +989,7 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
     const reps = fbToArray(data);
     // CRITICAL: Use the SAME storage key as dataService (sgf_salesReps) for consistency
     const merged = mergeWithCloudData("sgf_salesReps", reps);
-    try { localStorage.setItem("sgf_salesReps", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_salesReps", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage(); // Update in-memory SALES_REPS array from localStorage
     if (onData) onData(reps);
   });
@@ -1003,7 +1004,7 @@ export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
     const data = snapshot.val();
     const users = fbToArray(data);
     const merged = mergeWithCloudData("sgf_users", users);
-    try { localStorage.setItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
+    try { setStorageItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
     reloadFromStorage(); // Update in-memory users array
     if (onData) onData(users);
   });
@@ -1075,7 +1076,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
   let totalItems = 0;
   for (const list of lists) {
     try {
-      const raw = localStorage.getItem(list.storageKey);
+      const raw = getStorageItem(list.storageKey);
       if (raw) {
         const items = JSON.parse(raw);
         if (Array.isArray(items)) totalItems += items.filter(x => x != null).length;
@@ -1087,7 +1088,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
 
   for (const list of lists) {
     try {
-      const raw = localStorage.getItem(list.storageKey);
+      const raw = getStorageItem(list.storageKey);
       if (!raw) continue;
       const items = JSON.parse(raw);
       if (!Array.isArray(items)) continue;
@@ -1141,7 +1142,7 @@ export async function forcePullAllFromCloud(): Promise<{
       const data = fbToArray(snapshot.val());
       if (data.length === 0) return;
       const merged = mergeWithCloudData(storageKey, data);
-      localStorage.setItem(storageKey, JSON.stringify(merged));
+      setStorageItem(storageKey, JSON.stringify(merged));
       (result[counter] as number) = data.length;
       console.log(`[forcePull] Pulled ${data.length} items from ${fbPath}, merged to ${merged.length}`);
     } catch (e: any) {
@@ -1209,7 +1210,7 @@ export async function diagnoseSync(): Promise<{
   // Check localStorage and detect ghosts/drafts/duplicates
   for (const { path, key } of DATA_TYPES) {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = getStorageItem(key);
       if (!raw) { localStorageCounts[key] = 0; ghosts[key] = 0; drafts[key] = 0; duplicates[key] = 0; idMismatches[key] = 0; continue; }
       const parsed = JSON.parse(raw);
       const items = Array.isArray(parsed) ? parsed : [];
@@ -1316,7 +1317,7 @@ export async function forceResetAndSync(): Promise<{
 
   for (const key of keysToClear) {
     try {
-      localStorage.removeItem(key);
+      removeStorageItem(key);
       result.cleared.push(key);
     } catch { /* ignore */ }
   }
@@ -1382,13 +1383,13 @@ export function disconnectFirebase(): void {
   // Stop manual subscriptions
   unsubscribeAll();
   // Set flag to prevent reconnection
-  localStorage.setItem("sgf_firebase_disconnected", "true");
+  setStorageItem("sgf_firebase_disconnected", "true");
   console.log("[FirebaseSync] Disconnected. Flag set.");
 }
 
 /** Reconnect Firebase after disconnect */
 export function reconnectFirebase(): void {
-  localStorage.removeItem("sgf_firebase_disconnected");
+  removeStorageItem("sgf_firebase_disconnected");
   autoSyncInitialized = false;
   initAutoSync();
 }
@@ -1403,7 +1404,7 @@ export function registerDataServiceRefresh(fn: RefreshFn): void {
 /** Get current user role from localStorage */
 function getCurrentUserRole(): string {
   try {
-    const userStr = localStorage.getItem("sgf_user");
+    const userStr = getStorageItem("sgf_user");
     if (userStr) {
       const user = JSON.parse(userStr);
       return user.role || "sales_rep";
@@ -1416,7 +1417,7 @@ let initRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function initAutoSync(): () => void {
   // Check disconnect flag
-  if (localStorage.getItem("sgf_firebase_disconnected") === "true") {
+  if (getStorageItem("sgf_firebase_disconnected") === "true") {
     console.log("[FirebaseSync] Skipped — disconnected by user");
     return () => {};
   }
@@ -1460,7 +1461,7 @@ export function initAutoSync(): () => void {
     try {
       if (cloudCount > 0) {
         const merged = mergeWithCloudData(storageKey, data);
-        localStorage.setItem(storageKey, JSON.stringify(merged));
+        setStorageItem(storageKey, JSON.stringify(merged));
       } else if (cloudCount === 0) {
         // Cloud is empty for this type — but DON'T clear localStorage.
         // Another device may have just started up with empty data.

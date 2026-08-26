@@ -1,4 +1,5 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
+import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
 
 const STORAGE_KEYS = {
   customers: "sgf_customers",
@@ -12,7 +13,7 @@ const STORAGE_KEYS = {
 
 function getStorage<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = getStorageItem(key);
     if (!raw) {
       // Return static data as fallback for customers and products
       if (key === STORAGE_KEYS.customers) return STATIC_CUSTOMERS as unknown as T;
@@ -28,11 +29,11 @@ function getStorage<T>(key: string, fallback: T): T {
 }
 
 function setStorage<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
+  setStorageItem(key, JSON.stringify(value));
 }
 
 function initData() {
-  if (localStorage.getItem(STORAGE_KEYS.initialized)) return;
+  if (getStorageItem(STORAGE_KEYS.initialized)) return;
 
   const customers = STATIC_CUSTOMERS.map((c: any) => ({
     ...c,
@@ -58,7 +59,7 @@ function initData() {
   setStorage(STORAGE_KEYS.invoices, []);
   setStorage(STORAGE_KEYS.appointments, []);
   setStorage(STORAGE_KEYS.checkins, []);
-  localStorage.setItem(STORAGE_KEYS.initialized, "true");
+  setStorageItem(STORAGE_KEYS.initialized, "true");
 }
 
 export const localApi = {
@@ -271,7 +272,7 @@ export const localApi = {
 
   // Reset
   reset: () => {
-    Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
+    Object.values(STORAGE_KEYS).forEach((k) => removeStorageItem(k));
     initData();
   },
 };

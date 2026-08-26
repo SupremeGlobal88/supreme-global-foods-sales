@@ -143,7 +143,7 @@ export default function CustomersPage() {
   // Remove duplicate customers by name (keeps the first/original)
   function removeDuplicateCustomers() {
     try {
-      const raw = localStorage.getItem("sgf_customers");
+      const raw = getStorageItem("sgf_customers");
       if (!raw) return;
       const allCustomers = JSON.parse(raw);
       const seen = new Set<string>();
@@ -162,7 +162,7 @@ export default function CustomersPage() {
           unique.push(cust); // keep first occurrence
         }
       }
-      localStorage.setItem("sgf_customers", JSON.stringify(unique));
+      setStorageItem("sgf_customers", JSON.stringify(unique));
       // Refresh data
       utils.customer.search.invalidate();
       utils.customer.getStats.invalidate();

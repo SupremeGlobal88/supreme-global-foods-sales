@@ -3,6 +3,7 @@ import { Cloud, CloudOff, CheckCircle, AlertTriangle, Copy, Save, X, Trash2, Ref
 import { getFirebaseConfig, saveFirebaseConfig, isFirebaseReady, disconnectFirebase, pullFromCloud } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import { queryClient } from "@/providers/trpc";
+import { removeStorageItem } from "@/lib/compressedStorage";
 
 interface SyncStatusProps {
   isMobile?: boolean;
@@ -19,7 +20,7 @@ export default function SyncStatus({ isMobile = false }: SyncStatusProps) {
 
   function clearLocalData() {
     const keys = Object.keys(localStorage).filter(k => k.startsWith("sgf_"));
-    keys.forEach(k => localStorage.removeItem(k));
+    keys.forEach(k => removeStorageItem(k));
   }
 
   function handleDisconnect() {

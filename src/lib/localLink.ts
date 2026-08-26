@@ -1,4 +1,5 @@
 import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments, getAARate, setAARate } from "./dataService";
+import { getStorageItem, setStorageItem } from "./compressedStorage";
 import { observable } from "@trpc/server/observable";
 import {
   pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices,
@@ -30,7 +31,7 @@ const SYNC_COOLDOWN_MS = 5000; // Only sync same type every 5 seconds minimum
  *  This ensures first-time visitors get cloud data, while repeat visitors
  *  see instant pages with background updates. */
 async function smartSync(type: string, storageKey: string): Promise<void> {
-  const raw = localStorage.getItem(storageKey);
+  const raw = getStorageItem(storageKey);
   const hasData = raw && JSON.parse(raw).length > 0;
   if (hasData) {
     syncFromCloud(type, storageKey); // fire-and-forget refresh
@@ -59,7 +60,7 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     // During the read (which can take 30s), onValue subscriptions may have
     // already populated localStorage with fresh data. We must NOT overwrite
     // that data with an empty array from a timeout.
-    const currentLocal = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    const currentLocal = JSON.parse(getStorageItem(storageKey) || "[]");
     const before = currentLocal.length;
 
     // SAFETY: If Firebase returned 0 items but localStorage already has data,
@@ -71,7 +72,7 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     }
     const merged = mergeWithCloudData(storageKey, cloudData);
     const after = merged.length;
-    localStorage.setItem(storageKey, JSON.stringify(merged));
+    setStorageItem(storageKey, JSON.stringify(merged));
     reloadFromStorage();
     if (after !== before) {
       console.log(`[syncFromCloud] ${type}: ${before} local → merged ${after} items (${after - before > 0 ? '+' : ''}${after - before} from cloud)`);

@@ -1,4 +1,5 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
+import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
 
 // ═══════════════════════════════════════════════════════════════
 //  SALES REP DATA MODEL — Object-based with full metadata
@@ -25,7 +26,7 @@ let SALES_REPS: SalesRep[] = [
 // Load from localStorage with backward compat for old string arrays
 function loadSalesRepsFromStorage(): SalesRep[] {
   try {
-    const stored = localStorage.getItem("sgf_salesReps");
+    const stored = getStorageItem("sgf_salesReps");
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -57,14 +58,14 @@ try {
 } catch { /* keep defaults */ }
 
 function saveSalesReps() {
-  try { localStorage.setItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
+  try { setStorageItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
 }
 
 /** Read current sales reps from localStorage (includes Firebase-synced reps).
  *  Returns full SalesRep objects. Backward-compatible with legacy string arrays. */
 function getCurrentSalesReps(): SalesRep[] {
   try {
-    const raw = localStorage.getItem("sgf_salesReps");
+    const raw = getStorageItem("sgf_salesReps");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -142,7 +143,7 @@ function load() {
     // CUSTOMERS: load from localStorage if it's a valid array.
     // NEVER discard synced data due to length checks or missing keys.
     // Only fall back to static if localStorage is empty or corrupted.
-    const c = localStorage.getItem("sgf_customers");
+    const c = getStorageItem("sgf_customers");
     if (c) {
       const parsed = JSON.parse(c);
       if (Array.isArray(parsed) && parsed.length > 0) customers = parsed;
@@ -151,7 +152,7 @@ function load() {
       customers = getStaticCustomers();
     }
     // PRODUCTS: same approach — trust localStorage if it's a valid array
-    const p = localStorage.getItem("sgf_products");
+    const p = getStorageItem("sgf_products");
     if (p) {
       const parsed = JSON.parse(p);
       if (Array.isArray(parsed) && parsed.length > 0) products = parsed;
@@ -160,42 +161,42 @@ function load() {
       products = getStaticProducts();
     }
     // TRANSACTION DATA: always load if present (user-generated, never replace with static)
-    const o = localStorage.getItem("sgf_orders");
+    const o = getStorageItem("sgf_orders");
     if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
-    const i = localStorage.getItem("sgf_invoices");
+    const i = getStorageItem("sgf_invoices");
     if (i) { const d = JSON.parse(i); if (Array.isArray(d)) invoices = d; }
-    const a = localStorage.getItem("sgf_appointments");
+    const a = getStorageItem("sgf_appointments");
     if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
-    const ci = localStorage.getItem("sgf_checkins");
+    const ci = getStorageItem("sgf_checkins");
     if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
-    const s = localStorage.getItem("sgf_specialPrices");
+    const s = getStorageItem("sgf_specialPrices");
     if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
-    const log = localStorage.getItem("sgf_auditLog");
+    const log = getStorageItem("sgf_auditLog");
     if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
     else auditLog = [];
-    const fu = localStorage.getItem("sgf_followUps");
+    const fu = getStorageItem("sgf_followUps");
     if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
     else followUps = [];
-    const fa = localStorage.getItem("sgf_followUpActions");
+    const fa = getStorageItem("sgf_followUpActions");
     if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
     else followUpActions = [];
-    const cn = localStorage.getItem("sgf_collectionNotes");
+    const cn = getStorageItem("sgf_collectionNotes");
     if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
     else collectionNotes = [];
-    const cp = localStorage.getItem("sgf_collectionPromises");
+    const cp = getStorageItem("sgf_collectionPromises");
     if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
     else collectionPromises = [];
-    const ah = localStorage.getItem("sgf_accountHolds");
+    const ah = getStorageItem("sgf_accountHolds");
     if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
     else accountHolds = [];
-    const rc = localStorage.getItem("sgf_receipts");
+    const rc = getStorageItem("sgf_receipts");
     if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
     else receipts = [];
-    const crn = localStorage.getItem("sgf_creditNotes");
+    const crn = getStorageItem("sgf_creditNotes");
     if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
     else creditNotes = [];
     // USERS: always load and merge with defaults
-    const u = localStorage.getItem("sgf_users");
+    const u = getStorageItem("sgf_users");
     if (u) { try { const d = JSON.parse(u); if (Array.isArray(d)) users = d; } catch { users = []; } }
     const DEFAULT_USERS = [
       { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
@@ -244,19 +245,19 @@ function load() {
   try { fixSageInvoiceDates(); } catch { /* ignore */ }
 
   // ─── CORPORATE MODULE DATA LOADING ───
-  const cc = localStorage.getItem("sgf_corporateCustomers");
+  const cc = getStorageItem("sgf_corporateCustomers");
   if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
   else corporateCustomers = [];
-  const po = localStorage.getItem("sgf_purchaseOrders");
+  const po = getStorageItem("sgf_purchaseOrders");
   if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
   else purchaseOrders = [];
-  const br = localStorage.getItem("sgf_barrels");
+  const br = getStorageItem("sgf_barrels");
   if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
   else barrels = [];
-  const coc = localStorage.getItem("sgf_certificatesOfCompliance");
+  const coc = getStorageItem("sgf_certificatesOfCompliance");
   if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
   else certificatesOfCompliance = [];
-  const pll = localStorage.getItem("sgf_packingListLines");
+  const pll = getStorageItem("sgf_packingListLines");
   if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
   else packingListLines = [];
 }
@@ -355,13 +356,13 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
 export function getBankingDetails(): { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string } {
   const defaults = { bankName: "First National Bank (FNB)", accountName: "Supreme Global Foods", accountNumber: "63176141182", branchCode: "250655", swiftCode: "FIRNZAJJ" };
   try {
-    const raw = localStorage.getItem("sgf_settings_banking");
+    const raw = getStorageItem("sgf_settings_banking");
     if (raw) {
       const saved = JSON.parse(raw);
       // Auto-fix old incorrect account number that was deployed in earlier versions
       if (saved.accountNumber === "62001234567") {
         saved.accountNumber = "63176141182";
-        localStorage.setItem("sgf_settings_banking", JSON.stringify(saved));
+        setStorageItem("sgf_settings_banking", JSON.stringify(saved));
       }
       return { ...defaults, ...saved };
     }
@@ -487,14 +488,14 @@ const OFFICE_NAME = "SGF Office — 28 Nagington Rd, Wadeville";
 /** South African AA travel rate per km (configurable, default R5.50/km) */
 let AA_RATE_PER_KM = 5.50;
 try {
-  const stored = localStorage.getItem("sgf_aaRatePerKm");
+  const stored = getStorageItem("sgf_aaRatePerKm");
   if (stored) { const v = parseFloat(stored); if (!isNaN(v) && v > 0) AA_RATE_PER_KM = v; }
 } catch { /* keep default */ }
 
 export function getAARate(): number { return AA_RATE_PER_KM; }
 export function setAARate(rate: number): void {
   AA_RATE_PER_KM = rate;
-  try { localStorage.setItem("sgf_aaRatePerKm", String(rate)); } catch { /* ignore */ }
+  try { setStorageItem("sgf_aaRatePerKm", String(rate)); } catch { /* ignore */ }
 }
 
 /** ISO week number */
@@ -866,15 +867,15 @@ function isMoreRecent(a: any, b: any): boolean {
 
 function saveItem(key: string, value: any) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    setStorageItem(key, JSON.stringify(value));
   } catch (e: any) {
     // Quota exceeded - clear non-essential data and retry
     if (e.name === 'QuotaExceededError' || e.code === 22) {
       const itemsToClear = ["sgf_audit_log", "sgf_activity_log", "sgf_receipts", "sgf_creditNotes", "fix-invoice-backup", "sgf_invoice_backups"];
       for (const itemKey of itemsToClear) {
-        try { localStorage.removeItem(itemKey); } catch { /* ignore */ }
+        try { removeStorageItem(itemKey); } catch { /* ignore */ }
       }
-      try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+      try { setStorageItem(key, JSON.stringify(value)); } catch { /* ignore */ }
     }
   }
 }
@@ -945,19 +946,19 @@ load();
  *  so this function bypasses them and loads directly. */
 export function reloadFromStorage(): void {
   try {
-    const c = localStorage.getItem("sgf_customers");
+    const c = getStorageItem("sgf_customers");
     if (c) { const d = JSON.parse(c); if (Array.isArray(d) && d.length > 0) customers = d; }
   } catch { /* keep current */ }
   try {
-    const p = localStorage.getItem("sgf_products");
+    const p = getStorageItem("sgf_products");
     if (p) { const d = JSON.parse(p); if (Array.isArray(d) && d.length > 0) products = d; }
   } catch { /* keep current */ }
   try {
-    const o = localStorage.getItem("sgf_orders");
+    const o = getStorageItem("sgf_orders");
     if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
   } catch { /* keep current */ }
   try {
-    const i = localStorage.getItem("sgf_invoices");
+    const i = getStorageItem("sgf_invoices");
     if (i) {
       const d = JSON.parse(i);
       if (Array.isArray(d)) {
@@ -971,55 +972,55 @@ export function reloadFromStorage(): void {
     }
   } catch { /* keep current */ }
   try {
-    const a = localStorage.getItem("sgf_appointments");
+    const a = getStorageItem("sgf_appointments");
     if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
   } catch { /* keep current */ }
   try {
-    const ci = localStorage.getItem("sgf_checkins");
+    const ci = getStorageItem("sgf_checkins");
     if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
   } catch { /* keep current */ }
   try {
-    const s = localStorage.getItem("sgf_specialPrices");
+    const s = getStorageItem("sgf_specialPrices");
     if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
   } catch { /* keep current */ }
   try {
-    const log = localStorage.getItem("sgf_auditLog");
+    const log = getStorageItem("sgf_auditLog");
     if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
   } catch { /* keep current */ }
   try {
-    const fu = localStorage.getItem("sgf_followUps");
+    const fu = getStorageItem("sgf_followUps");
     if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
   } catch { /* keep current */ }
   try {
-    const fa = localStorage.getItem("sgf_followUpActions");
+    const fa = getStorageItem("sgf_followUpActions");
     if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
   } catch { /* keep current */ }
   try {
-    const cn = localStorage.getItem("sgf_collectionNotes");
+    const cn = getStorageItem("sgf_collectionNotes");
     if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
   } catch { /* keep current */ }
   try {
-    const cp = localStorage.getItem("sgf_collectionPromises");
+    const cp = getStorageItem("sgf_collectionPromises");
     if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
   } catch { /* keep current */ }
   try {
-    const ah = localStorage.getItem("sgf_accountHolds");
+    const ah = getStorageItem("sgf_accountHolds");
     if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
   } catch { /* keep current */ }
   try {
-    const rc = localStorage.getItem("sgf_receipts");
+    const rc = getStorageItem("sgf_receipts");
     if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
   } catch { /* keep current */ }
   try {
-    const crn = localStorage.getItem("sgf_creditNotes");
+    const crn = getStorageItem("sgf_creditNotes");
     if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
   } catch { /* keep current */ }
   try {
-    const u = localStorage.getItem("sgf_users");
+    const u = getStorageItem("sgf_users");
     if (u) { const d = JSON.parse(u); if (Array.isArray(d) && d.length > 0) users = d; }
   } catch { /* keep current */ }
   try {
-    const sr = localStorage.getItem("sgf_salesReps");
+    const sr = getStorageItem("sgf_salesReps");
     if (sr) {
       const d = JSON.parse(sr);
       if (Array.isArray(d) && d.length > 0) {
@@ -1041,23 +1042,23 @@ export function reloadFromStorage(): void {
   } catch { /* keep current */ }
   // ─── CORPORATE MODULE RELOAD ───
   try {
-    const cc = localStorage.getItem("sgf_corporateCustomers");
+    const cc = getStorageItem("sgf_corporateCustomers");
     if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
   } catch { /* keep current */ }
   try {
-    const po = localStorage.getItem("sgf_purchaseOrders");
+    const po = getStorageItem("sgf_purchaseOrders");
     if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
   } catch { /* keep current */ }
   try {
-    const br = localStorage.getItem("sgf_barrels");
+    const br = getStorageItem("sgf_barrels");
     if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
   } catch { /* keep current */ }
   try {
-    const coc = localStorage.getItem("sgf_certificatesOfCompliance");
+    const coc = getStorageItem("sgf_certificatesOfCompliance");
     if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
   } catch { /* keep current */ }
   try {
-    const pll = localStorage.getItem("sgf_packingListLines");
+    const pll = getStorageItem("sgf_packingListLines");
     if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
   } catch { /* keep current */ }
 }
@@ -2544,7 +2545,7 @@ export const dataService = {
         // Search 4: localStorage direct (in case array was replaced)
         if (idx < 0) {
           try {
-            const raw = localStorage.getItem("sgf_invoices");
+            const raw = getStorageItem("sgf_invoices");
             if (raw) {
               const stored = JSON.parse(raw);
               if (Array.isArray(stored)) {
@@ -3722,7 +3723,7 @@ export const dataService = {
       // Try 2: localStorage direct read (this now includes users synced from Firebase via syncFromCloud)
       if (!found) {
         try {
-          const raw = localStorage.getItem("sgf_users");
+          const raw = getStorageItem("sgf_users");
           if (raw) {
             const stored = JSON.parse(raw);
             found = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
@@ -4236,8 +4237,8 @@ export function resetTransactionData(): void {
 export function clearAppointmentsAndCheckins(): void {
   appointments = [];
   checkins = [];
-  localStorage.removeItem("sgf_appointments");
-  localStorage.removeItem("sgf_checkins");
+  removeStorageItem("sgf_appointments");
+  removeStorageItem("sgf_checkins");
 }
 
 /** Full factory reset — clears EVERYTHING and reloads defaults */
@@ -4287,7 +4288,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
 
   // 1. Check stored users FIRST (so User Management additions work without code changes)
   try {
-    const raw = localStorage.getItem("sgf_users");
+    const raw = getStorageItem("sgf_users");
     if (raw) {
       const stored = JSON.parse(raw);
       // Exact name match
@@ -4326,12 +4327,12 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
   if (fromDefaults) {
     // Repair stored users if needed
     try {
-      const raw = localStorage.getItem("sgf_users");
+      const raw = getStorageItem("sgf_users");
       const stored = raw ? JSON.parse(raw) : [];
       const exists = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase());
       if (!exists) {
         stored.push({ ...fromDefaults, isActive: true, createdAt: new Date().toISOString() });
-        localStorage.setItem("sgf_users", JSON.stringify(stored));
+        setStorageItem("sgf_users", JSON.stringify(stored));
         users = stored;
       }
     } catch { /* ignore */ }

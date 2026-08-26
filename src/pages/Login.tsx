@@ -77,7 +77,7 @@ const DEFAULT_SALES_REPS = ["Adeli", "Inhouse", "Michael", "Nkosana", "Tebogo Bi
 
 function readAdminUsers(): string[] {
   try {
-    const raw = localStorage.getItem("sgf_users");
+    const raw = getStorageItem("sgf_users");
     if (raw) {
       const stored = JSON.parse(raw);
       const adminNames = stored
@@ -91,7 +91,7 @@ function readAdminUsers(): string[] {
 
 function readSalesReps(): string[] {
   try {
-    const raw = localStorage.getItem("sgf_users");
+    const raw = getStorageItem("sgf_users");
     if (raw) {
       const stored = JSON.parse(raw);
       const repNames = stored
@@ -127,7 +127,7 @@ export default function Login() {
             if (!data || cancelled) return;
             const users = Object.values(data).filter((u: any) => u && typeof u === "object");
             if (users.length > 0) {
-              localStorage.setItem("sgf_users", JSON.stringify(users));
+              setStorageItem("sgf_users", JSON.stringify(users));
               // Refresh dropdowns with synced data
               const admins = users
                 .filter((u: any) => (u.role === "admin" || u.role === "super_admin") && u.isActive !== false)

@@ -386,12 +386,12 @@ export default function SettingsPage() {
 
   async function handleSyncToCloud() {
     setSyncMessage("Syncing...");
-    const localOrders = JSON.parse(localStorage.getItem("sgf_orders") || "[]");
-    const localCheckins = JSON.parse(localStorage.getItem("sgf_checkins") || "[]");
-    const localAppointments = JSON.parse(localStorage.getItem("sgf_appointments") || "[]");
-    const localInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
-    const localCustomers = JSON.parse(localStorage.getItem("sgf_customers") || "[]");
-    const localStock = JSON.parse(localStorage.getItem("sgf_products") || "[]");
+    const localOrders = JSON.parse(getStorageItem("sgf_orders") || "[]");
+    const localCheckins = JSON.parse(getStorageItem("sgf_checkins") || "[]");
+    const localAppointments = JSON.parse(getStorageItem("sgf_appointments") || "[]");
+    const localInvoices = JSON.parse(getStorageItem("sgf_invoices") || "[]");
+    const localCustomers = JSON.parse(getStorageItem("sgf_customers") || "[]");
+    const localStock = JSON.parse(getStorageItem("sgf_products") || "[]");
     const result = await syncAllLocalData({ orders: localOrders, checkins: localCheckins, appointments: localAppointments, invoices: localInvoices });
     if (localCustomers.length > 0) await pushCustomers(localCustomers);
     if (localStock.length > 0) await pushStock(localStock);

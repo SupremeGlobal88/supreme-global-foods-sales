@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-import { dataService, reloadFromStorage } from "./dataService";
+import { dataService, reloadFromStorage, deduplicateData } from "./dataService";
 import { initializeApp, getApps } from "firebase/app";
 import {
   getDatabase,
@@ -569,7 +569,7 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
     const notes = fbToArray(data);
     const merged = mergeWithCloudData("sgf_creditNotes", notes);
     try { localStorage.setItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataService.reloadFromStorage();
+    reloadFromStorage();
     if (onData) onData(notes);
   });
   listeners.push(unsub);
@@ -588,7 +588,7 @@ export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): 
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_corporateCustomers", items);
     try { localStorage.setItem("sgf_corporateCustomers", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataService.reloadFromStorage();
+    reloadFromStorage();
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -603,7 +603,7 @@ export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () =
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_purchaseOrders", items);
     try { localStorage.setItem("sgf_purchaseOrders", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataService.reloadFromStorage();
+    reloadFromStorage();
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -618,7 +618,7 @@ export function subscribeToBarrels(onData?: (items: any[]) => void): () => void 
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_barrels", items);
     try { localStorage.setItem("sgf_barrels", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataService.reloadFromStorage();
+    reloadFromStorage();
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -633,7 +633,7 @@ export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_cocs", items);
     try { localStorage.setItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataService.reloadFromStorage();
+    reloadFromStorage();
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -648,7 +648,7 @@ export function subscribeToPackingListLines(onData?: (items: any[]) => void): ()
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_packingListLines", items);
     try { localStorage.setItem("sgf_packingListLines", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataService.reloadFromStorage();
+    reloadFromStorage();
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -1477,7 +1477,7 @@ export function initAutoSync(): () => void {
     // Step 3: Deduplicate orders/invoices (modifies in-memory arrays directly)
     if (type === "orders" || type === "invoices") {
       try {
-        const result = dataService.deduplicateData();
+        const result = deduplicateData();
         if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
           console.log(`[FirebaseSync] Auto-dedup removed ${result.ordersRemoved} orders, ${result.invoicesRemoved} invoices`);
         }

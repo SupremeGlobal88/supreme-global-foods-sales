@@ -1513,7 +1513,7 @@ export default function InvoicesPage() {
               <button onClick={closeAllocCredit} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             {(() => {
-              const customerCns = (allInvoices || [])
+              const customerCns = (invoices || [])
                 .filter((inv: any) => inv.customerId == allocCustId)
                 .flatMap((inv: any) => (inv.creditNotes || [])
                   .map((cnId: any) => {

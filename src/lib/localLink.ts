@@ -25,14 +25,15 @@ import {
 const lastSyncTimes: Record<string, number> = {};
 const SYNC_COOLDOWN_MS = 5000; // Only sync same type every 5 seconds minimum
 
-/** Smart sync: if localStorage is empty, block and download from cloud.
- *  If localStorage has data, return immediately and sync in background.
+/** Smart sync: if localStorage has actual data, return immediately and sync in background.
+ *  If localStorage is empty/null, block and download from cloud first.
  *  This ensures first-time visitors get cloud data, while repeat visitors
  *  see instant pages with background updates. */
 async function smartSync(type: string, storageKey: string): Promise<void> {
-  const hasLocal = !!localStorage.getItem(storageKey);
-  if (hasLocal) {
-    syncFromCloud(type, storageKey); // fire-and-forget
+  const raw = localStorage.getItem(storageKey);
+  const hasData = raw && JSON.parse(raw).length > 0;
+  if (hasData) {
+    syncFromCloud(type, storageKey); // fire-and-forget refresh
   } else {
     await syncFromCloud(type, storageKey); // block until downloaded
   }
@@ -53,7 +54,14 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     console.log("[syncFromCloud] Reading", type, "from Firebase...");
     const cloudData = await readFromFirebase(type);
     console.log("[syncFromCloud] Firebase returned", cloudData.length, type);
-    const before = JSON.parse(localStorage.getItem(storageKey) || "[]").length;
+
+    // CRITICAL FIX: Re-read localStorage AFTER readFromFirebase returns.
+    // During the read (which can take 30s), onValue subscriptions may have
+    // already populated localStorage with fresh data. We must NOT overwrite
+    // that data with an empty array from a timeout.
+    const currentLocal = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    const before = currentLocal.length;
+
     // SAFETY: If Firebase returned 0 items but localStorage already has data,
     // this is likely a timeout or connection issue — DON'T overwrite local data.
     if (cloudData.length === 0 && before > 0) {
@@ -70,6 +78,8 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     }
   } catch (e: any) {
     console.error("[syncFromCloud] FAILED for", type, ":", e.message || e);
+    // Even on error, reload from localStorage so subscriptions' data is used
+    reloadFromStorage();
   }
 }
 

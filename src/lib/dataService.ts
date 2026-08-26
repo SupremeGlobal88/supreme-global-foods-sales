@@ -139,65 +139,62 @@ function isValidArray(data: any, minLength: number, requiredKey?: string): boole
 }
 
 function load() {
+  // Helper: safely load a data array from storage
+  function safeLoadArray(key: string): any[] | null {
+    try {
+      const raw = getStorageItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (e) {
+      console.error(`[load] FAILED to parse ${key}:`, e);
+      return null;
+    }
+  }
+
   try {
     // CUSTOMERS: load from localStorage if it's a valid array.
     // NEVER discard synced data due to length checks or missing keys.
     // Only fall back to static if localStorage is empty or corrupted.
-    const c = getStorageItem("sgf_customers");
-    if (c) {
-      const parsed = JSON.parse(c);
-      if (Array.isArray(parsed) && parsed.length > 0) customers = parsed;
-      else customers = getStaticCustomers();
-    } else {
-      customers = getStaticCustomers();
-    }
+    const c = safeLoadArray("sgf_customers");
+    if (c && c.length > 0) customers = c;
+    else customers = getStaticCustomers();
+
     // PRODUCTS: same approach — trust localStorage if it's a valid array
-    const p = getStorageItem("sgf_products");
-    if (p) {
-      const parsed = JSON.parse(p);
-      if (Array.isArray(parsed) && parsed.length > 0) products = parsed;
-      else products = getStaticProducts();
-    } else {
-      products = getStaticProducts();
-    }
+    const p = safeLoadArray("sgf_products");
+    if (p && p.length > 0) products = p;
+    else products = getStaticProducts();
+
     // TRANSACTION DATA: always load if present (user-generated, never replace with static)
-    const o = getStorageItem("sgf_orders");
-    if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
-    const i = getStorageItem("sgf_invoices");
-    if (i) { const d = JSON.parse(i); if (Array.isArray(d)) invoices = d; }
-    const a = getStorageItem("sgf_appointments");
-    if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
-    const ci = getStorageItem("sgf_checkins");
-    if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
-    const s = getStorageItem("sgf_specialPrices");
-    if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
-    const log = getStorageItem("sgf_auditLog");
-    if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
-    else auditLog = [];
-    const fu = getStorageItem("sgf_followUps");
-    if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
-    else followUps = [];
-    const fa = getStorageItem("sgf_followUpActions");
-    if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
-    else followUpActions = [];
-    const cn = getStorageItem("sgf_collectionNotes");
-    if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
-    else collectionNotes = [];
-    const cp = getStorageItem("sgf_collectionPromises");
-    if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
-    else collectionPromises = [];
-    const ah = getStorageItem("sgf_accountHolds");
-    if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
-    else accountHolds = [];
-    const rc = getStorageItem("sgf_receipts");
-    if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
-    else receipts = [];
-    const crn = getStorageItem("sgf_creditNotes");
-    if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
-    else creditNotes = [];
+    const o = safeLoadArray("sgf_orders");
+    if (o) orders = o;
+    const i = safeLoadArray("sgf_invoices");
+    if (i) invoices = i;
+    const a = safeLoadArray("sgf_appointments");
+    if (a) appointments = a;
+    const ci = safeLoadArray("sgf_checkins");
+    if (ci) checkins = ci;
+    const s = safeLoadArray("sgf_specialPrices");
+    if (s) specialPrices = s;
+    const log = safeLoadArray("sgf_auditLog");
+    auditLog = log || [];
+    const fu = safeLoadArray("sgf_followUps");
+    followUps = fu || [];
+    const fa = safeLoadArray("sgf_followUpActions");
+    followUpActions = fa || [];
+    const cn = safeLoadArray("sgf_collectionNotes");
+    collectionNotes = cn || [];
+    const cp = safeLoadArray("sgf_collectionPromises");
+    collectionPromises = cp || [];
+    const ah = safeLoadArray("sgf_accountHolds");
+    accountHolds = ah || [];
+    const rc = safeLoadArray("sgf_receipts");
+    receipts = rc || [];
+    const crn = safeLoadArray("sgf_creditNotes");
+    creditNotes = crn || [];
     // USERS: always load and merge with defaults
-    const u = getStorageItem("sgf_users");
-    if (u) { try { const d = JSON.parse(u); if (Array.isArray(d)) users = d; } catch { users = []; } }
+    const u = safeLoadArray("sgf_users");
+    if (u) users = u;
     const DEFAULT_USERS = [
       { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
       { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },

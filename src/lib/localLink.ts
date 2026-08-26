@@ -31,8 +31,15 @@ const SYNC_COOLDOWN_MS = 5000; // Only sync same type every 5 seconds minimum
  *  This ensures first-time visitors get cloud data, while repeat visitors
  *  see instant pages with background updates. */
 async function smartSync(type: string, storageKey: string): Promise<void> {
-  const raw = getStorageItem(storageKey);
-  const hasData = raw && JSON.parse(raw).length > 0;
+  let hasData = false;
+  try {
+    const raw = getStorageItem(storageKey);
+    const parsed = JSON.parse(raw);
+    hasData = Array.isArray(parsed) && parsed.length > 0;
+  } catch {
+    // Corrupted data — treat as empty and re-download
+    hasData = false;
+  }
   if (hasData) {
     syncFromCloud(type, storageKey); // fire-and-forget refresh
   } else {

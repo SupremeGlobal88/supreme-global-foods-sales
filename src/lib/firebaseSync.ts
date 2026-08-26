@@ -1451,31 +1451,17 @@ export function initAutoSync(): () => void {
   const unsubs: Array<() => void> = [];
   const lastCounts: Record<string, number> = {};
 
-  /** Merge received Firebase data into localStorage then refresh dataService */
+  /** Refresh dataService after subscription already merged + saved data.
+   *  CRITICAL: Do NOT merge again here — the individual subscribeTo* functions
+   *  already call mergeWithCloudData + setStorageItem + reloadFromStorage.
+   *  A second merge would mark local-only items with _syncedAt, then on the
+   *  next subscription callback treat them as ghosts and DELETE them.
+   *  This was causing users, orders, and invoices to disappear! */
   const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
-    // ALWAYS process — even empty arrays (they mean data was deleted in cloud)
     const cloudCount = data?.length || 0;
     console.log(`[FirebaseSync] Received ${cloudCount} ${type}`);
 
-    // Step 1: Merge cloud data with localStorage
-    try {
-      if (cloudCount > 0) {
-        const merged = mergeWithCloudData(storageKey, data);
-        setStorageItem(storageKey, JSON.stringify(merged));
-      } else if (cloudCount === 0) {
-        // Cloud is empty for this type — but DON'T clear localStorage.
-        // Another device may have just started up with empty data.
-        // Only clear if we're sure this is a legitimate delete.
-        console.log(`[FirebaseSync] Cloud returned 0 ${type}, keeping local data`);
-      }
-    } catch (e) {
-      console.warn("[FirebaseSync] Failed to merge", type, e);
-    }
-
-    // Step 2: Reload in-memory arrays from localStorage
-    dataServiceRefresh?.();
-
-    // Step 3: Deduplicate orders/invoices (modifies in-memory arrays directly)
+    // Step 1: Deduplicate orders/invoices (modifies in-memory arrays directly)
     if (type === "orders" || type === "invoices") {
       try {
         const result = deduplicateData();
@@ -1485,10 +1471,10 @@ export function initAutoSync(): () => void {
       } catch { /* ignore */ }
     }
 
-    // Step 4: CRITICAL — reload again after dedup so tRPC sees clean data
+    // Step 2: Reload in-memory arrays so tRPC sees latest data
     dataServiceRefresh?.();
 
-    // Step 5: Dispatch event to invalidate tRPC cache
+    // Step 3: Dispatch event to invalidate tRPC cache
     if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes", "corporateCustomers", "purchaseOrders", "barrels", "certificatesOfCompliance", "packingListLines"].includes(type)) {
       const prev = lastCounts[type] || 0;
       lastCounts[type] = cloudCount;

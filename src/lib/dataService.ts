@@ -941,7 +941,37 @@ load();
  *  Called after Firebase sync to ensure synced data is loaded.
  *  The isValidArray checks in load() can discard legitimately deduplicated data,
  *  so this function bypasses them and loads directly. */
+// Debounce reloadFromStorage to prevent UI freeze when multiple Firebase
+// subscriptions fire simultaneously at startup. Each subscription's onValue
+// callback calls reloadFromStorage(), which reads ALL data keys from
+// localStorage and JSON.parses them. With 15+ subscriptions and 4276 invoices,
+// calling this 15+ times in a row blocks the main thread for seconds.
+let reloadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingReload = false;
+
 export function reloadFromStorage(): void {
+  // If a reload is already scheduled, just mark it as pending
+  // (in case localStorage changed since the schedule)
+  if (reloadDebounceTimer) {
+    pendingReload = true;
+    return;
+  }
+
+  // Run immediately the first time, then debounce subsequent calls
+  _doReloadFromStorage();
+
+  // Set a cooldown period: any calls within 150ms are coalesced into one
+  reloadDebounceTimer = setTimeout(() => {
+    reloadDebounceTimer = null;
+    if (pendingReload) {
+      pendingReload = false;
+      _doReloadFromStorage();
+    }
+  }, 150);
+}
+
+/** The actual reload logic — separated so debounce wrapper can call it. */
+function _doReloadFromStorage(): void {
   try {
     const c = getStorageItem("sgf_customers");
     if (c) { const d = JSON.parse(c); if (Array.isArray(d) && d.length > 0) customers = d; }

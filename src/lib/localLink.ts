@@ -26,25 +26,16 @@ import {
 const lastSyncTimes: Record<string, number> = {};
 const SYNC_COOLDOWN_MS = 5000; // Only sync same type every 5 seconds minimum
 
-/** Smart sync: if localStorage has actual data, return immediately and sync in background.
- *  If localStorage is empty/null, block and download from cloud first.
- *  This ensures first-time visitors get cloud data, while repeat visitors
- *  see instant pages with background updates. */
+/** Smart sync: ALWAYS fire-and-forget. Never block the UI thread.
+ *  The Firebase onValue subscriptions are already streaming data in real-time.
+ *  This function is a safety backup that pulls from Firebase on demand.
+ *  Blocking the UI for 15 seconds (Firebase read timeout) makes the app
+ *  completely unresponsive — especially on first load when ALL list queries
+ *  call smartSync simultaneously. */
 async function smartSync(type: string, storageKey: string): Promise<void> {
-  let hasData = false;
-  try {
-    const raw = getStorageItem(storageKey);
-    const parsed = JSON.parse(raw);
-    hasData = Array.isArray(parsed) && parsed.length > 0;
-  } catch {
-    // Corrupted data — treat as empty and re-download
-    hasData = false;
-  }
-  if (hasData) {
-    syncFromCloud(type, storageKey); // fire-and-forget refresh
-  } else {
-    await syncFromCloud(type, storageKey); // block until downloaded
-  }
+  // ALWAYS fire-and-forget. The subscriptions handle real-time updates.
+  // This backup pull runs in the background without blocking the page render.
+  syncFromCloud(type, storageKey);
 }
 
 async function syncFromCloud(type: string, storageKey: string): Promise<void> {

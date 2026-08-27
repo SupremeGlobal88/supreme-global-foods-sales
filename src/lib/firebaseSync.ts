@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-import { dataService, reloadFromStorage, deduplicateData } from "./dataService";
+import { dataService, reloadFromStorage } from "./dataService";
 import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
 import { initializeApp, getApps } from "firebase/app";
 import {
@@ -1451,31 +1451,22 @@ export function initAutoSync(): () => void {
   const unsubs: Array<() => void> = [];
   const lastCounts: Record<string, number> = {};
 
-  /** Refresh dataService after subscription already merged + saved data.
-   *  CRITICAL: Do NOT merge again here — the individual subscribeTo* functions
-   *  already call mergeWithCloudData + setStorageItem + reloadFromStorage.
-   *  A second merge would mark local-only items with _syncedAt, then on the
-   *  next subscription callback treat them as ghosts and DELETE them.
-   *  This was causing users, orders, and invoices to disappear! */
+  /** LIGHTWEIGHT callback after subscription receives data.
+   *  CRITICAL: The individual subscribeTo* functions already handle:
+   *    - mergeWithCloudData
+   *    - setStorageItem
+   *    - reloadFromStorage / dataServiceRefresh
+   *  This callback ONLY dispatches an event so React Query invalidates its cache.
+   *  DO NOT call deduplicateData() or reloadFromStorage() here — that would
+   *  duplicate work already done by the subscription function, and with 15+
+   *  subscriptions firing at startup, the duplicate work freezes the UI. */
   const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
     const cloudCount = data?.length || 0;
     console.log(`[FirebaseSync] Received ${cloudCount} ${type}`);
 
-    // Step 1: Deduplicate orders/invoices (modifies in-memory arrays directly)
-    if (type === "orders" || type === "invoices") {
-      try {
-        const result = deduplicateData();
-        if (result.ordersRemoved > 0 || result.invoicesRemoved > 0) {
-          console.log(`[FirebaseSync] Auto-dedup removed ${result.ordersRemoved} orders, ${result.invoicesRemoved} invoices`);
-        }
-      } catch { /* ignore */ }
-    }
-
-    // Step 2: Reload in-memory arrays so tRPC sees latest data
-    dataServiceRefresh?.();
-
-    // Step 3: Dispatch event to invalidate tRPC cache
-    if (["orders", "checkins", "appointments", "invoices", "customers", "stock", "followUpActions", "followUps", "receipts", "users", "salesReps", "creditNotes", "corporateCustomers", "purchaseOrders", "barrels", "certificatesOfCompliance", "packingListLines"].includes(type)) {
+    // ONLY dispatch event — React Query will refetch via tRPC invalidate.
+    // The subscription function has already merged, saved, and reloaded.
+    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
       const prev = lastCounts[type] || 0;
       lastCounts[type] = cloudCount;
       try {
@@ -1512,16 +1503,6 @@ export function initAutoSync(): () => void {
     if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
     for (const u of unsubs) u();
   };
-
-  // Periodic health check: ensure subscriptions are still active
-  const healthCheckInterval = setInterval(() => {
-    if (!autoSyncInitialized) {
-      console.log("[FirebaseSync] Health check: subscriptions lost, re-initializing...");
-      clearInterval(healthCheckInterval);
-      initAutoSync();
-    }
-  }, 30000);
-  unsubs.push(() => clearInterval(healthCheckInterval));
 
   return autoSyncCleanup;
 }

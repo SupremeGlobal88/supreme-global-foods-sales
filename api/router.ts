@@ -52,6 +52,7 @@ export const appRouter = t.router({
     checkExistingSample: t.procedure.input((val: unknown) => val as { customerId: number; stockItemId: number }).query(() => ({} as any)),
     generateInvoice: t.procedure.input((val: unknown) => val as { orderId: number }).mutation(() => ({} as any)),
     generateMissingInvoices: t.procedure.mutation(() => ({} as any)),
+    convertQuoteToOrder: t.procedure.input((val: unknown) => val as { quoteId: number }).mutation(() => ({} as any)),
   }),
   invoice: t.router({
     list: t.procedure.query(() => [] as any[]),

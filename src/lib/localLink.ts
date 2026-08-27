@@ -232,6 +232,16 @@ export function createLocalLink() {
               case "order.getStats": await syncFromCloud("orders", "sgf_orders"); result = dataService.order.getStats(); break;
               case "order.checkExistingSample": result = dataService.order.checkExistingSample(input); break;
               case "order.generateMissingInvoices": result = dataService.generateMissingInvoices(); for (const inv of dataService.invoice.list()) { await pushInvoice(inv); } break;
+              case "order.convertQuoteToOrder": {
+                result = dataService.order.convertQuoteToOrder(input?.quoteId);
+                if (result?.order) {
+                  await fbPush("order", result.order);
+                  await fbPush("order", dataService.order.list().find((o: any) => o.id == input?.quoteId));
+                  reloadFromStorage(["sgf_orders"]);
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 2 } }));
+                }
+                break;
+              }
               // INVOICES — smart sync: block if empty, fire-and-forget if has data
               case "invoice.list": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.list(); break;
               case "invoice.generateForPO": result = dataService.generateInvoiceForPO(input); if (result) { const inv = dataService.invoice.list().find((i: any) => i.invoiceNumber === result); if (inv) await pushInvoice(inv); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break;

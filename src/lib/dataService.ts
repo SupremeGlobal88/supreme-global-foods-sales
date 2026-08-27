@@ -2119,39 +2119,39 @@ export const dataService = {
     },
     create: (data: any) => {
       const isSample = data.orderType === "sample";
+      const isQuote = data.orderType === "quote";
       
-      // STOCK VALIDATION: Check availability before creating order
+      // STOCK VALIDATION: Check availability before creating order (skip for quotes)
       const requestedItems = data.items || [];
-      for (const item of requestedItems) {
-        const product = products.find((p) => p.id == item.stockItemId);
-        if (!product) continue;
-        // Calculate committed stock (non-delivered/cancelled orders)
-        const committed = orders
-          .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
-          .flatMap((o) => o.items || [])
-          .filter((it: any) => it.stockItemId == item.stockItemId)
-          .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
-        const available = Math.max(0, (product.quantity || 0) - committed);
-        const requestedQty = isSample ? 1 : (item.quantity || 0);
-        if (requestedQty > available) {
-          throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
+      if (!isQuote) {
+        for (const item of requestedItems) {
+          const product = products.find((p) => p.id == item.stockItemId);
+          if (!product) continue;
+          // Calculate committed stock (non-delivered/cancelled orders)
+          const committed = orders
+            .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
+            .flatMap((o) => o.items || [])
+            .filter((it: any) => it.stockItemId == item.stockItemId)
+            .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
+          const available = Math.max(0, (product.quantity || 0) - committed);
+          const requestedQty = isSample ? 1 : (item.quantity || 0);
+          if (requestedQty > available) {
+            throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
+          }
         }
       }
       
       // Generate unique order number: date + HHMM + ms-based 4-digit suffix
-      // HHMM (hour:minute) + 4-digit counter guarantees uniqueness even when
-      // multiple users/devices create orders simultaneously (cloud-first)
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const now = new Date();
       const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
-      const msCounter = String(Date.now() % 10000).padStart(4, "0"); // 4-digit ms-based unique suffix
-      const orderNumber = `${isSample ? "SMP" : "ORD"}-${dateStr}-${hhmm}${msCounter}`;
+      const msCounter = String(Date.now() % 10000).padStart(4, "0");
+      const prefix = isSample ? "SMP" : isQuote ? "QTE" : "ORD";
+      const orderNumber = `${prefix}-${dateStr}-${hhmm}${msCounter}`;
       
       const items = (data.items || []).map((item: any) => {
         const product = products.find((p) => p.id == item.stockItemId);
         const conversion = item.conversion || 1;
-        // unitPrice from frontend is per-SELECTED-UNIT (e.g., per box).
-        // If no custom price entered, calculate from tier price × conversion.
         const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId);
         const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
         return {
@@ -2174,7 +2174,7 @@ export const dataService = {
         ...data,
         id: Date.now(),
         orderNumber,
-        status: "pending", // All orders start as pending — samples follow same flow
+        status: isQuote ? "draft" : "pending",
         items,
         subtotal,
         vatAmount,
@@ -2185,19 +2185,20 @@ export const dataService = {
       };
       orders.push(newOrder);
 
-      // DEDUCT STOCK for each item (both regular and sample orders)
-      // Use conversion factor for products sold by box/bundle/etc.
-      for (const item of items) {
-        const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
-        if (prodIdx >= 0) {
-          const conversion = item.conversion || 1;
-          const deductQty = item.quantity * conversion;
-          const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
-          products[prodIdx].quantity = newQty;
-          products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+      // DEDUCT STOCK for each item (skip for quotes — stock is only committed when converted to order)
+      if (!isQuote) {
+        for (const item of items) {
+          const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
+          if (prodIdx >= 0) {
+            const conversion = item.conversion || 1;
+            const deductQty = item.quantity * conversion;
+            const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
+            products[prodIdx].quantity = newQty;
+            products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+          }
         }
+        saveItem("sgf_products", products);
       }
-      saveItem("sgf_products", products);
       saveItem("sgf_orders", orders);
 
       if (isSample) {
@@ -2220,8 +2221,6 @@ export const dataService = {
       }
 
       // NOTE: Invoices are NO LONGER auto-generated on order creation.
-      // Admin/Super Admin must manually click "Generate Invoice" button.
-      // This eliminates the race condition where invoices failed to push to cloud.
 
       return newOrder;
     },
@@ -2229,24 +2228,27 @@ export const dataService = {
       const idx = orders.findIndex((o) => o.id == id);
       if (idx >= 0) {
         const oldOrder = orders[idx];
-        // RESTORE old stock first (using conversion factor)
-        for (const item of (oldOrder.items || [])) {
-          const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
-          if (prodIdx >= 0) {
-            const conversion = item.conversion || 1;
-            const restoreQty = item.quantity * conversion;
-            const newQty = (products[prodIdx].quantity || 0) + restoreQty;
-            products[prodIdx].quantity = newQty;
-            products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+        const isQuote = oldOrder.orderType === "quote";
+        const isSample = data.orderType === "sample" || oldOrder.orderType === "sample";
+        
+        // RESTORE old stock first (skip for quotes — they never deducted stock)
+        if (!isQuote) {
+          for (const item of (oldOrder.items || [])) {
+            const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
+            if (prodIdx >= 0) {
+              const conversion = item.conversion || 1;
+              const restoreQty = item.quantity * conversion;
+              const newQty = (products[prodIdx].quantity || 0) + restoreQty;
+              products[prodIdx].quantity = newQty;
+              products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+            }
           }
         }
+        
         // Apply new items with fresh calculations
-        const isSample = data.orderType === "sample";
         const items = (data.items || []).map((item: any) => {
           const product = products.find((p) => p.id == item.stockItemId);
           const conversion = item.conversion || 1;
-          // unitPrice from frontend is per-SELECTED-UNIT (e.g., per box).
-          // If no custom price entered, calculate from tier price × conversion.
           const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId);
           const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
           return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice, unit: item.unit || "each", conversion, unitLabel: item.unitLabel || "Each" };
@@ -2254,22 +2256,29 @@ export const dataService = {
         const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
         const vatAmount = isSample ? 0 : subtotal * 0.15;
         const total = isSample ? 0 : subtotal + vatAmount;
-        // DEDUCT new stock (using conversion factor)
-        for (const item of items) {
-          const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
-          if (prodIdx >= 0) {
-            const conversion = item.conversion || 1;
-            const deductQty = item.quantity * conversion;
-            const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
-            products[prodIdx].quantity = newQty;
-            products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+        
+        // DEDUCT new stock (skip for quotes)
+        if (!isQuote) {
+          for (const item of items) {
+            const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
+            if (prodIdx >= 0) {
+              const conversion = item.conversion || 1;
+              const deductQty = item.quantity * conversion;
+              const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
+              products[prodIdx].quantity = newQty;
+              products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+            }
           }
+          saveItem("sgf_products", products);
         }
+        
         orders[idx] = { ...oldOrder, ...data, items, subtotal, vatAmount, total, totalAmount: total, updatedAt: new Date().toISOString() };
-        saveItem("sgf_products", products);
         saveItem("sgf_orders", orders);
-        // Auto-update linked invoice with new order details
-        updateInvoiceFromOrder(orders[idx]);
+        
+        // Auto-update linked invoice with new order details (skip for quotes — they have no invoices)
+        if (!isQuote) {
+          updateInvoiceFromOrder(orders[idx]);
+        }
         return orders[idx];
       }
       return null;
@@ -2279,13 +2288,17 @@ export const dataService = {
       if (idx >= 0) {
         const oldStatus = orders[idx].status;
         const order = orders[idx];
+        const isQuote = order.orderType === "quote";
+        
+        // Quote status flow: draft → sent → accepted/rejected → converted
         order.status = status;
         let cancelledInvoice: any | null = null;
+        
         // RESTORE STOCK only when order is CANCELLED (not delivered).
         // Stock is deducted at order creation and stays deducted through the
         // entire lifecycle (pending → ready → delivered). Only cancelled orders
-        // return stock to inventory.
-        if (status === "cancelled" && oldStatus !== "cancelled" && oldStatus !== "delivered") {
+        // return stock to inventory. Skip for quotes — they never deducted stock.
+        if (status === "cancelled" && oldStatus !== "cancelled" && oldStatus !== "delivered" && !isQuote) {
           for (const item of (order.items || [])) {
             const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
             if (prodIdx >= 0) {
@@ -2302,7 +2315,7 @@ export const dataService = {
         }
         // ACTIVATE INVOICE from draft to sent when order becomes ready or delivered
         // (only if invoice already exists — admin must generate it manually)
-        if (status === "ready" || status === "delivered") {
+        if ((status === "ready" || status === "delivered") && !isQuote) {
           activateInvoiceFromOrder(order.id);
         }
         saveItem("sgf_orders", orders);
@@ -2317,10 +2330,62 @@ export const dataService = {
       ready: orders.filter((o) => o.status === "ready").length,
       delivered: orders.filter((o) => o.status === "delivered").length,
       samples: orders.filter((o) => o.orderType === "sample").length,
-      totalValue: orders.filter((o) => o.orderType !== "sample").reduce((sum, o) => sum + Number(o.total || 0), 0),
+      quotes: orders.filter((o) => o.orderType === "quote" && o.status !== "converted").length,
+      totalValue: orders.filter((o) => o.orderType !== "sample" && o.orderType !== "quote").reduce((sum, o) => sum + Number(o.total || 0), 0),
     }),
     checkExistingSample: ({ customerId, stockItemId }: { customerId: number; stockItemId: number }) => {
       return { exists: hasExistingSample(customerId, stockItemId) };
+    },
+    /** Convert a quote to a real order. Deducts stock, creates follow-ups if needed,
+     *  and marks the original quote as "converted". Returns the new order. */
+    convertQuoteToOrder: (quoteId: number) => {
+      const quote = orders.find((o) => o.id == quoteId && o.orderType === "quote");
+      if (!quote) return { error: "Quote not found", order: null };
+      if (quote.status === "converted") return { error: "Quote already converted", order: null };
+
+      // Generate new order number with ORD- prefix
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const now = new Date();
+      const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+      const msCounter = String(Date.now() % 10000).padStart(4, "0");
+      const orderNumber = `ORD-${dateStr}-${hhmm}${msCounter}`;
+
+      const newOrder = {
+        ...quote,
+        id: Date.now(),
+        orderNumber,
+        orderType: "normal",
+        status: "pending",
+        quoteId: quote.id,
+        quoteNumber: quote.orderNumber,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      orders.push(newOrder);
+
+      // DEDUCT STOCK for each item
+      for (const item of (newOrder.items || [])) {
+        const prodIdx = products.findIndex((p) => p.id == item.stockItemId);
+        if (prodIdx >= 0) {
+          const conversion = item.conversion || 1;
+          const deductQty = item.quantity * conversion;
+          const newQty = Math.max(0, (products[prodIdx].quantity || 0) - deductQty);
+          products[prodIdx].quantity = newQty;
+          products[prodIdx].status = newQty === 0 ? "out_of_stock" : newQty < 20 ? "low_stock" : "in_stock";
+        }
+      }
+      saveItem("sgf_products", products);
+
+      // Mark original quote as converted
+      quote.status = "converted";
+      quote.convertedOrderId = newOrder.id;
+      quote.convertedOrderNumber = newOrder.orderNumber;
+      quote.updatedAt = new Date().toISOString();
+      saveItem("sgf_orders", orders);
+
+      logAudit("CONVERT", "quote", quote.id, `Quote ${quote.orderNumber} converted to order ${orderNumber}`);
+
+      return { error: null, order: newOrder };
     },
     /** Create a new order from an existing invoice that has no linked order.
      *  This fixes the case where an invoice exists but its order was lost. */

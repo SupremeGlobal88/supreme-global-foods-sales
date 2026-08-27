@@ -23,6 +23,12 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   delivered: { label: "Delivered", color: "#4ADE80" },
   cancelled: { label: "Cancelled", color: "#EF4444" },
   sample_delivered: { label: "Sample", color: "#D4A843" },
+  // Quote statuses
+  draft: { label: "Draft", color: "#8A8B8C" },
+  sent: { label: "Sent", color: "#6366F1" },
+  accepted: { label: "Accepted", color: "#4ADE80" },
+  rejected: { label: "Rejected", color: "#EF4444" },
+  converted: { label: "Converted", color: "#D4A843" },
 };
 
 /** Dedicated component for Generate Invoice button.
@@ -262,6 +268,7 @@ const statusTabs = [
   { key: "delivered", label: "Delivered" },
   { key: "cancelled", label: "Cancelled" },
   { key: "sample", label: "Samples" },
+  { key: "quotes", label: "Quotes" },
 ];
 
 export default function OrdersPage() {
@@ -278,7 +285,7 @@ export default function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState<any>(null);
 
   const [formData, setFormData] = useState({
-    customerId: 0, orderType: "regular" as "regular" | "sample",
+    customerId: 0, orderType: "regular" as "regular" | "sample" | "quote",
     paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
     deliveryAddress: "", notes: "",
@@ -362,6 +369,23 @@ export default function OrdersPage() {
     },
     onError: (err: any) => {
       alert("Update failed: " + (err.message || "Unknown error"));
+    },
+  });
+  const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
+    onSuccess: async (data) => {
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.invoice.list.invalidate();
+      if (data?.order) {
+        alert(`Quote converted to order ${data.order.orderNumber} successfully!`);
+      }
+    },
+    onError: (err: any) => {
+      alert("Failed to convert quote: " + (err.message || "Unknown error"));
     },
   });
 
@@ -487,6 +511,8 @@ export default function OrdersPage() {
     const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
     if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
+    // Quotes don't deduct stock — skip stock validation
+    if (formData.orderType === "quote") return { valid: true };
     for (const item of validItems) {
       const stockId = Number(item.stockItemId);
       const avail = availableStock[stockId] || 0;
@@ -560,6 +586,13 @@ export default function OrdersPage() {
   }
 
   function canEditOrder(order: any): boolean {
+    // Quotes can be edited while in draft or sent status
+    if (order.orderType === "quote") {
+      if (order.status === "converted" || order.status === "rejected") return false;
+      if (isAdmin) return true;
+      const cust = (customers || []).find((c) => c.id === order.customerId);
+      return cust?.salesRepName === myRepName;
+    }
     // Admin can edit ANY order (including delivered/cancelled/sample_delivered)
     if (isAdmin) return true;
     // Sales reps can edit their own orders while status is "pending" only
@@ -570,6 +603,13 @@ export default function OrdersPage() {
   }
 
   function canCancelOrder(order: any): boolean {
+    // Quotes can be "rejected" instead of cancelled
+    if (order.orderType === "quote") {
+      if (order.status === "converted" || order.status === "rejected") return false;
+      if (isAdmin) return true;
+      const cust = (customers || []).find((c) => c.id === order.customerId);
+      return cust?.salesRepName === myRepName;
+    }
     // Admin can cancel ANY non-cancelled order
     if (isAdmin) return order.status !== "cancelled";
     // Sales rep can only cancel their own pending orders
@@ -580,6 +620,8 @@ export default function OrdersPage() {
   }
 
   function canProgressOrder(order: any): boolean {
+    // Quotes don't use the normal order status flow
+    if (order.orderType === "quote") return false;
     // ONLY ADMIN can click status buttons (Mark Picking / Mark Ready / Mark Delivered)
     if (!isAdmin) return false;
     if (order.status === "delivered" || order.status === "cancelled") return false;
@@ -673,6 +715,7 @@ export default function OrdersPage() {
     .filter((o) => {
       if (activeTab === "all") return true;
       if (activeTab === "sample") return o.orderType === "sample";
+      if (activeTab === "quotes") return o.orderType === "quote";
       return o.status === activeTab;
     })
     .filter((o) => {
@@ -696,15 +739,15 @@ export default function OrdersPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Orders</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} total value</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); }} className="btn-primary"><Plus className="w-4 h-4" /> New Order</button>
+        <button onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {["pending", "picking", "ready", "delivered"].map((key) => (
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {["pending", "picking", "ready", "delivered", "quotes"].map((key) => (
           <div key={key} className="card-surface p-3 text-center">
-            <div className="label-text mb-1">{STATUS_LABELS[key]?.label.toUpperCase()}</div>
-            <div className="stat-number" style={{ fontSize: "1.5rem", color: STATUS_LABELS[key]?.color }}>
-              {key === "pending" ? stats?.pending : key === "picking" ? stats?.picking : key === "ready" ? stats?.ready : stats?.delivered}
+            <div className="label-text mb-1">{key === "quotes" ? "QUOTES" : STATUS_LABELS[key]?.label.toUpperCase()}</div>
+            <div className="stat-number" style={{ fontSize: "1.5rem", color: key === "quotes" ? "#6366F1" : STATUS_LABELS[key]?.color }}>
+              {key === "pending" ? stats?.pending : key === "picking" ? stats?.picking : key === "ready" ? stats?.ready : key === "delivered" ? stats?.delivered : stats?.quotes}
             </div>
           </div>
         ))}
@@ -752,7 +795,11 @@ export default function OrdersPage() {
                     <td className="p-4 font-mono-data text-xs text-[#D4A843] cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderNumber}
                       {order.orderType === "sample" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>}
-                      {isAdmin && !(invoices || []).some((inv: any) => inv.orderId == order.id && inv.invoiceNumber?.startsWith("SGF")) && (
+                      {order.orderType === "quote" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.15)", color: "#6366F1" }}><FileText className="w-3 h-3 inline" /> QUOTE</span>}
+                      {order.orderType === "quote" && order.status === "converted" && (
+                        <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.15)", color: "#4ADE80" }}>→ {order.convertedOrderNumber}</span>
+                      )}
+                      {isAdmin && order.orderType !== "quote" && !(invoices || []).some((inv: any) => inv.orderId == order.id && inv.invoiceNumber?.startsWith("SGF")) && (
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
                     </td>
@@ -760,12 +807,14 @@ export default function OrdersPage() {
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderType === "sample"
                         ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>
+                        : order.orderType === "quote"
+                        ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}><FileText className="w-3 h-3 inline" /> QUOTE</span>
                         : <span className="status-badge text-xs" style={{ backgroundColor: `${PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80"}20`, color: PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80" }}>{order.priceTier?.toUpperCase() || "WHOLESALE"}</span>
                       }
                     </td>
                     <td className="p-4 text-sm text-[#8A8B8C] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{new Date(order.createdAt).toLocaleDateString("en-ZA")}</td>
                     <td className="p-4 text-right text-sm text-white font-display cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.items?.length || 0}</td>
-                    <td className="p-4 text-right font-display font-semibold cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)} style={{ color: order.orderType === "sample" ? "#D4A843" : "#FFFFFF" }}>
+                    <td className="p-4 text-right font-display font-semibold cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)} style={{ color: order.orderType === "sample" ? "#D4A843" : order.orderType === "quote" ? "#6366F1" : "#FFFFFF" }}>
                       {order.orderType === "sample" ? "R 0.00" : `R ${Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`}
                     </td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
@@ -773,7 +822,7 @@ export default function OrdersPage() {
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Status flow buttons always visible */}
+                        {/* Status flow buttons for normal orders */}
                         {canProgressOrder(order) && order.status === "pending" && (
                           <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "picking" }); }} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>
                         )}
@@ -782,6 +831,20 @@ export default function OrdersPage() {
                         )}
                         {canProgressOrder(order) && order.status === "ready" && (
                           <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "delivered" }); }} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>
+                        )}
+                        {/* Quote actions */}
+                        {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
+                          <>
+                            {order.status === "draft" && (
+                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Send Quote</button>
+                            )}
+                            {order.status === "sent" && (
+                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Customer accepted the quote? Convert to order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                            )}
+                            {order.status === "accepted" && (
+                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Convert this accepted quote to an order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                            )}
+                          </>
                         )}
                         {canEditOrder(order) && (
                           <button onClick={(e) => { e.stopPropagation(); startEditOrder(order); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit order"><Pencil className="w-4 h-4 text-[#D4A843]" /></button>
@@ -795,32 +858,54 @@ export default function OrdersPage() {
                       <div className="p-6" style={{ backgroundColor: "#0A0A0B" }}>
                         {/* Status flow indicator */}
                         <div className="flex items-center gap-2 mb-4 p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                          {["pending", "picking", "ready", "delivered"].map((s, i, arr) => {
-                            const isCurrent = order.status === s;
-                            const isPast = arr.indexOf(order.status) > i;
-                            const colors: Record<string, string> = { pending: "#F59E0B", picking: "#6366F1", ready: "#4ADE80", delivered: "#4ADE80" };
-                            return (
-                              <div key={s} className="flex items-center gap-2">
-                                <span className="text-xs font-body px-3 py-1 rounded-full" style={{ backgroundColor: isCurrent ? `${colors[s]}30` : isPast ? `${colors[s]}15` : "#222324", color: isCurrent ? colors[s] : isPast ? "#8A8B8C" : "#555", border: isCurrent ? `1px solid ${colors[s]}` : "1px solid transparent", fontWeight: isCurrent ? 700 : 400 }}>
-                                  {STATUS_LABELS[s]?.label}
-                                </span>
-                                {i < arr.length - 1 && <span style={{ color: isPast ? "#4ADE80" : "#333" }}>→</span>}
-                              </div>
-                            );
-                          })}
+                          {order.orderType === "quote" ? (
+                            // Quote status flow
+                            ["draft", "sent", "accepted", "converted"].map((s, i, arr) => {
+                              const isCurrent = order.status === s;
+                              const isPast = ["sent", "accepted", "converted"].indexOf(order.status) > ["draft", "sent", "accepted", "converted"].indexOf(s);
+                              const colors: Record<string, string> = { draft: "#8A8B8C", sent: "#6366F1", accepted: "#4ADE80", converted: "#D4A843" };
+                              return (
+                                <div key={s} className="flex items-center gap-2">
+                                  <span className="text-xs font-body px-3 py-1 rounded-full" style={{ backgroundColor: isCurrent ? `${colors[s]}30` : isPast ? `${colors[s]}15` : "#222324", color: isCurrent ? colors[s] : isPast ? "#8A8B8C" : "#555", border: isCurrent ? `1px solid ${colors[s]}` : "1px solid transparent", fontWeight: isCurrent ? 700 : 400 }}>
+                                    {STATUS_LABELS[s]?.label}
+                                  </span>
+                                  {i < arr.length - 1 && <span style={{ color: isPast ? "#4ADE80" : "#333" }}>→</span>}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            // Normal order status flow
+                            ["pending", "picking", "ready", "delivered"].map((s, i, arr) => {
+                              const isCurrent = order.status === s;
+                              const isPast = arr.indexOf(order.status) > i;
+                              const colors: Record<string, string> = { pending: "#F59E0B", picking: "#6366F1", ready: "#4ADE80", delivered: "#4ADE80" };
+                              return (
+                                <div key={s} className="flex items-center gap-2">
+                                  <span className="text-xs font-body px-3 py-1 rounded-full" style={{ backgroundColor: isCurrent ? `${colors[s]}30` : isPast ? `${colors[s]}15` : "#222324", color: isCurrent ? colors[s] : isPast ? "#8A8B8C" : "#555", border: isCurrent ? `1px solid ${colors[s]}` : "1px solid transparent", fontWeight: isCurrent ? 700 : 400 }}>
+                                    {STATUS_LABELS[s]?.label}
+                                  </span>
+                                  {i < arr.length - 1 && <span style={{ color: isPast ? "#4ADE80" : "#333" }}>→</span>}
+                                </div>
+                              );
+                            })
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                           <div>
-                            <h3 className="font-display font-semibold text-white">Order Details</h3>
-                            <span className="text-xs text-[#8A8B8C]">{order.orderType === "sample" ? "Sample Order — No Charge" : `Price Tier: ${(order.priceTier || "wholesale").toUpperCase()}`}</span>
+                            <h3 className="font-display font-semibold text-white">{order.orderType === "quote" ? "Quote Details" : "Order Details"}</h3>
+                            <span className="text-xs text-[#8A8B8C]">
+                              {order.orderType === "sample" ? "Sample Order — No Charge" :
+                               order.orderType === "quote" ? `Quote — ${order.status === "converted" ? `Converted to ${order.convertedOrderNumber}` : "Waiting for customer acceptance"}` :
+                               `Price Tier: ${(order.priceTier || "wholesale").toUpperCase()}`}
+                            </span>
                           </div>
                           <div className="flex gap-2 flex-wrap">
                             {canEditOrder(order) && (
-                              <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)" }}><Pencil className="w-3 h-3" /> Edit Order</button>
+                              <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)" }}><Pencil className="w-3 h-3" /> Edit {order.orderType === "quote" ? "Quote" : "Order"}</button>
                             )}
                             <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Picking Slip</button>
-                            {isAdmin && (
+                            {isAdmin && order.orderType !== "quote" && (
                               <GenerateInvoiceButton
                                 orderId={order.id}
                               />
@@ -833,7 +918,21 @@ export default function OrdersPage() {
                           {canProgressOrder(order) && order.status === "pending" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>}
                           {canProgressOrder(order) && order.status === "picking" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>}
                           {canProgressOrder(order) && order.status === "ready" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>}
-                          {canCancelOrder(order) && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
+                          {/* Quote actions in expanded view */}
+                          {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
+                            <>
+                              {order.status === "draft" && (
+                                <button onClick={() => { if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Mark as Sent</button>
+                              )}
+                              {(order.status === "sent" || order.status === "accepted") && (
+                                <button onClick={() => { if (confirm(`Convert this ${order.status === "sent" ? "sent" : "accepted"} quote to an order?`)) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                              )}
+                              {canCancelOrder(order) && (
+                                <button onClick={() => { if (confirm("Reject this quote?")) updateStatus.mutate({ id: order.id, status: "rejected" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Reject</button>
+                              )}
+                            </>
+                          )}
+                          {canCancelOrder(order) && order.orderType !== "quote" && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
                           {isAdmin && order.status === "cancelled" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "pending" })} className="btn-primary text-xs"><RotateCcw className="w-3 h-3" /> Re-activate</button>}
                         </div>
                         <table className="w-full mb-4">
@@ -852,6 +951,8 @@ export default function OrdersPage() {
                         <div className="flex justify-end gap-6 text-sm">
                           {order.orderType === "sample"
                             ? <div className="font-display font-semibold text-[#D4A843] text-lg"><FlaskConical className="w-5 h-5 inline mr-2" />SAMPLE ORDER — No Charge</div>
+                            : order.orderType === "quote"
+                            ? <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#6366F1]">Quote Total: R {Number(order.total).toFixed(2)}</div></>
                             : <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#D4A843]">Total: R {Number(order.total).toFixed(2)}</div></>
                           }
                         </div>
@@ -882,7 +983,13 @@ export default function OrdersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-8 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-white text-xl">{editingOrder ? `Edit Order ${editingOrder.orderNumber}` : "New Order"}</h2>
+              <h2 className="font-display font-semibold text-white text-xl">
+                {editingOrder
+                  ? `Edit ${editingOrder.orderType === "quote" ? "Quote" : "Order"} ${editingOrder.orderNumber}`
+                  : formData.orderType === "quote"
+                  ? "New Quote"
+                  : "New Order"}
+              </h2>
               <button onClick={() => { setShowForm(false); setEditingOrder(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             {editingOrder && (
@@ -952,16 +1059,21 @@ export default function OrdersPage() {
               {/* Order Type */}
               <div>
                 <label className="label-text block mb-2">Order Type *</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <button type="button" onClick={() => setFormData({ ...formData, orderType: "regular" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "regular" ? "rgba(74, 222, 128, 0.08)" : "#0A0A0B", border: formData.orderType === "regular" ? "2px solid #4ADE80" : "2px solid #222324" }}>
                     <ShoppingBag className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }} />
-                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular Order</div>
-                    <div className="text-xs text-[#8A8B8C] mt-1">Customer is charged</div>
+                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular</div>
+                    <div className="text-xs text-[#8A8B8C] mt-1">Customer charged</div>
                   </button>
                   <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
                     <FlaskConical className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }} />
-                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample Order</div>
-                    <div className="text-xs text-[#8A8B8C] mt-1">Customer is NOT charged</div>
+                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample</div>
+                    <div className="text-xs text-[#8A8B8C] mt-1">No charge</div>
+                  </button>
+                  <button type="button" onClick={() => setFormData({ ...formData, orderType: "quote" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "quote" ? "rgba(99, 102, 241, 0.08)" : "#0A0A0B", border: formData.orderType === "quote" ? "2px solid #6366F1" : "2px solid #222324" }}>
+                    <FileText className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }} />
+                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }}>Quote</div>
+                    <div className="text-xs text-[#8A8B8C] mt-1">Send to customer</div>
                   </button>
                 </div>
                 {formData.orderType === "sample" && (
@@ -969,10 +1081,15 @@ export default function OrdersPage() {
                     1 unit per product max. Customer not charged. Follow-up in 4 days.
                   </div>
                 )}
+                {formData.orderType === "quote" && (
+                  <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.05)", color: "#6366F1" }}>
+                    Quotes don't deduct stock. Convert to an order when the customer accepts.
+                  </div>
+                )}
               </div>
 
               {/* Price Tier */}
-              {formData.orderType === "regular" && (
+              {formData.orderType !== "sample" && (
                 <div>
                   <label className="label-text block mb-2">Pricing Tier *</label>
                   <div className="grid grid-cols-4 gap-3">

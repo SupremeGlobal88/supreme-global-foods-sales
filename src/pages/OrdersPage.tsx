@@ -6,7 +6,7 @@ import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDeta
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
-  ShoppingBag, Pencil, RotateCcw, Info, Search, FileText,
+  ShoppingBag, Pencil, RotateCcw, Info, Search, FileText, Mail,
 } from "lucide-react";
 
 const PRICE_TIERS = [
@@ -711,6 +711,164 @@ export default function OrdersPage() {
     printWindow.document.close();
   }
 
+  /** Print a professional quote document on Supreme Global Foods stationery */
+  function printQuote(order: any) {
+    const customer = getCustomer(order);
+    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const validUntil = new Date(order.createdAt);
+    validUntil.setDate(validUntil.getDate() + 30);
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`
+<html><head><title>Quote - ${order.orderNumber}</title>
+<style>
+  @media print { body { padding: 0; } .no-print { display: none; } }
+  body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
+  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
+  .logo-img { height: 55px; margin-bottom: 4px; }
+  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
+  .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
+  .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #6366F1; color: white; }
+  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
+  .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
+  .full-width { grid-column: 1 / -1; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+  th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
+  .text-right { text-align: right; }
+  .totals { margin-top: 20px; padding: 15px; background: #fafafa; border-radius: 8px; border-left: 4px solid #D4A843; }
+  .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+  .total-final { font-size: 18px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 10px; margin-top: 6px; }
+  .terms { margin-top: 30px; padding: 15px; background: #f5f5f5; border-radius: 8px; }
+  .terms-title { font-size: 12px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .terms-text { font-size: 11px; color: #666; line-height: 1.6; }
+  .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 15px; }
+  .banking { margin-top: 20px; padding: 15px; background: #fafafa; border-radius: 8px; border: 1px solid #e0e0e0; }
+  .banking-title { font-size: 12px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .banking-row { display: grid; grid-template-columns: 140px 1fr; font-size: 12px; padding: 3px 0; }
+  .banking-label { color: #888; }
+  .banking-value { color: #333; font-weight: 600; }
+</style></head><body>
+  <div class="header">
+    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
+    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
+    <div class="subtitle">28 Nagington Road, Wadeville, Germiston, 1422</div>
+    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
+  </div>
+  <div class="doc-title">QUOTATION</div>
+  <div style="text-align:center;margin-bottom:15px;"><span class="badge">QUOTE</span></div>
+  <div class="info-section">
+    <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:16px;">${order.orderNumber}</div></div>
+    <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
+    <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
+    <div><div class="label">Prepared By</div><div class="value">${order.salesRepName || "N/A"}</div></div>
+    <div class="full-width" style="margin-top:8px;border-top:1px solid #e0e0e0;padding-top:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div>
+          <div class="label" style="margin-top:6px;">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div>
+          <div class="label" style="margin-top:6px;">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div>
+          <div class="label" style="margin-top:6px;">Phone</div><div class="value">${customer?.phone || "N/A"}</div>
+        </div>
+        <div>
+          <div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div>
+          <div class="label" style="margin-top:6px;">Payment Terms</div><div class="value">${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div>
+          <div class="label" style="margin-top:6px;">Price Tier</div><div class="value">${(order.priceTier || "wholesale").toUpperCase()}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Product Code</th><th>Product Name</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Line Total</th></tr></thead>
+    <tbody>
+      ${order.items?.map((item: any) => `
+        <tr>
+          <td>${item.productCode || "N/A"}</td>
+          <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:10px;">${item.unitLabel}</span>` : ""}</td>
+          <td style="text-align:center;font-weight:bold;">${item.quantity}</td>
+          <td style="text-align:right;">${item.unit || "each"}</td>
+          <td style="text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td>
+          <td style="text-align:right;font-weight:600;">R ${Number(item.lineTotal).toFixed(2)}</td>
+        </tr>
+      `).join("") || ""}
+    </tbody>
+  </table>
+  <div class="totals">
+    <div class="total-row"><span>Subtotal</span><span>R ${Number(order.subtotal).toFixed(2)}</span></div>
+    <div class="total-row"><span>VAT (15%)</span><span>R ${Number(order.vatAmount).toFixed(2)}</span></div>
+    <div class="total-row total-final"><span>QUOTE TOTAL</span><span>R ${Number(order.total).toFixed(2)}</span></div>
+  </div>
+  ${order.notes ? `<div style="margin-top:20px;padding:12px;background:#fff8e1;border-radius:8px;border-left:3px solid #D4A843;"><div class="label">Notes</div><div style="font-size:12px;color:#666;font-style:italic;margin-top:4px;">${order.notes}</div></div>` : ""}
+  <div class="banking">
+    <div class="banking-title">Banking Details</div>
+    <div class="banking-row"><div class="banking-label">Bank Name</div><div class="banking-value">${banking?.bankName || "N/A"}</div></div>
+    <div class="banking-row"><div class="banking-label">Account Name</div><div class="banking-value">${banking?.accountName || "N/A"}</div></div>
+    <div class="banking-row"><div class="banking-label">Account Number</div><div class="banking-value">${banking?.accountNumber || "N/A"}</div></div>
+    <div class="banking-row"><div class="banking-label">Branch Code</div><div class="banking-value">${banking?.branchCode || "N/A"}</div></div>
+  </div>
+  <div class="terms">
+    <div class="terms-title">Terms &amp; Conditions</div>
+    <div class="terms-text">
+      1. This quotation is valid for 30 days from the date of issue.<br/>
+      2. Prices are subject to change after the validity period.<br/>
+      3. Stock availability is confirmed at the time of order placement.<br/>
+      4. Payment terms: ${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days from invoice date" : order.paymentTerms === "14_days" ? "14 Days from invoice date" : order.paymentTerms === "30_days" ? "30 Days from invoice date" : "As agreed"}.<br/>
+      5. To accept this quote, please contact your sales representative or reply to this quotation.<br/>
+      6. VAT is included at 15% as per South African tax regulations.<br/>
+      7. Delivery address must be confirmed before dispatch.
+    </div>
+  </div>
+  <div class="footer">
+    Supreme Global Foods (Pty) Ltd &middot; 28 Nagington Road, Wadeville, Germiston, 1422<br/>
+    sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644<br/>
+    <em>This is a quotation and not a tax invoice. No VAT registration number is shown on quotations.</em>
+  </div>
+  <script>
+    (function(){ var done=false; function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } } if(document.readyState==='complete') printIt(); else window.onload=printIt; setTimeout(printIt, 2000); })();
+  </script>
+</body></html>`);
+    w.document.close();
+  }
+
+  /** Generate a mailto: link with quote summary for email sending */
+  function sendQuoteEmail(order: any) {
+    const customer = getCustomer(order);
+    const customerEmail = customer?.email || "";
+    const customerName = customer?.name || "Valued Customer";
+    const subject = encodeURIComponent(`Quotation ${order.orderNumber} — Supreme Global Foods`);
+    const itemsList = (order.items || []).map((item: any) =>
+      `• ${item.productName} (${item.productCode || "N/A"}) — ${item.quantity} ${item.unit || "each"} × R${Number(item.unitPrice).toFixed(2)} = R${Number(item.lineTotal).toFixed(2)}`
+    ).join("\n");
+    const body = encodeURIComponent(
+      `Dear ${customerName},\n\n` +
+      `Please find below your quotation from Supreme Global Foods.\n\n` +
+      `QUOTE NUMBER: ${order.orderNumber}\n` +
+      `DATE: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}\n` +
+      `VALID UNTIL: ${new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-ZA")}\n` +
+      `SALES REP: ${order.salesRepName || "N/A"}\n\n` +
+      `ITEMS:\n${itemsList}\n\n` +
+      `SUBTOTAL: R${Number(order.subtotal).toFixed(2)}\n` +
+      `VAT (15%): R${Number(order.vatAmount).toFixed(2)}\n` +
+      `TOTAL: R${Number(order.total).toFixed(2)}\n\n` +
+      `PAYMENT TERMS: ${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : "As agreed"}\n` +
+      `DELIVERY ADDRESS: ${order.deliveryAddress || customer?.physicalAddress || "As per customer record"}\n\n` +
+      `BANKING DETAILS:\n` +
+      `Bank: ${banking?.bankName || "N/A"}\n` +
+      `Account Name: ${banking?.accountName || "N/A"}\n` +
+      `Account Number: ${banking?.accountNumber || "N/A"}\n` +
+      `Branch Code: ${banking?.branchCode || "N/A"}\n\n` +
+      `To accept this quote, please reply to this email or contact your sales representative.\n\n` +
+      `Kind regards,\n` +
+      `${order.salesRepName || "Supreme Global Foods Team"}\n` +
+      `sales@supremeglobalfoods.co.za | Tel: 083 293 0644\n\n` +
+      `—\nSupreme Global Foods (Pty) Ltd\n28 Nagington Road, Wadeville, Germiston, 1422`
+    );
+    const mailtoLink = `mailto:${customerEmail}?subject=${subject}&body=${body}`;
+    window.location.href = mailtoLink;
+  }
+
   const filteredOrders = (orders || [])
     .filter((o) => {
       if (activeTab === "all") return true;
@@ -836,13 +994,25 @@ export default function OrdersPage() {
                         {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
                           <>
                             {order.status === "draft" && (
-                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Send Quote</button>
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
+                                <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
+                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Send</button>
+                              </>
                             )}
                             {order.status === "sent" && (
-                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Customer accepted the quote? Convert to order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
+                                <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
+                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Customer accepted the quote? Convert to order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                              </>
                             )}
                             {order.status === "accepted" && (
-                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Convert this accepted quote to an order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
+                                <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
+                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Convert this accepted quote to an order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
+                              </>
                             )}
                           </>
                         )}
@@ -904,7 +1074,15 @@ export default function OrdersPage() {
                             {canEditOrder(order) && (
                               <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)" }}><Pencil className="w-3 h-3" /> Edit {order.orderType === "quote" ? "Quote" : "Order"}</button>
                             )}
-                            <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Picking Slip</button>
+                            {order.orderType === "quote" && (
+                              <>
+                                <button onClick={() => printQuote(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print Quote</button>
+                                <button onClick={() => sendQuoteEmail(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email Quote</button>
+                              </>
+                            )}
+                            {order.orderType !== "quote" && (
+                              <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Picking Slip</button>
+                            )}
                             {isAdmin && order.orderType !== "quote" && (
                               <GenerateInvoiceButton
                                 orderId={order.id}
@@ -921,6 +1099,8 @@ export default function OrdersPage() {
                           {/* Quote actions in expanded view */}
                           {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
                             <>
+                              <button onClick={() => printQuote(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print Quote</button>
+                              <button onClick={() => sendQuoteEmail(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email Quote</button>
                               {order.status === "draft" && (
                                 <button onClick={() => { if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Mark as Sent</button>
                               )}

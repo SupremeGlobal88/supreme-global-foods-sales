@@ -22,6 +22,14 @@ export function useAuth() {
 
   const user = demoUser;
 
+  const login = useCallback((userData: AuthUser) => {
+    try {
+      localStorage.setItem(DEMO_USER_KEY, JSON.stringify(userData));
+    } catch {
+      // localStorage quota exceeded — ignore
+    }
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem(DEMO_USER_KEY);
     window.location.reload();
@@ -30,12 +38,13 @@ export function useAuth() {
   return useMemo(
     () => ({
       user,
+      login,
       isAuthenticated: !!user,
       isLoading: false,
       error: null,
       logout,
       refresh: () => Promise.resolve(),
     }),
-    [user, logout],
+    [user, login, logout],
   );
 }

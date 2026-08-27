@@ -134,21 +134,27 @@ export default function Login() {
       }
       setIsSubmitting(true);
 
-      // Try 1: directAuthenticate FIRST (always works for hardcoded defaults + localStorage users)
-      let result = directAuthenticate(name, pin);
+      try {
+        // Try 1: directAuthenticate FIRST (always works for hardcoded defaults + localStorage users)
+        let result = directAuthenticate(name, pin);
 
-      // Try 2: tRPC fallback (for any edge cases)
-      if (!result) {
-        try {
-          result = await authenticate.mutateAsync({ name, pin });
-        } catch { /* tRPC failed too */ }
-      }
+        // Try 2: tRPC fallback (for any edge cases)
+        if (!result) {
+          try {
+            result = await authenticate.mutateAsync({ name, pin });
+          } catch { /* tRPC failed too */ }
+        }
 
-      if (result && result.name) {
-        login(result);
-        navigate("/dashboard", { replace: true });
-      } else {
-        setError("Invalid credentials. Please try again.");
+        if (result && result.name) {
+          login(result);
+          navigate("/dashboard", { replace: true });
+        } else {
+          setError("Invalid credentials. Please try again.");
+        }
+      } catch (err: any) {
+        console.error("[Login] Unexpected error:", err);
+        setError("An unexpected error occurred. Please try again.");
+      } finally {
         setIsSubmitting(false);
       }
     },

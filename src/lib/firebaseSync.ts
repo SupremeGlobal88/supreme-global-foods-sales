@@ -563,18 +563,7 @@ export async function pushCreditNote(cn: any): Promise<void> {
 
 /** Subscribe to real-time credit note updates */
 export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const cnRef = ref(db, "creditNotes");
-  const unsub = onValue(cnRef, (snapshot) => {
-    const data = snapshot.val();
-    const notes = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_creditNotes", notes);
-    try { setStorageItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_creditNotes"]);
-    if (onData) onData(notes);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("creditNotes", "sgf_creditNotes", onData);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -582,78 +571,23 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
 // ═══════════════════════════════════════════════════════════════
 
 export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const fbRef = ref(db, "corporateCustomers");
-  const unsub = onValue(fbRef, (snapshot) => {
-    const data = snapshot.val();
-    const items = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_corporateCustomers", items);
-    try { setStorageItem("sgf_corporateCustomers", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_corporateCustomers"]);
-    if (onData) onData(items);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
 }
 
 export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const fbRef = ref(db, "purchaseOrders");
-  const unsub = onValue(fbRef, (snapshot) => {
-    const data = snapshot.val();
-    const items = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_purchaseOrders", items);
-    try { setStorageItem("sgf_purchaseOrders", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_purchaseOrders"]);
-    if (onData) onData(items);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("purchaseOrders", "sgf_purchaseOrders", onData);
 }
 
 export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const fbRef = ref(db, "barrels");
-  const unsub = onValue(fbRef, (snapshot) => {
-    const data = snapshot.val();
-    const items = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_barrels", items);
-    try { setStorageItem("sgf_barrels", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_barrels"]);
-    if (onData) onData(items);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("barrels", "sgf_barrels", onData);
 }
 
 export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const fbRef = ref(db, "certificatesOfCompliance");
-  const unsub = onValue(fbRef, (snapshot) => {
-    const data = snapshot.val();
-    const items = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_cocs", items);
-    try { setStorageItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_cocs"]);
-    if (onData) onData(items);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("certificatesOfCompliance", "sgf_cocs", onData);
 }
 
 export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const fbRef = ref(db, "packingListLines");
-  const unsub = onValue(fbRef, (snapshot) => {
-    const data = snapshot.val();
-    const items = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_packingListLines", items);
-    try { setStorageItem("sgf_packingListLines", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_packingListLines"]);
-    if (onData) onData(items);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("packingListLines", "sgf_packingListLines", onData);
 }
 
 // =============================================================================
@@ -677,6 +611,10 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
         ),
       ]);
       const data = fbToArray((snapshot as any).val());
+      // Store fingerprint of raw cloud data BEFORE merge.
+      // Subscriptions receive the same raw data; this lets them skip
+      // redundant merge/write/reload when data hasn't actually changed.
+      storeFingerprint(storageKey, data);
       // ALWAYS merge — even when cloud is empty, to clear deleted items locally
       let merged = mergeWithCloudData(storageKey, data);
       if (postProcess) merged = postProcess(merged);
@@ -726,6 +664,98 @@ function fbToArray(data: any): any[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
   return Object.values(data);
+}
+
+// ============================================================================
+// DATA FINGERPRINTING: Skip redundant subscription processing
+// ============================================================================
+// At startup, pullFromCloud() downloads all data and saves to localStorage.
+// Then Firebase subscriptions fire with the SAME data. Without fingerprinting,
+// each subscription would redundantly merge+compress+write+parse, blocking the
+// main thread for 6-10 seconds with 4000+ invoices.
+// ============================================================================
+
+const dataFingerprints: Record<string, string> = {};
+
+/** Compute a lightweight fingerprint of an array of items.
+ *  Uses item IDs and updatedAt timestamps to detect changes. */
+function computeFingerprint(items: any[]): string {
+  let hash = items.length * 997;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const id = String(item?.id || "");
+    const updatedAt = String(item?.updatedAt || item?.createdAt || "");
+    const str = id + ":" + updatedAt;
+    for (let j = 0; j < str.length; j++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(j);
+      hash |= 0;
+    }
+  }
+  return hash.toString();
+}
+
+/** Check if incoming data is different from the last processed batch.
+ *  Returns true if changed, false if identical. */
+function hasDataChanged(key: string, items: any[]): boolean {
+  const fp = computeFingerprint(items);
+  const lastFp = dataFingerprints[key];
+  if (fp === lastFp) return false;
+  dataFingerprints[key] = fp;
+  return true;
+}
+
+/** Store fingerprint for data that was just pulled from cloud.
+ *  Called by pullFromCloud so subscriptions can skip redundant processing. */
+function storeFingerprint(key: string, items: any[]): void {
+  dataFingerprints[key] = computeFingerprint(items);
+}
+
+/** Create a Firebase subscription with automatic change detection.
+ *  - Defers expensive merge/write/reload to setTimeout(..., 0) so the
+ *    browser stays responsive when multiple subscriptions fire at startup.
+ *  - Skips redundant processing when data hasn't actually changed.
+ *  - Supports optional postMerge hook (for customer deduplication). */
+function createSubscription(
+  path: string,
+  storageKey: string,
+  onData?: (data: any[]) => void,
+  options?: {
+    postMerge?: (merged: any[]) => any[];
+    logPrefix?: string;
+  }
+): () => void {
+  if (!isFirebaseReady()) return () => {};
+  const dbRef = ref(db, path);
+  const unsub = onValue(dbRef, (snapshot) => {
+    const data = snapshot.val();
+    const items = fbToArray(data);
+
+    // Defer expensive work to next tick so onValue returns immediately.
+    // This prevents the main thread from freezing when 15+ subscriptions
+    // fire simultaneously at startup.
+    setTimeout(() => {
+      // Skip if data hasn't changed since last processing
+      if (!hasDataChanged(storageKey, items)) {
+        if (onData) onData(items);
+        return;
+      }
+
+      let merged = mergeWithCloudData(storageKey, items);
+      if (options?.postMerge) {
+        merged = options.postMerge(merged);
+      }
+      try {
+        setStorageItem(storageKey, JSON.stringify(merged));
+        if (options?.logPrefix) {
+          console.log(`[FirebaseSync] ${options.logPrefix}: ${items.length} cloud → ${merged.length} merged`);
+        }
+      } catch { /* ignore */ }
+      reloadFromStorage([storageKey]);
+      if (onData) onData(items);
+    }, 0);
+  });
+  listeners.push(unsub);
+  return unsub;
 }
 
 /** Get the stable key for an item based on its data type */
@@ -828,51 +858,27 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
 }
 
 export function subscribeToCustomers(onData?: (customers: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const customersRef = ref(db, "customers");
-  const unsub = onValue(customersRef, (snapshot) => {
-    const data = snapshot.val();
-    const customers = fbToArray(data);
-    let merged = mergeWithCloudData("sgf_customers", customers);
-    // Deduplicate customers by normalized name after merge.
-    // Same customer from different devices may have different IDs.
-    const custMap = new Map<string, any>();
-    for (const c of merged) {
-      const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
-      if (!key) continue;
-      const existing = custMap.get(key);
-      if (!existing || ((c.updatedAt || c.createdAt || 0) > (existing.updatedAt || existing.createdAt || 0))) {
-        custMap.set(key, c);
+  return createSubscription("customers", "sgf_customers", onData, {
+    postMerge: (merged) => {
+      const custMap = new Map<string, any>();
+      for (const c of merged) {
+        const key = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+        if (!key) continue;
+        const existing = custMap.get(key);
+        if (!existing || ((c.updatedAt || c.createdAt || 0) > (existing.updatedAt || existing.createdAt || 0))) {
+          custMap.set(key, c);
+        }
       }
-    }
-    merged = Array.from(custMap.values());
-    try {
-      setStorageItem("sgf_customers", JSON.stringify(merged));
-      console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud, deduped to", merged.length);
-    } catch { /* ignore */ }
-    reloadFromStorage(["sgf_customers"]);
-    if (onData) onData(customers);
+      return Array.from(custMap.values());
+    },
+    logPrefix: "Downloaded customers from cloud, deduped",
   });
-  listeners.push(unsub);
-  return unsub;
 }
 
 export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const stockRef = ref(db, "stock");
-  const unsub = onValue(stockRef, (snapshot) => {
-    const data = snapshot.val();
-    const stock = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_products", stock);
-    try {
-      setStorageItem("sgf_products", JSON.stringify(merged));
-      console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
-    } catch { /* ignore */ }
-    reloadFromStorage(["sgf_products"]);
-    if (onData) onData(stock);
+  return createSubscription("stock", "sgf_products", onData, {
+    logPrefix: "Downloaded products from cloud",
   });
-  listeners.push(unsub);
-  return unsub;
 }
 
 // =============================================================================
@@ -880,140 +886,39 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
 // =============================================================================
 
 export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const ordersRef = ref(db, "orders");
-  const unsub = onValue(ordersRef, (snapshot) => {
-    const data = snapshot.val();
-    const orders = fbToArray(data);
-    // ALWAYS merge — even when cloud is empty, to clear deleted items locally
-    const merged = mergeWithCloudData("sgf_orders", orders);
-    try { setStorageItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_orders"]);
-    onData(orders);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("orders", "sgf_orders", onData);
 }
 
 export function subscribeToCheckins(onData: (checkins: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const ref_path = ref(db, "checkins");
-  const unsub = onValue(ref_path, (snapshot) => {
-    const data = snapshot.val();
-    const checkins = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_checkins", checkins);
-    try { setStorageItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_checkins"]);
-    onData(checkins);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("checkins", "sgf_checkins", onData);
 }
 
 export function subscribeToAppointments(onData: (appts: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const ref_path = ref(db, "appointments");
-  const unsub = onValue(ref_path, (snapshot) => {
-    const data = snapshot.val();
-    const appts = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_appointments", appts);
-    try { setStorageItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_appointments"]);
-    onData(appts);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("appointments", "sgf_appointments", onData);
 }
 
 export function subscribeToInvoices(onData: (invoices: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const ref_path = ref(db, "invoices");
-  const unsub = onValue(ref_path, (snapshot) => {
-    const data = snapshot.val();
-    const invoices = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_invoices", invoices);
-    try { setStorageItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_invoices"]);
-    onData(invoices);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("invoices", "sgf_invoices", onData);
 }
 
 export function subscribeToFollowUpActions(onData: (actions: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const ref_path = ref(db, "followUpActions");
-  const unsub = onValue(ref_path, (snapshot) => {
-    const data = snapshot.val();
-    const actions = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_followUpActions", actions);
-    try { setStorageItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_followUpActions"]);
-    onData(actions);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("followUpActions", "sgf_followUpActions", onData);
 }
 
 export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const followUpsRef = ref(db, "followUps");
-  const unsub = onValue(followUpsRef, (snapshot) => {
-    const data = snapshot.val();
-    const followUps = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_followUps", followUps);
-    try { setStorageItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_followUps"]);
-    if (onData) onData(followUps);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("followUps", "sgf_followUps", onData);
 }
 
 export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const receiptsRef = ref(db, "receipts");
-  const unsub = onValue(receiptsRef, (snapshot) => {
-    const data = snapshot.val();
-    const receipts = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_receipts", receipts);
-    try { setStorageItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_receipts"]);
-    if (onData) onData(receipts);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("receipts", "sgf_receipts", onData);
 }
 
 export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const repsRef = ref(db, "salesReps");
-  const unsub = onValue(repsRef, (snapshot) => {
-    const data = snapshot.val();
-    const reps = fbToArray(data);
-    // CRITICAL: Use the SAME storage key as dataService (sgf_salesReps) for consistency
-    const merged = mergeWithCloudData("sgf_salesReps", reps);
-    try { setStorageItem("sgf_salesReps", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_salesReps"]);
-    if (onData) onData(reps);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("salesReps", "sgf_salesReps", onData);
 }
 
 export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
-  const usersRef = ref(db, "users");
-  const unsub = onValue(usersRef, (snapshot) => {
-    const data = snapshot.val();
-    const users = fbToArray(data);
-    const merged = mergeWithCloudData("sgf_users", users);
-    try { setStorageItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_users"]);
-    if (onData) onData(users);
-  });
-  listeners.push(unsub);
-  return unsub;
+  return createSubscription("users", "sgf_users", onData);
 }
 
 // =============================================================================
@@ -1489,12 +1394,6 @@ export function initAutoSync(): () => void {
     const cloudCount = data?.length || 0;
     const prev = lastCounts[type] || 0;
     lastCounts[type] = cloudCount;
-
-    // Skip if count hasn't changed — Firebase often re-fires with identical data
-    if (cloudCount === prev && cloudCount > 0) {
-      console.log(`[FirebaseSync] Received ${cloudCount} ${type} — count unchanged, skipping event`);
-      return;
-    }
 
     console.log(`[FirebaseSync] Received ${cloudCount} ${type} (was ${prev})`);
 

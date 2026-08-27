@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from "react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
@@ -154,10 +154,14 @@ export default function App() {
     }
   }, [isAuthenticated, isCloudReady]);
 
-  // When Firebase data changes, invalidate ONLY the affected queries.
-  // CRITICAL FIX: Removed the nuclear `invalidateQueries({ refetchType: "all" })`
-  // which was freezing the UI by forcing ALL queries to refetch simultaneously.
-  // Now we use targeted invalidation with a debounce to batch rapid events.
+  // When Firebase data changes, invalidate affected queries using tRPC utils.
+  // CRITICAL FIX: Using utils.*.invalidate() ensures the correct queryKey format
+  // for tRPC + React Query v5. The previous queryClient.invalidateQueries() with
+  // manually-specified queryKey arrays was not matching tRPC's internal key format.
+  // We also debounce to batch rapid startup events from 15+ subscriptions.
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingTypes = new Set<string>();
@@ -171,61 +175,62 @@ export default function App() {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         console.log("[Sync] firebaseDataReceived batch:", Array.from(pendingTypes));
+        const u = utilsRef.current;
         for (const t of pendingTypes) {
           switch (t) {
             case "invoices":
-              queryClient.invalidateQueries({ queryKey: [["invoice", "list"]] });
-              queryClient.invalidateQueries({ queryKey: [["invoice", "getStats"]] });
+              u.invoice.list.invalidate();
+              u.invoice.getStats.invalidate();
               break;
             case "orders":
-              queryClient.invalidateQueries({ queryKey: [["order", "list"]] });
-              queryClient.invalidateQueries({ queryKey: [["order", "getStats"]] });
+              u.order.list.invalidate();
+              u.order.getStats.invalidate();
               break;
             case "customers":
-              queryClient.invalidateQueries({ queryKey: [["customer", "search"]] });
-              queryClient.invalidateQueries({ queryKey: [["customer", "list"]] });
+              u.customer.search.invalidate();
+              u.customer.list.invalidate();
               break;
             case "appointments":
-              queryClient.invalidateQueries({ queryKey: [["appointment", "list"]] });
+              u.appointment.list.invalidate();
               break;
             case "checkins":
-              queryClient.invalidateQueries({ queryKey: [["checkIn", "list"]] });
+              u.checkIn.list.invalidate();
               break;
             case "stock":
-              queryClient.invalidateQueries({ queryKey: [["stock", "list"]] });
-              queryClient.invalidateQueries({ queryKey: [["stock", "search"]] });
-              queryClient.invalidateQueries({ queryKey: [["stock", "getStats"]] });
+              u.stock.list.invalidate();
+              u.stock.search.invalidate();
+              u.stock.getStats.invalidate();
               break;
             case "creditNotes":
-              queryClient.invalidateQueries({ queryKey: [["invoice", "getCreditNotes"]] });
-              queryClient.invalidateQueries({ queryKey: [["invoice", "list"]] });
+              u.invoice.getCreditNotes.invalidate();
+              u.invoice.list.invalidate();
               break;
             case "followUps":
-              queryClient.invalidateQueries({ queryKey: [["followUp", "list"]] });
+              u.followUp.list.invalidate();
               break;
             case "followUpActions":
-              queryClient.invalidateQueries({ queryKey: [["followUpAction", "list"]] });
+              u.followUpAction.list.invalidate();
               break;
             case "users":
-              queryClient.invalidateQueries({ queryKey: [["user", "list"]] });
+              u.user.list.invalidate();
               break;
             case "salesReps":
-              queryClient.invalidateQueries({ queryKey: [["customer", "getSalesReps"]] });
+              u.customer.getSalesReps.invalidate();
               break;
             case "corporateCustomers":
-              queryClient.invalidateQueries({ queryKey: [["corporateCustomer", "list"]] });
+              u.corporateCustomer.list.invalidate();
               break;
             case "purchaseOrders":
-              queryClient.invalidateQueries({ queryKey: [["purchaseOrder", "list"]] });
+              u.purchaseOrder.list.invalidate();
               break;
             case "barrels":
-              queryClient.invalidateQueries({ queryKey: [["barrel", "list"]] });
+              u.barrel.list.invalidate();
               break;
             case "certificatesOfCompliance":
-              queryClient.invalidateQueries({ queryKey: [["coc", "list"]] });
+              u.coc.list.invalidate();
               break;
             case "packingListLines":
-              queryClient.invalidateQueries({ queryKey: [["packingList", "listByPurchaseOrder"]] });
+              u.packingList.listByPurchaseOrder.invalidate();
               break;
             default:
               console.warn("[Sync] Unknown data type in firebaseDataReceived:", t);

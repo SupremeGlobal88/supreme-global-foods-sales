@@ -121,24 +121,10 @@ export default function Login() {
     );
   }, []);
 
-  const authenticate = trpc.user.authenticate.useMutation({
-    onSuccess: (data) => {
-      if (data?.user) {
-        login(data.user);
-        navigate("/dashboard", { replace: true });
-      } else {
-        setError("Invalid credentials. Please try again.");
-        setIsSubmitting(false);
-      }
-    },
-    onError: () => {
-      setError("Invalid credentials. Please try again.");
-      setIsSubmitting(false);
-    },
-  });
+  const authenticate = trpc.user.authenticate.useMutation();
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
       setError("");
       const name = role === "admin" ? selectedAdmin : selectedRep;
@@ -147,9 +133,26 @@ export default function Login() {
         return;
       }
       setIsSubmitting(true);
-      authenticate.mutate({ name, pin });
+
+      // Try 1: directAuthenticate FIRST (always works for hardcoded defaults + localStorage users)
+      let result = directAuthenticate(name, pin);
+
+      // Try 2: tRPC fallback (for any edge cases)
+      if (!result) {
+        try {
+          result = await authenticate.mutateAsync({ name, pin });
+        } catch { /* tRPC failed too */ }
+      }
+
+      if (result && result.name) {
+        login(result);
+        navigate("/dashboard", { replace: true });
+      } else {
+        setError("Invalid credentials. Please try again.");
+        setIsSubmitting(false);
+      }
     },
-    [role, selectedAdmin, selectedRep, pin, authenticate]
+    [role, selectedAdmin, selectedRep, pin, authenticate, login, navigate]
   );
 
   return (

@@ -168,9 +168,18 @@ export function createLocalLink() {
               case "order.create": {
                 result = dataService.order.create(input);
                 await fbPush("order", result);
-                // Push updated stock to Firebase so all devices see deducted quantities
-                await pushStock(dataService.stock.list());
-                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
+                // Push updated stock to Firebase so all devices see deducted quantities.
+                // CRITICAL FIX: Only push the stock items that actually changed (the order items),
+                // not ALL 4000+ stock items. This was causing the Place Order popup to hang
+                // for 10+ seconds while every product was pushed to Firebase one by one.
+                const changedStockIds = new Set((result?.items || []).map((it: any) => Number(it.stockItemId)));
+                for (const stockId of changedStockIds) {
+                  const prod = dataService.stock.getById(stockId);
+                  if (prod) {
+                    try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.create] pushOneStockItem failed for", stockId, e); }
+                  }
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 // If sample order: push the follow-up to Firebase so all devices see it
                 if (input?.orderType === "sample" && result?.id) {
                   const fu = dataService.followUp.list().find((f: any) => f.orderId == result.id);
@@ -183,9 +192,17 @@ export function createLocalLink() {
                 const { id, data } = input;
                 result = dataService.order.update({ id, data });
                 await fbPush("order", result);
-                // Push updated stock to Firebase so all devices see updated quantities
-                await pushStock(dataService.stock.list());
-                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
+                // Push updated stock to Firebase so all devices see updated quantities.
+                // CRITICAL FIX: Only push the stock items that actually changed (the order items),
+                // not ALL 4000+ stock items.
+                const changedStockIds = new Set((result?.items || []).map((it: any) => Number(it.stockItemId)));
+                for (const stockId of changedStockIds) {
+                  const prod = dataService.stock.getById(stockId);
+                  if (prod) {
+                    try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.update] pushOneStockItem failed for", stockId, e); }
+                  }
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 if (data?.orderType === "sample" && result?.id) {
                   const fu = dataService.followUp.list().find((f: any) => f.orderId == result.id);
                   if (fu) await pushFollowUp(fu);
@@ -197,9 +214,17 @@ export function createLocalLink() {
                 const updateResult = dataService.order.updateStatus(input);
                 result = updateResult?.order || updateResult;
                 await fbPush("order", result);
-                // Push updated stock to Firebase (cancelled orders restore stock)
-                await pushStock(dataService.stock.list());
-                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: 1 } }));
+                // Push updated stock to Firebase (cancelled orders restore stock).
+                // CRITICAL FIX: Only push the stock items that actually changed,
+                // not ALL 4000+ stock items.
+                const changedStockIds = new Set((result?.items || []).map((it: any) => Number(it.stockItemId)));
+                for (const stockId of changedStockIds) {
+                  const prod = dataService.stock.getById(stockId);
+                  if (prod) {
+                    try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.updateStatus] pushOneStockItem failed for", stockId, e); }
+                  }
+                }
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 // If order was cancelled and a linked invoice was also cancelled, push it
                 if (updateResult?.cancelledInvoice) {
                   await pushInvoice(updateResult.cancelledInvoice);
@@ -237,8 +262,17 @@ export function createLocalLink() {
                 if (result?.order) {
                   await fbPush("order", result.order);
                   await fbPush("order", dataService.order.list().find((o: any) => o.id == input?.quoteId));
+                  // Push updated stock to Firebase — quote conversion deducts stock
+                  const changedStockIds = new Set((result.order?.items || []).map((it: any) => Number(it.stockItemId)));
+                  for (const stockId of changedStockIds) {
+                    const prod = dataService.stock.getById(stockId);
+                    if (prod) {
+                      try { await pushOneStockItem(prod); } catch (e) { console.warn("[convertQuoteToOrder] pushOneStockItem failed for", stockId, e); }
+                    }
+                  }
                   reloadFromStorage(["sgf_orders"]);
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 2 } }));
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 }
                 break;
               }

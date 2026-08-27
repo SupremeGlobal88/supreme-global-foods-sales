@@ -342,33 +342,44 @@ export default function OrdersPage() {
   });
   const createOrder = trpc.order.create.useMutation({
     onSuccess: async () => {
-      reloadFromStorage();
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
-      await utils.sampleReport.getAll.invalidate();
+      // CRITICAL FIX: Close popup IMMEDIATELY before any async work.
+      // Previously setShowForm(false) was AFTER await invalidate() calls.
+      // If refetching 5000+ items hangs, the popup stays open forever.
       setShowForm(false); setEditingOrder(null); resetForm();
+      // Background sync — don't block the UI
+      reloadFromStorage();
+      utils.order.list.invalidate();
+      utils.order.getStats.invalidate();
+      utils.stock.search.invalidate();
+      utils.stock.list.invalidate();
+      utils.stock.getStats.invalidate();
+      utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
       alert("Failed to place order: " + (err.message || "Unknown error. Please check console for details."));
       console.error("[createOrder] error:", err);
     },
+    onSettled: () => {
+      // Safety net: always re-enable the form regardless of success/failure
+      setShowForm(false); setEditingOrder(null);
+    },
   });
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
-      reloadFromStorage();
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
-      await utils.sampleReport.getAll.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
+      reloadFromStorage();
+      utils.order.list.invalidate();
+      utils.order.getStats.invalidate();
+      utils.stock.search.invalidate();
+      utils.stock.list.invalidate();
+      utils.stock.getStats.invalidate();
+      utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
       alert("Update failed: " + (err.message || "Unknown error"));
+    },
+    onSettled: () => {
+      setShowForm(false); setEditingOrder(null);
     },
   });
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
@@ -900,12 +911,18 @@ export default function OrdersPage() {
         <button onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {["pending", "picking", "ready", "delivered", "quotes"].map((key) => (
-          <div key={key} className="card-surface p-3 text-center">
-            <div className="label-text mb-1">{key === "quotes" ? "QUOTES" : STATUS_LABELS[key]?.label.toUpperCase()}</div>
-            <div className="stat-number" style={{ fontSize: "1.5rem", color: key === "quotes" ? "#6366F1" : STATUS_LABELS[key]?.color }}>
-              {key === "pending" ? stats?.pending : key === "picking" ? stats?.picking : key === "ready" ? stats?.ready : key === "delivered" ? stats?.delivered : stats?.quotes}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { key: "pending", label: "PENDING", color: STATUS_LABELS.pending.color, value: stats?.pending },
+          { key: "picking", label: "PICKING", color: STATUS_LABELS.picking.color, value: stats?.picking },
+          { key: "ready", label: "READY", color: STATUS_LABELS.ready.color, value: stats?.ready },
+          { key: "delivered", label: "DELIVERED", color: STATUS_LABELS.delivered.color, value: stats?.delivered },
+          { key: "quotes", label: "QUOTES", color: "#6366F1", value: stats?.quotes },
+        ].map((card) => (
+          <div key={card.key} className="card-surface p-3 text-center">
+            <div className="label-text mb-1">{card.label}</div>
+            <div className="stat-number" style={{ fontSize: "1.5rem", color: card.color }}>
+              {card.value ?? 0}
             </div>
           </div>
         ))}
@@ -979,7 +996,7 @@ export default function OrdersPage() {
                       <span className="status-badge" style={{ backgroundColor: `${STATUS_LABELS[order.status]?.color}20`, color: STATUS_LABELS[order.status]?.color }}>{STATUS_LABELS[order.status]?.label || order.status}</span>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 flex-wrap">
                         {/* Status flow buttons for normal orders */}
                         {canProgressOrder(order) && order.status === "pending" && (
                           <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "picking" }); }} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>
@@ -1161,7 +1178,7 @@ export default function OrdersPage() {
       {/* New / Edit Order Dialog */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-8 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ borderRadius: 16 }}>
+          <div className="card-surface p-4 sm:p-8 w-full mx-2 sm:mx-4 max-h-[90vh] overflow-y-auto" style={{ maxWidth: 720, borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-display font-semibold text-white text-xl">
                 {editingOrder
@@ -1239,7 +1256,7 @@ export default function OrdersPage() {
               {/* Order Type */}
               <div>
                 <label className="label-text block mb-2">Order Type *</label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button type="button" onClick={() => setFormData({ ...formData, orderType: "regular" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "regular" ? "rgba(74, 222, 128, 0.08)" : "#0A0A0B", border: formData.orderType === "regular" ? "2px solid #4ADE80" : "2px solid #222324" }}>
                     <ShoppingBag className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }} />
                     <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular</div>
@@ -1272,7 +1289,7 @@ export default function OrdersPage() {
               {formData.orderType !== "sample" && (
                 <div>
                   <label className="label-text block mb-2">Pricing Tier *</label>
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {PRICE_TIERS.map((tier) => (
                       <button key={tier.key} type="button" onClick={() => setFormData({ ...formData, priceTier: tier.key as any })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.priceTier === tier.key ? `${tier.color}20` : "#0A0A0B", border: formData.priceTier === tier.key ? `2px solid ${tier.color}` : "2px solid #222324" }}>
                         <DollarSign className="w-5 h-5 mx-auto mb-1" style={{ color: tier.color }} />

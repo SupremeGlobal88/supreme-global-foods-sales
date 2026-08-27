@@ -344,6 +344,10 @@ export default function OrdersPage() {
       await utils.sampleReport.getAll.invalidate();
       setShowForm(false); setEditingOrder(null); resetForm();
     },
+    onError: (err: any) => {
+      alert("Failed to place order: " + (err.message || "Unknown error. Please check console for details."));
+      console.error("[createOrder] error:", err);
+    },
   });
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
@@ -401,23 +405,23 @@ export default function OrdersPage() {
     setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
   }
 
-  function getTierPrice(stockItemId: number, tier?: string): number {
-    const stock = (stockItems || []).find((s) => s.id === stockItemId);
+  function getTierPrice(stockItemId: number | string, tier?: string): number {
+    const stock = (stockItems || []).find((s) => String(s.id) === String(stockItemId));
     if (!stock) return 0;
     const t = tier || formData.priceTier;
     switch (t) { case "corporate": return Number(stock.corporatePrice); case "bulk": return Number(stock.bulkPrice); case "retail": return Number(stock.retailPrice); default: return Number(stock.wholesalePrice); }
   }
 
-  function getEffectivePrice(stockItemId: number, customPrice?: number): number {
+  function getEffectivePrice(stockItemId: number | string, customPrice?: number): number {
     if (customPrice && customPrice > 0) return customPrice;
-    const sp = (customerSpecialPrices || []).find((p: any) => p.stockItemId === stockItemId);
+    const sp = (customerSpecialPrices || []).find((p: any) => String(p.stockItemId) === String(stockItemId));
     if (sp) return Number(sp.specialPrice);
     return getTierPrice(stockItemId);
   }
 
-  function handleCustomerSelect(cid: number) {
-    const customer = (customers || []).find((c) => c.id === cid);
-    setFormData({ ...formData, customerId: cid,
+  function handleCustomerSelect(cid: number | string) {
+    const customer = (customers || []).find((c) => String(c.id) === String(cid));
+    setFormData({ ...formData, customerId: Number(cid) || 0,
       priceTier: (customer?.priceTier as any) || "wholesale",
       paymentTerms: (customer?.paymentTerms as any) || "cod",
       deliveryAddress: customer?.physicalAddress || "",
@@ -449,12 +453,12 @@ export default function OrdersPage() {
   function handleAddItem() { setFormData({ ...formData, items: [...formData.items, { stockItemId: 0, quantity: 1 }] }); }
   function handleRemoveItem(index: number) { setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) }); }
 
-  function handleUpdateItem(index: number, field: string, value: number) {
+  function handleUpdateItem(index: number, field: string, value: number | string) {
     const updated = [...formData.items];
     updated[index] = { ...updated[index], [field]: value };
-    if (field === "stockItemId" && value > 0) {
+    if (field === "stockItemId" && Number(value) > 0) {
       // Set default unit when product is selected
-      const product = (stockItems || []).find((s) => s.id === value);
+      const product = (stockItems || []).find((s) => String(s.id) === String(value));
       const units = product?.sellingUnits || [];
       if (units.length > 0) {
         updated[index].unit = units[0].unit;
@@ -473,32 +477,33 @@ export default function OrdersPage() {
 
   function canEditOrderBasic(): { valid: boolean; error?: string } {
     // Basic validation for admin editing existing orders — no stock check
-    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
+    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
-    if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
+    if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
     return { valid: true };
   }
 
   function canPlaceOrder(): { valid: boolean; error?: string } {
-    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
+    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
-    if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
+    if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
     for (const item of validItems) {
-      const avail = availableStock[item.stockItemId] || 0;
+      const stockId = Number(item.stockItemId);
+      const avail = availableStock[stockId] || 0;
       const conversion = item.conversion || 1;
-      const requestedQty = item.quantity * conversion;
-      if (avail <= 0) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
+      const requestedQty = Number(item.quantity) * conversion;
+      if (avail <= 0) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
       if (formData.orderType === "sample") {
         // When editing, exclude the current order from the duplicate check
         const existing = (orders || []).some((o) => 
           o.id !== editingOrder?.id && // Exclude the order being edited
-          o.customerId === formData.customerId && 
+          Number(o.customerId) === Number(formData.customerId) && 
           o.orderType === "sample" && 
-          o.items?.some((it: any) => it.stockItemId === item.stockItemId)
+          o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
-        if (existing) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        if (item.quantity > 1) return { valid: false, error: "Sample orders: 1 unit per product max." };
-      } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => x.id === item.stockItemId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
+        if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
+        if (Number(item.quantity) > 1) return { valid: false, error: "Sample orders: 1 unit per product max." };
+      } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
     return { valid: true };
   }
@@ -509,8 +514,26 @@ export default function OrdersPage() {
     // Stock was already deducted when order was created; we're just updating details
     const check = editingOrder ? canEditOrderBasic() : canPlaceOrder();
     if (!check.valid) { alert(check.error); return; }
-    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
-    const payload: any = { customerId: formData.customerId, orderType: formData.orderType, paymentTerms: formData.paymentTerms, priceTier: formData.priceTier, deliveryAddress: formData.deliveryAddress, notes: formData.notes, items: validItems.map((item) => ({ stockItemId: item.stockItemId, quantity: formData.orderType === "sample" ? 1 : item.quantity, unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined), unit: item.unit || "each", conversion: item.conversion || 1, unitLabel: item.unitLabel || "Each" })) };
+    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
+    // CRITICAL FIX: Coerce IDs to numbers because Firebase returns them as strings.
+    // tRPC Zod schema expects numbers; without coercion, client-side validation
+    // fails silently (no onError), making the Place Order button appear to do nothing.
+    const payload: any = {
+      customerId: Number(formData.customerId) || 0,
+      orderType: formData.orderType,
+      paymentTerms: formData.paymentTerms,
+      priceTier: formData.priceTier,
+      deliveryAddress: formData.deliveryAddress,
+      notes: formData.notes,
+      items: validItems.map((item) => ({
+        stockItemId: Number(item.stockItemId) || 0,
+        quantity: formData.orderType === "sample" ? 1 : Number(item.quantity) || 0,
+        unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined),
+        unit: item.unit || "each",
+        conversion: item.conversion || 1,
+        unitLabel: item.unitLabel || "Each"
+      }))
+    };
     // Only set salesRepName on NEW orders. On edit, preserve original.
     if (!editingOrder) {
       payload.salesRepName = user?.name || "";
@@ -901,7 +924,7 @@ export default function OrdersPage() {
                           <div
                             key={c.id}
                             onClick={() => { if (!editingOrder || isAdmin) handleCustomerSelect(c.id); }}
-                            style={{ padding: "10px 12px", cursor: (!editingOrder || isAdmin) ? "pointer" : "not-allowed", borderBottom: "1px solid #222324", color: formData.customerId === c.id ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
+                            style={{ padding: "10px 12px", cursor: (!editingOrder || isAdmin) ? "pointer" : "not-allowed", borderBottom: "1px solid #222324", color: String(formData.customerId) === String(c.id) ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
                             className="hover:bg-[#222324]"
                           >
                             <div className="flex items-center justify-between">
@@ -975,21 +998,21 @@ export default function OrdersPage() {
                 <label className="label-text block mb-2">Order Items</label>
                 <div className="space-y-3">
                   {formData.items.map((item, index) => {
-                    const product = item.stockItemId > 0 ? (stockItems || []).find((s) => s.id === item.stockItemId) : null;
+                    const product = Number(item.stockItemId) > 0 ? (stockItems || []).find((s) => String(s.id) === String(item.stockItemId)) : null;
                     const sellingUnits = product?.sellingUnits || [];
                     const hasMultipleUnits = sellingUnits.length > 1;
                     const selectedUnit = hasMultipleUnits ? sellingUnits.find((u: any) => u.unit === item.unit) : null;
                     const conversion = item.conversion || 1;
                     const effectivePrice = getEffectivePrice(item.stockItemId, item.unitPrice);
-                    const hasSpecial = item.stockItemId > 0 && !!(customerSpecialPrices || []).find((sp: any) => sp.stockItemId === item.stockItemId);
+                    const hasSpecial = Number(item.stockItemId) > 0 && !!(customerSpecialPrices || []).find((sp: any) => String(sp.stockItemId) === String(item.stockItemId));
                     const isCustom = item.unitPrice && item.unitPrice > 0;
                     const tierPrice = getTierPrice(item.stockItemId);
-                    const availSOH = availableStock[item.stockItemId] || 0;
+                    const availSOH = availableStock[Number(item.stockItemId)] || 0;
                     const availInUnit = Math.floor(availSOH / conversion);
-                    const inProgressOrders = productOrderStatuses[item.stockItemId] || [];
+                    const inProgressOrders = productOrderStatuses[Number(item.stockItemId)] || [];
 
                     return (
-                      <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: availSOH <= 0 && item.stockItemId > 0 ? "1px solid #EF4444" : "1px solid #222324" }}>
+                      <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: availSOH <= 0 && Number(item.stockItemId) > 0 ? "1px solid #EF4444" : "1px solid #222324" }}>
                         <div className="flex gap-3 mb-2">
                           {/* Mobile-friendly product picker */}
                           <button
@@ -1096,8 +1119,14 @@ export default function OrdersPage() {
                 <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444" }}><AlertTriangle className="w-4 h-4 inline mr-2" />{orderCheck.error}</div>
               )}
 
-              <button type="submit" className="btn-primary w-full justify-center" disabled={!orderCheck.valid}>
-                {editingOrder ? "Update Order" : "Place Order"}
+              <button type="submit" className="btn-primary w-full justify-center" disabled={!orderCheck.valid || createOrder.isPending || updateOrder.isPending}>
+                {createOrder.isPending || updateOrder.isPending ? (
+                  <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Processing...</span>
+                ) : editingOrder ? (
+                  "Update Order"
+                ) : (
+                  "Place Order"
+                )}
               </button>
             </form>
           </div>

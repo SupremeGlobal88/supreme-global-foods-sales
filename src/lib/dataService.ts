@@ -3819,8 +3819,13 @@ export const dataService = {
         { id: 10, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888", isActive: true },
       ];
 
+      // Firebase RTDB auto-converts numeric strings to numbers (e.g. "2580" → 2580).
+      // After sync/merge the PIN may be a number, but the login form sends a string.
+      // Use String() on both sides so 2580 (number) matches "2580" (string).
+      const typedPin = String(pin);
+
       // Try 1: in-memory users array
-      let found = users.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
+      let found = users.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) === typedPin && x.isActive !== false);
 
       // Try 2: localStorage direct read (this now includes users synced from Firebase via syncFromCloud)
       if (!found) {
@@ -3828,14 +3833,14 @@ export const dataService = {
           const raw = getStorageItem("sgf_users");
           if (raw) {
             const stored = JSON.parse(raw);
-            found = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
+            found = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) === typedPin && x.isActive !== false);
           }
         } catch { /* ignore */ }
       }
 
       // Try 3: hardcoded defaults (always works, also repairs the DB)
       if (!found) {
-        found = DEFAULT_USERS.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && x.pin === pin && x.isActive !== false);
+        found = DEFAULT_USERS.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) === typedPin && x.isActive !== false);
         if (found) {
           // Repair: merge defaults into stored users so next time it works from DB
           const existingNames = new Set((users || []).map((u: any) => u.name?.toLowerCase()));
@@ -4387,6 +4392,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
 
   const ADMIN_ALIASES = ["admin", "administrator", "superadmin"];
   const typedName = name.toLowerCase().trim();
+  const typedPin = String(pin); // Normalize: Firebase may store PIN as number
 
   // 1. Check stored users FIRST (so User Management additions work without code changes)
   try {
@@ -4395,7 +4401,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
       const stored = JSON.parse(raw);
       // Exact name match
       const found = stored.find(
-        (x: any) => x.name?.toLowerCase() === typedName && x.pin === pin && x.isActive !== false
+        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
       );
       if (found) {
         return { id: found.id, name: found.name, email: found.email, role: found.role };
@@ -4403,7 +4409,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
       // Admin alias match — check if any stored user has this PIN and is admin
       if (ADMIN_ALIASES.includes(typedName)) {
         const adminFound = stored.find(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && x.pin === pin && x.isActive !== false
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
         );
         if (adminFound) {
           return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role };
@@ -4415,7 +4421,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
   // 2. Allow "admin" as a generic alias — match against ANY hardcoded admin/super_admin PIN
   if (ADMIN_ALIASES.includes(typedName)) {
     const adminMatch = DEFAULT_USERS.find(
-      (u) => (u.role === "admin" || u.role === "super_admin") && u.pin === pin
+      (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
     );
     if (adminMatch) {
       return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role };
@@ -4424,7 +4430,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
 
   // 3. Check hardcoded defaults (fallback — survives data clears)
   const fromDefaults = DEFAULT_USERS.find(
-    (u) => u.name.toLowerCase() === typedName && u.pin === pin
+    (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
   );
   if (fromDefaults) {
     // Repair stored users if needed

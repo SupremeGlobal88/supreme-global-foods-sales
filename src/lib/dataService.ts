@@ -949,145 +949,193 @@ load();
 let reloadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingReload = false;
 
-export function reloadFromStorage(): void {
+/** Reload specific in-memory arrays from localStorage.
+ *  If `keys` is provided, ONLY those keys are reloaded (much faster when
+ *  a single subscription updates one data type). If omitted, ALL keys are
+ *  reloaded (legacy behavior, used on initial load). */
+export function reloadFromStorage(keys?: string[]): void {
   // If a reload is already scheduled, just mark it as pending
-  // (in case localStorage changed since the schedule)
   if (reloadDebounceTimer) {
     pendingReload = true;
     return;
   }
 
   // Run immediately the first time, then debounce subsequent calls
-  _doReloadFromStorage();
+  _doReloadFromStorage(keys);
 
   // Set a cooldown period: any calls within 150ms are coalesced into one
   reloadDebounceTimer = setTimeout(() => {
     reloadDebounceTimer = null;
     if (pendingReload) {
       pendingReload = false;
-      _doReloadFromStorage();
+      _doReloadFromStorage(keys);
     }
   }, 150);
 }
 
 /** The actual reload logic — separated so debounce wrapper can call it. */
-function _doReloadFromStorage(): void {
-  try {
-    const c = getStorageItem("sgf_customers");
-    if (c) { const d = JSON.parse(c); if (Array.isArray(d) && d.length > 0) customers = d; }
-  } catch { /* keep current */ }
-  try {
-    const p = getStorageItem("sgf_products");
-    if (p) { const d = JSON.parse(p); if (Array.isArray(d) && d.length > 0) products = d; }
-  } catch { /* keep current */ }
-  try {
-    const o = getStorageItem("sgf_orders");
-    if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
-  } catch { /* keep current */ }
-  try {
-    const i = getStorageItem("sgf_invoices");
-    if (i) {
-      const d = JSON.parse(i);
-      if (Array.isArray(d)) {
-        // Ensure all invoices have updatedAt for timestamp-based merge
-        const now = new Date().toISOString();
-        for (const inv of d) {
-          if (!inv.updatedAt) inv.updatedAt = inv.createdAt || inv.invoiceDate || now;
+function _doReloadFromStorage(keys?: string[]): void {
+  const reloadAll = !keys || keys.length === 0;
+
+  if (reloadAll || keys?.includes("sgf_customers")) {
+    try {
+      const c = getStorageItem("sgf_customers");
+      if (c) { const d = JSON.parse(c); if (Array.isArray(d) && d.length > 0) customers = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_products")) {
+    try {
+      const p = getStorageItem("sgf_products");
+      if (p) { const d = JSON.parse(p); if (Array.isArray(d) && d.length > 0) products = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_orders")) {
+    try {
+      const o = getStorageItem("sgf_orders");
+      if (o) { const d = JSON.parse(o); if (Array.isArray(d)) orders = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_invoices")) {
+    try {
+      const i = getStorageItem("sgf_invoices");
+      if (i) {
+        const d = JSON.parse(i);
+        if (Array.isArray(d)) {
+          // Ensure all invoices have updatedAt for timestamp-based merge
+          const now = new Date().toISOString();
+          for (const inv of d) {
+            if (!inv.updatedAt) inv.updatedAt = inv.createdAt || inv.invoiceDate || now;
+          }
+          invoices = d;
         }
-        invoices = d;
       }
-    }
-  } catch { /* keep current */ }
-  try {
-    const a = getStorageItem("sgf_appointments");
-    if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
-  } catch { /* keep current */ }
-  try {
-    const ci = getStorageItem("sgf_checkins");
-    if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
-  } catch { /* keep current */ }
-  try {
-    const s = getStorageItem("sgf_specialPrices");
-    if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
-  } catch { /* keep current */ }
-  try {
-    const log = getStorageItem("sgf_auditLog");
-    if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
-  } catch { /* keep current */ }
-  try {
-    const fu = getStorageItem("sgf_followUps");
-    if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
-  } catch { /* keep current */ }
-  try {
-    const fa = getStorageItem("sgf_followUpActions");
-    if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
-  } catch { /* keep current */ }
-  try {
-    const cn = getStorageItem("sgf_collectionNotes");
-    if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
-  } catch { /* keep current */ }
-  try {
-    const cp = getStorageItem("sgf_collectionPromises");
-    if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
-  } catch { /* keep current */ }
-  try {
-    const ah = getStorageItem("sgf_accountHolds");
-    if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
-  } catch { /* keep current */ }
-  try {
-    const rc = getStorageItem("sgf_receipts");
-    if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
-  } catch { /* keep current */ }
-  try {
-    const crn = getStorageItem("sgf_creditNotes");
-    if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
-  } catch { /* keep current */ }
-  try {
-    const u = getStorageItem("sgf_users");
-    if (u) { const d = JSON.parse(u); if (Array.isArray(d) && d.length > 0) users = d; }
-  } catch { /* keep current */ }
-  try {
-    const sr = getStorageItem("sgf_salesReps");
-    if (sr) {
-      const d = JSON.parse(sr);
-      if (Array.isArray(d) && d.length > 0) {
-        // Backward compat: migrate legacy string arrays to objects
-        SALES_REPS.length = 0;
-        SALES_REPS.push(...d.map((r: any): SalesRep => {
-          if (typeof r === "string") return { name: r, isActive: true };
-          return {
-            name: r?.name || String(r || ""),
-            email: r?.email || "",
-            phone: r?.phone || "",
-            region: r?.region || "",
-            vehicleReg: r?.vehicleReg || "",
-            isActive: r?.isActive !== false,
-          };
-        }).filter((r: SalesRep) => r.name));
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_appointments")) {
+    try {
+      const a = getStorageItem("sgf_appointments");
+      if (a) { const d = JSON.parse(a); if (Array.isArray(d)) appointments = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_checkins")) {
+    try {
+      const ci = getStorageItem("sgf_checkins");
+      if (ci) { const d = JSON.parse(ci); if (Array.isArray(d)) checkins = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_specialPrices")) {
+    try {
+      const s = getStorageItem("sgf_specialPrices");
+      if (s) { const d = JSON.parse(s); if (Array.isArray(d)) specialPrices = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_auditLog")) {
+    try {
+      const log = getStorageItem("sgf_auditLog");
+      if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_followUps")) {
+    try {
+      const fu = getStorageItem("sgf_followUps");
+      if (fu) { const d = JSON.parse(fu); if (Array.isArray(d)) followUps = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_followUpActions")) {
+    try {
+      const fa = getStorageItem("sgf_followUpActions");
+      if (fa) { const d = JSON.parse(fa); if (Array.isArray(d)) followUpActions = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_collectionNotes")) {
+    try {
+      const cn = getStorageItem("sgf_collectionNotes");
+      if (cn) { const d = JSON.parse(cn); if (Array.isArray(d)) collectionNotes = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_collectionPromises")) {
+    try {
+      const cp = getStorageItem("sgf_collectionPromises");
+      if (cp) { const d = JSON.parse(cp); if (Array.isArray(d)) collectionPromises = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_accountHolds")) {
+    try {
+      const ah = getStorageItem("sgf_accountHolds");
+      if (ah) { const d = JSON.parse(ah); if (Array.isArray(d)) accountHolds = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_receipts")) {
+    try {
+      const rc = getStorageItem("sgf_receipts");
+      if (rc) { const d = JSON.parse(rc); if (Array.isArray(d)) receipts = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_creditNotes")) {
+    try {
+      const crn = getStorageItem("sgf_creditNotes");
+      if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_users")) {
+    try {
+      const u = getStorageItem("sgf_users");
+      if (u) { const d = JSON.parse(u); if (Array.isArray(d) && d.length > 0) users = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_salesReps")) {
+    try {
+      const sr = getStorageItem("sgf_salesReps");
+      if (sr) {
+        const d = JSON.parse(sr);
+        if (Array.isArray(d) && d.length > 0) {
+          // Backward compat: migrate legacy string arrays to objects
+          SALES_REPS.length = 0;
+          SALES_REPS.push(...d.map((r: any): SalesRep => {
+            if (typeof r === "string") return { name: r, isActive: true };
+            return {
+              name: r?.name || String(r || ""),
+              email: r?.email || "",
+              phone: r?.phone || "",
+              region: r?.region || "",
+              vehicleReg: r?.vehicleReg || "",
+              isActive: r?.isActive !== false,
+            };
+          }).filter((r: SalesRep) => r.name));
+        }
       }
-    }
-  } catch { /* keep current */ }
-  // ─── CORPORATE MODULE RELOAD ───
-  try {
-    const cc = getStorageItem("sgf_corporateCustomers");
-    if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
-  } catch { /* keep current */ }
-  try {
-    const po = getStorageItem("sgf_purchaseOrders");
-    if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
-  } catch { /* keep current */ }
-  try {
-    const br = getStorageItem("sgf_barrels");
-    if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
-  } catch { /* keep current */ }
-  try {
-    const coc = getStorageItem("sgf_certificatesOfCompliance");
-    if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
-  } catch { /* keep current */ }
-  try {
-    const pll = getStorageItem("sgf_packingListLines");
-    if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
-  } catch { /* keep current */ }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_corporateCustomers")) {
+    try {
+      const cc = getStorageItem("sgf_corporateCustomers");
+      if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_purchaseOrders")) {
+    try {
+      const po = getStorageItem("sgf_purchaseOrders");
+      if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_barrels")) {
+    try {
+      const br = getStorageItem("sgf_barrels");
+      if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_certificatesOfCompliance")) {
+    try {
+      const coc = getStorageItem("sgf_certificatesOfCompliance");
+      if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_packingListLines")) {
+    try {
+      const pll = getStorageItem("sgf_packingListLines");
+      if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
+    } catch { /* keep current */ }
+  }
 }
 
 /** Fix duplicate SGF invoice numbers. Renames duplicates to next available number.

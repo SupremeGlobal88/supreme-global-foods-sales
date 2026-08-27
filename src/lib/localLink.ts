@@ -12,7 +12,7 @@ import {
   pushBarrel, removeBarrel,
   pushCOC, removeCOC,
   pushPackingListLine, removePackingListLine,
-  isFirebaseReady, readFromFirebase, mergeWithCloudData,
+  isFirebaseReady, readFromFirebase, mergeWithCloudData, isAutoSyncInitialized,
 } from "./firebaseSync";
 
 /** SAFE SYNC: Read latest data from Firebase, MERGE with local, save, reload.
@@ -39,6 +39,13 @@ async function smartSync(type: string, storageKey: string): Promise<void> {
 }
 
 async function syncFromCloud(type: string, storageKey: string): Promise<void> {
+  // SKIP if auto-sync subscriptions are already active. They handle real-time
+  // updates and already merge+save+reload. Calling syncFromCloud redundantly
+  // creates extra onValue listeners, does extra merge+save work, and was
+  // causing massive UI freeze when combined with refetchInterval: 2000.
+  if (isAutoSyncInitialized()) {
+    return;
+  }
   if (!isFirebaseReady()) { console.warn("[syncFromCloud] Firebase not ready for", type); return; }
 
   // Rate limit: don't sync same type more than every 5 seconds
@@ -65,20 +72,20 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     // this is likely a timeout or connection issue — DON'T overwrite local data.
     if (cloudData.length === 0 && before > 0) {
       console.warn(`[syncFromCloud] SAFETY: Firebase returned 0 ${type} but local has ${before} items. Skipping overwrite.`);
-      reloadFromStorage();
+      reloadFromStorage([storageKey]);
       return;
     }
     const merged = mergeWithCloudData(storageKey, cloudData);
     const after = merged.length;
     setStorageItem(storageKey, JSON.stringify(merged));
-    reloadFromStorage();
+    reloadFromStorage([storageKey]);
     if (after !== before) {
       console.log(`[syncFromCloud] ${type}: ${before} local → merged ${after} items (${after - before > 0 ? '+' : ''}${after - before} from cloud)`);
     }
   } catch (e: any) {
     console.error("[syncFromCloud] FAILED for", type, ":", e.message || e);
     // Even on error, reload from localStorage so subscriptions' data is used
-    reloadFromStorage();
+    reloadFromStorage([storageKey]);
   }
 }
 

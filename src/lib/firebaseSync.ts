@@ -570,7 +570,7 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
     const notes = fbToArray(data);
     const merged = mergeWithCloudData("sgf_creditNotes", notes);
     try { setStorageItem("sgf_creditNotes", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage();
+    reloadFromStorage(["sgf_creditNotes"]);
     if (onData) onData(notes);
   });
   listeners.push(unsub);
@@ -589,7 +589,7 @@ export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): 
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_corporateCustomers", items);
     try { setStorageItem("sgf_corporateCustomers", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage();
+    reloadFromStorage(["sgf_corporateCustomers"]);
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -604,7 +604,7 @@ export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () =
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_purchaseOrders", items);
     try { setStorageItem("sgf_purchaseOrders", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage();
+    reloadFromStorage(["sgf_purchaseOrders"]);
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -619,7 +619,7 @@ export function subscribeToBarrels(onData?: (items: any[]) => void): () => void 
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_barrels", items);
     try { setStorageItem("sgf_barrels", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage();
+    reloadFromStorage(["sgf_barrels"]);
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -634,7 +634,7 @@ export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_cocs", items);
     try { setStorageItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage();
+    reloadFromStorage(["sgf_certificatesOfCompliance"]);
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -649,7 +649,7 @@ export function subscribeToPackingListLines(onData?: (items: any[]) => void): ()
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_packingListLines", items);
     try { setStorageItem("sgf_packingListLines", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage();
+    reloadFromStorage(["sgf_packingListLines"]);
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -850,6 +850,7 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
       setStorageItem("sgf_customers", JSON.stringify(merged));
       console.log("[FirebaseSync] Downloaded", customers.length, "customers from cloud, deduped to", merged.length);
     } catch { /* ignore */ }
+    reloadFromStorage(["sgf_customers"]);
     if (onData) onData(customers);
   });
   listeners.push(unsub);
@@ -867,6 +868,7 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
       setStorageItem("sgf_products", JSON.stringify(merged));
       console.log("[FirebaseSync] Downloaded", stock.length, "products from cloud");
     } catch { /* ignore */ }
+    reloadFromStorage(["sgf_products"]);
     if (onData) onData(stock);
   });
   listeners.push(unsub);
@@ -886,7 +888,7 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
     // ALWAYS merge — even when cloud is empty, to clear deleted items locally
     const merged = mergeWithCloudData("sgf_orders", orders);
     try { setStorageItem("sgf_orders", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataServiceRefresh();
+    reloadFromStorage(["sgf_orders"]);
     onData(orders);
   });
   listeners.push(unsub);
@@ -901,7 +903,7 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
     const checkins = fbToArray(data);
     const merged = mergeWithCloudData("sgf_checkins", checkins);
     try { setStorageItem("sgf_checkins", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataServiceRefresh();
+    reloadFromStorage(["sgf_checkins"]);
     onData(checkins);
   });
   listeners.push(unsub);
@@ -916,7 +918,7 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
     const appts = fbToArray(data);
     const merged = mergeWithCloudData("sgf_appointments", appts);
     try { setStorageItem("sgf_appointments", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataServiceRefresh();
+    reloadFromStorage(["sgf_appointments"]);
     onData(appts);
   });
   listeners.push(unsub);
@@ -931,7 +933,7 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
     const invoices = fbToArray(data);
     const merged = mergeWithCloudData("sgf_invoices", invoices);
     try { setStorageItem("sgf_invoices", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataServiceRefresh();
+    reloadFromStorage(["sgf_invoices"]);
     onData(invoices);
   });
   listeners.push(unsub);
@@ -946,7 +948,7 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
     const actions = fbToArray(data);
     const merged = mergeWithCloudData("sgf_followUpActions", actions);
     try { setStorageItem("sgf_followUpActions", JSON.stringify(merged)); } catch { /* ignore */ }
-    dataServiceRefresh();
+    reloadFromStorage(["sgf_followUpActions"]);
     onData(actions);
   });
   listeners.push(unsub);
@@ -961,6 +963,7 @@ export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () =>
     const followUps = fbToArray(data);
     const merged = mergeWithCloudData("sgf_followUps", followUps);
     try { setStorageItem("sgf_followUps", JSON.stringify(merged)); } catch { /* ignore */ }
+    reloadFromStorage(["sgf_followUps"]);
     if (onData) onData(followUps);
   });
   listeners.push(unsub);
@@ -975,6 +978,7 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
     const receipts = fbToArray(data);
     const merged = mergeWithCloudData("sgf_receipts", receipts);
     try { setStorageItem("sgf_receipts", JSON.stringify(merged)); } catch { /* ignore */ }
+    reloadFromStorage(["sgf_receipts"]);
     if (onData) onData(receipts);
   });
   listeners.push(unsub);
@@ -990,7 +994,7 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
     // CRITICAL: Use the SAME storage key as dataService (sgf_salesReps) for consistency
     const merged = mergeWithCloudData("sgf_salesReps", reps);
     try { setStorageItem("sgf_salesReps", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(); // Update in-memory SALES_REPS array from localStorage
+    reloadFromStorage(["sgf_salesReps"]);
     if (onData) onData(reps);
   });
   listeners.push(unsub);
@@ -1005,7 +1009,7 @@ export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
     const users = fbToArray(data);
     const merged = mergeWithCloudData("sgf_users", users);
     try { setStorageItem("sgf_users", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(); // Update in-memory users array
+    reloadFromStorage(["sgf_users"]);
     if (onData) onData(users);
   });
   listeners.push(unsub);
@@ -1372,6 +1376,11 @@ export function unsubscribeAll(): void {
 let autoSyncInitialized = false;
 let autoSyncCleanup: (() => void) | null = null;
 
+/** Returns true if auto-sync subscriptions are already active */
+export function isAutoSyncInitialized(): boolean {
+  return autoSyncInitialized;
+}
+
 /** Disconnect Firebase: stop all subscriptions and prevent reconnection */
 export function disconnectFirebase(): void {
   console.log("[FirebaseSync] Disconnecting...");
@@ -1394,8 +1403,10 @@ export function reconnectFirebase(): void {
   initAutoSync();
 }
 
-// Allow dataService to refresh its in-memory cache after Firebase writes to localStorage
-type RefreshFn = () => void;
+// Allow dataService to refresh its in-memory cache after Firebase writes to localStorage.
+// The optional `keys` parameter lets callers reload only specific arrays (much faster
+// when a subscription updates just one data type instead of reading all 15+ keys).
+type RefreshFn = (keys?: string[]) => void;
 let dataServiceRefresh: RefreshFn | null = null;
 export function registerDataServiceRefresh(fn: RefreshFn): void {
   dataServiceRefresh = fn;

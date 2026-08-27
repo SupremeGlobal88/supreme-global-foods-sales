@@ -128,8 +128,15 @@ export default function InvoicesPage() {
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
   });
   const allocateCredit = trpc.invoice.allocateCredit.useMutation({
-    onSuccess: async () => {
-      reloadFromStorage();
+    onSuccess: async (data: any) => {
+      if (!data || !data.success) {
+        alert("Credit allocation failed: " + (data?.error || "Unknown error"));
+        return;
+      }
+      // DO NOT call reloadFromStorage() here. The in-memory arrays are already
+      // updated by dataService.invoice.allocateCredit. reloadFromStorage() would
+      // read from localStorage — if saveItem failed (quota exceeded), it would
+      // REVERT the allocation silently.
       await utils.invoice.list.invalidate();
       await utils.invoice.getCreditNotes.invalidate();
       closeAllocCredit();
@@ -1563,7 +1570,7 @@ export default function InvoicesPage() {
                       </div>
                     ))}
                   </div>
-                  {allocCnId > 0 && (
+                  {!!allocCnId && (
                     <div className="mb-4">
                       <label className="label-text block mb-1.5">Amount to Allocate *</label>
                       <input

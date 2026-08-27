@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { pullFromCloud } from "@/lib/firebaseSync";
 import { reloadFromStorage } from "@/lib/dataService";
 import {
   DollarSign,
@@ -221,29 +220,10 @@ export default function Dashboard() {
     });
   }, []);
 
-  // Auto-pull data from Firebase for admin users on first load
-  useEffect(() => {
-    if (!isAdmin) return;
-    let done = false;
-    async function autoPull() {
-      if (done) return;
-      done = true;
-      setPullStatus("Syncing data...");
-      try {
-        await pullFromCloud();
-        reloadFromStorage();
-        await utils.order.list.invalidate();
-        await utils.appointment.list.invalidate();
-        await utils.invoice.list.invalidate();
-        await utils.customer.search.invalidate();
-        setPullStatus("Data synced!");
-      } catch {
-        setPullStatus("");
-      }
-      setTimeout(() => setPullStatus(""), 3000);
-    }
-    autoPull();
-  }, [isAdmin]);
+  // CRITICAL FIX: Removed duplicate pullFromCloud() that was running here.
+  // App.tsx already pulls from cloud on startup for ALL users. Having Dashboard
+  // also pull was causing admin users to download 4000+ invoices TWICE,
+  // freezing the UI for 30+ seconds on every page load.
 
   // Sales rep's own stats
   const myRepName = user?.name || "";

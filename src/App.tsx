@@ -107,7 +107,11 @@ export default function App() {
           // we catch any data that was missed while the app was closed.
           const counts = await pullFromCloud();
           reloadFromStorage();
-          queryClient.clear();
+          // CRITICAL FIX: Removed queryClient.clear() which was wiping the entire
+          // React Query cache and forcing ALL queries to refetch from scratch.
+          // This was causing massive UI freeze on startup with 4000+ invoices.
+          // Instead, we let the targeted invalidation handler above refresh
+          // queries lazily as components need them.
           console.log("[Sync] Cloud data pulled successfully:", counts);
         } else {
           console.warn("[Sync] Firebase not ready — skipping initial pull. Will retry via subscriptions.");
@@ -144,83 +148,98 @@ export default function App() {
     if (isAuthenticated && isCloudReady) {
       console.log("[Sync] Post-login sync triggered");
       reloadFromStorage();
-      queryClient.clear();
+      // CRITICAL FIX: Removed queryClient.clear() which wipes the entire cache
+      // and forces all queries to refetch simultaneously, freezing the UI.
       console.log("[Sync] Post-login complete");
     }
   }, [isAuthenticated, isCloudReady]);
 
-  // When Firebase data changes, force ALL tRPC queries to refetch immediately.
-  // queryClient.invalidateQueries({ refetchType: 'all' }) forces every active
-  // query to refetch from dataService — this is the nuclear option that works.
+  // When Firebase data changes, invalidate ONLY the affected queries.
+  // CRITICAL FIX: Removed the nuclear `invalidateQueries({ refetchType: "all" })`
+  // which was freezing the UI by forcing ALL queries to refetch simultaneously.
+  // Now we use targeted invalidation with a debounce to batch rapid events.
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const pendingTypes = new Set<string>();
+
     const handler = (e: any) => {
       const type = e.detail?.type;
-      console.log("[Sync] firebaseDataReceived:", type, "- forcing all queries to refetch");
-      // Nuclear option: invalidate ALL queries with forced refetch
-      queryClient.invalidateQueries({ refetchType: "all" });
-      // Also do targeted refetches for the specific data type
-      if (type === "invoices") {
-        utils.invoice.list.refetch();
-        utils.invoice.getStats.refetch();
-      }
-      if (type === "orders") {
-        utils.order.list.refetch();
-        utils.order.getStats.refetch();
-        utils.dashboard.stats.refetch();
-      }
-      if (type === "customers") {
-        utils.customer.search.refetch();
-        utils.customer.list.refetch();
-      }
-      if (type === "appointments") {
-        utils.appointment.list.refetch();
-      }
-      if (type === "checkins") {
-        utils.checkIn.list.refetch();
-      }
-      if (type === "stock") {
-        utils.stock.list.refetch();
-        utils.stock.search.refetch();
-        utils.stock.getStats.refetch();
-      }
-      if (type === "creditNotes") {
-        utils.invoice.getCreditNotes.refetch();
-        utils.invoice.list.refetch();
-      }
-      if (type === "followUps" || type === "followUpActions") {
-        utils.followUp.list.refetch();
-        utils.followUpAction.list.refetch();
-      }
-      if (type === "users") {
-        utils.user.list.refetch();
-        utils.customer.getSalesReps.refetch();
-      }
-      if (type === "salesReps") {
-        // Sales reps don't have a dedicated tRPC query, but customer.getSalesReps
-        // reads from localStorage which is updated by subscribeToSalesReps.
-        // Invalidate customer search to refresh any dropdowns using sales reps.
-        utils.customer.search.invalidate();
-      }
-      // Corporate module data types
-      if (type === "corporateCustomers") {
-        utils.corporateCustomer.list.invalidate();
-      }
-      if (type === "purchaseOrders") {
-        utils.purchaseOrder.list.invalidate();
-      }
-      if (type === "barrels") {
-        utils.barrel.list.invalidate();
-      }
-      if (type === "certificatesOfCompliance") {
-        utils.coc.list.invalidate();
-      }
-      if (type === "packingListLines") {
-        utils.packingList.listByPurchaseOrder.invalidate();
-      }
+      if (!type) return;
+      pendingTypes.add(type);
+
+      // Debounce: wait 300ms after the last event before invalidating
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log("[Sync] firebaseDataReceived batch:", Array.from(pendingTypes));
+        for (const t of pendingTypes) {
+          switch (t) {
+            case "invoices":
+              queryClient.invalidateQueries({ queryKey: [["invoice", "list"]] });
+              queryClient.invalidateQueries({ queryKey: [["invoice", "getStats"]] });
+              break;
+            case "orders":
+              queryClient.invalidateQueries({ queryKey: [["order", "list"]] });
+              queryClient.invalidateQueries({ queryKey: [["order", "getStats"]] });
+              break;
+            case "customers":
+              queryClient.invalidateQueries({ queryKey: [["customer", "search"]] });
+              queryClient.invalidateQueries({ queryKey: [["customer", "list"]] });
+              break;
+            case "appointments":
+              queryClient.invalidateQueries({ queryKey: [["appointment", "list"]] });
+              break;
+            case "checkins":
+              queryClient.invalidateQueries({ queryKey: [["checkIn", "list"]] });
+              break;
+            case "stock":
+              queryClient.invalidateQueries({ queryKey: [["stock", "list"]] });
+              queryClient.invalidateQueries({ queryKey: [["stock", "search"]] });
+              queryClient.invalidateQueries({ queryKey: [["stock", "getStats"]] });
+              break;
+            case "creditNotes":
+              queryClient.invalidateQueries({ queryKey: [["invoice", "getCreditNotes"]] });
+              queryClient.invalidateQueries({ queryKey: [["invoice", "list"]] });
+              break;
+            case "followUps":
+              queryClient.invalidateQueries({ queryKey: [["followUp", "list"]] });
+              break;
+            case "followUpActions":
+              queryClient.invalidateQueries({ queryKey: [["followUpAction", "list"]] });
+              break;
+            case "users":
+              queryClient.invalidateQueries({ queryKey: [["user", "list"]] });
+              break;
+            case "salesReps":
+              queryClient.invalidateQueries({ queryKey: [["customer", "getSalesReps"]] });
+              break;
+            case "corporateCustomers":
+              queryClient.invalidateQueries({ queryKey: [["corporateCustomer", "list"]] });
+              break;
+            case "purchaseOrders":
+              queryClient.invalidateQueries({ queryKey: [["purchaseOrder", "list"]] });
+              break;
+            case "barrels":
+              queryClient.invalidateQueries({ queryKey: [["barrel", "list"]] });
+              break;
+            case "certificatesOfCompliance":
+              queryClient.invalidateQueries({ queryKey: [["coc", "list"]] });
+              break;
+            case "packingListLines":
+              queryClient.invalidateQueries({ queryKey: [["packingList", "listByPurchaseOrder"]] });
+              break;
+            default:
+              console.warn("[Sync] Unknown data type in firebaseDataReceived:", t);
+          }
+        }
+        pendingTypes.clear();
+      }, 300);
     };
     window.addEventListener("firebaseDataReceived", handler);
-    return () => window.removeEventListener("firebaseDataReceived", handler);
-  }, [utils]);
+    return () => {
+      window.removeEventListener("firebaseDataReceived", handler);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
+  }, []);
 
   // Show loading screen until fresh cloud data is loaded
   if (!isCloudReady) {

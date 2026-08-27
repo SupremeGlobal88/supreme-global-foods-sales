@@ -634,7 +634,7 @@ export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
     const items = fbToArray(data);
     const merged = mergeWithCloudData("sgf_cocs", items);
     try { setStorageItem("sgf_cocs", JSON.stringify(merged)); } catch { /* ignore */ }
-    reloadFromStorage(["sgf_certificatesOfCompliance"]);
+    reloadFromStorage(["sgf_cocs"]);
     if (onData) onData(items);
   });
   listeners.push(unsub);
@@ -1462,6 +1462,20 @@ export function initAutoSync(): () => void {
   const unsubs: Array<() => void> = [];
   const lastCounts: Record<string, number> = {};
 
+  // Debounce timer for batching startup events from multiple subscriptions
+  let eventDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingEventTypes = new Set<string>();
+
+  function flushPendingEvents() {
+    eventDebounceTimer = null;
+    for (const type of pendingEventTypes) {
+      try {
+        window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: lastCounts[type] || 0 } }));
+      } catch { /* ignore */ }
+    }
+    pendingEventTypes.clear();
+  }
+
   /** LIGHTWEIGHT callback after subscription receives data.
    *  CRITICAL: The individual subscribeTo* functions already handle:
    *    - mergeWithCloudData
@@ -1473,16 +1487,25 @@ export function initAutoSync(): () => void {
    *  subscriptions firing at startup, the duplicate work freezes the UI. */
   const handleReceived = (type: string, storageKey: string) => (data: any[]) => {
     const cloudCount = data?.length || 0;
-    console.log(`[FirebaseSync] Received ${cloudCount} ${type}`);
+    const prev = lastCounts[type] || 0;
+    lastCounts[type] = cloudCount;
+
+    // Skip if count hasn't changed — Firebase often re-fires with identical data
+    if (cloudCount === prev && cloudCount > 0) {
+      console.log(`[FirebaseSync] Received ${cloudCount} ${type} — count unchanged, skipping event`);
+      return;
+    }
+
+    console.log(`[FirebaseSync] Received ${cloudCount} ${type} (was ${prev})`);
 
     // ONLY dispatch event — React Query will refetch via tRPC invalidate.
     // The subscription function has already merged, saved, and reloaded.
     if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
-      const prev = lastCounts[type] || 0;
-      lastCounts[type] = cloudCount;
-      try {
-        window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: cloudCount, newItems: Math.max(0, cloudCount - prev) } }));
-      } catch { /* ignore */ }
+      pendingEventTypes.add(type);
+      if (eventDebounceTimer) clearTimeout(eventDebounceTimer);
+      // On first load, batch all subscription events into a single dispatch
+      // to prevent 15+ rapid invalidations from freezing the UI.
+      eventDebounceTimer = setTimeout(flushPendingEvents, 500);
     }
   };
 
@@ -1512,6 +1535,8 @@ export function initAutoSync(): () => void {
   autoSyncCleanup = () => {
     autoSyncInitialized = false;
     if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
+    if (eventDebounceTimer) { clearTimeout(eventDebounceTimer); eventDebounceTimer = null; }
+    pendingEventTypes.clear();
     for (const u of unsubs) u();
   };
 

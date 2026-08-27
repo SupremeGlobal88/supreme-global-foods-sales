@@ -1124,9 +1124,10 @@ function _doReloadFromStorage(keys?: string[]): void {
       if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
     } catch { /* keep current */ }
   }
-  if (reloadAll || keys?.includes("sgf_certificatesOfCompliance")) {
+  if (reloadAll || keys?.includes("sgf_certificatesOfCompliance") || keys?.includes("sgf_cocs")) {
     try {
-      const coc = getStorageItem("sgf_certificatesOfCompliance");
+      // Support both keys: sgf_cocs (used by subscriptions) and sgf_certificatesOfCompliance
+      const coc = getStorageItem("sgf_cocs") || getStorageItem("sgf_certificatesOfCompliance");
       if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
     } catch { /* keep current */ }
   }

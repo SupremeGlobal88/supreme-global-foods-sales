@@ -426,6 +426,9 @@ export function createLocalLink() {
                 result = dataService.order.createFromInvoice(input);
                 if (result) {
                   await fbPush("order", result);
+                  // Also push the updated invoice (now linked to this order) to Firebase
+                  const updatedInvoice = dataService.invoice.getById(input);
+                  if (updatedInvoice) await fbPush("invoice", updatedInvoice);
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
                 }
                 break;

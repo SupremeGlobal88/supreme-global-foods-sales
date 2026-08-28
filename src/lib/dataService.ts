@@ -4573,10 +4573,27 @@ function getEffectivePrice(stockItemId: number, priceTier: string, customerId: n
   if (sp) return Number(sp.specialPrice);
   const stock = products.find((p) => p.id == stockItemId);
   if (!stock) return 0;
+  let rawPrice: number;
   switch (priceTier) {
-    case "corporate": return Number(stock.corporatePrice);
-    case "bulk": return Number(stock.bulkPrice);
-    case "retail": return Number(stock.retailPrice);
-    default: return Number(stock.wholesalePrice);
+    case "corporate": rawPrice = Number(stock.corporatePrice); break;
+    case "bulk": rawPrice = Number(stock.bulkPrice); break;
+    case "retail": rawPrice = Number(stock.retailPrice); break;
+    default: rawPrice = Number(stock.wholesalePrice); break;
   }
+  // Fallback to STATIC_PRODUCTS if loaded price is 0
+  if (rawPrice <= 0) {
+    try {
+      const staticProds = JSON.parse(localStorage.getItem("sgf_static_products_seed") || "[]");
+      const staticProd = staticProds.find((p: any) => p.id == stockItemId || p.productCode === stock.productCode);
+      if (staticProd) {
+        switch (priceTier) {
+          case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
+          case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
+          case "retail": rawPrice = Number(staticProd.retailPrice); break;
+          default: rawPrice = Number(staticProd.wholesalePrice); break;
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  return rawPrice;
 }

@@ -443,6 +443,8 @@ export default function OrdersPage() {
 
   function resetForm() {
     setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
+    setCustomerSearch("");
+    setShowCustomerDropdown(false);
     setAdminOverride(false);
     setAdminPin("");
   }

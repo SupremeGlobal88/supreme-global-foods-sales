@@ -162,8 +162,30 @@ function load() {
 
     // PRODUCTS: same approach — trust localStorage if it's a valid array
     const p = safeLoadArray("sgf_products");
-    if (p && p.length > 0) products = p;
-    else products = getStaticProducts();
+    if (p && p.length > 0) {
+      products = p;
+      // PRICE REPAIR: If loaded products have 0 prices, restore from STATIC_PRODUCTS seed
+      // This fixes data corruption where price fields were wiped
+      let pricesRestored = 0;
+      for (const prod of products) {
+        const hasAnyPrice = Number(prod.wholesalePrice) > 0 || Number(prod.corporatePrice) > 0 || Number(prod.bulkPrice) > 0 || Number(prod.retailPrice) > 0;
+        if (!hasAnyPrice && prod.productCode) {
+          const match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
+          if (match) {
+            prod.wholesalePrice = match.wholesalePrice;
+            prod.corporatePrice = match.corporatePrice;
+            prod.bulkPrice = match.bulkPrice;
+            prod.retailPrice = match.retailPrice;
+            prod.costPrice = match.costPrice;
+            pricesRestored++;
+          }
+        }
+      }
+      if (pricesRestored > 0) {
+        saveItem("sgf_products", products);
+        console.log(`[PriceRepair] Restored prices for ${pricesRestored} products from seed data`);
+      }
+    } else products = getStaticProducts();
 
     // TRANSACTION DATA: always load if present (user-generated, never replace with static)
     const o = safeLoadArray("sgf_orders");
@@ -4581,19 +4603,16 @@ function getEffectivePrice(stockItemId: number, priceTier: string, customerId: n
     default: rawPrice = Number(stock.wholesalePrice); break;
   }
   // Fallback to STATIC_PRODUCTS if loaded price is 0
-  if (rawPrice <= 0) {
-    try {
-      const staticProds = JSON.parse(localStorage.getItem("sgf_static_products_seed") || "[]");
-      const staticProd = staticProds.find((p: any) => p.id == stockItemId || p.productCode === stock.productCode);
-      if (staticProd) {
-        switch (priceTier) {
-          case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
-          case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
-          case "retail": rawPrice = Number(staticProd.retailPrice); break;
-          default: rawPrice = Number(staticProd.wholesalePrice); break;
-        }
+  if (rawPrice <= 0 && stock.productCode) {
+    const staticProd = STATIC_PRODUCTS.find((p: any) => p.productCode === stock.productCode);
+    if (staticProd) {
+      switch (priceTier) {
+        case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
+        case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
+        case "retail": rawPrice = Number(staticProd.retailPrice); break;
+        default: rawPrice = Number(staticProd.wholesalePrice); break;
       }
-    } catch { /* ignore */ }
+    }
   }
   return rawPrice;
 }

@@ -733,32 +733,33 @@ export default function OrdersPage() {
     w.document.write(`
 <html><head><title>Quote - ${order.orderNumber}</title>
 <style>
+  @page { size: A4; margin: 10mm; }
   @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo-img { height: 55px; margin-bottom: 4px; }
-  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
-  .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
-  .badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #6366F1; color: white; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
-  .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
+  body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
+  .header { text-align: center; margin-bottom: 12px; border-bottom: 3px solid #D4A843; padding-bottom: 10px; }
+  .logo-img { height: 45px; margin-bottom: 2px; }
+  .logo-fallback { font-size: 24px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
+  .subtitle { color: #666; font-size: 11px; margin-top: 2px; }
+  .doc-title { text-align: center; color: #D4A843; font-size: 20px; font-weight: bold; margin: 10px 0; letter-spacing: 2px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #6366F1; color: white; }
+  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
+  .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .value { font-size: 12px; font-weight: 600; margin-top: 2px; color: #222; }
   .full-width { grid-column: 1 / -1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-  th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th { background: #D4A843; color: white; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
   .text-right { text-align: right; }
-  .totals { margin-top: 20px; padding: 15px; background: #fafafa; border-radius: 8px; border-left: 4px solid #D4A843; }
-  .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
-  .total-final { font-size: 18px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 10px; margin-top: 6px; }
-  .terms { margin-top: 30px; padding: 15px; background: #f5f5f5; border-radius: 8px; }
-  .terms-title { font-size: 12px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-  .terms-text { font-size: 11px; color: #666; line-height: 1.6; }
-  .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 15px; }
-  .banking { margin-top: 20px; padding: 15px; background: #fafafa; border-radius: 8px; border: 1px solid #e0e0e0; }
-  .banking-title { font-size: 12px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-  .banking-row { display: grid; grid-template-columns: 140px 1fr; font-size: 12px; padding: 3px 0; }
+  .totals { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border-left: 4px solid #D4A843; }
+  .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+  .total-final { font-size: 16px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 6px; margin-top: 4px; }
+  .terms { margin-top: 14px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
+  .terms-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .terms-text { font-size: 10px; color: #666; line-height: 1.5; }
+  .footer { margin-top: 16px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
+  .banking { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; }
+  .banking-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .banking-row { display: grid; grid-template-columns: 120px 1fr; font-size: 11px; padding: 2px 0; }
   .banking-label { color: #888; }
   .banking-value { color: #333; font-weight: 600; }
 </style></head><body>
@@ -766,27 +767,27 @@ export default function OrdersPage() {
     <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
     <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
     <div class="subtitle">28 Nagington Road, Wadeville, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644</div>
+    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
   </div>
   <div class="doc-title">QUOTATION</div>
-  <div style="text-align:center;margin-bottom:15px;"><span class="badge">QUOTE</span></div>
+  <div style="text-align:center;margin-bottom:10px;"><span class="badge">QUOTE</span></div>
   <div class="info-section">
-    <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:16px;">${order.orderNumber}</div></div>
+    <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:14px;">${order.orderNumber}</div></div>
     <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
     <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Prepared By</div><div class="value">${order.salesRepName || "N/A"}</div></div>
-    <div class="full-width" style="margin-top:8px;border-top:1px solid #e0e0e0;padding-top:12px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div><div class="label">Prepared By</div><div class="value">${order.salesRepName || customer?.salesRepName || "N/A"}</div></div>
+    <div class="full-width" style="margin-top:4px;border-top:1px solid #e0e0e0;padding-top:8px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
           <div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div>
-          <div class="label" style="margin-top:6px;">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div>
-          <div class="label" style="margin-top:6px;">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div>
-          <div class="label" style="margin-top:6px;">Phone</div><div class="value">${customer?.phone || "N/A"}</div>
+          <div class="label" style="margin-top:4px;">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div>
+          <div class="label" style="margin-top:4px;">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div>
+          <div class="label" style="margin-top:4px;">Phone</div><div class="value">${customer?.phone || "N/A"}</div>
         </div>
         <div>
           <div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div>
-          <div class="label" style="margin-top:6px;">Payment Terms</div><div class="value">${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div>
-          <div class="label" style="margin-top:6px;">Price Tier</div><div class="value">${(order.priceTier || "wholesale").toUpperCase()}</div>
+          <div class="label" style="margin-top:4px;">Payment Terms</div><div class="value">${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div>
+          <div class="label" style="margin-top:4px;">Price Tier</div><div class="value">${(order.priceTier || "wholesale").toUpperCase()}</div>
         </div>
       </div>
     </div>
@@ -797,7 +798,7 @@ export default function OrdersPage() {
       ${order.items?.map((item: any) => `
         <tr>
           <td>${item.productCode || "N/A"}</td>
-          <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:10px;">${item.unitLabel}</span>` : ""}</td>
+          <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:9px;">${item.unitLabel}</span>` : ""}</td>
           <td style="text-align:center;font-weight:bold;">${item.quantity}</td>
           <td style="text-align:right;">${item.unit || "each"}</td>
           <td style="text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td>
@@ -811,7 +812,7 @@ export default function OrdersPage() {
     <div class="total-row"><span>VAT (15%)</span><span>R ${Number(order.vatAmount).toFixed(2)}</span></div>
     <div class="total-row total-final"><span>QUOTE TOTAL</span><span>R ${Number(order.total).toFixed(2)}</span></div>
   </div>
-  ${order.notes ? `<div style="margin-top:20px;padding:12px;background:#fff8e1;border-radius:8px;border-left:3px solid #D4A843;"><div class="label">Notes</div><div style="font-size:12px;color:#666;font-style:italic;margin-top:4px;">${order.notes}</div></div>` : ""}
+  ${order.notes ? `<div style="margin-top:10px;padding:8px;background:#fff8e1;border-radius:6px;border-left:3px solid #D4A843;"><div class="label">Notes</div><div style="font-size:11px;color:#666;font-style:italic;margin-top:2px;">${order.notes}</div></div>` : ""}
   <div class="banking">
     <div class="banking-title">Banking Details</div>
     <div class="banking-row"><div class="banking-label">Bank Name</div><div class="banking-value">${banking?.bankName || "N/A"}</div></div>
@@ -833,7 +834,7 @@ export default function OrdersPage() {
   </div>
   <div class="footer">
     Supreme Global Foods (Pty) Ltd &middot; 28 Nagington Road, Wadeville, Germiston, 1422<br/>
-    sales@supremeglobalfoods.co.za &middot; Tel: 083 293 0644<br/>
+    sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888<br/>
     <em>This is a quotation and not a tax invoice. No VAT registration number is shown on quotations.</em>
   </div>
   <script>
@@ -872,8 +873,8 @@ export default function OrdersPage() {
       `Branch Code: ${banking?.branchCode || "N/A"}\n\n` +
       `To accept this quote, please reply to this email or contact your sales representative.\n\n` +
       `Kind regards,\n` +
-      `${order.salesRepName || "Supreme Global Foods Team"}\n` +
-      `sales@supremeglobalfoods.co.za | Tel: 083 293 0644\n\n` +
+      `${order.salesRepName || customer?.salesRepName || "Supreme Global Foods Team"}\n` +
+      `sales@supremeglobalfoods.co.za | Tel: 061 478 8888\n\n` +
       `—\nSupreme Global Foods (Pty) Ltd\n28 Nagington Road, Wadeville, Germiston, 1422`
     );
     const mailtoLink = `mailto:${customerEmail}?subject=${subject}&body=${body}`;

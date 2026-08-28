@@ -2170,6 +2170,36 @@ export const dataService = {
       const vatAmount = isSample ? 0 : subtotal * 0.15;
       const total = isSample ? 0 : subtotal + vatAmount;
       
+      // ZERO AMOUNT VALIDATION: Reject orders with R0 total (skip for samples/quotes)
+      if (!isSample && !isQuote && total <= 0) {
+        throw new Error("Order total is R0.00. Please enter a valid unit price for each item before placing the order.");
+      }
+
+      // BELOW-CORPORATE PRICE VALIDATION: Reject if any custom unit price is below corporate floor
+      // Skip for samples and quotes. Admin can override with data.adminApproved === true.
+      if (!isSample && !isQuote) {
+        const belowCorporateItems: string[] = [];
+        for (const item of items) {
+          const product = products.find((p) => p.id == item.stockItemId);
+          if (!product) continue;
+          // Only check items where a custom price was explicitly entered
+          const customPrice = (data.items || []).find((it: any) => it.stockItemId == item.stockItemId)?.unitPrice;
+          if (customPrice && customPrice > 0) {
+            const conversion = item.conversion || 1;
+            const corporateFloor = Number(product.corporatePrice || 0) * conversion;
+            // Allow 1% tolerance for rounding
+            if (customPrice < corporateFloor * 0.99) {
+              belowCorporateItems.push(`${product.productName} (R${customPrice.toFixed(2)} < floor R${corporateFloor.toFixed(2)})`);
+            }
+          }
+        }
+        if (belowCorporateItems.length > 0 && data.adminApproved !== true) {
+          throw new Error(
+            `BELOW CORPORATE PRICE: The following items are priced below the corporate floor:\n${belowCorporateItems.join("\n")}\n\nSuper admin approval required to place this order.`
+          );
+        }
+      }
+      
       const newOrder = {
         ...data,
         id: Date.now(),

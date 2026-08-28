@@ -295,6 +295,9 @@ export default function OrdersPage() {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerInputRef = useRef<HTMLInputElement>(null);
 
+  // Admin override for below-corporate pricing
+  const [adminOverride, setAdminOverride] = useState(false);
+
   // Product picker modal state
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [productPickerIndex, setProductPickerIndex] = useState<number>(0);
@@ -438,6 +441,7 @@ export default function OrdersPage() {
 
   function resetForm() {
     setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
+    setAdminOverride(false);
   }
 
   function getTierPrice(stockItemId: number | string, tier?: string): number {
@@ -542,6 +546,42 @@ export default function OrdersPage() {
         if (Number(item.quantity) > 1) return { valid: false, error: "Sample orders: 1 unit per product max." };
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
+
+    // ZERO AMOUNT VALIDATION: Calculate running total — reject if R0
+    if (formData.orderType !== "sample" && formData.orderType !== "quote") {
+      let runningSubtotal = 0;
+      for (const item of validItems) {
+        const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
+        const conversion = item.conversion || 1;
+        const basePrice = getEffectivePrice(item.stockItemId);
+        const unitPrice = item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion;
+        runningSubtotal += unitPrice * item.quantity;
+      }
+      const runningTotal = runningSubtotal * 1.15;
+      if (runningTotal <= 0) {
+        return { valid: false, error: "Order total is R0.00. Please enter a valid unit price for each item before placing the order." };
+      }
+
+      // BELOW-CORPORATE VALIDATION: Check custom prices against corporate floor
+      const belowItems: string[] = [];
+      for (const item of validItems) {
+        // Only check items where a custom price was explicitly entered (> 0)
+        if (item.unitPrice && item.unitPrice > 0) {
+          const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
+          if (stock) {
+            const conversion = item.conversion || 1;
+            const corporateFloor = Number(stock.corporatePrice || 0) * conversion;
+            if (corporateFloor > 0 && item.unitPrice < corporateFloor * 0.99) {
+              belowItems.push(`${stock.productName}: R${item.unitPrice.toFixed(2)} (floor R${corporateFloor.toFixed(2)})`);
+            }
+          }
+        }
+      }
+      if (belowItems.length > 0 && !isAdmin && !adminOverride) {
+        return { valid: false, error: `PRICE BELOW CORPORATE FLOOR:\n${belowItems.join("\n")}\n\nSuper admin approval required.` };
+      }
+    }
+
     return { valid: true };
   }
 
@@ -574,6 +614,10 @@ export default function OrdersPage() {
     // Only set salesRepName on NEW orders. On edit, preserve original.
     if (!editingOrder) {
       payload.salesRepName = user?.name || "";
+      // Pass admin override flag for below-corporate pricing approval
+      if (adminOverride) {
+        payload.adminApproved = true;
+      }
     }
     if (editingOrder) {
       updateOrder.mutate({ id: editingOrder.id, data: payload });
@@ -584,6 +628,7 @@ export default function OrdersPage() {
 
   function startEditOrder(order: any) {
     setEditingOrder(order);
+    setAdminOverride(false);
     setFormData({
       customerId: order.customerId, orderType: order.orderType || "regular",
       paymentTerms: order.paymentTerms || "cod", priceTier: order.priceTier || "wholesale",
@@ -1433,6 +1478,46 @@ export default function OrdersPage() {
               {!orderCheck.valid && formData.items.length > 0 && (
                 <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444" }}><AlertTriangle className="w-4 h-4 inline mr-2" />{orderCheck.error}</div>
               )}
+
+              {/* Admin Override — below-corporate pricing detected */}
+              {(() => {
+                if (formData.orderType === "sample" || formData.orderType === "quote" || !isAdmin) return null;
+                const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
+                const belowItems: string[] = [];
+                for (const item of validItems) {
+                  if (item.unitPrice && item.unitPrice > 0) {
+                    const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
+                    if (stock) {
+                      const conversion = item.conversion || 1;
+                      const corporateFloor = Number(stock.corporatePrice || 0) * conversion;
+                      if (corporateFloor > 0 && item.unitPrice < corporateFloor * 0.99) {
+                        belowItems.push(`${stock.productName}: R${item.unitPrice.toFixed(2)} (floor R${corporateFloor.toFixed(2)})`);
+                      }
+                    }
+                  }
+                }
+                if (belowItems.length === 0) return null;
+                return (
+                  <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                    <div className="flex items-start gap-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                      <div className="text-[#F59E0B]">
+                        <strong>Below Corporate Floor Detected</strong>
+                        <div className="text-xs mt-1 opacity-80">{belowItems.join(" | ")}</div>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={adminOverride}
+                        onChange={(e) => setAdminOverride(e.target.checked)}
+                        className="w-4 h-4 rounded accent-[#D4A843]"
+                      />
+                      <span className="text-[#E8E8E9] text-xs">I am a Super Admin — approve this below-corporate pricing</span>
+                    </label>
+                  </div>
+                );
+              })()}
 
               <button type="submit" className="btn-primary w-full justify-center" disabled={!orderCheck.valid || createOrder.isPending || updateOrder.isPending}>
                 {createOrder.isPending || updateOrder.isPending ? (

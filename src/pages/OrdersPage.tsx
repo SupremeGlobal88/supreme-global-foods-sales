@@ -462,7 +462,7 @@ export default function OrdersPage() {
     }
     // If loaded price is 0, fall back to STATIC_PRODUCTS (source of truth)
     if (rawPrice <= 0) {
-      const staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode);
+      const staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode || (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim()));
       if (staticProd) {
         switch (t) {
           case "corporate": rawPrice = Number(staticProd.corporatePrice); break;

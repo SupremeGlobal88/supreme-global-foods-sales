@@ -138,6 +138,45 @@ function isValidArray(data: any, minLength: number, requiredKey?: string): boole
   return true;
 }
 
+/** Repair product prices by matching against STATIC_PRODUCTS seed data.
+ *  Matches by productCode (exact), then id (exact), then productName (normalized).
+ *  Returns count of products repaired. */
+function repairProductPrices(productList: any[]): number {
+  let pricesRestored = 0;
+  for (const prod of productList) {
+    const hasAnyPrice = Number(prod.wholesalePrice) > 0 || Number(prod.corporatePrice) > 0 || Number(prod.bulkPrice) > 0 || Number(prod.retailPrice) > 0;
+    if (hasAnyPrice) continue;
+
+    let match: any = null;
+    // 1. Match by productCode (most reliable)
+    if (prod.productCode) {
+      match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
+    }
+    // 2. Match by id
+    if (!match && prod.id != null) {
+      match = STATIC_PRODUCTS.find((s: any) => s.id == prod.id);
+    }
+    // 3. Match by normalized productName
+    if (!match && prod.productName) {
+      const normalizedName = String(prod.productName).toLowerCase().trim().replace(/\s+/g, " ");
+      match = STATIC_PRODUCTS.find((s: any) => {
+        const seedName = String(s.productName || "").toLowerCase().trim().replace(/\s+/g, " ");
+        return seedName === normalizedName;
+      });
+    }
+
+    if (match) {
+      prod.wholesalePrice = match.wholesalePrice;
+      prod.corporatePrice = match.corporatePrice;
+      prod.bulkPrice = match.bulkPrice;
+      prod.retailPrice = match.retailPrice;
+      prod.costPrice = match.costPrice;
+      pricesRestored++;
+    }
+  }
+  return pricesRestored;
+}
+
 function load() {
   // Helper: safely load a data array from storage
   function safeLoadArray(key: string): any[] | null {
@@ -165,22 +204,7 @@ function load() {
     if (p && p.length > 0) {
       products = p;
       // PRICE REPAIR: If loaded products have 0 prices, restore from STATIC_PRODUCTS seed
-      // This fixes data corruption where price fields were wiped
-      let pricesRestored = 0;
-      for (const prod of products) {
-        const hasAnyPrice = Number(prod.wholesalePrice) > 0 || Number(prod.corporatePrice) > 0 || Number(prod.bulkPrice) > 0 || Number(prod.retailPrice) > 0;
-        if (!hasAnyPrice && prod.productCode) {
-          const match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
-          if (match) {
-            prod.wholesalePrice = match.wholesalePrice;
-            prod.corporatePrice = match.corporatePrice;
-            prod.bulkPrice = match.bulkPrice;
-            prod.retailPrice = match.retailPrice;
-            prod.costPrice = match.costPrice;
-            pricesRestored++;
-          }
-        }
-      }
+      const pricesRestored = repairProductPrices(products);
       if (pricesRestored > 0) {
         saveItem("sgf_products", products);
         console.log(`[PriceRepair] Restored prices for ${pricesRestored} products from seed data`);
@@ -1009,6 +1033,16 @@ function _doReloadFromStorage(keys?: string[]): void {
     try {
       const p = getStorageItem("sgf_products");
       if (p) { const d = JSON.parse(p); if (Array.isArray(d) && d.length > 0) products = d; }
+      // PRICE REPAIR after every cloud sync: Firebase may have 0-price products
+      const pricesRestored = repairProductPrices(products);
+      if (pricesRestored > 0) {
+        saveItem("sgf_products", products);
+        console.log(`[PriceRepair] Reload repaired ${pricesRestored} products after cloud sync`);
+        // Notify app that products were repaired so Firebase can be updated
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products, count: pricesRestored } }));
+        }
+      }
     } catch { /* keep current */ }
   }
   if (reloadAll || keys?.includes("sgf_orders")) {
@@ -4603,8 +4637,12 @@ function getEffectivePrice(stockItemId: number, priceTier: string, customerId: n
     default: rawPrice = Number(stock.wholesalePrice); break;
   }
   // Fallback to STATIC_PRODUCTS if loaded price is 0
-  if (rawPrice <= 0 && stock.productCode) {
-    const staticProd = STATIC_PRODUCTS.find((p: any) => p.productCode === stock.productCode);
+  if (rawPrice <= 0) {
+    const staticProd = STATIC_PRODUCTS.find((p: any) =>
+      p.id == stockItemId ||
+      (stock.productCode && p.productCode === stock.productCode) ||
+      (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim())
+    );
     if (staticProd) {
       switch (priceTier) {
         case "corporate": rawPrice = Number(staticProd.corporatePrice); break;

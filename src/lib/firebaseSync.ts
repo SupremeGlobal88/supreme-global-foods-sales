@@ -1317,6 +1317,17 @@ export function registerDataServiceRefresh(fn: RefreshFn): void {
   dataServiceRefresh = fn;
 }
 
+// Listen for price repair events from dataService and push repaired products to Firebase
+if (typeof window !== "undefined") {
+  window.addEventListener("sgf:productsRepaired", (e: any) => {
+    const prods = e.detail?.products;
+    if (prods && isFirebaseReady()) {
+      console.log(`[FirebaseSync] Pushing ${prods.length} repaired products to cloud...`);
+      pushStock(prods).catch((err: any) => console.error("[FirebaseSync] pushStock failed:", err?.message || err));
+    }
+  });
+}
+
 /** Get current user role from localStorage */
 function getCurrentUserRole(): string {
   try {

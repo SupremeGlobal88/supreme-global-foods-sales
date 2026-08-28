@@ -297,6 +297,7 @@ export default function OrdersPage() {
 
   // Admin override for below-corporate pricing
   const [adminOverride, setAdminOverride] = useState(false);
+  const [adminPin, setAdminPin] = useState("");
 
   // Product picker modal state
   const [productPickerOpen, setProductPickerOpen] = useState(false);
@@ -442,6 +443,7 @@ export default function OrdersPage() {
   function resetForm() {
     setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
     setAdminOverride(false);
+    setAdminPin("");
   }
 
   function getTierPrice(stockItemId: number | string, tier?: string): number {
@@ -580,6 +582,15 @@ export default function OrdersPage() {
       if (belowItems.length > 0 && !isAdmin && !adminOverride) {
         return { valid: false, error: `PRICE BELOW CORPORATE FLOOR:\n${belowItems.join("\n")}\n\nSuper admin approval required.` };
       }
+      // Admin has checked override — must enter correct PIN
+      if (belowItems.length > 0 && adminOverride) {
+        if (!adminPin || adminPin.trim().length === 0) {
+          return { valid: false, error: "Please enter your admin PIN to approve below-corporate pricing." };
+        }
+        if (adminPin !== user?.pin) {
+          return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve below-corporate pricing." };
+        }
+      }
     }
 
     return { valid: true };
@@ -629,6 +640,7 @@ export default function OrdersPage() {
   function startEditOrder(order: any) {
     setEditingOrder(order);
     setAdminOverride(false);
+    setAdminPin("");
     setFormData({
       customerId: order.customerId, orderType: order.orderType || "regular",
       paymentTerms: order.paymentTerms || "cod", priceTier: order.priceTier || "wholesale",
@@ -1233,7 +1245,7 @@ export default function OrdersPage() {
                   ? "New Quote"
                   : "New Order"}
               </h2>
-              <button onClick={() => { setShowForm(false); setEditingOrder(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => { setShowForm(false); setEditingOrder(null); setAdminOverride(false); setAdminPin(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             {editingOrder && (
               <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
@@ -1510,11 +1522,26 @@ export default function OrdersPage() {
                       <input
                         type="checkbox"
                         checked={adminOverride}
-                        onChange={(e) => setAdminOverride(e.target.checked)}
+                        onChange={(e) => { setAdminOverride(e.target.checked); if (!e.target.checked) setAdminPin(""); }}
                         className="w-4 h-4 rounded accent-[#D4A843]"
                       />
                       <span className="text-[#E8E8E9] text-xs">I am a Super Admin — approve this below-corporate pricing</span>
                     </label>
+                    {adminOverride && (
+                      <div className="mt-2">
+                        <label className="label-text block mb-1 text-xs">Enter your PIN to approve</label>
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={adminPin}
+                          onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          placeholder="Enter PIN"
+                          className="input-field w-32 text-sm"
+                          autoComplete="off"
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })()}

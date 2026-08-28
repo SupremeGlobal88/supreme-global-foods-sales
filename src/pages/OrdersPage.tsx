@@ -3,6 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDetails } from "@/lib/dataService";
+import * as staticData from "@/data/staticData";
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
@@ -450,7 +451,26 @@ export default function OrdersPage() {
     const stock = (stockItems || []).find((s) => String(s.id) === String(stockItemId));
     if (!stock) return 0;
     const t = tier || formData.priceTier;
-    switch (t) { case "corporate": return Number(stock.corporatePrice); case "bulk": return Number(stock.bulkPrice); case "retail": return Number(stock.retailPrice); default: return Number(stock.wholesalePrice); }
+    let rawPrice: number;
+    switch (t) {
+      case "corporate": rawPrice = Number(stock.corporatePrice); break;
+      case "bulk": rawPrice = Number(stock.bulkPrice); break;
+      case "retail": rawPrice = Number(stock.retailPrice); break;
+      default: rawPrice = Number(stock.wholesalePrice); break;
+    }
+    // If loaded price is 0, fall back to STATIC_PRODUCTS (source of truth)
+    if (rawPrice <= 0) {
+      const staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode);
+      if (staticProd) {
+        switch (t) {
+          case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
+          case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
+          case "retail": rawPrice = Number(staticProd.retailPrice); break;
+          default: rawPrice = Number(staticProd.wholesalePrice); break;
+        }
+      }
+    }
+    return rawPrice;
   }
 
   function getEffectivePrice(stockItemId: number | string, customPrice?: number): number {

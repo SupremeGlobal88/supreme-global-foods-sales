@@ -1,6 +1,0 @@
-name = "sgf-deploy"
-compatibility_date = "2026-08-25"
-account_id = "8e64a706aa9d27c00eb2f1bf40f7e8b3"
-
-[site]
-bucket = "./dist/public"

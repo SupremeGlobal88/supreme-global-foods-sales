@@ -1,6 +1,6 @@
 import { createTRPCReact } from "@trpc/react-query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { AppRouter } from "../../api/router";
+import type { AppRouter } from "@/lib/appRouter";
 import type { ReactNode } from "react";
 import { createLocalLink } from "@/lib/localLink";
 

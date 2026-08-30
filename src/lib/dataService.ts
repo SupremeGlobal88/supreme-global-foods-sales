@@ -4025,7 +4025,9 @@ export const dataService = {
       }
 
       if (!found) return null;
-      return { id: found.id, name: found.name, email: found.email, role: found.role, pin: found.pin };
+      const hardcoded = DEFAULT_USERS.find((u) => u.id === found.id || u.name.toLowerCase() === found.name?.toLowerCase());
+      const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
+      return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
     },
     create: (data: any) => {
       const newUser = { ...data, id: Date.now(), isActive: true, createdAt: new Date().toISOString() };
@@ -4575,7 +4577,9 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
         (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
       );
       if (found) {
-        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: found.pin };
+        const hardcoded = DEFAULT_USERS.find((u) => u.id === found.id || u.name.toLowerCase() === found.name?.toLowerCase());
+        const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
+        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
       }
       // Admin alias match — check if any stored user has this PIN and is admin
       if (ADMIN_ALIASES.includes(typedName)) {
@@ -4583,7 +4587,9 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
           (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
         );
         if (adminFound) {
-          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: adminFound.pin };
+          const hardcoded = DEFAULT_USERS.find((u) => u.id === adminFound.id || u.name.toLowerCase() === adminFound.name?.toLowerCase());
+          const resolvedPin = adminFound.pin != null ? adminFound.pin : hardcoded?.pin;
+          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: resolvedPin };
         }
       }
     }

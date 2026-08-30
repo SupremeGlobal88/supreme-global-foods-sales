@@ -20,6 +20,7 @@ function EmergencyAccess() {
         name: "Collin",
         email: "collin@supremeglobalfoods.co.za",
         role: "super_admin",
+        pin: "2580",
       }));
       window.location.href = "/#/dashboard";
     } else {

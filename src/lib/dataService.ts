@@ -4025,7 +4025,7 @@ export const dataService = {
       }
 
       if (!found) return null;
-      return { id: found.id, name: found.name, email: found.email, role: found.role };
+      return { id: found.id, name: found.name, email: found.email, role: found.role, pin: found.pin };
     },
     create: (data: any) => {
       const newUser = { ...data, id: Date.now(), isActive: true, createdAt: new Date().toISOString() };
@@ -4547,7 +4547,7 @@ export function factoryReset(): void {
  * DIRECT LOGIN — bypasses tRPC/localLink entirely.
  * Called directly from Login.tsx. Checks hardcoded defaults first.
  */
-export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string } | null {
+export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string; pin?: string } | null {
   const DEFAULT_USERS = [
     { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580" },
     { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111" },
@@ -4575,7 +4575,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
         (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
       );
       if (found) {
-        return { id: found.id, name: found.name, email: found.email, role: found.role };
+        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: found.pin };
       }
       // Admin alias match — check if any stored user has this PIN and is admin
       if (ADMIN_ALIASES.includes(typedName)) {
@@ -4583,7 +4583,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
           (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
         );
         if (adminFound) {
-          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role };
+          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: adminFound.pin };
         }
       }
     }
@@ -4595,7 +4595,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
       (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
     );
     if (adminMatch) {
-      return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role };
+      return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
     }
   }
 
@@ -4615,7 +4615,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
         users = stored;
       }
     } catch { /* ignore */ }
-    return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role };
+    return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role, pin: fromDefaults.pin };
   }
 
   return null;

@@ -604,12 +604,18 @@ export default function OrdersPage() {
       if (belowItems.length > 0 && !isAdmin && !adminOverride) {
         return { valid: false, error: `PRICE BELOW CORPORATE FLOOR:\n${belowItems.join("\n")}\n\nSuper admin approval required.` };
       }
-      // Admin has checked override — must enter correct PIN
+  // Admin has checked override — must enter correct PIN
       if (belowItems.length > 0 && adminOverride) {
         if (!adminPin || adminPin.trim().length === 0) {
           return { valid: false, error: "Please enter your admin PIN to approve below-corporate pricing." };
         }
-        if (adminPin !== user?.pin) {
+        // Fallback: if auth user doesn't have pin (old login), look up from users DB
+        const effectivePin = user?.pin ?? (() => {
+          const allUsers = dataService.user.list?.() || [];
+          const dbUser = allUsers.find((u: any) => u.id === user?.id || u.name === user?.name);
+          return dbUser?.pin;
+        })();
+        if (adminPin !== String(effectivePin || "")) {
           return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve below-corporate pricing." };
         }
       }

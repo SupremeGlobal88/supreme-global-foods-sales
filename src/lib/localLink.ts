@@ -119,6 +119,28 @@ async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "c
   } catch (e: any) { console.error("[fbPush] FAILED:", type, item?.id, e?.message || e); }
 }
 
+/** Get current logged-in user from localStorage.
+ *  Returns { role: string } | null so we can enforce admin-only mutations. */
+function getCurrentUser(): { role: string } | null {
+  try {
+    const raw = localStorage.getItem("demo_user");
+    if (!raw) return null;
+    const user = JSON.parse(raw);
+    return user ? { role: user.role || "" } : null;
+  } catch { return null; }
+}
+
+function isAdmin(): boolean {
+  const user = getCurrentUser();
+  return user?.role === "admin" || user?.role === "super_admin";
+}
+
+function requireAdmin(): void {
+  if (!isAdmin()) {
+    throw new Error("Admin access required. Sales reps cannot edit or cancel orders.");
+  }
+}
+
 export function createLocalLink() {
   return () =>
     ({ op }: any) =>
@@ -189,6 +211,7 @@ export function createLocalLink() {
                 break;
               }
               case "order.update": {
+                requireAdmin();
                 const { id, data } = input;
                 result = dataService.order.update({ id, data });
                 await fbPush("order", result);
@@ -211,6 +234,7 @@ export function createLocalLink() {
                 break;
               }
               case "order.updateStatus": {
+                requireAdmin();
                 const updateResult = dataService.order.updateStatus(input);
                 result = updateResult?.order || updateResult;
                 await fbPush("order", result);

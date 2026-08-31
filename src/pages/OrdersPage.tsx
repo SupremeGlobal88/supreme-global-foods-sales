@@ -720,37 +720,27 @@ export default function OrdersPage() {
   }
 
   function canEditOrder(order: any): boolean {
-    // Quotes can be edited while in draft or sent status
+    // ONLY ADMIN can edit orders (admin or super_admin).
+    // Sales reps can NO LONGER edit their own orders — they must contact admin.
+    // Quotes: only admin can edit while in draft or sent status.
     if (order.orderType === "quote") {
       if (order.status === "converted" || order.status === "rejected") return false;
-      if (isAdmin) return true;
-      const cust = (customers || []).find((c) => c.id === order.customerId);
-      return cust?.salesRepName === myRepName;
+      return isAdmin;
     }
     // Admin can edit ANY order (including delivered/cancelled/sample_delivered)
-    if (isAdmin) return true;
-    // Sales reps can edit their own orders while status is "pending" only
-    if (order.status === "delivered" || order.status === "cancelled" || order.status === "sample_delivered") return false;
-    if (order.status !== "pending") return false;
-    const cust = (customers || []).find((c) => c.id === order.customerId);
-    return cust?.salesRepName === myRepName;
+    return isAdmin;
   }
 
   function canCancelOrder(order: any): boolean {
-    // Quotes can be "rejected" instead of cancelled
+    // ONLY ADMIN can cancel orders.
+    // Sales reps can NO LONGER cancel orders — they must contact admin.
+    // Quotes: only admin can reject while in draft or sent status.
     if (order.orderType === "quote") {
       if (order.status === "converted" || order.status === "rejected") return false;
-      if (isAdmin) return true;
-      const cust = (customers || []).find((c) => c.id === order.customerId);
-      return cust?.salesRepName === myRepName;
+      return isAdmin;
     }
     // Admin can cancel ANY non-cancelled order
-    if (isAdmin) return order.status !== "cancelled";
-    // Sales rep can only cancel their own pending orders
-    if (order.status === "cancelled" || order.status === "delivered" || order.status === "sample_delivered") return false;
-    if (order.status !== "pending") return false;
-    const cust = (customers || []).find((c) => c.id === order.customerId);
-    return cust?.salesRepName === myRepName;
+    return isAdmin && order.status !== "cancelled";
   }
 
   function canProgressOrder(order: any): boolean {

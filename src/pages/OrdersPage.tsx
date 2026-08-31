@@ -1380,23 +1380,33 @@ export default function OrdersPage() {
               {/* Order Type */}
               <div>
                 <label className="label-text block mb-2">Order Type *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button type="button" onClick={() => setFormData({ ...formData, orderType: "regular" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "regular" ? "rgba(74, 222, 128, 0.08)" : "#0A0A0B", border: formData.orderType === "regular" ? "2px solid #4ADE80" : "2px solid #222324" }}>
-                    <ShoppingBag className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }} />
-                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular</div>
-                    <div className="text-xs text-[#8A8B8C] mt-1">Customer charged</div>
-                  </button>
-                  <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
-                    <FlaskConical className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }} />
-                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample</div>
-                    <div className="text-xs text-[#8A8B8C] mt-1">No charge</div>
-                  </button>
-                  <button type="button" onClick={() => setFormData({ ...formData, orderType: "quote" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "quote" ? "rgba(99, 102, 241, 0.08)" : "#0A0A0B", border: formData.orderType === "quote" ? "2px solid #6366F1" : "2px solid #222324" }}>
-                    <FileText className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }} />
-                    <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }}>Quote</div>
+                {/* When editing a quote, lock the order type — must use Convert to Order button */}
+                {editingOrder?.orderType === "quote" ? (
+                  <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(99, 102, 241, 0.08)", border: "2px solid #6366F1" }}>
+                    <FileText className="w-5 h-5 mx-auto mb-1" style={{ color: "#6366F1" }} />
+                    <div className="text-sm font-display font-semibold" style={{ color: "#6366F1" }}>Quote</div>
                     <div className="text-xs text-[#8A8B8C] mt-1">Send to customer</div>
-                  </button>
-                </div>
+                    <div className="text-xs text-[#F59E0B] mt-2">Use the "Convert to Order" button to change this quote to an order</div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "regular" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "regular" ? "rgba(74, 222, 128, 0.08)" : "#0A0A0B", border: formData.orderType === "regular" ? "2px solid #4ADE80" : "2px solid #222324" }}>
+                      <ShoppingBag className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }} />
+                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular</div>
+                      <div className="text-xs text-[#8A8B8C] mt-1">Customer charged</div>
+                    </button>
+                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
+                      <FlaskConical className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }} />
+                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample</div>
+                      <div className="text-xs text-[#8A8B8C] mt-1">No charge</div>
+                    </button>
+                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "quote" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "quote" ? "rgba(99, 102, 241, 0.08)" : "#0A0A0B", border: formData.orderType === "quote" ? "2px solid #6366F1" : "2px solid #222324" }}>
+                      <FileText className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }} />
+                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }}>Quote</div>
+                      <div className="text-xs text-[#8A8B8C] mt-1">Send to customer</div>
+                    </button>
+                  </div>
+                )}
                 {formData.orderType === "sample" && (
                   <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.05)", color: "#D4A843" }}>
                     1 unit per product max. Customer not charged. Follow-up in 4 days.

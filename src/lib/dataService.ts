@@ -177,6 +177,44 @@ function repairProductPrices(productList: any[]): number {
   return pricesRestored;
 }
 
+/** Auto-repair quotes that were incorrectly changed to orders via Edit.
+ *  A broken quote has: QTE- prefix, orderType !== "quote", status !== "converted".
+ *  Resets them back to proper quotes so the Convert to Order flow works.
+ *  Returns count of repaired quotes. */
+function repairBrokenQuotes(): number {
+  let repaired = 0;
+  for (const order of orders) {
+    const orderNum = String(order.orderNumber || "");
+    const isQuotePrefix = orderNum.toUpperCase().startsWith("QTE-");
+    const isQuoteType = order.orderType === "quote";
+    const isConverted = order.status === "converted";
+
+    // Broken: QTE- prefix but NOT a quote type AND not already converted
+    if (isQuotePrefix && !isQuoteType && !isConverted) {
+      order.orderType = "quote";
+      order.status = "draft";
+      // Restore stock that was incorrectly deducted when changed to "regular"
+      // (quotes never deduct stock, so if it was treated as an order, stock was deducted)
+      if (order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          if (item.stockItemId != null && item.quantity != null) {
+            const product = products.find((p) => p.id == item.stockItemId);
+            if (product) {
+              product.quantity = (product.quantity || 0) + item.quantity;
+            }
+          }
+        }
+      }
+      repaired++;
+      console.log(`[QuoteRepair] Reset ${orderNum} back to quote (was orderType="${order.orderType}")`);
+    }
+  }
+  if (repaired > 0) {
+    saveItem("sgf_products", products);
+  }
+  return repaired;
+}
+
 function load() {
   // Helper: safely load a data array from storage
   function safeLoadArray(key: string): any[] | null {
@@ -214,6 +252,20 @@ function load() {
     // TRANSACTION DATA: always load if present (user-generated, never replace with static)
     const o = safeLoadArray("sgf_orders");
     if (o) orders = o;
+
+    // AUTO-REPAIR: Fix quotes that were incorrectly changed to orders via Edit.
+    // When someone edits a quote and changes orderType from "quote" to "regular",
+    // the record keeps the QTE- prefix and "Draft" status but behaves like an order.
+    // This repair resets them back to proper quotes so they can be converted correctly.
+    const repairedQuotes = repairBrokenQuotes();
+    if (repairedQuotes > 0) {
+      console.log(`[QuoteRepair] Auto-repaired ${repairedQuotes} broken quote(s)`);
+      saveItem("sgf_orders", orders);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("sgf:quotesRepaired", { detail: { count: repairedQuotes } }));
+      }
+    }
+
     const i = safeLoadArray("sgf_invoices");
     if (i) invoices = i;
     const a = safeLoadArray("sgf_appointments");
@@ -2316,6 +2368,11 @@ export const dataService = {
         const oldOrder = orders[idx];
         const isQuote = oldOrder.orderType === "quote";
         const isSample = data.orderType === "sample" || oldOrder.orderType === "sample";
+        
+        // GUARD: Prevent changing a quote's orderType via edit — must use convertQuoteToOrder
+        if (isQuote && data.orderType && data.orderType !== "quote") {
+          throw new Error("Quotes cannot be changed to orders by editing. Please use the 'Convert to Order' button instead.");
+        }
         
         // RESTORE old stock first (skip for quotes — they never deducted stock)
         if (!isQuote) {

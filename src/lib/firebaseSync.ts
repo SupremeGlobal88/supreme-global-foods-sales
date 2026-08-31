@@ -1331,15 +1331,24 @@ if (typeof window !== "undefined") {
     const count = e.detail?.count || 0;
     if (count > 0 && isFirebaseReady()) {
       console.log(`[FirebaseSync] Pushing repaired quotes to cloud...`);
-      // Push orders (which includes repaired quotes)
       const allOrders = JSON.parse(localStorage.getItem("sgf_orders") || "[]");
       if (allOrders.length > 0) {
         fbPush("order", allOrders).catch((err: any) => console.error("[FirebaseSync] push orders failed:", err?.message || err));
       }
-      // Also push products (stock was restored)
       const allProducts = JSON.parse(localStorage.getItem("sgf_products") || "[]");
       if (allProducts.length > 0) {
         fbPush("stock", allProducts).catch((err: any) => console.error("[FirebaseSync] push stock failed:", err?.message || err));
+      }
+    }
+  });
+
+  window.addEventListener("sgf:invoicesCleaned", (e: any) => {
+    const count = e.detail?.removed || 0;
+    if (count > 0 && isFirebaseReady()) {
+      console.log(`[FirebaseSync] Pushing cleaned invoices to cloud...`);
+      const allInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
+      if (allInvoices.length > 0) {
+        fbPush("invoice", allInvoices).catch((err: any) => console.error("[FirebaseSync] push invoices failed:", err?.message || err));
       }
     }
   });

@@ -161,6 +161,13 @@ export default function InvoicesPage() {
     },
     onError: (err: any) => alert("Failed: " + (err.message || "Unknown error")),
   });
+  const deleteInvoice = trpc.invoice.delete.useMutation({
+    onSuccess: async () => {
+      await utils.invoice.list.invalidate();
+      alert("Invoice deleted successfully.");
+    },
+    onError: (err: any) => alert("Failed to delete invoice: " + (err.message || "Unknown error")),
+  });
 
   function closePay() {
     setShowPayForm(false); setPayInvId(0); setPayInvNumber(""); setPayCustName("");
@@ -985,6 +992,16 @@ export default function InvoicesPage() {
                               style={{ color: "#F59E0B" }}
                             >
                               <Zap className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isAdmin && inv.status === "draft" && String(inv.orderNumber || "").startsWith("QTE-") && (
+                            <button
+                              onClick={() => { if (confirm(`Delete draft invoice ${inv.invoiceNumber}? This invoice was auto-generated for a quote and should not exist.`)) deleteInvoice.mutate(inv.id); }}
+                              className="p-1.5 rounded hover:bg-[#222324]"
+                              title="Delete Draft Invoice"
+                              style={{ color: "#EF4444" }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                           <button onClick={() => printDoc(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Print Invoice & Delivery Note"><Printer className="w-3.5 h-3.5 text-[#8A8B8C]" /></button>

@@ -323,6 +323,33 @@ function load() {
   // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
   try { deduplicateAll(); } catch (e) { console.error("[load] deduplicateAll failed:", e); }
 
+  // AUTO-CLEANUP: Remove invoices linked to quotes (quotes should never have invoices).
+  // This fixes the bug where editing a quote and changing orderType to "normal"
+  // generated an invoice that persisted even after the quote was repaired.
+  try {
+    const beforeCleanup = invoices.length;
+    const toRemove: number[] = [];
+    for (let idx = 0; idx < invoices.length; idx++) {
+      const inv = invoices[idx];
+      const linkedOrderNum = String(inv.orderNumber || "");
+      if (linkedOrderNum.toUpperCase().startsWith("QTE-")) {
+        toRemove.push(idx);
+        console.log(`[InvoiceCleanup] Removing invoice ${inv.invoiceNumber} linked to quote ${linkedOrderNum}`);
+      }
+    }
+    // Remove in reverse order to keep indices valid
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      invoices.splice(toRemove[i], 1);
+    }
+    if (toRemove.length > 0) {
+      saveItem("sgf_invoices", invoices);
+      console.log(`[InvoiceCleanup] Removed ${toRemove.length} invoice(s) linked to quotes`);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
+      }
+    }
+  } catch (e) { console.error("[load] invoice cleanup failed:", e); }
+
   // AUTO-LINK: Match Sage invoices to customers by customerCode.
   // This runs on every startup so ALL devices get linked Sage invoices
   // without needing to click "Re-link" button in Settings.
@@ -2674,6 +2701,24 @@ export const dataService = {
       const idx = invoices.findIndex((i) => i.id == id);
       if (idx >= 0) { invoices[idx].status = status; invoices[idx].amountPaid = amountPaid || 0; saveItem("sgf_invoices", invoices); return invoices[idx]; }
       return null;
+    },
+    delete: (id: number) => {
+      const idx = invoices.findIndex((i) => i.id == id);
+      if (idx < 0) return null;
+      const deleted = invoices[idx];
+      // If this invoice is linked to an order, clear the order's invoice reference
+      if (deleted.orderId) {
+        const orderIdx = orders.findIndex((o) => o.id == deleted.orderId);
+        if (orderIdx >= 0) {
+          orders[orderIdx].invoiceId = undefined;
+          orders[orderIdx].invoiceNumber = undefined;
+          saveItem("sgf_orders", orders);
+        }
+      }
+      invoices.splice(idx, 1);
+      saveItem("sgf_invoices", invoices);
+      logAudit("DELETE", "invoice", id, `Deleted invoice ${deleted.invoiceNumber}`);
+      return deleted;
     },
     recordPayment: ({ invoiceId, amount, paymentMethod, paymentDate, referenceNumber, notes }: any) => {
       const idx = invoices.findIndex((i) => i.id == invoiceId);

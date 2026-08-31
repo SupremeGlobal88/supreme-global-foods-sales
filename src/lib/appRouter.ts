@@ -64,6 +64,7 @@ export const appRouter = t.router({
     recordPayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     editPayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     deletePayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
     getCustomerStatement: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
     getReceipts: t.procedure.query(() => [] as any[]),
     getReceiptsByInvoice: t.procedure.input((val: unknown) => val as any).query(() => [] as any[]),

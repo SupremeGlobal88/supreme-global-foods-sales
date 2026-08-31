@@ -2526,6 +2526,19 @@ export const dataService = {
       quote.updatedAt = new Date().toISOString();
       saveItem("sgf_orders", orders);
 
+      // GENERATE INVOICE for the new order (normal order process)
+      const invoiceNumber = generateInvoiceForOrder(newOrder.id);
+      if (invoiceNumber) {
+        // Link invoice to the new order
+        const inv = invoices.find((i) => i.orderId == newOrder.id);
+        if (inv) {
+          newOrder.invoiceId = inv.id;
+          newOrder.invoiceNumber = inv.invoiceNumber;
+          saveItem("sgf_orders", orders);
+        }
+        logAudit("CREATE", "invoice", newOrder.id, `Invoice ${invoiceNumber} generated for converted order ${orderNumber}`);
+      }
+
       logAudit("CONVERT", "quote", quote.id, `Quote ${quote.orderNumber} converted to order ${orderNumber}`);
 
       return { error: null, order: newOrder };

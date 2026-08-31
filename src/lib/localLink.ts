@@ -271,7 +271,11 @@ export function createLocalLink() {
                     }
                   }
                   reloadFromStorage(["sgf_orders"]);
+                  // Push the newly generated invoice to Firebase (cloud-first)
+                  const newInv = dataService.invoice.list().find((i: any) => i.orderId == result.order?.id);
+                  if (newInv) { await pushInvoice(newInv); }
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 2 } }));
+                  window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 }
                 break;

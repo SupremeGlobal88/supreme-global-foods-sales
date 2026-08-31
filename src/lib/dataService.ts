@@ -1142,6 +1142,27 @@ function _doReloadFromStorage(keys?: string[]): void {
             if (!inv.updatedAt) inv.updatedAt = inv.createdAt || inv.invoiceDate || now;
           }
           invoices = d;
+          // AUTO-CLEANUP: Remove invoices linked to quotes after every cloud sync
+          const beforeCleanup = invoices.length;
+          const toRemove: number[] = [];
+          for (let idx = 0; idx < invoices.length; idx++) {
+            const inv = invoices[idx];
+            const linkedOrderNum = String(inv.orderNumber || "");
+            if (linkedOrderNum.toUpperCase().startsWith("QTE-")) {
+              toRemove.push(idx);
+              console.log(`[InvoiceCleanup] Removing invoice ${inv.invoiceNumber} linked to quote ${linkedOrderNum}`);
+            }
+          }
+          for (let i = toRemove.length - 1; i >= 0; i--) {
+            invoices.splice(toRemove[i], 1);
+          }
+          if (toRemove.length > 0) {
+            saveItem("sgf_invoices", invoices);
+            console.log(`[InvoiceCleanup] Reload removed ${toRemove.length} invoice(s) linked to quotes`);
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
+            }
+          }
         }
       }
     } catch { /* keep current */ }

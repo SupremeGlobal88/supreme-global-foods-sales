@@ -1321,8 +1321,9 @@ export function registerDataServiceRefresh(fn: RefreshFn): void {
 if (typeof window !== "undefined") {
   window.addEventListener("sgf:productsRepaired", (e: any) => {
     const prods = e.detail?.products;
-    if (prods && isFirebaseReady()) {
-      console.log(`[FirebaseSync] Pushing ${prods.length} repaired products to cloud...`);
+    const count = e.detail?.count || 0;
+    if (prods && prods.length > 0 && isFirebaseReady()) {
+      console.log(`[FirebaseSync] Pushing ${count} repaired products to cloud...`);
       pushStock(prods).catch((err: any) => console.error("[FirebaseSync] pushStock failed:", err?.message || err));
     }
   });

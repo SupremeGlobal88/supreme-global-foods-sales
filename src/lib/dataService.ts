@@ -140,9 +140,10 @@ function isValidArray(data: any, minLength: number, requiredKey?: string): boole
 
 /** Repair product prices by matching against STATIC_PRODUCTS seed data.
  *  Matches by productCode (exact), then id (exact), then productName (normalized).
- *  Returns count of products repaired. */
-function repairProductPrices(productList: any[]): number {
+ *  Returns { count: number of products repaired, repaired: array of repaired products }. */
+function repairProductPrices(productList: any[]): { count: number; repaired: any[] } {
   let pricesRestored = 0;
+  const repairedProducts: any[] = [];
   for (const prod of productList) {
     const hasAnyPrice = Number(prod.wholesalePrice) > 0 || Number(prod.corporatePrice) > 0 || Number(prod.bulkPrice) > 0 || Number(prod.retailPrice) > 0;
     if (hasAnyPrice) continue;
@@ -171,10 +172,15 @@ function repairProductPrices(productList: any[]): number {
       prod.bulkPrice = match.bulkPrice;
       prod.retailPrice = match.retailPrice;
       prod.costPrice = match.costPrice;
+      // CRITICAL: Update timestamp so mergeWithCloudData() treats repaired
+      // product as NEWER than Firebase's stale 0-price version. Without this,
+      // Firebase overwrites the repaired prices back to 0.
+      prod.updatedAt = new Date().toISOString();
       pricesRestored++;
+      repairedProducts.push(prod);
     }
   }
-  return pricesRestored;
+  return { count: pricesRestored, repaired: repairedProducts };
 }
 
 /** Auto-repair quotes that were incorrectly changed to orders via Edit.
@@ -242,10 +248,14 @@ function load() {
     if (p && p.length > 0) {
       products = p;
       // PRICE REPAIR: If loaded products have 0 prices, restore from STATIC_PRODUCTS seed
-      const pricesRestored = repairProductPrices(products);
-      if (pricesRestored > 0) {
+      const priceRepair = repairProductPrices(products);
+      if (priceRepair.count > 0) {
         saveItem("sgf_products", products);
-        console.log(`[PriceRepair] Restored prices for ${pricesRestored} products from seed data`);
+        console.log(`[PriceRepair] Restored prices for ${priceRepair.count} products from seed data`);
+        // Notify Firebase sync to push repaired products to cloud
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products: priceRepair.repaired, count: priceRepair.count } }));
+        }
       }
     } else products = getStaticProducts();
 
@@ -1113,13 +1123,13 @@ function _doReloadFromStorage(keys?: string[]): void {
       const p = getStorageItem("sgf_products");
       if (p) { const d = JSON.parse(p); if (Array.isArray(d) && d.length > 0) products = d; }
       // PRICE REPAIR after every cloud sync: Firebase may have 0-price products
-      const pricesRestored = repairProductPrices(products);
-      if (pricesRestored > 0) {
+      const priceRepair = repairProductPrices(products);
+      if (priceRepair.count > 0) {
         saveItem("sgf_products", products);
-        console.log(`[PriceRepair] Reload repaired ${pricesRestored} products after cloud sync`);
+        console.log(`[PriceRepair] Reload repaired ${priceRepair.count} products after cloud sync`);
         // Notify app that products were repaired so Firebase can be updated
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products, count: pricesRestored } }));
+          window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products: priceRepair.repaired, count: priceRepair.count } }));
         }
       }
     } catch { /* keep current */ }
@@ -1385,7 +1395,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
         dueDate: now.toISOString(),
         notes: `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}`,
         items: (order.items || []).map((item: any) => ({
-          description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
+          description: buildInvoiceItemDescription(item),
           quantity: item.quantity,
           unitPrice: item.unitPrice || 0,
           lineTotal: item.lineTotal || 0,
@@ -1410,7 +1420,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
       existingInvoice.status = "paid";
       existingInvoice.notes = `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}`;
       existingInvoice.items = (order.items || []).map((item: any) => ({
-        description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
+        description: buildInvoiceItemDescription(item),
         quantity: item.quantity,
         unitPrice: item.unitPrice || 0,
         lineTotal: item.lineTotal || 0,
@@ -1453,6 +1463,17 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
 }
 
 // Helper: create an invoice from an order
+/** Build a clean invoice item description.
+ *  Looks up the current product by stockItemId to get the latest productName.
+ *  Falls back to item.productName. Does NOT concatenate productCode because
+ *  productCode often contains old long descriptive names (e.g. "34/36 MEDIUM LONG LUX")
+ *  which creates ugly duplicate descriptions like "34/36 MEDIUM LONG LUX - MEDIUM LONG LUX White".
+ */
+function buildInvoiceItemDescription(item: any): string {
+  const currentProduct = products.find((p) => p.id == item.stockItemId);
+  return currentProduct?.productName || item.productName || "";
+}
+
 /** Get next SGF invoice number. Starts at SGF1801 (last was SGF1800).
  *  Loops to ensure the number is truly unique — prevents duplicates
  *  when rapid clicks or save failures occur. */
@@ -1579,7 +1600,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       dueDate: dueDate.toISOString(),
       notes: isSample ? `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}` : `Invoice for ${order.orderNumber}`,
       items: (order.items || []).map((item: any) => ({
-        description: `${item.productCode} - ${item.productName}`,
+        description: buildInvoiceItemDescription(item),
         quantity: item.quantity,
         unitPrice: item.unitPrice || 0,
         lineTotal: item.lineTotal || 0,
@@ -1671,7 +1692,7 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       items: items.map((item: any) => ({
         stockItemId: item.stockItemId,
         productName: item.productName,
-        description: `${item.productCode || ""} - ${item.productName || ""}`.trim(),
+        description: buildInvoiceItemDescription(item),
         quantity: item.quantity,
         unitPrice: item.unitPrice || 0,
         lineTotal: item.lineTotal || 0,
@@ -1766,7 +1787,7 @@ function updateInvoiceFromOrder(order: any) {
     balanceDue: total - (inv.amountPaid || 0),
     paymentTerms: order.paymentTerms || inv.paymentTerms,
     items: (order.items || []).map((item: any) => ({
-      description: `${item.productCode} - ${item.productName}`,
+      description: buildInvoiceItemDescription(item),
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       lineTotal: item.lineTotal,

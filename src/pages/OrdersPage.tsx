@@ -452,9 +452,10 @@ export default function OrdersPage() {
   function getTierPrice(stockItemId: number | string, tier?: string): number {
     const stock = (stockItems || []).find((s) => String(s.id) === String(stockItemId));
     if (!stock) return 0;
-    const t = tier || formData.priceTier;
+    // Sample orders ALWAYS use corporate price tier regardless of formData.priceTier
+    const effectiveTier = formData.orderType === "sample" ? "corporate" : (tier || formData.priceTier);
     let rawPrice: number;
-    switch (t) {
+    switch (effectiveTier) {
       case "corporate": rawPrice = Number(stock.corporatePrice); break;
       case "bulk": rawPrice = Number(stock.bulkPrice); break;
       case "retail": rawPrice = Number(stock.retailPrice); break;
@@ -464,7 +465,7 @@ export default function OrdersPage() {
     if (rawPrice <= 0) {
       const staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode || (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim()));
       if (staticProd) {
-        switch (t) {
+        switch (effectiveTier) {
           case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
           case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
           case "retail": rawPrice = Number(staticProd.retailPrice); break;
@@ -1389,7 +1390,7 @@ export default function OrdersPage() {
                       <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular</div>
                       <div className="text-xs text-[#8A8B8C] mt-1">Customer charged</div>
                     </button>
-                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
+                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample", priceTier: "corporate" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
                       <FlaskConical className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }} />
                       <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample</div>
                       <div className="text-xs text-[#8A8B8C] mt-1">No charge</div>
@@ -1527,19 +1528,33 @@ export default function OrdersPage() {
                               </div>
                             )}
                             <div className="flex items-center gap-4 flex-wrap">
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-[#8A8B8C]">{formData.priceTier}:</span>
-                                <span className="font-display" style={{ color: PRICE_TIERS.find((t) => t.key === formData.priceTier)?.color }}>
-                                  R {(tierPrice * conversion).toFixed(2)}
-                                  {hasMultipleUnits && <span className="text-[#8A8B8C] font-normal text-[10px]"> / {selectedUnit?.label || "unit"}</span>}
-                                </span>
-                              </div>
-                              {hasSpecial && !isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><Tag className="w-3 h-3" /> Special: R {(effectivePrice * conversion).toFixed(2)}</span>}
-                              <div className="flex items-center gap-2 ml-auto">
-                                <span className="text-xs text-[#8A8B8C]">Custom Price (R):</span>
-                                <input type="number" step="0.01" value={item.unitPrice || ""} onChange={(e) => handleUpdateItem(index, "unitPrice", parseFloat(e.target.value) || 0)} className="input-field w-28 text-sm" placeholder={`${(effectivePrice * conversion).toFixed(2)}`} min={0} />
-                                {isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Custom</span>}
-                              </div>
+                              {formData.orderType === "sample" ? (
+                                // Sample orders: show ONLY corporate price, no custom input, no special badge
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="text-[#8A8B8C]">corporate:</span>
+                                  <span className="font-display" style={{ color: "#D4A843" }}>
+                                    R {(tierPrice * conversion).toFixed(2)}
+                                    {hasMultipleUnits && <span className="text-[#8A8B8C] font-normal text-[10px]"> / {selectedUnit?.label || "unit"}</span>}
+                                  </span>
+                                  <span className="text-[#8A8B8C] text-[10px]">(Sample — Corporate Price)</span>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-[#8A8B8C]">{formData.priceTier}:</span>
+                                    <span className="font-display" style={{ color: PRICE_TIERS.find((t) => t.key === formData.priceTier)?.color }}>
+                                      R {(tierPrice * conversion).toFixed(2)}
+                                      {hasMultipleUnits && <span className="text-[#8A8B8C] font-normal text-[10px]"> / {selectedUnit?.label || "unit"}</span>}
+                                    </span>
+                                  </div>
+                                  {hasSpecial && !isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><Tag className="w-3 h-3" /> Special: R {(effectivePrice * conversion).toFixed(2)}</span>}
+                                  <div className="flex items-center gap-2 ml-auto">
+                                    <span className="text-xs text-[#8A8B8C]">Custom Price (R):</span>
+                                    <input type="number" step="0.01" value={item.unitPrice || ""} onChange={(e) => handleUpdateItem(index, "unitPrice", parseFloat(e.target.value) || 0)} className="input-field w-28 text-sm" placeholder={`${(effectivePrice * conversion).toFixed(2)}`} min={0} />
+                                    {isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Custom</span>}
+                                  </div>
+                                </>
+                              )}
                               <div className="font-display font-semibold text-sm text-white">= R {((item.unitPrice || effectivePrice * conversion) * item.quantity).toFixed(2)}</div>
                             </div>
                           </div>

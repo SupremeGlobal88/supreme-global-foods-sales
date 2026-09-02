@@ -477,6 +477,10 @@ export default function OrdersPage() {
 
   function getEffectivePrice(stockItemId: number | string, customPrice?: number): number {
     if (customPrice && customPrice > 0) return customPrice;
+    // Sample orders must ALWAYS use corporate price — never special/customer prices
+    if (formData.orderType === "sample") {
+      return getTierPrice(stockItemId);
+    }
     const sp = (customerSpecialPrices || []).find((p: any) => String(p.stockItemId) === String(stockItemId));
     if (sp) return Number(sp.specialPrice);
     return getTierPrice(stockItemId);

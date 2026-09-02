@@ -2329,7 +2329,7 @@ export const dataService = {
       const items = (data.items || []).map((item: any) => {
         const product = products.find((p) => p.id == item.stockItemId);
         const conversion = item.conversion || 1;
-        const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId);
+        const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId, isSample);
         const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
         return {
           ...item,
@@ -2461,7 +2461,7 @@ export const dataService = {
         const items = (data.items || []).map((item: any) => {
           const product = products.find((p) => p.id == item.stockItemId);
           const conversion = item.conversion || 1;
-          const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId);
+          const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId, isSample);
           const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
           return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice, unit: item.unit || "each", conversion, unitLabel: item.unitLabel || "Each" };
         });
@@ -4853,9 +4853,14 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
 // NOTE: load() is already called at line 143 after all module-level variables are declared.
 // Do NOT call load() again here — it would overwrite in-memory data with stale localStorage.
 
-function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number): number {
-  const sp = specialPrices.find((p) => p.customerId == customerId && p.stockItemId == stockItemId);
-  if (sp) return Number(sp.specialPrice);
+function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number, _isSample: boolean = false): number {
+  // CRITICAL: Sample orders must ALWAYS use corporate price.
+  // Do NOT apply special/customer prices to sample orders, even if a
+  // special price exists for this customer+product combination.
+  if (!_isSample) {
+    const sp = specialPrices.find((p) => p.customerId == customerId && p.stockItemId == stockItemId);
+    if (sp) return Number(sp.specialPrice);
+  }
   const stock = products.find((p) => p.id == stockItemId);
   if (!stock) return 0;
   let rawPrice: number;

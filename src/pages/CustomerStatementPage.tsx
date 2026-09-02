@@ -104,7 +104,6 @@ export default function CustomerStatementPage() {
     // Process invoices
     for (const inv of custInvoices) {
       const debit = Number(inv.total || 0);
-      const payment = Number(inv.amountPaid || 0);
       bal += debit;
       result.push({
         date: inv.invoiceDate || inv.createdAt,
@@ -117,10 +116,35 @@ export default function CustomerStatementPage() {
         source: inv.source || "app",
         type: "invoice",
       });
-      if (payment > 0) {
+      // CRITICAL FIX: Use each payment's actual paymentDate, NOT inv.updatedAt.
+      // inv.updatedAt is the date the payment was captured in the system (today).
+      // paymentDate is the date the user entered when recording the payment
+      // (e.g., back-dated to when the customer actually paid).
+      const payments = inv.payments || [];
+      if (payments.length > 0) {
+        for (const p of payments) {
+          const payAmt = Number(p.amount || 0);
+          if (payAmt <= 0) continue;
+          bal -= payAmt;
+          result.push({
+            date: p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt,
+            ref: "Payment",
+            desc: `Payment Received${p.referenceNumber ? ` — Ref: ${p.referenceNumber}` : ""}${p.paymentMethod ? ` (${p.paymentMethod})` : ""}`,
+            terms: "",
+            debit: 0,
+            credit: payAmt,
+            balance: bal,
+            source: "app",
+            type: "payment",
+          });
+        }
+      } else if (Number(inv.amountPaid || 0) > 0) {
+        // Fallback for invoices that have amountPaid but no payments array
+        // (legacy data before multi-payment support)
+        const payment = Number(inv.amountPaid || 0);
         bal -= payment;
         result.push({
-          date: inv.updatedAt || inv.invoiceDate || inv.createdAt,
+          date: inv.invoiceDate || inv.createdAt,
           ref: "Payment",
           desc: "Payment Received",
           terms: "",

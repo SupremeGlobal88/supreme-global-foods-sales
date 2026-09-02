@@ -135,9 +135,20 @@ function isAdmin(): boolean {
   return user?.role === "admin" || user?.role === "super_admin";
 }
 
+function isSuperAdmin(): boolean {
+  const user = getCurrentUser();
+  return user?.role === "super_admin";
+}
+
 function requireAdmin(): void {
   if (!isAdmin()) {
     throw new Error("Admin access required. Sales reps cannot edit or cancel orders.");
+  }
+}
+
+function requireSuperAdmin(): void {
+  if (!isSuperAdmin()) {
+    throw new Error("Super Admin access required. Only super admins can manage users.");
   }
 }
 
@@ -466,11 +477,11 @@ export function createLocalLink() {
               case "user.list": await smartSync("users", "sgf_users"); result = dataService.user.list(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: result.length } })); break;
               case "user.getById": result = dataService.user.getById(input); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
-              case "user.create": result = dataService.user.create(input); await fbPush("user", result); break;
-              case "user.update": { const { id, data } = input; result = dataService.user.update({ id, data }); await fbPush("user", result); break; }
-              case "user.delete": result = dataService.user.delete(input); await fbPush("userDeleted", input); break;
-              case "user.toggleActive": result = dataService.user.toggleActive(input); await fbPush("user", result); break;
-              case "user.resetPin": result = dataService.user.resetPin(input); await fbPush("user", result); break;
+              case "user.create": requireSuperAdmin(); result = dataService.user.create(input); await fbPush("user", result); break;
+              case "user.update": { requireSuperAdmin(); const { id, data } = input; result = dataService.user.update({ id, data }); await fbPush("user", result); break; }
+              case "user.delete": requireSuperAdmin(); result = dataService.user.delete(input); await fbPush("userDeleted", input); break;
+              case "user.toggleActive": requireSuperAdmin(); result = dataService.user.toggleActive(input); await fbPush("user", result); break;
+              case "user.resetPin": requireSuperAdmin(); result = dataService.user.resetPin(input); await fbPush("user", result); break;
               // APPOINTMENTS — smart sync: block if empty, fire-and-forget if has data
               case "appointment.list": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.list(); break;
               case "appointment.create": result = dataService.appointment.create(input); await fbPush("appointment", result); break;

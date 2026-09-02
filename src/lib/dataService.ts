@@ -4166,18 +4166,40 @@ export const dataService = {
         } catch { /* ignore */ }
       }
 
-      // Try 3: hardcoded defaults (always works, also repairs the DB)
+      // Try 3: hardcoded defaults — BUT only if the user does NOT exist in stored
+      // data with a different PIN. This prevents old hardcoded PINs from working
+      // after a PIN has been changed via User Management.
       if (!found) {
-        found = DEFAULT_USERS.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) === typedPin && x.isActive !== false);
-        if (found) {
-          // Repair: merge defaults into stored users so next time it works from DB
-          const existingNames = new Set((users || []).map((u: any) => u.name?.toLowerCase()));
-          for (const du of DEFAULT_USERS) {
-            if (!existingNames.has(du.name.toLowerCase())) {
-              users.push({ ...du, createdAt: new Date().toISOString() });
-            }
+        // Check if this user exists in stored data with a DIFFERENT PIN.
+        // If so, the old hardcoded PIN must NOT be allowed.
+        let storedUserWithDifferentPin: any = null;
+        try {
+          const raw = getStorageItem("sgf_users");
+          if (raw) {
+            const stored = JSON.parse(raw);
+            storedUserWithDifferentPin = stored.find(
+              (x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) !== typedPin && x.isActive !== false
+            );
           }
-          saveItem("sgf_users", users);
+        } catch { /* ignore */ }
+
+        // Also check in-memory users for same-name-different-PIN
+        const memUserWithDifferentPin = users.find(
+          (x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) !== typedPin && x.isActive !== false
+        );
+
+        if (!storedUserWithDifferentPin && !memUserWithDifferentPin) {
+          found = DEFAULT_USERS.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) === typedPin && x.isActive !== false);
+          if (found) {
+            // Repair: merge defaults into stored users so next time it works from DB
+            const existingNames = new Set((users || []).map((u: any) => u.name?.toLowerCase()));
+            for (const du of DEFAULT_USERS) {
+              if (!existingNames.has(du.name.toLowerCase())) {
+                users.push({ ...du, createdAt: new Date().toISOString() });
+              }
+            }
+            saveItem("sgf_users", users);
+          }
         }
       }
 
@@ -4754,31 +4776,75 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
 
   // 2. Allow "admin" as a generic alias — match against ANY hardcoded admin/super_admin PIN
   if (ADMIN_ALIASES.includes(typedName)) {
-    const adminMatch = DEFAULT_USERS.find(
-      (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
-    );
-    if (adminMatch) {
-      return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
+    // First check stored users for admin alias (new PIN may have been changed)
+    let storedAdminFound: any = null;
+    try {
+      const raw = getStorageItem("sgf_users");
+      if (raw) {
+        const stored = JSON.parse(raw);
+        storedAdminFound = stored.find(
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
+        );
+      }
+    } catch { /* ignore */ }
+    if (storedAdminFound) {
+      return { id: storedAdminFound.id, name: storedAdminFound.name, email: storedAdminFound.email, role: storedAdminFound.role, pin: storedAdminFound.pin };
+    }
+
+    // Only fall back to hardcoded if no stored admin with different PIN exists
+    let storedAdminWithDifferentPin = false;
+    try {
+      const raw = getStorageItem("sgf_users");
+      if (raw) {
+        const stored = JSON.parse(raw);
+        storedAdminWithDifferentPin = stored.some(
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) !== typedPin && x.isActive !== false
+        );
+      }
+    } catch { /* ignore */ }
+
+    if (!storedAdminWithDifferentPin) {
+      const adminMatch = DEFAULT_USERS.find(
+        (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
+      );
+      if (adminMatch) {
+        return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
+      }
     }
   }
 
   // 3. Check hardcoded defaults (fallback — survives data clears)
-  const fromDefaults = DEFAULT_USERS.find(
-    (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
-  );
-  if (fromDefaults) {
-    // Repair stored users if needed
-    try {
-      const raw = getStorageItem("sgf_users");
-      const stored = raw ? JSON.parse(raw) : [];
-      const exists = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase());
-      if (!exists) {
-        stored.push({ ...fromDefaults, isActive: true, createdAt: new Date().toISOString() });
-        setStorageItem("sgf_users", JSON.stringify(stored));
-        users = stored;
-      }
-    } catch { /* ignore */ }
-    return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role, pin: fromDefaults.pin };
+  // BUT only if the user does NOT exist in stored data with a different PIN.
+  // This prevents old hardcoded PINs from working after a PIN change.
+  let storedUserWithDifferentPin: any = null;
+  try {
+    const raw = getStorageItem("sgf_users");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      storedUserWithDifferentPin = stored.find(
+        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) !== typedPin && x.isActive !== false
+      );
+    }
+  } catch { /* ignore */ }
+
+  if (!storedUserWithDifferentPin) {
+    const fromDefaults = DEFAULT_USERS.find(
+      (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
+    );
+    if (fromDefaults) {
+      // Repair stored users if needed
+      try {
+        const raw = getStorageItem("sgf_users");
+        const stored = raw ? JSON.parse(raw) : [];
+        const exists = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase());
+        if (!exists) {
+          stored.push({ ...fromDefaults, isActive: true, createdAt: new Date().toISOString() });
+          setStorageItem("sgf_users", JSON.stringify(stored));
+          users = stored;
+        }
+      } catch { /* ignore */ }
+      return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role, pin: fromDefaults.pin };
+    }
   }
 
   return null;

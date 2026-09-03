@@ -30,6 +30,7 @@ import CorporateCustomersPage from "./pages/CorporateCustomersPage";
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
 import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
 import PackingListPage from "./pages/PackingListPage";
+import AuditReportPage from "./pages/AuditReportPage";
 import { ShieldAlert, Cloud } from "lucide-react";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -290,6 +291,7 @@ export default function App() {
         <Route path="packing-list/:id" element={<RoleGuard><PackingListPage /></RoleGuard>} />
         <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
         <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
+        <Route path="audit" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
         <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />
       </Route>
       <Route path="*" element={<NotFound />} />

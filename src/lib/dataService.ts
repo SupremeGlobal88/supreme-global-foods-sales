@@ -1012,6 +1012,15 @@ function saveItem(key: string, value: any) {
   }
 }
 
+function getCurrentUserName(): string {
+  try {
+    const raw = localStorage.getItem("demo_user");
+    if (!raw) return "Unknown";
+    const user = JSON.parse(raw);
+    return user?.name || user?.email || "Unknown";
+  } catch { return "Unknown"; }
+}
+
 function logAudit(action: string, entityType: string, entityId: number | string, details: string, userName?: string) {
   const entry = {
     id: Date.now() + Math.random(),
@@ -1019,7 +1028,7 @@ function logAudit(action: string, entityType: string, entityId: number | string,
     entityType,
     entityId: String(entityId),
     details,
-    userName: userName || "Unknown",
+    userName: userName || getCurrentUserName(),
     createdAt: new Date().toISOString(),
   };
   auditLog.unshift(entry);
@@ -1888,16 +1897,25 @@ export const dataService = {
       const newItem = { ...data, id: Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       products.push(newItem);
       saveItem("sgf_products", products);
+      logAudit("CREATE", "stock", newItem.id, `Stock item created: ${newItem.productName || newItem.productCode || "Unnamed"}`);
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
       const idx = products.findIndex((p) => p.id == id);
-      if (idx >= 0) { products[idx] = { ...products[idx], ...data, updatedAt: new Date().toISOString() }; saveItem("sgf_products", products); return products[idx]; }
+      if (idx >= 0) { 
+        const oldProd = products[idx];
+        products[idx] = { ...products[idx], ...data, updatedAt: new Date().toISOString() }; 
+        saveItem("sgf_products", products); 
+        logAudit("UPDATE", "stock", id, `Stock item updated: ${oldProd.productName || oldProd.productCode || "Unnamed"}`);
+        return products[idx]; 
+      }
       return null;
     },
     delete: (id: number) => {
+      const prod = products.find((p) => p.id == id);
       products = products.filter((p) => p.id != id);
       saveItem("sgf_products", products);
+      logAudit("DELETE", "stock", id, `Stock item deleted: ${prod?.productName || prod?.productCode || "Unnamed"}`);
       return { success: true };
     },
     bulkCreate: (items: any[]) => {
@@ -1977,6 +1995,7 @@ export const dataService = {
         }
       }
       saveItem("sgf_products", products);
+      logAudit("BULK_UPLOAD", "stock", 0, `Bulk stock upload: ${created.length} created, ${updated.length} updated`);
       return { created: created.length, updated: updated.length };
     },
 
@@ -2392,6 +2411,8 @@ export const dataService = {
       };
       orders.push(newOrder);
 
+      logAudit("CREATE", "order", newOrder.id, `${isQuote ? "Quote" : isSample ? "Sample" : "Order"} ${orderNumber} created for customer #${data.customerId}, ${items.length} items, total R${total.toFixed(2)}`);
+
       // DEDUCT STOCK for each item (skip for quotes — stock is only committed when converted to order)
       if (!isQuote) {
         for (const item of items) {
@@ -2486,6 +2507,7 @@ export const dataService = {
         
         orders[idx] = { ...oldOrder, ...data, items, subtotal, vatAmount, total, totalAmount: total, updatedAt: new Date().toISOString() };
         saveItem("sgf_orders", orders);
+        logAudit("UPDATE", "order", id, `Order ${oldOrder.orderNumber} edited. New total: R${total.toFixed(2)}`);
         
         // Auto-update linked invoice with new order details (skip for quotes — they have no invoices)
         if (!isQuote) {
@@ -2531,6 +2553,7 @@ export const dataService = {
           activateInvoiceFromOrder(order.id);
         }
         saveItem("sgf_orders", orders);
+        logAudit("UPDATE", "order", id, `Order ${order.orderNumber} status changed from ${oldStatus} to ${status}`);
         return { order, cancelledInvoice };
       }
       return null;
@@ -2828,6 +2851,7 @@ export const dataService = {
       saveItem("sgf_receipts", receipts);
       saveItem("sgf_collectionNotes", collectionNotes);
       saveItem("sgf_invoices", invoices);
+      logAudit("PAYMENT", "invoice", invoiceId, `Payment of R${amount.toFixed(2)} recorded on invoice ${inv.invoiceNumber}. Balance now R${inv.balanceDue.toFixed(2)}`);
       return { invoice: inv, receipt };
     },
     editPayment: ({ invoiceId, paymentId, amount, paymentMethod, paymentDate, referenceNumber, notes }: any) => {
@@ -2860,6 +2884,7 @@ export const dataService = {
       }
       inv.updatedAt = new Date().toISOString();
       saveItem("sgf_invoices", invoices);
+      logAudit("PAYMENT", "invoice", invoiceId, `Payment edited on invoice ${inv.invoiceNumber}. New balance: R${inv.balanceDue.toFixed(2)}`);
       return inv;
     },
     deletePayment: ({ invoiceId, paymentId }: { invoiceId: number; paymentId: number }) => {
@@ -2882,6 +2907,7 @@ export const dataService = {
       }
       inv.updatedAt = new Date().toISOString();
       saveItem("sgf_invoices", invoices);
+      logAudit("PAYMENT", "invoice", invoiceId, `Payment deleted from invoice ${inv.invoiceNumber}. Balance now R${inv.balanceDue.toFixed(2)}`);
       return inv;
     },
     getReceipts: () => receipts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -3247,6 +3273,7 @@ export const dataService = {
       if (data.paymentTerms !== undefined) inv.paymentTerms = data.paymentTerms;
       inv.updatedAt = new Date().toISOString();
       saveItem("sgf_invoices", invoices);
+      logAudit("PAYMENT", "invoice", invoiceId, `Payment deleted from invoice ${inv.invoiceNumber}. Balance now R${inv.balanceDue.toFixed(2)}`);
       return inv;
     },
 
@@ -3702,18 +3729,25 @@ export const dataService = {
         })),
     set: ({ customerId, stockItemId, specialPrice: price }: { customerId: number; stockItemId: number; specialPrice: number }) => {
       const existing = specialPrices.find((sp) => sp.customerId == customerId && sp.stockItemId == stockItemId);
+      const cust = customers.find((c) => c.id == customerId);
+      const prod = products.find((p) => p.id == stockItemId);
       if (existing) {
         existing.specialPrice = String(price);
         existing.updatedAt = new Date().toISOString();
+        logAudit("UPDATE", "specialPrice", existing.id, `Special price updated for ${cust?.name || "Customer"} on ${prod?.productName || "product"}: R${Number(price).toFixed(2)}`);
       } else {
-        specialPrices.push({ id: Date.now(), customerId, stockItemId, specialPrice: String(price), createdAt: new Date().toISOString() });
+        const newSp = { id: Date.now(), customerId, stockItemId, specialPrice: String(price), createdAt: new Date().toISOString() };
+        specialPrices.push(newSp);
+        logAudit("CREATE", "specialPrice", newSp.id, `Special price set for ${cust?.name || "Customer"} on ${prod?.productName || "product"}: R${Number(price).toFixed(2)}`);
       }
       saveItem("sgf_specialPrices", specialPrices);
       return { id: Date.now(), updated: !!existing };
     },
     delete: ({ id }: { id: number }) => {
+      const sp = specialPrices.find((s) => s.id === id);
       specialPrices = specialPrices.filter((sp) => sp.id !== id);
       saveItem("sgf_specialPrices", specialPrices);
+      logAudit("DELETE", "specialPrice", id, `Special price deleted for ${customers.find((c) => c.id == sp?.customerId)?.name || "Customer"}`);
       return { success: true };
     },
   },
@@ -3912,8 +3946,10 @@ export const dataService = {
     update: ({ id, status, reason, expectedOrderDate }: { id: number; status: string; reason?: string; expectedOrderDate?: string }) => {
       const idx = followUps.findIndex((fu) => fu.id == id);
       if (idx >= 0) {
+        const oldStatus = followUps[idx].status;
         followUps[idx] = { ...followUps[idx], status, reason, expectedOrderDate, updatedAt: new Date().toISOString() };
         saveItem("sgf_followUps", followUps);
+        logAudit("UPDATE", "followUp", id, `Follow-up updated: status ${oldStatus} → ${status}${reason ? `, reason: ${reason}` : ""}`);
         return followUps[idx];
       }
       return null;
@@ -3998,12 +4034,14 @@ export const dataService = {
       const note = { id: Date.now() + Math.random(), invoiceId, customerId, type: type || "note", notes, contactMethod: contactMethod || "manual", contactPerson: contactPerson || "", followUpDate: followUpDate || null, createdAt: new Date().toISOString() };
       collectionNotes.push(note);
       saveItem("sgf_collectionNotes", collectionNotes);
+      logAudit("CREATE", "collectionNote", note.id, `Collection note added for customer #${customerId}${invoiceId ? ` (invoice #${invoiceId})` : ""}: ${notes?.slice(0, 50) || ""}`);
       return note;
     },
     recordPromise: ({ invoiceId, customerId, promiseDate, promisedAmount, notes }: any) => {
       const promise = { id: Date.now() + Math.random(), invoiceId, customerId, promiseDate, promisedAmount: promisedAmount || 0, notes: notes || "", status: "pending", createdAt: new Date().toISOString() };
       collectionPromises.push(promise);
       saveItem("sgf_collectionPromises", collectionPromises);
+      logAudit("CREATE", "collectionPromise", promise.id, `Payment promise recorded for customer #${customerId}: R${Number(promisedAmount || 0).toFixed(2)} by ${promiseDate}`);
       return promise;
     },
     placeHold: ({ customerId, reason, notes }: any) => {
@@ -4015,6 +4053,7 @@ export const dataService = {
       collectionNotes.push({ id: Date.now() + Math.random(), invoiceId: null, customerId, type: "hold", notes: `Account hold placed: ${reason || "Non-payment"}`, contactMethod: "manual", contactPerson: "", followUpDate: null, createdAt: new Date().toISOString() });
       saveItem("sgf_accountHolds", accountHolds);
       saveItem("sgf_collectionNotes", collectionNotes);
+      logAudit("CREATE", "accountHold", hold.id, `Account hold placed for customer #${customerId}: ${reason || "Non-payment"}`);
       return hold;
     },
     releaseHold: ({ holdId }: { holdId: number }) => {
@@ -4024,6 +4063,7 @@ export const dataService = {
         collectionNotes.push({ id: Date.now() + Math.random(), invoiceId: null, customerId: accountHolds[idx].customerId, type: "hold", notes: "Account hold released", contactMethod: "manual", contactPerson: "", followUpDate: null, createdAt: new Date().toISOString() });
         saveItem("sgf_accountHolds", accountHolds);
         saveItem("sgf_collectionNotes", collectionNotes);
+        logAudit("UPDATE", "accountHold", holdId, `Account hold released for customer #${accountHolds[idx].customerId}`);
       }
       return { success: true };
     },
@@ -4218,22 +4258,22 @@ export const dataService = {
     update: ({ id, data }: { id: number; data: any }) => {
       const idx = users.findIndex((u) => u.id == id);
       if (idx >= 0) {
+        const oldUser = users[idx];
         // Never allow changing a super_admin's role away from super_admin via update
         if (users[idx].role === "super_admin" && data.role && data.role !== "super_admin") {
-          // Silently prevent demoting the last super admin
           const superAdminCount = users.filter((u) => u.role === "super_admin").length;
           if (superAdminCount <= 1) {
-            delete data.role; // Remove role change
+            delete data.role;
           }
         }
         users[idx] = { ...users[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_users", users);
+        logAudit("UPDATE", "user", id, `User updated: ${oldUser.name}${data.role && data.role !== oldUser.role ? ` (role: ${oldUser.role} → ${data.role})` : ""}`);
         return users[idx];
       }
       return null;
     },
     delete: ({ id }: { id: number }) => {
-      // Prevent deleting the last super admin
       const target = users.find((u) => u.id == id);
       if (target?.role === "super_admin") {
         const superAdminCount = users.filter((u) => u.role === "super_admin").length;
@@ -4241,18 +4281,21 @@ export const dataService = {
       }
       users = users.filter((u) => u.id !== id);
       saveItem("sgf_users", users);
+      logAudit("DELETE", "user", id, `User deleted: ${target?.name || "Unknown"}`);
       return { success: true };
     },
     toggleActive: ({ id }: { id: number }) => {
       const idx = users.findIndex((u) => u.id == id);
       if (idx >= 0) {
-        // Prevent deactivating the last super admin
         if (users[idx].role === "super_admin" && users[idx].isActive !== false) {
           const activeSuperAdminCount = users.filter((u) => u.role === "super_admin" && u.isActive !== false).length;
           if (activeSuperAdminCount <= 1) return { success: false, error: "Cannot deactivate the last active super admin" };
         }
+        const userName = users[idx].name;
+        const wasActive = users[idx].isActive !== false;
         users[idx].isActive = users[idx].isActive === false ? true : false;
         saveItem("sgf_users", users);
+        logAudit("TOGGLE_ACTIVE", "user", id, `User ${userName} ${wasActive ? "deactivated" : "activated"}`);
         return { success: true, isActive: users[idx].isActive };
       }
       return { success: false };
@@ -4263,6 +4306,7 @@ export const dataService = {
         users[idx].pin = pin;
         users[idx].updatedAt = new Date().toISOString();
         saveItem("sgf_users", users);
+        logAudit("RESET_PIN", "user", id, `PIN reset for user: ${users[idx].name}`);
         return { success: true };
       }
       return { success: false };
@@ -4286,6 +4330,7 @@ export const dataService = {
       };
       corporateCustomers.push(newItem);
       saveItem("sgf_corporateCustomers", corporateCustomers);
+      logAudit("CREATE", "corporateCustomer", newItem.id, `Corporate customer created: ${newItem.name}`);
       // Also add to main customers list so invoices and statements resolve correctly
       const mainCust = {
         id: newItem.id,
@@ -4338,6 +4383,7 @@ export const dataService = {
           };
           saveItem("sgf_customers", customers);
         }
+        logAudit("UPDATE", "corporateCustomer", id, `Corporate customer updated: ${corporateCustomers[idx].name}`);
         return corporateCustomers[idx];
       }
       return null;
@@ -4348,6 +4394,7 @@ export const dataService = {
       // Also remove from main customers list
       customers = customers.filter((c) => !(c.id == id && c.isCorporate));
       saveItem("sgf_customers", customers);
+      logAudit("DELETE", "corporateCustomer", id, `Corporate customer deleted`);
       return { success: true };
     },
   },
@@ -4373,6 +4420,7 @@ export const dataService = {
       };
       purchaseOrders.push(newItem);
       saveItem("sgf_purchaseOrders", purchaseOrders);
+      logAudit("CREATE", "purchaseOrder", newItem.id, `Purchase order created: ${newItem.poNumber || "PO"}`);
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
@@ -4380,6 +4428,7 @@ export const dataService = {
       if (idx >= 0) {
         purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_purchaseOrders", purchaseOrders);
+        logAudit("UPDATE", "purchaseOrder", id, `Purchase order updated: ${purchaseOrders[idx].poNumber || "PO"}`);
         return purchaseOrders[idx];
       }
       return null;
@@ -4387,16 +4436,20 @@ export const dataService = {
     updateStatus: ({ id, status }: { id: number; status: string }) => {
       const idx = purchaseOrders.findIndex((po) => po.id == id);
       if (idx >= 0) {
+        const oldStatus = purchaseOrders[idx].status;
         purchaseOrders[idx].status = status;
         purchaseOrders[idx].updatedAt = new Date().toISOString();
         saveItem("sgf_purchaseOrders", purchaseOrders);
+        logAudit("UPDATE", "purchaseOrder", id, `Purchase order status changed: ${purchaseOrders[idx].poNumber || "PO"} ${oldStatus} → ${status}`);
         return purchaseOrders[idx];
       }
       return null;
     },
     delete: (id: number) => {
+      const po = purchaseOrders.find((p) => p.id == id);
       purchaseOrders = purchaseOrders.filter((po) => po.id !== id);
       saveItem("sgf_purchaseOrders", purchaseOrders);
+      logAudit("DELETE", "purchaseOrder", id, `Purchase order deleted: ${po?.poNumber || "PO"}`);
       return { success: true };
     },
   },

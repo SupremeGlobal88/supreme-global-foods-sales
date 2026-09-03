@@ -23,6 +23,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/sample-reports":["sales_rep", "admin", "super_admin"],
   "/settings":      ["admin", "super_admin"],
   "/users":         ["super_admin"],
+  "/audit":         ["admin", "super_admin"],
   "/historical-import": ["admin", "super_admin"],
   "/bank-import": ["admin", "super_admin"],
   "/my-invoices": ["sales_rep", "admin", "super_admin"],

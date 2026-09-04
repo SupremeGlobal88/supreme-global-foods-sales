@@ -3248,7 +3248,10 @@ export const dataService = {
       // Update allowed fields
       if (data.customerId !== undefined) {
         inv.customerId = data.customerId;
-        inv.customer = customers.find((c) => c.id == data.customerId) || null;
+        // Corporate customers live in a separate array — check both
+        inv.customer = customers.find((c) => c.id == data.customerId)
+          || corporateCustomers.find((c) => c.id == data.customerId)
+          || null;
       }
       if (data.invoiceDate !== undefined) inv.invoiceDate = data.invoiceDate;
       if (data.total !== undefined) {
@@ -3273,7 +3276,7 @@ export const dataService = {
       if (data.paymentTerms !== undefined) inv.paymentTerms = data.paymentTerms;
       inv.updatedAt = new Date().toISOString();
       saveItem("sgf_invoices", invoices);
-      logAudit("PAYMENT", "invoice", invoiceId, `Payment deleted from invoice ${inv.invoiceNumber}. Balance now R${inv.balanceDue.toFixed(2)}`);
+      logAudit("UPDATE", "invoice", id, `Invoice ${inv.invoiceNumber} updated. Total: R${inv.total.toFixed(2)}, Status: ${inv.status}`);
       return inv;
     },
 
@@ -4687,6 +4690,7 @@ export const dataService = {
         id: nextInvId,
         purchaseOrderId: po.id,
         poNumber: po.poNumber,
+        orderNumber: po.poNumber,
         invoiceNumber,
         company: invCompany,
         customerId: po.corporateCustomerId,

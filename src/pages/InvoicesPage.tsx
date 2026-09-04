@@ -83,6 +83,7 @@ export default function InvoicesPage() {
   const { data: invoices, refetch: refetchInvoices } = trpc.invoice.list.useQuery();
   const { data: allOrders } = trpc.order.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
   const { data: stats } = trpc.invoice.getStats.useQuery();
   const { data: allReceipts } = trpc.invoice.getReceipts.useQuery();
   const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
@@ -294,7 +295,7 @@ export default function InvoicesPage() {
 
   /* ── Print Combined Invoice + Delivery Note ── */
   function printDoc(inv: any) {
-    const cust = inv.customer || (customers || []).find((c: any) => c.id === inv.customerId);
+    const cust = inv.customer || (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
     const invCompany: CompanyKey = inv.company || "sgf";
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
@@ -337,7 +338,7 @@ export default function InvoicesPage() {
               <table style="font-size:11px; width:100%; text-align:right; border-collapse:collapse;">
                 <tr><td style="color:#888; padding:2px 0;">Invoice Number</td><td style="font-weight:800; font-size:14px; color:${cfg.documentColor}; padding:2px 0; padding-left:12px;">${inv.invoiceNumber}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Delivery Note</td><td style="padding:2px 0; padding-left:12px;">${inv.deliveryNoteNumber || `DN-${inv.orderNumber}`}</td></tr>
-                <tr><td style="color:#888; padding:2px 0;">Order Number</td><td style="padding:2px 0; padding-left:12px;">${inv.orderNumber || ""}</td></tr>
+                <tr><td style="color:#888; padding:2px 0;">Order Number</td><td style="padding:2px 0; padding-left:12px;">${inv.poNumber || inv.orderNumber || ""}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Invoice Date</td><td style="padding:2px 0; padding-left:12px;">${invDate.toLocaleDateString("en-ZA")}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Payment Terms</td><td style="padding:2px 0; padding-left:12px;">${(inv.paymentTerms || "cod").replace("_", " ").toUpperCase()}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Return By</td><td style="padding:2px 0; padding-left:12px;">${retDate.toLocaleDateString("en-ZA")}</td></tr>
@@ -804,7 +805,7 @@ export default function InvoicesPage() {
 
   /* ─── Email invoice via mailto ─── */
   function sendEmail(inv: any) {
-    const cust = inv.customer || (customers || []).find((c: any) => c.id === inv.customerId);
+    const cust = inv.customer || (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
     if (!cust?.email) { alert("Customer has no email address."); return; }
     const subject = encodeURIComponent(`Tax Invoice ${inv.invoiceNumber} - ${cust.name || ""}`);
     const body = encodeURIComponent(
@@ -973,8 +974,8 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || "N/A"}</td>
-                      <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.orderNumber || "-"}</td>
+                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
+                      <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.poNumber || inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>
                       <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 ? "#EF4444" : bal < 0 ? "#3B82F6" : "#4ADE80" }}>
@@ -1705,7 +1706,14 @@ export default function InvoicesPage() {
                 <label className="label-text block mb-1.5">Customer *</label>
                 <select value={editInvCustomerId} onChange={(e) => setEditInvCustomerId(parseInt(e.target.value))} className="input-field">
                   <option value={0}>Select customer...</option>
-                  {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.customerCode || ""})</option>)}
+                  {/* Regular customers */}
+                  {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.customerCode || ""})</option>
+                  ))}
+                  {/* Corporate customers */}
+                  {(corporateCustomers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => (
+                    <option key={`corp-${c.id}`} value={c.id}>{c.name} (Corp)</option>
+                  ))}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">

@@ -131,19 +131,21 @@ export default function PurchaseOrdersPage() {
 
   const createPO = trpc.purchaseOrder.create.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); setShowForm(false); resetForm(); },
+    onError: (err: any) => { alert("Failed to create PO: " + (err.message || "Unknown error")); },
   });
   const deletePO = trpc.purchaseOrder.delete.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); },
+    onError: (err: any) => { alert("Failed to delete PO: " + (err.message || "Unknown error")); },
   });
 
   const filtered = (purchaseOrders || [])
     .filter((po: any) => {
       const q = search.toLowerCase();
-      const customer = (corporateCustomers || []).find((c: any) => c.id === po.corporateCustomerId);
+      const customer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
       const matchesSearch = !search || po.poNumber?.toLowerCase().includes(q) || customer?.name?.toLowerCase().includes(q);
       const matchesStatus = statusFilter === "all" || po.status === statusFilter;
       const matchesCompany = companyFilter === "all" || (po.company || "sgf") === companyFilter;
-      if (preselectedCustomerId) return po.corporateCustomerId === parseInt(preselectedCustomerId) && matchesSearch && matchesStatus && matchesCompany;
+      if (preselectedCustomerId) return po.corporateCustomerId == parseInt(preselectedCustomerId) && matchesSearch && matchesStatus && matchesCompany;
       return matchesSearch && matchesStatus && matchesCompany;
     })
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -194,7 +196,8 @@ export default function PurchaseOrdersPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.poNumber.trim() || !formData.corporateCustomerId || formData.lineItems.length === 0) return;
-    const customer = (corporateCustomers || []).find((c: any) => c.id === formData.corporateCustomerId);
+    // Use loose equality (==) — Firebase may convert number IDs to strings
+    const customer = (corporateCustomers || []).find((c: any) => c.id == formData.corporateCustomerId);
     const totalExclVat = formData.lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
     const vatAmount = totalExclVat * 0.15;
     createPO.mutate({
@@ -206,7 +209,7 @@ export default function PurchaseOrdersPage() {
   }
 
   function getCustomerName(customerId: number) {
-    const c = (corporateCustomers || []).find((c: any) => c.id === customerId);
+    const c = (corporateCustomers || []).find((c: any) => c.id == customerId);
     return c?.name || "Unknown";
   }
 

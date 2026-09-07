@@ -539,12 +539,44 @@ export function createLocalLink() {
               case "corporateCustomer.list": await smartSync("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.list(); break;
               case "corporateCustomer.listByCompany": result = dataService.corporateCustomer.listByCompany(input); break;
               case "corporateCustomer.getById": await syncFromCloud("corporateCustomers", "sgf_corporateCustomers"); result = dataService.corporateCustomer.getById(input); break;
-              case "corporateCustomer.create": { result = dataService.corporateCustomer.create(input); await pushCorporateCustomer(result); await pushOneCustomer(dataService.customer.list().find((c: any) => c.id == result.id)); reloadFromStorage(["sgf_corporateCustomers", "sgf_customers"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
-              case "corporateCustomer.update": { const { id, data } = input; result = dataService.corporateCustomer.update({ id, data }); if (result) { await pushCorporateCustomer(result); } const updCust = dataService.customer.list().find((c: any) => c.id == id); if (updCust) await pushOneCustomer(updCust); reloadFromStorage(["sgf_corporateCustomers", "sgf_customers"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
+              case "corporateCustomer.create": {
+                result = dataService.corporateCustomer.create(input);
+                await pushCorporateCustomer(result);
+                await pushOneCustomer(dataService.customer.list().find((c: any) => c.id == result.id));
+                // Do NOT call reloadFromStorage here — dataService already saved to localStorage.
+                // Calling reloadFromStorage can overwrite with stale data from a concurrent Firebase sync,
+                // which causes the new corporate customer to disappear from the dropdown.
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } }));
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } }));
+                break;
+              }
+              case "corporateCustomer.update": {
+                const { id: updId, data: updData } = input;
+                result = dataService.corporateCustomer.update({ id: updId, data: updData });
+                if (result) { await pushCorporateCustomer(result); }
+                const updCust = dataService.customer.list().find((c: any) => c.id == updId);
+                if (updCust) await pushOneCustomer(updCust);
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } }));
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } }));
+                break;
+              }
               case "corporateCustomer.delete": { result = dataService.corporateCustomer.delete(input); await removeCorporateCustomer(input); await removeOneCustomer(input); reloadFromStorage(["sgf_corporateCustomers", "sgf_customers"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } })); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 1 } })); break; }
               case "purchaseOrder.list": await smartSync("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.list(); break;
               case "purchaseOrder.getById": await syncFromCloud("purchaseOrders", "sgf_purchaseOrders"); result = dataService.purchaseOrder.getById(input); break;
-              case "purchaseOrder.create": { result = dataService.purchaseOrder.create(input); await pushPurchaseOrder(result); reloadFromStorage(["sgf_purchaseOrders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break; }
+              case "purchaseOrder.create": {
+                // Validate the corporate customer exists before creating the PO
+                const custExists = dataService.corporateCustomer.getById(input.corporateCustomerId)
+                  || dataService.customer.getById(input.corporateCustomerId);
+                if (!custExists) {
+                  throw new Error(`Corporate customer (ID: ${input.corporateCustomerId}) not found. Please ensure the customer was created successfully and try again.`);
+                }
+                result = dataService.purchaseOrder.create(input);
+                await pushPurchaseOrder(result);
+                // Do NOT call reloadFromStorage here — dataService already saved to localStorage.
+                // Calling reloadFromStorage can overwrite with stale data from a concurrent Firebase sync.
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+                break;
+              }
               case "purchaseOrder.update": { const { id, data } = input; result = dataService.purchaseOrder.update({ id, data }); if (result) { await pushPurchaseOrder(result); reloadFromStorage(["sgf_purchaseOrders"]); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break; }
               case "purchaseOrder.updateStatus": { result = dataService.purchaseOrder.updateStatus(input); await pushPurchaseOrder(result); reloadFromStorage(["sgf_purchaseOrders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break; }
               case "purchaseOrder.delete": { result = dataService.purchaseOrder.delete(input); await removePurchaseOrder(input); reloadFromStorage(["sgf_purchaseOrders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } })); break; }

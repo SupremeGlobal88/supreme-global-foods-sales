@@ -7,6 +7,7 @@ import { Bell, CheckCircle, Clock, AlertTriangle, MessageSquare, Calendar } from
 export default function FollowUpsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const canViewAll = isAdmin || user?.role === "sales_manager";
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
@@ -30,7 +31,7 @@ export default function FollowUpsPage() {
     });
   };
 
-  const myFollowUps = isAdmin
+  const myFollowUps = canViewAll
     ? (followUps || [])
     : (followUps || []).filter((fu: any) => {
         const cust = fu.customer;

@@ -129,7 +129,7 @@ function StatCard({
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { isAdmin } = useRole();
+  const { isAdmin, isSalesManager, canViewAll } = useRole();
   const { data: orderStats } = trpc.order.getStats.useQuery();
   const { data: customerStats } = trpc.customer.getStats.useQuery();
   const { data: stockStats } = trpc.stock.getStats.useQuery();
@@ -137,7 +137,7 @@ export default function Dashboard() {
   const { data: recentOrders } = trpc.order.list.useQuery();
   const { data: allInvoices } = trpc.invoice.list.useQuery();
   const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
-  const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: isAdmin });
+  const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: canViewAll });
 
   const chartRef = useRef<HTMLDivElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
@@ -237,7 +237,7 @@ export default function Dashboard() {
             Dashboard
           </h1>
           <p className="text-[#8A8B8C] font-body mt-1" style={{ fontSize: "0.85rem" }}>
-            {isAdmin ? "Admin Overview" : `Sales Rep: ${myRepName}`} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
+            {isAdmin ? "Admin Overview" : isSalesManager ? "Sales Manager Overview" : `Sales Rep: ${myRepName}`} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -281,15 +281,15 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stat Cards - Admin sees revenue, sales reps don't */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? "xl:grid-cols-4" : "xl:grid-cols-3"} gap-4`}>
-        {isAdmin && (
+      {/* Stat Cards - Admin/manager sees revenue, sales reps don't */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${canViewAll ? "xl:grid-cols-4" : "xl:grid-cols-3"} gap-4`}>
+        {canViewAll && (
           <StatCard label={selectedMonth ? "MONTH REVENUE" : "TOTAL REVENUE"} value={formatCurrency(filteredRevenue)} change={12.5} icon={DollarSign} accent="#D4A843" delay={0} />
         )}
-        {!isAdmin && myStats && (
+        {!canViewAll && myStats && (
           <StatCard label="MY SALES" value={formatCurrency(myStats.totalSales || 0)} change={8.2} icon={TrendingUp} accent="#D4A843" delay={0} />
         )}
-        {!isAdmin && !myStats && (
+        {!canViewAll && !myStats && (
           <StatCard label="MY SALES" value="R 0.00" change={0} icon={TrendingUp} accent="#D4A843" delay={0} />
         )}
         <StatCard label={selectedMonth ? "MONTH ORDERS" : "TOTAL ORDERS"} value={(selectedMonth ? filteredOrderCount : (orderStats?.total || 0)).toString()} change={8.2} icon={ShoppingCart} accent="#4ADE80" delay={0.08} />
@@ -297,8 +297,8 @@ export default function Dashboard() {
         <StatCard label="LOW STOCK ITEMS" value={(stockStats?.lowStock || 0).toString()} change={-2.4} icon={AlertTriangle} accent="#F59E0B" delay={0.24} />
       </div>
 
-      {/* Sage Historical Data Alert - Admin only */}
-      {isAdmin && (invoiceStats?.sageCount || 0) > 0 && (
+      {/* Sage Historical Data Alert - Admin/manager only */}
+      {canViewAll && (invoiceStats?.sageCount || 0) > 0 && (
         <div className="card-surface p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(99,102,241,0.12)" }}>
@@ -317,8 +317,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Revenue Chart - Admin only */}
-      {isAdmin && (
+      {/* Revenue Chart - Admin/manager only */}
+      {canViewAll && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div ref={chartRef} className="card-surface p-6 xl:col-span-2">
             <div className="flex items-center justify-between mb-6">
@@ -424,8 +424,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Sales Rep Sales Breakdown - Admin only */}
-      {isAdmin && (filteredSalesBreakdown || salesBreakdown) && (
+      {/* Sales Rep Sales Breakdown - Admin/manager only */}
+      {canViewAll && (filteredSalesBreakdown || salesBreakdown) && (
         <div ref={salesRef} className="card-surface p-6">
           <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-[#D4A843]" /> Sales by Rep{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</h2>
           {!selectedMonth && (
@@ -482,8 +482,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Sales Rep Performance - Admin only */}
-      {isAdmin && (
+      {/* Sales Rep Performance - Admin/manager only */}
+      {canViewAll && (
         <div ref={perfRef} className="card-surface p-6">
           <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Overview{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</h2>
           <div className="overflow-x-auto">

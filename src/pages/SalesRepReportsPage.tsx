@@ -10,7 +10,7 @@ import {
 
 export default function SalesRepReportsPage() {
   const { user } = useAuth();
-  const { isAdmin } = useRole();
+  const { isAdmin, isSalesManager } = useRole();
   const myRepName = user?.name || "";
 
   // Report period selection
@@ -58,7 +58,7 @@ export default function SalesRepReportsPage() {
   // Filter report by role: sales reps see only their own data, admins see all
   const filteredReport = useMemo(() => {
     if (!currentReport) return null;
-    if (isAdmin) return currentReport; // Admins see everything
+    if (isAdmin || isSalesManager) return currentReport; // Admins and sales managers see everything
     // Sales reps see only their own data
     const myReps = (currentReport.repReports || []).filter(
       (r: any) => r.salesRep === myRepName
@@ -74,7 +74,7 @@ export default function SalesRepReportsPage() {
       }), { totalReps: myReps.length > 0 ? 1 : 0, totalVisits: 0, totalCustomersVisited: 0, totalKm: 0, totalCost: 0 }),
       repReports: myReps,
     };
-  }, [currentReport, isAdmin, myRepName]);
+  }, [currentReport, isAdmin, isSalesManager, myRepName]);
 
   // ─── Helpers ───
   function getWeekNumber(d: Date): number {

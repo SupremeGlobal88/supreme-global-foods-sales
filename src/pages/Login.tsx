@@ -92,7 +92,7 @@ export default function Login() {
     .map((u: any) => u.name);
 
   const salesReps = allUsers
-    .filter((u: any) => u.role === "sales_rep")
+    .filter((u: any) => u.role === "sales_rep" || u.role === "sales_manager")
     .map((u: any) => u.name);
 
   const [selectedAdmin, setSelectedAdmin] = useState("");

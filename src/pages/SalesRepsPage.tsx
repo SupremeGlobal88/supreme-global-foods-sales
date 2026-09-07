@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import {
   UserCog,
   Plus,
@@ -12,6 +13,9 @@ import {
 
 export default function SalesRepsPage() {
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+  // Sales managers can VIEW the rep list but cannot add/edit/delete
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -49,7 +53,7 @@ export default function SalesRepsPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Sales Reps</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">{(reps || []).length} sales representatives</p>
         </div>
-        <button onClick={() => { setShowForm(true); resetForm(); setEditingId(null); }} className="btn-primary"><Plus className="w-4 h-4" /> Add Sales Rep</button>
+        {isAdmin && <button onClick={() => { setShowForm(true); resetForm(); setEditingId(null); }} className="btn-primary"><Plus className="w-4 h-4" /> Add Sales Rep</button>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -69,8 +73,8 @@ export default function SalesRepsPage() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => { setFormData({ name: rep.name || "", email: rep.email || "", phone: "", region: "", vehicleReg: "" }); setEditingId(rep.id); setShowForm(true); }} className="p-1.5 hover:text-[#D4A843] transition-colors cursor-pointer"><Pencil className="w-4 h-4 text-[#8A8B8C]" /></button>
-                  <button onClick={() => { if (confirm("Delete this sales rep?")) deleteRep.mutate({ id: rep.id }); }} className="p-1.5 hover:text-[#EF4444] transition-colors cursor-pointer"><Trash2 className="w-4 h-4 text-[#8A8B8C]" /></button>
+                  {isAdmin && <button onClick={() => { setFormData({ name: rep.name || "", email: rep.email || "", phone: "", region: "", vehicleReg: "" }); setEditingId(rep.id); setShowForm(true); }} className="p-1.5 hover:text-[#D4A843] transition-colors cursor-pointer"><Pencil className="w-4 h-4 text-[#8A8B8C]" /></button>}
+                  {isAdmin && <button onClick={() => { if (confirm("Delete this sales rep?")) deleteRep.mutate({ id: rep.id }); }} className="p-1.5 hover:text-[#EF4444] transition-colors cursor-pointer"><Trash2 className="w-4 h-4 text-[#8A8B8C]" /></button>}
                 </div>
               </div>
 
@@ -78,7 +82,7 @@ export default function SalesRepsPage() {
 
               <div className="flex items-center justify-between pt-4 mt-4" style={{ borderTop: "1px solid #222324" }}>
                 <span className="status-badge text-xs" style={{ backgroundColor: rep.role === "admin" ? "rgba(212, 168, 67, 0.12)" : "rgba(74, 222, 128, 0.12)", color: rep.role === "admin" ? "#D4A843" : "#4ADE80" }}>{rep.role?.toUpperCase() || "USER"}</span>
-                <button onClick={() => toggleActive.mutate({ id: rep.id })} className="cursor-pointer" title="Toggle active status"><ToggleRight className="w-6 h-6 text-[#4ADE80]" /></button>
+                {isAdmin && <button onClick={() => toggleActive.mutate({ id: rep.id })} className="cursor-pointer" title="Toggle active status"><ToggleRight className="w-6 h-6 text-[#4ADE80]" /></button>}
               </div>
             </div>
           ))

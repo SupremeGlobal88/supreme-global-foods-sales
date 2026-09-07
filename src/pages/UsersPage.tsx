@@ -9,6 +9,7 @@ import {
 
 const ROLE_OPTIONS = [
   { key: "sales_rep", label: "Sales Rep", color: "#4ADE80" },
+  { key: "sales_manager", label: "Sales Manager", color: "#06B6D4" },
   { key: "admin", label: "Admin", color: "#6366F1" },
   { key: "super_admin", label: "Super Admin", color: "#D4A843" },
 ];
@@ -24,7 +25,7 @@ export default function UsersPage() {
   const [showPin, setShowPin] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", email: "", role: "sales_rep" as "sales_rep" | "admin" | "super_admin",
+    name: "", email: "", role: "sales_rep" as "sales_rep" | "sales_manager" | "admin" | "super_admin",
     pin: "",
   });
 

@@ -1,34 +1,36 @@
 import { useAuth } from "./useAuth";
 
-/** Three-tier role system:
- *  sales_rep    → own customers, place orders, view stock, appointments, follow-ups
- *  admin        → all data, invoices, collections, payments, settings
- *  super_admin  → everything + user management
+/** Four-tier role system:
+ *  sales_rep     → own customers, place orders, view stock, appointments, follow-ups
+ *  sales_manager → sales rep powers + VIEW-ONLY team data (dashboard, appointments,
+ *                  follow-ups, rep reports, invoices, sales reps list)
+ *  admin         → all data, invoices, collections, payments, settings
+ *  super_admin   → everything + user management
  */
 
-export type UserRole = "sales_rep" | "admin" | "super_admin";
+export type UserRole = "sales_rep" | "sales_manager" | "admin" | "super_admin";
 
 /** Route permission map: which roles can access each route */
 const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
-  "/dashboard":     ["sales_rep", "admin", "super_admin"],
-  "/stock":         ["sales_rep", "admin", "super_admin"],
-  "/customers":     ["sales_rep", "admin", "super_admin"],
-  "/orders":        ["sales_rep", "admin", "super_admin"],
-  "/invoices":      ["admin", "super_admin"],
+  "/dashboard":     ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/stock":         ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/customers":     ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/orders":        ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/invoices":      ["sales_manager", "admin", "super_admin"],
   "/statement/:customerId": ["admin", "super_admin"],
-  "/appointments":  ["sales_rep", "admin", "super_admin"],
-  "/sales-reps":    ["admin", "super_admin"],
+  "/appointments":  ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/sales-reps":    ["sales_manager", "admin", "super_admin"],
   "/collections":   ["admin", "super_admin"],
-  "/follow-ups":    ["sales_rep", "admin", "super_admin"],
-  "/sample-reports":["sales_rep", "admin", "super_admin"],
+  "/follow-ups":    ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/sample-reports":["sales_rep", "sales_manager", "admin", "super_admin"],
   "/settings":      ["admin", "super_admin"],
   "/users":         ["super_admin"],
   "/audit":         ["admin", "super_admin"],
   "/historical-import": ["admin", "super_admin"],
   "/bank-import": ["admin", "super_admin"],
-  "/my-invoices": ["sales_rep", "admin", "super_admin"],
+  "/my-invoices": ["sales_rep", "sales_manager", "admin", "super_admin"],
   "/customer-statement": ["admin", "super_admin"],
-  "/sales-rep-reports": ["sales_rep", "admin", "super_admin"],
+  "/sales-rep-reports": ["sales_rep", "sales_manager", "admin", "super_admin"],
   "/corporate-customers": ["admin", "super_admin"],
   "/purchase-orders": ["admin", "super_admin"],
   "/purchase-order/:id": ["admin", "super_admin"],
@@ -38,28 +40,28 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
 /** Page-level action permissions */
 const ACTION_PERMISSIONS = {
   // Stock
-  stockView:     ["sales_rep", "admin", "super_admin"],
+  stockView:     ["sales_rep", "sales_manager", "admin", "super_admin"],
   stockEdit:     ["admin", "super_admin"],
   stockUpload:   ["admin", "super_admin"],
 
   // Customers
-  customerViewOwn: ["sales_rep", "admin", "super_admin"],
-  customerViewAll: ["admin", "super_admin"],
+  customerViewOwn: ["sales_rep", "sales_manager", "admin", "super_admin"],
+  customerViewAll: ["sales_manager", "admin", "super_admin"],
   customerEdit:    ["admin", "super_admin"],
   customerDelete:  ["admin", "super_admin"],
   customerImport:  ["admin", "super_admin"],
 
   // Orders
-  orderPlace:     ["sales_rep", "admin", "super_admin"],
-  orderEditOwn:   ["sales_rep", "admin", "super_admin"],
+  orderPlace:     ["sales_rep", "sales_manager", "admin", "super_admin"],
+  orderEditOwn:   ["sales_rep", "sales_manager", "admin", "super_admin"],
   orderEditAll:   ["admin", "super_admin"],
   orderStatusFlow:["admin", "super_admin"], // Mark Picking/Ready/Delivered
   orderCancel:    ["admin", "super_admin"],
 
   // Invoices
-  invoiceView:    ["admin", "super_admin"],
-  invoicePrint:   ["admin", "super_admin"],
-  invoiceEmail:   ["admin", "super_admin"],
+  invoiceView:    ["sales_manager", "admin", "super_admin"],
+  invoicePrint:   ["sales_manager", "admin", "super_admin"],
+  invoiceEmail:   ["sales_manager", "admin", "super_admin"],
   invoicePayment: ["admin", "super_admin"],
   invoiceEditPay: ["admin", "super_admin"],
 
@@ -82,13 +84,17 @@ export function useRole() {
   /** Check if current user has a specific role or higher */
   const isRole = (r: UserRole) => {
     if (role === "super_admin") return true; // super_admin can do everything
-    if (role === "admin") return r === "admin" || r === "sales_rep";
+    if (role === "admin") return r !== "super_admin"; // admin covers sales_manager + sales_rep
+    if (role === "sales_manager") return r === "sales_manager" || r === "sales_rep";
     return r === "sales_rep";
   };
 
   const isSalesRep = role === "sales_rep";
+  const isSalesManager = role === "sales_manager";
   const isAdmin = role === "admin" || role === "super_admin";
   const isSuperAdmin = role === "super_admin";
+  /** View-only access to ALL team data (not edit rights) — admin or sales manager */
+  const canViewAll = isAdmin || isSalesManager;
 
   /** Check if current user can access a route */
   const canAccess = (path: string) => {
@@ -122,8 +128,10 @@ export function useRole() {
   return {
     role,
     isSalesRep,
+    isSalesManager,
     isAdmin,
     isSuperAdmin,
+    canViewAll,
     isRole,
     canAccess,
     can,

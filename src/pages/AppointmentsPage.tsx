@@ -14,7 +14,12 @@ type MapTarget = { customerId: number; address: string } | null;
 export default function AppointmentsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isManager = user?.role === "sales_manager";
   const myRepName = user?.name || "";
+  // Sales manager sees ALL reps' appointments/check-ins (view-only), like admin
+  const canViewAll = isAdmin || isManager;
+  // Edit/delete only own appointments (admins can manage all)
+  const canManage = (repName: string) => isAdmin || repName === myRepName;
   const utils = trpc.useUtils();
 
   // ===================== STATE =====================
@@ -179,16 +184,16 @@ export default function AppointmentsPage() {
     });
   }
 
-  // Filter: admin sees all, sales rep sees own
-  const myAppointments = isAdmin
+  // Filter: admin/manager sees all, sales rep sees own
+  const myAppointments = canViewAll
     ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
     : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
 
-  const myCheckins = isAdmin
+  const myCheckins = canViewAll
     ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
     : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
 
-  const myFollowUps = isAdmin
+  const myFollowUps = canViewAll
     ? (filterRep === "all" ? (followUpCustomers || []) : (followUpCustomers || []).filter((c: any) => c.salesRepName === filterRep))
     : (followUpCustomers || []).filter((c: any) => c.salesRepName === myRepName);
 
@@ -216,7 +221,7 @@ export default function AppointmentsPage() {
       return d >= monthStart && d < monthEnd;
     });
 
-    if (!isAdmin) {
+    if (!canViewAll) {
       filtered = filtered.filter((ci: any) => ci.salesRepName === myRepName);
     } else if (geoAuditRepFilter !== "all") {
       filtered = filtered.filter((ci: any) => ci.salesRepName === geoAuditRepFilter);
@@ -266,7 +271,7 @@ export default function AppointmentsPage() {
     });
 
     return result;
-  }, [checkins, geoAuditMonth, geoAuditRepFilter, isAdmin, myRepName]);
+  }, [checkins, geoAuditMonth, geoAuditRepFilter, canViewAll, myRepName]);
 
   // Flatten flagged visits for table display (flagged clusters only, or all visits)
   const geoAuditRows = useMemo(() => {
@@ -502,8 +507,8 @@ export default function AppointmentsPage() {
         ))}
       </div>
 
-      {/* Sales Rep Filter — Admin Only */}
-      {isAdmin && (
+      {/* Sales Rep Filter — Admin/Manager Only */}
+      {canViewAll && (
         <div className="card-surface p-4">
           <div className="flex items-center gap-3">
             <Filter className="w-4 h-4 text-[#8A8B8C]" />
@@ -533,7 +538,7 @@ export default function AppointmentsPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <User className="w-4 h-4 text-[#D4A843]" />
                           <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
-                          {isAdmin && (
+                          {canViewAll && (
                             <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ADE80" }}>
                               {ci.outcome || "visit"}
                             </span>
@@ -558,11 +563,15 @@ export default function AppointmentsPage() {
                     )}
                     {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary flex-1 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
-                        <LogOut className="w-4 h-4" /> Check Out
-                      </button>
-                      <button onClick={() => { setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="btn-secondary" title="Edit"><Edit className="w-4 h-4" /></button>
-                      <button onClick={() => { if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="btn-secondary" style={{ color: "#EF4444" }} title="Delete"><Trash2 className="w-4 h-4" /></button>
+                      {canManage(ci.salesRepName || "") && (
+                        <>
+                          <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary flex-1 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
+                            <LogOut className="w-4 h-4" /> Check Out
+                          </button>
+                          <button onClick={() => { setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="btn-secondary" title="Edit"><Edit className="w-4 h-4" /></button>
+                          <button onClick={() => { if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="btn-secondary" style={{ color: "#EF4444" }} title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -586,7 +595,7 @@ export default function AppointmentsPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <User className="w-4 h-4 text-[#D4A843]" />
                           <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
-                          {isAdmin && (
+                          {canViewAll && (
                             <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
                               {ci.outcome || "visit"}
                             </span>
@@ -600,8 +609,12 @@ export default function AppointmentsPage() {
                       <div className="text-right flex flex-col items-end gap-1">
                         <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Done</span>
                         <div className="flex gap-1">
-                          <button onClick={(e) => { e.stopPropagation(); setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors p-1" title="Edit"><Edit className="w-3.5 h-3.5" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors p-1" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          {canManage(ci.salesRepName || "") && (
+                            <>
+                              <button onClick={(e) => { e.stopPropagation(); setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors p-1" title="Edit"><Edit className="w-3.5 h-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors p-1" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </>
+                          )}
                         </div>
                         <div className="text-xs text-[#8A8B8C]">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
                       </div>
@@ -668,8 +681,12 @@ export default function AppointmentsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
-                          <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
-                          <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                          {canManage(appt.salesRepName || "") && (
+                            <>
+                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                              <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
@@ -699,8 +716,12 @@ export default function AppointmentsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
-                          <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
-                          <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                          {canManage(appt.salesRepName || "") && (
+                            <>
+                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                              <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
@@ -837,7 +858,7 @@ export default function AppointmentsPage() {
                   className="input-field w-auto"
                 />
               </div>
-              {isAdmin && (
+              {canViewAll && (
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-[#8A8B8C]" />
                   <label className="label-text">Rep:</label>

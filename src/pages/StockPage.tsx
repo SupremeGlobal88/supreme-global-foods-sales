@@ -264,7 +264,12 @@ export default function StockPage() {
           const quantity = qtyVal !== "" && qtyVal !== undefined ? parseInt(String(qtyVal)) || 0 : 0;
 
           // Get prices (may be empty for some rows like THREADS)
-          const getPrice = (idx: number) => idx >= 0 && row[idx] !== "" && row[idx] !== undefined ? parseFloat(String(row[idx])) || 0 : 0;
+          // Return undefined when column missing or cell empty so bulkCreate keeps existing prices
+          const getPrice = (idx: number) => {
+            if (idx < 0 || row[idx] === "" || row[idx] === undefined) return undefined;
+            const v = parseFloat(String(row[idx]));
+            return Number.isFinite(v) && v > 0 ? v : undefined;
+          };
 
           const category = detectCategory(productName);
           const productCode = generateProductCode(productName);

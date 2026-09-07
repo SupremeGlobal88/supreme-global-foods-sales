@@ -153,6 +153,18 @@ function repairProductPrices(productList: any[]): { count: number; repaired: any
     if (prod.productCode) {
       match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
     }
+    // 1b. Renamed-format match: bulk uploads may store the size+name in productCode
+    // (e.g. productCode "20 MEGA LONG VALUE") and append color to productName
+    // (e.g. "MEGA LONG VALUE Brown"). In that case productCode equals the static
+    // productName and color identifies the variant.
+    if (!match && prod.productCode) {
+      const codeNorm = String(prod.productCode).toLowerCase().trim().replace(/\s+/g, " ");
+      const colorNorm = String(prod.color || "").toLowerCase().trim();
+      match = STATIC_PRODUCTS.find((s: any) =>
+        String(s.productName || "").toLowerCase().trim().replace(/\s+/g, " ") === codeNorm &&
+        (!colorNorm || String(s.color || "").toLowerCase().trim() === colorNorm)
+      );
+    }
     // 2. Match by id
     if (!match && prod.id != null) {
       match = STATIC_PRODUCTS.find((s: any) => s.id == prod.id);
@@ -1953,13 +1965,17 @@ export const dataService = {
         if (existingIdx >= 0) {
           // Update existing product: new SOH, update prices if provided, keep id
           const existing = products[existingIdx];
+          // PRICE PROTECTION: never overwrite an existing price with 0/empty from a bulk upload.
+          // Uploads that lack price columns parse prices as 0 — treat those as "not provided".
+          const safePrice = (incomingVal: any, existingVal: any) =>
+            Number(incomingVal) > 0 ? incomingVal : existingVal;
           products[existingIdx] = {
             ...existing,
             quantity: incoming.quantity !== undefined ? incoming.quantity : existing.quantity,
-            corporatePrice: incoming.corporatePrice !== undefined ? incoming.corporatePrice : existing.corporatePrice,
-            bulkPrice: incoming.bulkPrice !== undefined ? incoming.bulkPrice : existing.bulkPrice,
-            wholesalePrice: incoming.wholesalePrice !== undefined ? incoming.wholesalePrice : existing.wholesalePrice,
-            retailPrice: incoming.retailPrice !== undefined ? incoming.retailPrice : existing.retailPrice,
+            corporatePrice: safePrice(incoming.corporatePrice, existing.corporatePrice),
+            bulkPrice: safePrice(incoming.bulkPrice, existing.bulkPrice),
+            wholesalePrice: safePrice(incoming.wholesalePrice, existing.wholesalePrice),
+            retailPrice: safePrice(incoming.retailPrice, existing.retailPrice),
             // Update optional fields if provided
             ...(incoming.strands !== undefined && { strands: incoming.strands }),
             ...(incoming.size !== undefined && { size: incoming.size }),

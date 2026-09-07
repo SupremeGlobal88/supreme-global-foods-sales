@@ -461,9 +461,19 @@ export default function OrdersPage() {
       case "retail": rawPrice = Number(stock.retailPrice); break;
       default: rawPrice = Number(stock.wholesalePrice); break;
     }
-    // If loaded price is 0, fall back to STATIC_PRODUCTS (source of truth)
-    if (rawPrice <= 0) {
-      const staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode || (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim()));
+    // If loaded price is 0 or missing, fall back to STATIC_PRODUCTS (source of truth)
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+      let staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode || (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim()));
+      // Renamed-format fallback: productCode may hold the static name (e.g. "20 MEGA LONG VALUE")
+      // with color appended to productName (e.g. "MEGA LONG VALUE Brown")
+      if (!staticProd && stock.productCode) {
+        const codeNorm = String(stock.productCode).toLowerCase().trim().replace(/\s+/g, " ");
+        const colorNorm = String(stock.color || "").toLowerCase().trim();
+        staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) =>
+          String(p.productName || "").toLowerCase().trim().replace(/\s+/g, " ") === codeNorm &&
+          (!colorNorm || String(p.color || "").toLowerCase().trim() === colorNorm)
+        );
+      }
       if (staticProd) {
         switch (effectiveTier) {
           case "corporate": rawPrice = Number(staticProd.corporatePrice); break;

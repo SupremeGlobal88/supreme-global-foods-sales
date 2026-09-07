@@ -403,7 +403,7 @@ export default function PackingListPage() {
                   </div>
                   <div>
                     <label className="label-text">Qty Bundles *</label>
-                    <input type="number" required value={form.quantityBundles || ""} onChange={(e) => setForm({ ...form, quantityBundles: parseInt(e.target.value) || 0 })} className="input-field w-full text-sm" placeholder="100-200" min={1} max={200} />
+                    <input type="number" required value={form.quantityBundles || ""} onChange={(e) => setForm({ ...form, quantityBundles: parseInt(e.target.value) || 0 })} className="input-field w-full text-sm" placeholder="100-500" min={1} max={500} />
                   </div>
                   <div>
                     <label className="label-text">Gross Weight (kg)</label>

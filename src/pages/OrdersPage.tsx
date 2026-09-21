@@ -53,7 +53,7 @@ function GenerateInvoiceButton({
   });
 
   const hasInvoice = (liveInvoices || []).some(
-    (i: any) => i.orderId == orderId && i.invoiceNumber?.startsWith("SGF")
+    (i: any) => i.orderId == orderId && (i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC"))
   );
 
   return (
@@ -321,7 +321,7 @@ export default function OrdersPage() {
   useEffect(() => {
     function refresh() {
       const allInv = dataService.invoice.list();
-      const ids = new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF")).map((i: any) => Number(i.orderId)));
+      const ids = new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC")).map((i: any) => Number(i.orderId)));
       setLiveInvoiceOrderIds(ids);
     }
     refresh();
@@ -1103,7 +1103,7 @@ export default function OrdersPage() {
                       {order.orderType === "quote" && order.status === "converted" && (
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.15)", color: "#4ADE80" }}>→ {order.convertedOrderNumber}</span>
                       )}
-                      {isAdmin && order.orderType !== "quote" && !(invoices || []).some((inv: any) => inv.orderId == order.id && inv.invoiceNumber?.startsWith("SGF")) && (
+                      {isAdmin && order.orderType !== "quote" && !(invoices || []).some((inv: any) => inv.orderId == order.id && (inv.invoiceNumber?.startsWith("SGF") || inv.invoiceNumber?.startsWith("RC"))) && (
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
                     </td>

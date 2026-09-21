@@ -4648,6 +4648,10 @@ export const dataService = {
       const vatAmount = subtotal * vatRate;
       const total = subtotal + vatAmount;
 
+      // Resolve the main customer ID from the linked corporate customer
+      const mainCustomerId = corpCustomer?.linkedCustomerId || po.corporateCustomerId;
+      const mainCustomer = customers.find((c) => c.id == mainCustomerId);
+
       // Check if invoice already exists for this PO
       const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
 
@@ -4668,6 +4672,8 @@ export const dataService = {
           totalAmount: total,
           balanceDue: newBalanceDue,
           paymentTerms,
+          customerId: mainCustomerId,
+          customer: mainCustomer || { name: po.corporateCustomerName || "Corporate Customer" },
           items: items.map((item: any) => ({
             description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
             quantity: item.quantity,
@@ -4709,8 +4715,8 @@ export const dataService = {
         orderNumber: po.poNumber,
         invoiceNumber,
         company: invCompany,
-        customerId: po.corporateCustomerId,
-        customer: { name: po.corporateCustomerName || "Corporate Customer" },
+        customerId: mainCustomerId,
+        customer: mainCustomer || { name: po.corporateCustomerName || "Corporate Customer" },
         subtotal,
         vatAmount,
         vatRate,

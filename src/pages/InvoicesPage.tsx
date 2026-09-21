@@ -634,9 +634,12 @@ export default function InvoicesPage() {
     const freshInvoices = await utils.invoice.list.fetch();
     const cust = (customers || []).find((c: any) => c.id == stmtCust);
     if (!cust) { alert("Please select a customer."); return; }
-    const invCompany: CompanyKey = cust?.company || "sgf";
+    let invCompany: CompanyKey = cust?.company || "sgf";
+    const corpCust = (corporateCustomers || []).find((c: any) => c.id == stmtCust);
+    if (corpCust?.company) invCompany = corpCust.company;
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
+    const docColor = cfg.documentColor || "#D4A843";
 
     // Build invoice list — same matching as the invoice list search
     const custCode = cust.customerCode;
@@ -687,27 +690,29 @@ export default function InvoicesPage() {
       <style>
         @media print { body { padding: 0 12px; } }
         body { font-family: Arial, Helvetica, sans-serif; color: #333; max-width: 210mm; margin: 0 auto; font-size: 11px; line-height: 1.4; padding: 20px; }
-        .header { text-align: center; border-bottom: 3px solid #D4A843; padding-bottom: 10px; margin-bottom: 16px; }
+        .header { text-align: center; border-bottom: 3px solid ${docColor}; padding-bottom: 10px; margin-bottom: 16px; }
         .header img { height: 50px; margin-bottom: 6px; }
-        .header h1 { font-size: 20px; font-weight: 800; color: #D4A843; margin: 6px 0; letter-spacing: 1px; text-transform: uppercase; }
+        .header h1 { font-size: 20px; font-weight: 800; color: ${docColor}; margin: 6px 0; letter-spacing: 1px; text-transform: uppercase; }
+        .header .subtitle { font-size: 10px; color: #666; line-height: 1.5; }
         .info-grid { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 11px; }
         .info-block .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
         .info-block .value { font-weight: 700; font-size: 13px; color: #222; }
         table.ledger { width: 100%; border-collapse: collapse; font-size: 10.5px; }
-        table.ledger thead th { background: #D4A843; color: #fff; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        table.ledger thead th { background: ${docColor}; color: #fff; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
         table.ledger tbody td { padding: 6px 8px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
         table.ledger .num { text-align: right; }
         table.ledger .bal-positive { color: #c00; font-weight: 700; }
         .summary { margin-top: 12px; display: flex; justify-content: flex-end; }
         .summary-box { width: 260px; font-size: 11px; }
         .summary-box .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #e5e5e5; }
-        .summary-box .total { font-weight: 800; font-size: 13px; border-top: 2px solid #D4A843; border-bottom: 2px solid #D4A843; padding: 6px 0; margin-top: 2px; }
+        .summary-box .total { font-weight: 800; font-size: 13px; border-top: 2px solid ${docColor}; border-bottom: 2px solid ${docColor}; padding: 6px 0; margin-top: 2px; }
         .footer { text-align: center; font-size: 9px; color: #999; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 8px; }
         .overdue-note { background: #FFF5F5; border: 1px solid #EF4444; color: #EF4444; padding: 6px; border-radius: 3px; font-size: 10px; font-weight: 700; text-align: center; margin-top: 12px; }
       </style></head>
       <body>
         <div class="header">
           <img src="${logoUrl}" onerror="this.style.display='none'" />
+          <div class="subtitle">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; ${cfg.contact.email} &nbsp;|&nbsp; Tel: ${cfg.contact.phone}<br/>VAT Reg: ${cfg.vatNumber} &nbsp;|&nbsp; Reg No: ${cfg.regNumber}</div>
           <h1>Statement of Account</h1>
           <div style="font-size:10px; color:#666;">Period: ${fromStr} &nbsp;to&nbsp; ${toStr} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>
         </div>
@@ -764,8 +769,8 @@ export default function InvoicesPage() {
           </div>
         </div>
         <!-- Aging Summary -->
-        <div style="margin-top:16px; border:1px solid #D4A843; border-radius:6px; overflow:hidden;">
-          <div style="background:#D4A843; color:#fff; padding:6px 10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Outstanding Balance Aging</div>
+        <div style="margin-top:16px; border:1px solid ${docColor}; border-radius:6px; overflow:hidden;">
+          <div style="background:${docColor}; color:#fff; padding:6px 10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Outstanding Balance Aging</div>
           <table style="width:100%; border-collapse:collapse; font-size:10.5px;">
             <thead><tr style="background:#f9f9f9;">
               <th style="padding:6px 8px; text-align:left; border-bottom:1px solid #e5e5e5;">Current (0-30d)</th>
@@ -773,7 +778,7 @@ export default function InvoicesPage() {
               <th style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5;">60 Days</th>
               <th style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5;">90 Days</th>
               <th style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5; color:#c00;">90+ Days</th>
-              <th style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5; background:#D4A843; color:#fff;">Total Outstanding</th>
+              <th style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5; background:${docColor}; color:#fff;">Total Outstanding</th>
             </tr></thead>
             <tbody><tr>
               <td style="padding:6px 8px; border-bottom:1px solid #e5e5e5;"><strong>R ${aging.current.toFixed(2)}</strong></td>
@@ -781,15 +786,15 @@ export default function InvoicesPage() {
               <td style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5;">R ${aging.days60.toFixed(2)}</td>
               <td style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5;">R ${aging.days90.toFixed(2)}</td>
               <td style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5; color:#c00; font-weight:700;">R ${aging.days90plus.toFixed(2)}</td>
-              <td style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5; font-weight:800; background:#FFF9E6;">R ${(aging.current + aging.days30 + aging.days60 + aging.days90 + aging.days90plus).toFixed(2)}</td>
+              <td style="padding:6px 8px; text-align:right; border-bottom:1px solid #e5e5e5; font-weight:800; background:#F3F4F6;">R ${(aging.current + aging.days30 + aging.days60 + aging.days90 + aging.days90plus).toFixed(2)}</td>
             </tr></tbody>
           </table>
         </div>
 
         ${closingBal > 0 ? `<div class="overdue-note">Please arrange payment within your agreed terms. Outstanding balance must be settled to avoid account hold.</div>` : ""}
         <div class="footer">
-          Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>
-          Banking: ${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode} | Quote customer code with payment
+          ${cfg.legalName} &nbsp;|&nbsp; ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; ${cfg.contact.phone}<br/>
+          Banking: ${cfg.banking.bankName} | Acc: ${cfg.banking.accountNumber} | Branch: ${cfg.banking.branchCode} | Quote customer code with payment
         </div>
       <script>
         (function(){

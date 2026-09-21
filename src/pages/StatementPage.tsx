@@ -2,16 +2,33 @@ import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { ArrowLeft, Printer, Calendar } from "lucide-react";
 import { useState } from "react";
+import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 
 /** Build and open a professional printable statement in a new window.
- *  White background, SGF logo, company details, accounting format. */
+ *  Uses customer.company to determine branding (SGF vs Recircle). */
 function openPrintWindow(
   customer: any,
   invoices: any[],
   stmtFrom: string,
   stmtTo: string,
+  corporateCustomers: any[] = [],
 ) {
-  const logoUrl = `${window.location.origin}/sgf-logo.png`;
+  // Determine company: check customer record → corporate list → invoices → default sgf
+  let stmtCompany: CompanyKey = customer?.company || "sgf";
+  const corpById = corporateCustomers.find((c: any) => c.id == customer?.id);
+  const corpByName = corporateCustomers.find(
+    (c: any) =>
+      c.name?.toLowerCase().trim() === customer?.name?.toLowerCase().trim(),
+  );
+  const corpCust = corpById || corpByName;
+  if (corpCust?.company) stmtCompany = corpCust.company;
+  const invWithCompany = invoices.find((i: any) => i.company);
+  if (invWithCompany?.company) stmtCompany = invWithCompany.company;
+
+  const cfg = getCompanyConfig(stmtCompany);
+  const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
+  const docColor = cfg.documentColor || "#D4A843";
+
   const fromStr = stmtFrom
     ? new Date(stmtFrom).toLocaleDateString("en-ZA")
     : "All time";
@@ -76,26 +93,26 @@ function openPrintWindow(
       `<style>` +
       `@media print{body{padding:0 12px}}` +
       `body{font-family:Arial,Helvetica,sans-serif;color:#333;max-width:210mm;margin:0 auto;font-size:11px;line-height:1.4;padding:20px;background:#fff}` +
-      `.header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:10px;margin-bottom:16px}` +
+      `.header{text-align:center;border-bottom:3px solid ${docColor};padding-bottom:10px;margin-bottom:16px}` +
       `.header img{height:55px;margin-bottom:4px}` +
-      `.header h1{font-size:20px;font-weight:800;color:#D4A843;margin:6px 0;letter-spacing:1px;text-transform:uppercase}` +
+      `.header h1{font-size:20px;font-weight:800;color:${docColor};margin:6px 0;letter-spacing:1px;text-transform:uppercase}` +
       `.header .subtitle{font-size:10px;color:#666;line-height:1.5}` +
       `.info-grid{display:flex;justify-content:space-between;margin-bottom:16px;font-size:11px}` +
       `.info-block .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}` +
       `.info-block .value{font-weight:700;font-size:13px;color:#222}` +
       `table.ledger{width:100%;border-collapse:collapse;font-size:10.5px}` +
-      `table.ledger thead th{background:#D4A843;color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}` +
+      `table.ledger thead th{background:${docColor};color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}` +
       `table.ledger tbody td{padding:6px 8px;border-bottom:1px solid #e5e5e5;vertical-align:top}` +
       `table.ledger .num{text-align:right}` +
       `table.ledger .bal-positive{color:#c00;font-weight:700}` +
       `.summary{margin-top:12px;display:flex;justify-content:flex-end}` +
       `.summary-box{width:260px;font-size:11px}` +
       `.summary-box .row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e5e5e5}` +
-      `.summary-box .total{font-weight:800;font-size:13px;border-top:2px solid #D4A843;border-bottom:2px solid #D4A843;padding:6px 0;margin-top:2px}` +
+      `.summary-box .total{font-weight:800;font-size:13px;border-top:2px solid ${docColor};border-bottom:2px solid ${docColor};padding:6px 0;margin-top:2px}` +
       `.footer{text-align:center;font-size:9px;color:#999;margin-top:20px;border-top:1px solid #ddd;padding-top:8px}` +
       `.overdue-note{background:#FFF5F5;border:1px solid #EF4444;color:#EF4444;padding:6px;border-radius:3px;font-size:10px;font-weight:700;text-align:center;margin-top:12px}` +
-      `.aging{margin-top:16px;border:1px solid #D4A843;border-radius:6px;overflow:hidden}` +
-      `.aging-header{background:#D4A843;color:#fff;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}` +
+      `.aging{margin-top:16px;border:1px solid ${docColor};border-radius:6px;overflow:hidden}` +
+      `.aging-header{background:${docColor};color:#fff;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}` +
       `.aging table{width:100%;border-collapse:collapse;font-size:10.5px}` +
       `.aging th{padding:6px 8px;text-align:left;background:#f9f9f9;border-bottom:1px solid #e5e5e5}` +
       `.aging td{padding:6px 8px;border-bottom:1px solid #e5e5e5}` +
@@ -103,7 +120,7 @@ function openPrintWindow(
       // Header
       `<div class="header">` +
       `<img src="${logoUrl}" onerror="this.style.display='none'"/>` +
-      `<div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: 083 293 0644<br/>VAT Reg: 4150254441 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>` +
+      `<div class="subtitle">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; ${cfg.contact.email} &nbsp;|&nbsp; Tel: ${cfg.contact.phone}<br/>VAT Reg: ${cfg.vatNumber} &nbsp;|&nbsp; Reg No: ${cfg.regNumber}</div>` +
       `<h1>Statement of Account</h1>` +
       `<div style="font-size:10px;color:#666">Period: ${fromStr} &nbsp;to&nbsp; ${toStr} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>` +
       `</div>` +
@@ -166,14 +183,14 @@ function openPrintWindow(
           `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">60 Days</th>` +
           `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">90 Days</th>` +
           `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;color:#c00">90+ Days</th>` +
-          `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;background:#D4A843;color:#fff">Total Outstanding</th>` +
+          `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;background:${docColor};color:#fff">Total Outstanding</th>` +
           `</tr></thead><tbody><tr>` +
           `<td style="padding:6px 8px;border-bottom:1px solid #e5e5e5"><strong>R ${aging.current.toFixed(2)}</strong></td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days30.toFixed(2)}</td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days60.toFixed(2)}</td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days90.toFixed(2)}</td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;color:#c00;font-weight:700">R ${aging.days90plus.toFixed(2)}</td>` +
-          `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;font-weight:800;background:#FFF9E6">R ${totalOutstanding.toFixed(2)}</td>` +
+          `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;font-weight:800;background:#F3F4F6">R ${totalOutstanding.toFixed(2)}</td>` +
           `</tr></tbody></table></div>`
         : "") +
       // Footer note + banking
@@ -181,8 +198,8 @@ function openPrintWindow(
         ? `<div class="overdue-note">Please arrange payment within your agreed terms. Outstanding balance must be settled to avoid account hold.</div>`
         : "") +
       `<div class="footer">` +
-      `Supreme Global Foods &nbsp;|&nbsp; 28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; 083 293 0644<br/>` +
-      `Banking: FNB | Acc: 63176141182 | Branch: 250655 | Quote customer code with payment` +
+      `${cfg.legalName} &nbsp;|&nbsp; ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; ${cfg.contact.phone}<br/>` +
+      `Banking: ${cfg.banking.bankName} | Acc: ${cfg.banking.accountNumber} | Branch: ${cfg.banking.branchCode} | Quote customer code with payment` +
       `</div>` +
       // Auto-print
       `<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print()},200)}}if(document.readyState==="complete")p();else window.onload=p;setTimeout(p,2000)})()</script>` +
@@ -199,8 +216,21 @@ export default function StatementPage() {
   const { data: invoices, isLoading: invLoading } =
     trpc.invoice.list.useQuery();
   const { data: allCustomers } = trpc.customer.list.useQuery();
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
 
   const customer = (allCustomers || []).find((c: any) => c.id === cid);
+
+  // Determine company branding
+  let stmtCompany: CompanyKey = customer?.company || "sgf";
+  const corpById = (corporateCustomers || []).find((c: any) => c.id == cid);
+  const corpByName = (corporateCustomers || []).find(
+    (c: any) =>
+      c.name?.toLowerCase().trim() === customer?.name?.toLowerCase().trim()
+  );
+  const corpCust = corpById || corpByName;
+  if (corpCust?.company) stmtCompany = corpCust.company;
+  const cfg = getCompanyConfig(stmtCompany);
+  const docColor = cfg.documentColor || "#D4A843";
   const custName = customer?.name || "";
   const custCode = customer?.customerCode || "";
 
@@ -346,7 +376,7 @@ export default function StatementPage() {
         <div className="flex gap-2">
           <button
             onClick={() =>
-              openPrintWindow(customer, custInvoices, stmtFrom, stmtTo)
+              openPrintWindow(customer, custInvoices, stmtFrom, stmtTo, corporateCustomers || [])
             }
             className="btn-primary"
           >
@@ -361,7 +391,7 @@ export default function StatementPage() {
         style={{ backgroundColor: "#222324" }}
       >
         <div className="flex items-center gap-3 flex-wrap">
-          <Calendar className="w-4 h-4 text-[#D4A843]" />
+          <Calendar className="w-4 h-4" style={{ color: docColor }} />
           <label className="text-xs text-[#8A8B8C]">From</label>
           <input
             type="date"
@@ -412,7 +442,7 @@ export default function StatementPage() {
               <thead>
                 <tr
                   className="border-b-2"
-                  style={{ borderColor: "#D4A843" }}
+                  style={{ borderColor: docColor }}
                 >
                   <th className="text-left p-3 text-[#8A8B8C]">Date</th>
                   <th className="text-left p-3 text-[#8A8B8C]">
@@ -442,7 +472,7 @@ export default function StatementPage() {
                     <td className="p-3 text-white whitespace-nowrap">
                       {new Date(line.date).toLocaleDateString("en-ZA")}
                     </td>
-                    <td className="p-3 font-mono-data text-[#D4A843]">
+                    <td className="p-3 font-mono-data" style={{ color: docColor }}>
                       {line.ref}
                     </td>
                     <td className="p-3 text-white">
@@ -479,7 +509,7 @@ export default function StatementPage() {
                     <td
                       className="p-3 text-right font-semibold"
                       style={{
-                        color: line.balance > 0 ? "#D4A843" : "#4ADE80",
+                        color: line.balance > 0 ? docColor : "#4ADE80",
                       }}
                     >
                       {line.balance.toLocaleString("en-ZA", {
@@ -492,7 +522,7 @@ export default function StatementPage() {
               <tfoot>
                 <tr
                   className="border-t-2"
-                  style={{ borderColor: "#D4A843" }}
+                  style={{ borderColor: docColor }}
                 >
                   <td
                     colSpan={3}
@@ -515,7 +545,7 @@ export default function StatementPage() {
                   </td>
                   <td
                     className="p-3 text-right font-bold"
-                    style={{ color: "#D4A843" }}
+                    style={{ color: docColor }}
                   >
                     {(totalDebit - totalCredit).toLocaleString("en-ZA", {
                       minimumFractionDigits: 2,
@@ -546,7 +576,7 @@ export default function StatementPage() {
                 className="font-bold"
                 style={{
                   color:
-                    totalDebit - totalCredit > 0 ? "#D4A843" : "#4ADE80",
+                    totalDebit - totalCredit > 0 ? docColor : "#4ADE80",
                 }}
               >
                 R{" "}
@@ -561,11 +591,11 @@ export default function StatementPage() {
           {totalOutstanding > 0 && (
             <div
               className="mt-6 rounded-lg overflow-hidden"
-              style={{ border: "1px solid #D4A843" }}
+              style={{ border: `1px solid ${docColor}` }}
             >
               <div
                 className="px-4 py-2 text-xs font-bold text-white uppercase tracking-wider"
-                style={{ backgroundColor: "#D4A843" }}
+                style={{ backgroundColor: docColor }}
               >
                 Outstanding Balance Aging
               </div>
@@ -594,7 +624,7 @@ export default function StatementPage() {
                       <th
                         className="p-3 text-right text-white"
                         style={{
-                          backgroundColor: "rgba(212,168,67,0.2)",
+                          backgroundColor: "#F3F4F6",
                         }}
                       >
                         Total Outstanding
@@ -637,9 +667,10 @@ export default function StatementPage() {
                         })}
                       </td>
                       <td
-                        className="p-3 text-right font-bold text-[#D4A843]"
+                        className="p-3 text-right font-bold"
                         style={{
-                          backgroundColor: "rgba(212,168,67,0.08)",
+                          color: docColor,
+                          backgroundColor: "#F3F4F6",
                         }}
                       >
                         R{" "}

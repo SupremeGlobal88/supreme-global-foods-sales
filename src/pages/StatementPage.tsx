@@ -5,7 +5,7 @@ import { useState } from "react";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 
 /** Build and open a professional printable statement in a new window.
- *  Uses customer.company to determine branding (SGF vs Recircle). */
+ *  Uses company config for correct branding (SGF vs Recircle). */
 function openPrintWindow(
   customer: any,
   invoices: any[],
@@ -13,22 +13,14 @@ function openPrintWindow(
   stmtTo: string,
   corporateCustomers: any[] = [],
 ) {
-  // Determine company: check customer record → corporate list → invoices → default sgf
   let stmtCompany: CompanyKey = customer?.company || "sgf";
-  const corpById = corporateCustomers.find((c: any) => c.id == customer?.id);
-  const corpByName = corporateCustomers.find(
-    (c: any) =>
-      c.name?.toLowerCase().trim() === customer?.name?.toLowerCase().trim(),
-  );
-  const corpCust = corpById || corpByName;
-  if (corpCust?.company) stmtCompany = corpCust.company;
-  const invWithCompany = invoices.find((i: any) => i.company);
-  if (invWithCompany?.company) stmtCompany = invWithCompany.company;
-
+  // If no company on main customer record, check corporate customer list
+  if (!customer?.company && customer?.isCorporate) {
+    const corpCust = corporateCustomers.find((c: any) => c.id === customer.id);
+    if (corpCust?.company) stmtCompany = corpCust.company;
+  }
   const cfg = getCompanyConfig(stmtCompany);
   const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
-  const docColor = cfg.documentColor || "#D4A843";
-
   const fromStr = stmtFrom
     ? new Date(stmtFrom).toLocaleDateString("en-ZA")
     : "All time";
@@ -93,26 +85,26 @@ function openPrintWindow(
       `<style>` +
       `@media print{body{padding:0 12px}}` +
       `body{font-family:Arial,Helvetica,sans-serif;color:#333;max-width:210mm;margin:0 auto;font-size:11px;line-height:1.4;padding:20px;background:#fff}` +
-      `.header{text-align:center;border-bottom:3px solid ${docColor};padding-bottom:10px;margin-bottom:16px}` +
+      `.header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:10px;margin-bottom:16px}` +
       `.header img{height:55px;margin-bottom:4px}` +
-      `.header h1{font-size:20px;font-weight:800;color:${docColor};margin:6px 0;letter-spacing:1px;text-transform:uppercase}` +
+      `.header h1{font-size:20px;font-weight:800;color:#D4A843;margin:6px 0;letter-spacing:1px;text-transform:uppercase}` +
       `.header .subtitle{font-size:10px;color:#666;line-height:1.5}` +
       `.info-grid{display:flex;justify-content:space-between;margin-bottom:16px;font-size:11px}` +
       `.info-block .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}` +
       `.info-block .value{font-weight:700;font-size:13px;color:#222}` +
       `table.ledger{width:100%;border-collapse:collapse;font-size:10.5px}` +
-      `table.ledger thead th{background:${docColor};color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}` +
+      `table.ledger thead th{background:#D4A843;color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}` +
       `table.ledger tbody td{padding:6px 8px;border-bottom:1px solid #e5e5e5;vertical-align:top}` +
       `table.ledger .num{text-align:right}` +
       `table.ledger .bal-positive{color:#c00;font-weight:700}` +
       `.summary{margin-top:12px;display:flex;justify-content:flex-end}` +
       `.summary-box{width:260px;font-size:11px}` +
       `.summary-box .row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e5e5e5}` +
-      `.summary-box .total{font-weight:800;font-size:13px;border-top:2px solid ${docColor};border-bottom:2px solid ${docColor};padding:6px 0;margin-top:2px}` +
+      `.summary-box .total{font-weight:800;font-size:13px;border-top:2px solid #D4A843;border-bottom:2px solid #D4A843;padding:6px 0;margin-top:2px}` +
       `.footer{text-align:center;font-size:9px;color:#999;margin-top:20px;border-top:1px solid #ddd;padding-top:8px}` +
       `.overdue-note{background:#FFF5F5;border:1px solid #EF4444;color:#EF4444;padding:6px;border-radius:3px;font-size:10px;font-weight:700;text-align:center;margin-top:12px}` +
-      `.aging{margin-top:16px;border:1px solid ${docColor};border-radius:6px;overflow:hidden}` +
-      `.aging-header{background:${docColor};color:#fff;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}` +
+      `.aging{margin-top:16px;border:1px solid #D4A843;border-radius:6px;overflow:hidden}` +
+      `.aging-header{background:#D4A843;color:#fff;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}` +
       `.aging table{width:100%;border-collapse:collapse;font-size:10.5px}` +
       `.aging th{padding:6px 8px;text-align:left;background:#f9f9f9;border-bottom:1px solid #e5e5e5}` +
       `.aging td{padding:6px 8px;border-bottom:1px solid #e5e5e5}` +
@@ -183,14 +175,14 @@ function openPrintWindow(
           `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">60 Days</th>` +
           `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">90 Days</th>` +
           `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;color:#c00">90+ Days</th>` +
-          `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;background:${docColor};color:#fff">Total Outstanding</th>` +
+          `<th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;background:#D4A843;color:#fff">Total Outstanding</th>` +
           `</tr></thead><tbody><tr>` +
           `<td style="padding:6px 8px;border-bottom:1px solid #e5e5e5"><strong>R ${aging.current.toFixed(2)}</strong></td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days30.toFixed(2)}</td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days60.toFixed(2)}</td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days90.toFixed(2)}</td>` +
           `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;color:#c00;font-weight:700">R ${aging.days90plus.toFixed(2)}</td>` +
-          `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;font-weight:800;background:#F3F4F6">R ${totalOutstanding.toFixed(2)}</td>` +
+          `<td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;font-weight:800;background:#FFF9E6">R ${totalOutstanding.toFixed(2)}</td>` +
           `</tr></tbody></table></div>`
         : "") +
       // Footer note + banking
@@ -219,18 +211,6 @@ export default function StatementPage() {
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
 
   const customer = (allCustomers || []).find((c: any) => c.id === cid);
-
-  // Determine company branding
-  let stmtCompany: CompanyKey = customer?.company || "sgf";
-  const corpById = (corporateCustomers || []).find((c: any) => c.id == cid);
-  const corpByName = (corporateCustomers || []).find(
-    (c: any) =>
-      c.name?.toLowerCase().trim() === customer?.name?.toLowerCase().trim()
-  );
-  const corpCust = corpById || corpByName;
-  if (corpCust?.company) stmtCompany = corpCust.company;
-  const cfg = getCompanyConfig(stmtCompany);
-  const docColor = cfg.documentColor || "#D4A843";
   const custName = customer?.name || "";
   const custCode = customer?.customerCode || "";
 
@@ -391,7 +371,7 @@ export default function StatementPage() {
         style={{ backgroundColor: "#222324" }}
       >
         <div className="flex items-center gap-3 flex-wrap">
-          <Calendar className="w-4 h-4" style={{ color: docColor }} />
+          <Calendar className="w-4 h-4 text-[#D4A843]" />
           <label className="text-xs text-[#8A8B8C]">From</label>
           <input
             type="date"
@@ -442,7 +422,7 @@ export default function StatementPage() {
               <thead>
                 <tr
                   className="border-b-2"
-                  style={{ borderColor: docColor }}
+                  style={{ borderColor: "#D4A843" }}
                 >
                   <th className="text-left p-3 text-[#8A8B8C]">Date</th>
                   <th className="text-left p-3 text-[#8A8B8C]">
@@ -472,7 +452,7 @@ export default function StatementPage() {
                     <td className="p-3 text-white whitespace-nowrap">
                       {new Date(line.date).toLocaleDateString("en-ZA")}
                     </td>
-                    <td className="p-3 font-mono-data" style={{ color: docColor }}>
+                    <td className="p-3 font-mono-data text-[#D4A843]">
                       {line.ref}
                     </td>
                     <td className="p-3 text-white">
@@ -509,7 +489,7 @@ export default function StatementPage() {
                     <td
                       className="p-3 text-right font-semibold"
                       style={{
-                        color: line.balance > 0 ? docColor : "#4ADE80",
+                        color: line.balance > 0 ? "#D4A843" : "#4ADE80",
                       }}
                     >
                       {line.balance.toLocaleString("en-ZA", {
@@ -522,7 +502,7 @@ export default function StatementPage() {
               <tfoot>
                 <tr
                   className="border-t-2"
-                  style={{ borderColor: docColor }}
+                  style={{ borderColor: "#D4A843" }}
                 >
                   <td
                     colSpan={3}
@@ -545,7 +525,7 @@ export default function StatementPage() {
                   </td>
                   <td
                     className="p-3 text-right font-bold"
-                    style={{ color: docColor }}
+                    style={{ color: "#D4A843" }}
                   >
                     {(totalDebit - totalCredit).toLocaleString("en-ZA", {
                       minimumFractionDigits: 2,
@@ -576,7 +556,7 @@ export default function StatementPage() {
                 className="font-bold"
                 style={{
                   color:
-                    totalDebit - totalCredit > 0 ? docColor : "#4ADE80",
+                    totalDebit - totalCredit > 0 ? "#D4A843" : "#4ADE80",
                 }}
               >
                 R{" "}
@@ -591,11 +571,11 @@ export default function StatementPage() {
           {totalOutstanding > 0 && (
             <div
               className="mt-6 rounded-lg overflow-hidden"
-              style={{ border: `1px solid ${docColor}` }}
+              style={{ border: "1px solid #D4A843" }}
             >
               <div
                 className="px-4 py-2 text-xs font-bold text-white uppercase tracking-wider"
-                style={{ backgroundColor: docColor }}
+                style={{ backgroundColor: "#D4A843" }}
               >
                 Outstanding Balance Aging
               </div>
@@ -624,7 +604,7 @@ export default function StatementPage() {
                       <th
                         className="p-3 text-right text-white"
                         style={{
-                          backgroundColor: "#F3F4F6",
+                          backgroundColor: "rgba(212,168,67,0.2)",
                         }}
                       >
                         Total Outstanding
@@ -667,10 +647,9 @@ export default function StatementPage() {
                         })}
                       </td>
                       <td
-                        className="p-3 text-right font-bold"
+                        className="p-3 text-right font-bold text-[#D4A843]"
                         style={{
-                          color: docColor,
-                          backgroundColor: "#F3F4F6",
+                          backgroundColor: "rgba(212,168,67,0.08)",
                         }}
                       >
                         R{" "}

@@ -65,20 +65,6 @@ export default function CustomerStatementPage() {
       );
   }, [invoices, selectedCustomer, stmtFrom, stmtTo]);
 
-  // Determine company branding for the selected customer
-  const stmtCfg = useMemo(() => {
-    let company: CompanyKey = selectedCustomer?.company || "sgf";
-    const corpById = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer?.id);
-    const corpByName = (corporateCustomers || []).find(
-      (c: any) => c.name?.toLowerCase().trim() === selectedCustomer?.name?.toLowerCase().trim()
-    );
-    const corpCust = corpById || corpByName;
-    if (corpCust?.company) company = corpCust.company;
-    const invWithCompany = custInvoices.find((i: any) => i.company);
-    if (invWithCompany?.company) company = invWithCompany.company;
-    return getCompanyConfig(company);
-  }, [selectedCustomer, corporateCustomers, custInvoices]);
-
   // Credit notes for this customer
   const custCreditNotes = useMemo(() => {
     if (!selectedCustomer || !allCreditNotes) return [];
@@ -230,16 +216,12 @@ export default function CustomerStatementPage() {
   // ─── PRINT ───
   function printStatement() {
     if (!selectedCustomer || custInvoices.length === 0) return;
-    // Determine company: check customer record → corporate list → invoices → default sgf
     let stmtCompany: CompanyKey = selectedCustomer.company || "sgf";
-    // Check corporate customer list (by ID or by name match)
-    const corpById = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer.id);
-    const corpByName = (corporateCustomers || []).find((c: any) => c.name?.toLowerCase().trim() === selectedCustomer.name?.toLowerCase().trim());
-    const corpCust = corpById || corpByName;
-    if (corpCust?.company) stmtCompany = corpCust.company;
-    // Also check invoices for this customer — they carry the company from the PO
-    const invWithCompany = custInvoices.find((i: any) => i.company);
-    if (invWithCompany?.company) stmtCompany = invWithCompany.company;
+    // If no company on main customer record, check corporate customer list
+    if (!selectedCustomer.company && selectedCustomer.isCorporate) {
+      const corpCust = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer.id);
+      if (corpCust?.company) stmtCompany = corpCust.company;
+    }
     const stmtCfg = getCompanyConfig(stmtCompany);
     const logoUrl = `${window.location.origin}${stmtCfg.logoUrl || "/sgf-logo.png"}`;
     const fromStr = new Date(stmtFrom).toLocaleDateString("en-ZA");
@@ -249,7 +231,7 @@ export default function CustomerStatementPage() {
     const ledgerRows = lines.map(l =>
       `<tr>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap">${new Date(l.date).toLocaleDateString("en-ZA")}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:${l.type === "credit_note" ? "#F59E0B" : stmtCfg.documentColor}">${l.ref}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:${l.type === "credit_note" ? "#F59E0B" : "#D4A843"}">${l.ref}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""}${l.terms ? ` <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span>` : ""}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right">${l.debit > 0 ? l.debit.toFixed(2) : "-"}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:${l.type === "credit_note" ? "#F59E0B" : "#2E7D32"}">${l.credit > 0 ? l.credit.toFixed(2) : "-"}</td>
@@ -258,8 +240,8 @@ export default function CustomerStatementPage() {
     ).join("");
 
     const agingHtml = totalOutstanding > 0 ? `
-      <div style="margin-top:16px;border:1px solid ${stmtCfg.documentColor};border-radius:6px;overflow:hidden">
-        <div style="background:${stmtCfg.documentColor};color:#fff;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Outstanding Balance Aging</div>
+      <div style="margin-top:16px;border:1px solid #D4A843;border-radius:6px;overflow:hidden">
+        <div style="background:#D4A843;color:#fff;padding:6px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Outstanding Balance Aging</div>
         <table style="width:100%;border-collapse:collapse;font-size:10.5px">
           <thead><tr style="background:#f9f9f9">
             <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e5e5">Current (0-30d)</th>
@@ -267,7 +249,7 @@ export default function CustomerStatementPage() {
             <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">60 Days</th>
             <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">90 Days</th>
             <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;color:#c00">90+ Days</th>
-            <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;background:${stmtCfg.documentColor};color:#fff">Total Outstanding</th>
+            <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;background:#D4A843;color:#fff">Total Outstanding</th>
           </tr></thead>
           <tbody><tr>
             <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5"><strong>R ${aging.current.toFixed(2)}</strong></td>
@@ -275,7 +257,7 @@ export default function CustomerStatementPage() {
             <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days60.toFixed(2)}</td>
             <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5">R ${aging.days90.toFixed(2)}</td>
             <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;color:#c00;font-weight:700">R ${aging.days90plus.toFixed(2)}</td>
-            <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;font-weight:800;background:#F3F4F6">R ${totalOutstanding.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #e5e5e5;font-weight:800;background:#FFF9E6">R ${totalOutstanding.toFixed(2)}</td>
           </tr></tbody>
         </table>
       </div>` : "";
@@ -285,7 +267,7 @@ export default function CustomerStatementPage() {
     w.document.write(`<!DOCTYPE html><html><head><title>${stmtCfg.shortName} Statement - ${selectedCustomer.name}</title><style>
       @media print{body{padding:0 12px}}
       body{font-family:Arial,Helvetica,sans-serif;color:#333;max-width:210mm;margin:0 auto;font-size:11px;line-height:1.4;padding:20px;background:#fff}
-      .header{text-align:center;border-bottom:3px solid ${stmtCfg.documentColor};padding-bottom:10px;margin-bottom:16px}
+      .header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:10px;margin-bottom:16px}
       .header img{height:55px;margin-bottom:4px}
       .header h1{font-size:20px;font-weight:800;color:${stmtCfg.documentColor};margin:6px 0;letter-spacing:1px;text-transform:uppercase}
       .header .subtitle{font-size:10px;color:#666;line-height:1.5}
@@ -299,7 +281,7 @@ export default function CustomerStatementPage() {
       .summary{margin-top:12px;display:flex;justify-content:flex-end}
       .summary-box{width:260px;font-size:11px}
       .summary-box .row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e5e5e5}
-      .summary-box .total{font-weight:800;font-size:13px;border-top:2px solid ${stmtCfg.documentColor};border-bottom:2px solid ${stmtCfg.documentColor};padding:6px 0;margin-top:2px}
+      .summary-box .total{font-weight:800;font-size:13px;border-top:2px solid #D4A843;border-bottom:2px solid #D4A843;padding:6px 0;margin-top:2px}
       .footer{text-align:center;font-size:9px;color:#999;margin-top:20px;border-top:1px solid #ddd;padding-top:8px}
       .overdue-note{background:#FFF5F5;border:1px solid #EF4444;color:#EF4444;padding:6px;border-radius:3px;font-size:10px;font-weight:700;text-align:center;margin-top:12px}
     </style></head><body>
@@ -370,7 +352,7 @@ export default function CustomerStatementPage() {
           {/* Customer Search */}
           <div className="flex-1 relative">
             <div className="flex items-center gap-2 mb-2">
-              <User className="w-4 h-4" style={{ color: stmtCfg.documentColor }} />
+              <User className="w-4 h-4 text-[#D4A843]" />
               <label className="text-xs text-[#8A8B8C]">Search Customer</label>
             </div>
             <div className="relative">
@@ -422,7 +404,7 @@ export default function CustomerStatementPage() {
         {/* Selected customer chip */}
         {selectedCustomer && (
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1.5 rounded-full text-xs font-medium" style={{ backgroundColor: "#F3F4F6", color: stmtCfg.documentColor }}>
+            <span className="px-3 py-1.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
               {selectedCustomer.name} ({selectedCustomer.customerCode})
             </span>
             <span className="text-xs text-[#8A8B8C]">{custInvoices.length} invoice{custInvoices.length !== 1 ? "s" : ""}{custCreditNotes.length > 0 ? ` | ${custCreditNotes.length} credit note${custCreditNotes.length !== 1 ? "s" : ""}` : ""}</span>
@@ -451,7 +433,7 @@ export default function CustomerStatementPage() {
               {/* Statement Card */}
               <div className="card-surface overflow-hidden">
                 {/* Statement Header */}
-                <div className="p-6 text-center" style={{ borderBottom: `2px solid ${stmtCfg.documentColor}` }}>
+                <div className="p-6 text-center" style={{ borderBottom: "2px solid #D4A843" }}>
                   <h2 className="font-display text-xl font-semibold text-white">Statement of Account</h2>
                   <p className="text-[#8A8B8C] text-sm mt-1">
                     {new Date(stmtFrom).toLocaleDateString("en-ZA")} — {new Date(stmtTo).toLocaleDateString("en-ZA")}
@@ -479,7 +461,7 @@ export default function CustomerStatementPage() {
                       {lines.map((l, idx) => (
                         <tr key={idx} style={{ borderBottom: "1px solid #18191A" }}>
                           <td className="p-3 text-white text-xs whitespace-nowrap">{new Date(l.date).toLocaleDateString("en-ZA")}</td>
-                          <td className="p-3 font-mono-data text-xs" style={{ color: stmtCfg.documentColor }}>{l.ref}</td>
+                          <td className="p-3 font-mono-data text-xs text-[#D4A843]">{l.ref}</td>
                           <td className="p-3 text-white text-xs">
                             {l.desc}
                             {l.source === "sage" && (
@@ -488,18 +470,18 @@ export default function CustomerStatementPage() {
                           </td>
                           <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
                           <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
-                          <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? stmtCfg.documentColor : "#4ADE80" }}>
+                          <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? "#D4A843" : "#4ADE80" }}>
                             {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr style={{ borderTop: `2px solid ${stmtCfg.documentColor}` }}>
+                      <tr style={{ borderTop: "2px solid #D4A843" }}>
                         <td colSpan={3} className="p-3 font-semibold text-white text-right">TOTALS</td>
                         <td className="p-3 text-right font-semibold text-white">{totalDebit.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                         <td className="p-3 text-right font-semibold" style={{ color: "#4ADE80" }}>{totalCredit.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                        <td className="p-3 text-right font-bold" style={{ color: stmtCfg.documentColor }}>{(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                        <td className="p-3 text-right font-bold" style={{ color: "#D4A843" }}>{(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -513,7 +495,7 @@ export default function CustomerStatementPage() {
                   </div>
                   <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px solid #222324" }}>
                     <span className="text-white font-semibold">Balance Due:</span>
-                    <span className="font-bold" style={{ color: totalDebit - totalCredit > 0 ? stmtCfg.documentColor : "#4ADE80" }}>
+                    <span className="font-bold" style={{ color: totalDebit - totalCredit > 0 ? "#D4A843" : "#4ADE80" }}>
                       R {(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -538,8 +520,8 @@ export default function CustomerStatementPage() {
 
               {/* Aging */}
               {totalOutstanding > 0 && (
-                <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${stmtCfg.documentColor}` }}>
-                  <div className="px-4 py-2 text-xs font-bold text-white uppercase tracking-wider" style={{ backgroundColor: stmtCfg.documentColor }}>
+                <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #D4A843" }}>
+                  <div className="px-4 py-2 text-xs font-bold text-white uppercase tracking-wider" style={{ backgroundColor: "#D4A843" }}>
                     Outstanding Balance Aging
                   </div>
                   <div className="overflow-x-auto">
@@ -561,7 +543,7 @@ export default function CustomerStatementPage() {
                           <td className="p-3 text-right text-white">R {aging.days60.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                           <td className="p-3 text-right text-white">R {aging.days90.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                           <td className="p-3 text-right font-semibold" style={{ color: "#EF4444" }}>R {aging.days90plus.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3 text-right font-bold" style={{ color: stmtCfg.documentColor, backgroundColor: "#F3F4F6" }}>R {totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right font-bold text-[#D4A843]" style={{ backgroundColor: "rgba(212,168,67,0.08)" }}>R {totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
                         </tr>
                       </tbody>
                     </table>

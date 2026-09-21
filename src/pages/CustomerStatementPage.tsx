@@ -218,8 +218,8 @@ export default function CustomerStatementPage() {
     if (!selectedCustomer || custInvoices.length === 0) return;
     let stmtCompany: CompanyKey = selectedCustomer.company || "sgf";
     // If no company on main customer record, check corporate customer list
-    if (!selectedCustomer.company && selectedCustomer.isCorporate) {
-      const corpCust = (corporateCustomers || []).find((c: any) => c.id === selectedCustomer.id);
+    if (!selectedCustomer.company) {
+      const corpCust = (corporateCustomers || []).find((c: any) => c.id == selectedCustomer.id);
       if (corpCust?.company) stmtCompany = corpCust.company;
     }
     const stmtCfg = getCompanyConfig(stmtCompany);

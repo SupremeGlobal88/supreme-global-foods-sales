@@ -636,8 +636,8 @@ export default function InvoicesPage() {
     if (!cust) { alert("Please select a customer."); return; }
     let invCompany: CompanyKey = cust?.company || "sgf";
     // If no company on main customer record, check corporate customer list
-    if (!cust?.company && cust?.isCorporate) {
-      const corpCust = (corporateCustomers || []).find((c: any) => c.id === cust.id);
+    if (!cust?.company) {
+      const corpCust = (corporateCustomers || []).find((c: any) => c.id == cust.id);
       if (corpCust?.company) invCompany = corpCust.company;
     }
     const cfg = getCompanyConfig(invCompany);

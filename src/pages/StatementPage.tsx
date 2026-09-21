@@ -15,8 +15,8 @@ function openPrintWindow(
 ) {
   let stmtCompany: CompanyKey = customer?.company || "sgf";
   // If no company on main customer record, check corporate customer list
-  if (!customer?.company && customer?.isCorporate) {
-    const corpCust = corporateCustomers.find((c: any) => c.id === customer.id);
+  if (!customer?.company) {
+    const corpCust = corporateCustomers.find((c: any) => c.id == customer.id);
     if (corpCust?.company) stmtCompany = corpCust.company;
   }
   const cfg = getCompanyConfig(stmtCompany);

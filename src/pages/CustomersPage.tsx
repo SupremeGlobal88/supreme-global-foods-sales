@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { reloadFromStorage } from "@/lib/dataService";
+import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Plus, Pencil, Trash2, X, Users, MapPin, Mail,
   Download, Upload, FileText, Tag, DollarSign, ShieldAlert, History,
@@ -35,6 +36,7 @@ export default function CustomersPage() {
     physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
     salesRepName: "", vatNumber: "", vatExempt: false, notes: "",
+    company: "sgf" as CompanyKey,
   });
 
   const { data: customers } = trpc.customer.search.useQuery({ query: search || " " });
@@ -66,12 +68,12 @@ export default function CustomersPage() {
   });
 
   function resetForm() {
-    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", vatExempt: false, notes: "" });
+    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", vatExempt: false, notes: "", company: "sgf" });
     setVatError("");
   }
 
   function handleEdit(cust: NonNullable<typeof customers>[0]) {
-    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", vatExempt: !!cust.vatExempt, notes: cust.notes || "" });
+    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", vatExempt: !!cust.vatExempt, notes: cust.notes || "", company: (cust.company as CompanyKey) || "sgf" });
     setEditingId(cust.id); setShowForm(true);
   }
 
@@ -354,6 +356,7 @@ export default function CustomersPage() {
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><Mail className="w-3 h-3" /> Email</div><div className="text-white text-sm font-body">{selected.email || "N/A"}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><MapPin className="w-3 h-3" /> Address</div><div className="text-white text-sm font-body">{selected.physicalAddress || "N/A"}<br />{selected.city}, {selected.province} {selected.postalCode}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><DollarSign className="w-3 h-3" /> Price Tier</div><div className="text-sm font-body font-semibold" style={{ color: PRICE_TIER_COLORS[selected.priceTier] || "#E8E8E9" }}>{selected.priceTier?.toUpperCase() || "WHOLESALE"}</div></div>
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><FileText className="w-3 h-3" /> Company</div><div className="text-sm font-body font-semibold" style={{ color: selected.company === "recircle" ? "#3B82F6" : "#D4A843" }}>{selected.company === "recircle" ? "Recircle SA" : "Supreme Global Foods"}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><Tag className="w-3 h-3" /> Payment Terms</div><div className="text-white text-sm font-body">{selected.paymentTerms.replace("_", " ").toUpperCase()}</div></div>
                   <div className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}><div className="flex items-center gap-2 text-[#8A8B8C] text-xs mb-1"><UserIcon className="w-3 h-3" /> Sales Rep</div><div className="text-white text-sm font-body">{selected.salesRepName || "Unassigned"}</div></div>
                 </div>
@@ -429,6 +432,7 @@ export default function CustomersPage() {
                   <div><label className="label-text block mb-1.5">Price Tier</label><select value={formData.priceTier} onChange={(e) => setFormData({ ...formData, priceTier: e.target.value as "corporate" | "bulk" | "wholesale" | "retail" })} className="input-field"><option value="corporate">Corporate</option><option value="bulk">Bulk</option><option value="wholesale">Wholesale</option><option value="retail">Retail</option></select></div>
                   <div><label className="label-text block mb-1.5">Payment Terms</label><select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field"><option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option></select></div>
                 </div>
+                <div><label className="label-text block mb-1.5">Company</label><select value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value as CompanyKey })} className="input-field"><option value="sgf">Supreme Global Foods</option><option value="recircle">Recircle SA</option></select></div>
                 <div><label className="label-text block mb-1.5">Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field" required /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="label-text block mb-1.5">Business Name</label><input type="text" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} className="input-field" /></div>

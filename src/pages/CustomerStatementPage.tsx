@@ -96,39 +96,40 @@ export default function CustomerStatementPage() {
     }, 0);
   }, [custCreditNotes]);
 
-  // Build running balance ledger lines — includes invoices, payments, AND credit notes
+  // Build running balance ledger lines — grouped by invoice (invoice + its payments)
   const lines = useMemo(() => {
     const result: any[] = [];
     let bal = 0;
 
-    // Process invoices
+    // Build invoice groups: each invoice followed by its payments
+    const invoiceGroups: any[] = [];
+
     for (const inv of custInvoices) {
+      const group: any[] = [];
       const debit = Number(inv.total || 0);
-      bal += debit;
-      result.push({
+      const invRef = inv.invoiceNumber || inv.orderNumber || "-";
+
+      // Invoice row
+      group.push({
         date: inv.invoiceDate || inv.createdAt,
-        ref: inv.invoiceNumber || inv.orderNumber || "-",
+        ref: invRef,
         desc: inv.source === "sage" ? "Sage Historical Invoice" : (inv.notes || `Invoice`),
         terms: inv.paymentTerms || "cod",
         debit,
         credit: 0,
-        balance: bal,
         source: inv.source || "app",
         type: "invoice",
+        sortDate: new Date(inv.invoiceDate || inv.createdAt).getTime(),
       });
-      // CRITICAL FIX: Use each payment's actual paymentDate, NOT inv.updatedAt.
-      // inv.updatedAt is the date the payment was captured in the system (today).
-      // paymentDate is the date the user entered when recording the payment
-      // (e.g., back-dated to when the customer actually paid).
-      const invRef = inv.invoiceNumber || inv.orderNumber || "-";
+
+      // Payment rows attached to this invoice
       const payments = inv.payments || [];
       if (payments.length > 0) {
         for (const p of payments) {
           const payAmt = Number(p.amount || 0);
           if (payAmt <= 0) continue;
-          bal -= payAmt;
           const isPartial = payAmt < Number(inv.total || inv.totalAmount || 0);
-          result.push({
+          group.push({
             date: p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt,
             ref: `↳ ${invRef}`,
             parentRef: invRef,
@@ -136,17 +137,15 @@ export default function CustomerStatementPage() {
             terms: "",
             debit: 0,
             credit: payAmt,
-            balance: bal,
             source: "app",
             type: "payment",
+            sortDate: new Date(p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt).getTime(),
           });
         }
       } else if (Number(inv.amountPaid || 0) > 0) {
         // Fallback for invoices that have amountPaid but no payments array
-        // (legacy data before multi-payment support)
         const payment = Number(inv.amountPaid || 0);
-        bal -= payment;
-        result.push({
+        group.push({
           date: inv.invoiceDate || inv.createdAt,
           ref: `↳ ${invRef}`,
           parentRef: invRef,
@@ -154,31 +153,52 @@ export default function CustomerStatementPage() {
           terms: "",
           debit: 0,
           credit: payment,
-          balance: bal,
           source: "app",
           type: "payment",
+          sortDate: new Date(inv.invoiceDate || inv.createdAt).getTime(),
         });
+      }
+
+      invoiceGroups.push(group);
+    }
+
+    // Sort invoice groups by invoice date
+    invoiceGroups.sort((a, b) => a[0].sortDate - b[0].sortDate);
+
+    // Flatten groups and compute running balance
+    for (const group of invoiceGroups) {
+      // Sort within group: invoice first, then payments by date
+      const invoiceRow = group.find((r: any) => r.type === "invoice");
+      const paymentRows = group.filter((r: any) => r.type === "payment").sort((a: any, b: any) => a.sortDate - b.sortDate);
+      
+      // Add invoice
+      bal += invoiceRow.debit;
+      result.push({ ...invoiceRow, balance: bal });
+      
+      // Add payments under it
+      for (const p of paymentRows) {
+        bal -= p.credit;
+        result.push({ ...p, balance: bal });
       }
     }
 
-    // Add credit notes as credit entries
-    for (const cn of custCreditNotes) {
-      bal -= Number(cn.amount || 0);
-      result.push({
-        date: cn.createdAt,
-        ref: cn.creditNoteNumber || "CN",
-        desc: `Credit Note — ${cn.reason || "Adjustment"}${(cn.remainingAmount !== undefined && cn.remainingAmount > 0) ? ` (R ${cn.remainingAmount.toFixed(2)} remaining)` : ''}`,
-        terms: "",
-        debit: 0,
-        credit: Number(cn.amount || 0),
-        balance: bal,
-        source: "app",
-        type: "credit_note",
-      });
-    }
+    // Add credit notes at the end (sorted by date)
+    const creditNoteRows = custCreditNotes.map((cn: any) => ({
+      date: cn.createdAt,
+      ref: cn.creditNoteNumber || "CN",
+      desc: `Credit Note — ${cn.reason || "Adjustment"}${(cn.remainingAmount !== undefined && cn.remainingAmount > 0) ? ` (R ${cn.remainingAmount.toFixed(2)} remaining)` : ''}`,
+      terms: "",
+      debit: 0,
+      credit: Number(cn.amount || 0),
+      source: "app",
+      type: "credit_note",
+      sortDate: new Date(cn.createdAt).getTime(),
+    })).sort((a: any, b: any) => a.sortDate - b.sortDate);
 
-    // Sort all lines by date
-    result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    for (const cn of creditNoteRows) {
+      bal -= cn.credit;
+      result.push({ ...cn, balance: bal });
+    }
 
     return result;
   }, [custInvoices, custCreditNotes]);

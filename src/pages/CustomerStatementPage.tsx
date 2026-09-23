@@ -101,10 +101,28 @@ export default function CustomerStatementPage() {
     const result: any[] = [];
     let bal = 0;
 
+    // Deduplicate invoices by invoiceNumber (keep the one with the most payments)
+    const invoiceMap = new Map();
+    for (const inv of custInvoices) {
+      const key = inv.invoiceNumber || inv.orderNumber || inv.id;
+      if (!key) continue;
+      const existing = invoiceMap.get(key);
+      if (!existing) {
+        invoiceMap.set(key, inv);
+      } else {
+        const existingPayments = (existing.payments || []).length;
+        const newPayments = (inv.payments || []).length;
+        if (newPayments > existingPayments || (newPayments === existingPayments && (inv.updatedAt > existing.updatedAt))) {
+          invoiceMap.set(key, inv);
+        }
+      }
+    }
+    const uniqueInvoices = Array.from(invoiceMap.values());
+
     // Build invoice groups: each invoice followed by its payments
     const invoiceGroups: any[] = [];
 
-    for (const inv of custInvoices) {
+    for (const inv of uniqueInvoices) {
       const group: any[] = [];
       const debit = Number(inv.total || 0);
       const invRef = inv.invoiceNumber || inv.orderNumber || "-";

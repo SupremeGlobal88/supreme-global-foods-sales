@@ -485,11 +485,14 @@ export default function CustomerStatementPage() {
                     <tbody>
                       {lines.map((l, idx) => {
                         const isPaymentChild = l.type === "payment" && l.parentRef;
+                        const prevLine = idx > 0 ? lines[idx - 1] : null;
+                        const isNewInvoiceGroup = l.type === "invoice" && prevLine && (prevLine.type === "payment" || prevLine.type === "credit_note");
                         return (
                           <tr
                             key={idx}
                             style={{
                               borderBottom: "1px solid #18191A",
+                              borderTop: isNewInvoiceGroup ? "2px solid #2A2A2B" : "none",
                               backgroundColor: isPaymentChild ? "rgba(74,222,128,0.03)" : "transparent",
                             }}
                           >

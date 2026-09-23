@@ -28,35 +28,62 @@ function openPrintWindow(
     ? new Date(stmtTo).toLocaleDateString("en-ZA")
     : new Date().toLocaleDateString("en-ZA");
 
+  // Build grouped lines: invoice followed by its payments
+  const lines: any[] = [];
   let runningBal = 0;
-  const lines = invoices.map((inv: any) => {
+
+  const invoiceGroups: any[] = [];
+  for (const inv of invoices) {
+    const group: any[] = [];
     const debit = Number(inv.total || 0);
-    const credit = Number(inv.amountPaid || 0);
-    runningBal += debit - credit;
-    return {
+    const invRef = inv.invoiceNumber || inv.orderNumber || "-";
+    group.push({
       date: inv.invoiceDate || inv.createdAt,
-      invoiceNumber: inv.invoiceNumber || "",
+      invoiceNumber: invRef,
       orderNumber: inv.orderNumber || "",
-      description:
-        inv.source === "sage"
-          ? "Sage Historical Invoice"
-          : inv.notes || "Invoice",
+      description: inv.source === "sage" ? "Sage Historical Invoice" : (inv.notes || "Invoice"),
       paymentTerms: inv.paymentTerms || "cod",
       debit,
-      credit,
-      balance: runningBal,
+      credit: 0,
       isSage: inv.source === "sage",
-    };
-  });
+      isPayment: false,
+      sortDate: new Date(inv.invoiceDate || inv.createdAt).getTime(),
+    });
+    const payments = inv.payments || [];
+    for (const p of payments) {
+      const payAmt = Number(p.amount || 0);
+      if (payAmt <= 0) continue;
+      group.push({
+        date: p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt,
+        invoiceNumber: `↳ ${invRef}`,
+        orderNumber: "",
+        description: `Payment on ${invRef}${p.referenceNumber ? ` — Ref: ${p.referenceNumber}` : ""}${p.paymentMethod ? ` (${p.paymentMethod})` : ""}`,
+        paymentTerms: "",
+        debit: 0,
+        credit: payAmt,
+        isSage: false,
+        isPayment: true,
+        sortDate: new Date(p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt).getTime(),
+      });
+    }
+    invoiceGroups.push(group);
+  }
 
-  const totalDebit = invoices.reduce(
-    (s: number, i: any) => s + Number(i.total || 0),
-    0,
-  );
-  const totalCredit = invoices.reduce(
-    (s: number, i: any) => s + Number(i.amountPaid || 0),
-    0,
-  );
+  invoiceGroups.sort((a, b) => a[0].sortDate - b[0].sortDate);
+
+  for (const group of invoiceGroups) {
+    const invoiceRow = group.find((r: any) => !r.isPayment);
+    const paymentRows = group.filter((r: any) => r.isPayment).sort((a: any, b: any) => a.sortDate - b.sortDate);
+    runningBal += invoiceRow.debit;
+    lines.push({ ...invoiceRow, balance: runningBal });
+    for (const p of paymentRows) {
+      runningBal -= p.credit;
+      lines.push({ ...p, balance: runningBal });
+    }
+  }
+
+  const totalDebit = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+  const totalCredit = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const closingBal = totalDebit - totalCredit;
 
   // Aging
@@ -258,41 +285,53 @@ export default function StatementPage() {
       new Date(b.invoiceDate || b.createdAt).getTime(),
   );
 
-  // Build statement lines
+  // Build statement lines — grouped by invoice (invoice + its payments)
   const lines: any[] = [];
   let balance = 0;
 
+  const invoiceGroups: any[] = [];
   for (const inv of custInvoices) {
-    const date = inv.invoiceDate || inv.createdAt;
-    const desc =
-      inv.source === "sage"
-        ? `Sage Invoice`
-        : `Invoice for ${inv.orderNumber || ""}`;
-    const amount = inv.total || 0;
-    const amtPaid = inv.amountPaid || 0;
-
-    balance += amount;
-    lines.push({
-      date,
-      ref: inv.invoiceNumber || inv.orderNumber || "",
-      description: desc,
+    const group: any[] = [];
+    const amount = Number(inv.total || 0);
+    const invRef = inv.invoiceNumber || inv.orderNumber || "";
+    group.push({
+      date: inv.invoiceDate || inv.createdAt,
+      ref: invRef,
+      description: inv.source === "sage" ? `Sage Invoice` : `Invoice for ${inv.orderNumber || ""}`,
       debit: amount,
       credit: 0,
-      balance,
       source: inv.source || "app",
+      isPayment: false,
+      sortDate: new Date(inv.invoiceDate || inv.createdAt).getTime(),
     });
-
-    if (amtPaid > 0) {
-      balance -= amtPaid;
-      lines.push({
-        date: inv.updatedAt || date,
-        ref: `Payment`,
-        description: "Payment Received",
+    const payments = inv.payments || [];
+    for (const p of payments) {
+      const payAmt = Number(p.amount || 0);
+      if (payAmt <= 0) continue;
+      group.push({
+        date: p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt,
+        ref: `↳ ${invRef}`,
+        description: `Payment on ${invRef}${p.referenceNumber ? ` — Ref: ${p.referenceNumber}` : ""}${p.paymentMethod ? ` (${p.paymentMethod})` : ""}`,
         debit: 0,
-        credit: amtPaid,
-        balance,
+        credit: payAmt,
         source: "app",
+        isPayment: true,
+        sortDate: new Date(p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt).getTime(),
       });
+    }
+    invoiceGroups.push(group);
+  }
+
+  invoiceGroups.sort((a, b) => a[0].sortDate - b[0].sortDate);
+
+  for (const group of invoiceGroups) {
+    const invRow = group.find((r: any) => !r.isPayment);
+    const payRows = group.filter((r: any) => r.isPayment).sort((a: any, b: any) => a.sortDate - b.sortDate);
+    balance += invRow.debit;
+    lines.push({ ...invRow, balance });
+    for (const p of payRows) {
+      balance -= p.credit;
+      lines.push({ ...p, balance });
     }
   }
 

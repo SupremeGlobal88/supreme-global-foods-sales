@@ -120,16 +120,19 @@ export default function CustomerStatementPage() {
       // inv.updatedAt is the date the payment was captured in the system (today).
       // paymentDate is the date the user entered when recording the payment
       // (e.g., back-dated to when the customer actually paid).
+      const invRef = inv.invoiceNumber || inv.orderNumber || "-";
       const payments = inv.payments || [];
       if (payments.length > 0) {
         for (const p of payments) {
           const payAmt = Number(p.amount || 0);
           if (payAmt <= 0) continue;
           bal -= payAmt;
+          const isPartial = payAmt < Number(inv.total || inv.totalAmount || 0);
           result.push({
             date: p.paymentDate || p.createdAt || inv.invoiceDate || inv.createdAt,
-            ref: "Payment",
-            desc: `Payment Received${p.referenceNumber ? ` — Ref: ${p.referenceNumber}` : ""}${p.paymentMethod ? ` (${p.paymentMethod})` : ""}`,
+            ref: `↳ ${invRef}`,
+            parentRef: invRef,
+            desc: `Payment on ${invRef}${p.referenceNumber ? ` — Ref: ${p.referenceNumber}` : ""}${p.paymentMethod ? ` (${p.paymentMethod})` : ""}${isPartial ? " [Partial]" : ""}`,
             terms: "",
             debit: 0,
             credit: payAmt,
@@ -145,8 +148,9 @@ export default function CustomerStatementPage() {
         bal -= payment;
         result.push({
           date: inv.invoiceDate || inv.createdAt,
-          ref: "Payment",
-          desc: "Payment Received",
+          ref: `↳ ${invRef}`,
+          parentRef: invRef,
+          desc: `Payment on ${invRef}`,
           terms: "",
           debit: 0,
           credit: payment,
@@ -228,16 +232,17 @@ export default function CustomerStatementPage() {
     const toStr = new Date(stmtTo).toLocaleDateString("en-ZA");
     const closingBal = totalDebit - totalCredit;
 
-    const ledgerRows = lines.map(l =>
-      `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap">${new Date(l.date).toLocaleDateString("en-ZA")}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:${l.type === "credit_note" ? "#F59E0B" : "#D4A843"}">${l.ref}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""}${l.terms ? ` <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span>` : ""}</td>
+    const ledgerRows = lines.map(l => {
+      const isPaymentChild = l.type === "payment" && l.parentRef;
+      return `<tr style="${isPaymentChild ? "background:rgba(74,222,128,0.03)" : ""}">
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap${isPaymentChild ? ";padding-left:16px" : ""}">${new Date(l.date).toLocaleDateString("en-ZA")}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:${l.type === "credit_note" ? "#F59E0B" : (isPaymentChild ? "#888" : "#D4A843")}">${l.ref}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;color:${isPaymentChild ? "#666" : "#333"}">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""}${l.terms ? ` <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span>` : ""}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right">${l.debit > 0 ? l.debit.toFixed(2) : "-"}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:${l.type === "credit_note" ? "#F59E0B" : "#2E7D32"}">${l.credit > 0 ? l.credit.toFixed(2) : "-"}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;font-weight:700;${l.balance > 0 ? "color:#c00" : ""}">${l.balance.toFixed(2)}</td>
-      </tr>`
-    ).join("");
+      </tr>`;
+    }).join("");
 
     const agingHtml = totalOutstanding > 0 ? `
       <div style="margin-top:16px;border:1px solid #D4A843;border-radius:6px;overflow:hidden">
@@ -458,23 +463,36 @@ export default function CustomerStatementPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {lines.map((l, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #18191A" }}>
-                          <td className="p-3 text-white text-xs whitespace-nowrap">{new Date(l.date).toLocaleDateString("en-ZA")}</td>
-                          <td className="p-3 font-mono-data text-xs text-[#D4A843]">{l.ref}</td>
-                          <td className="p-3 text-white text-xs">
-                            {l.desc}
-                            {l.source === "sage" && (
-                              <span className="ml-2 px-1 py-0.5 rounded text-[9px]" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8" }}>SAGE</span>
-                            )}
-                          </td>
-                          <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
-                          <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
-                          <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? "#D4A843" : "#4ADE80" }}>
-                            {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
+                      {lines.map((l, idx) => {
+                        const isPaymentChild = l.type === "payment" && l.parentRef;
+                        return (
+                          <tr
+                            key={idx}
+                            style={{
+                              borderBottom: "1px solid #18191A",
+                              backgroundColor: isPaymentChild ? "rgba(74,222,128,0.03)" : "transparent",
+                            }}
+                          >
+                            <td className={`${isPaymentChild ? "pl-6" : "p-3"} p-3 text-white text-xs whitespace-nowrap`}>
+                              {new Date(l.date).toLocaleDateString("en-ZA")}
+                            </td>
+                            <td className={`p-3 font-mono-data text-xs ${isPaymentChild ? "text-[#8A8B8C]" : "text-[#D4A843]"}`}>
+                              {l.ref}
+                            </td>
+                            <td className={`p-3 text-xs ${isPaymentChild ? "text-[#8A8B8C]" : "text-white"}`}>
+                              {l.desc}
+                              {l.source === "sage" && (
+                                <span className="ml-2 px-1 py-0.5 rounded text-[9px]" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8" }}>SAGE</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
+                            <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
+                            <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? "#D4A843" : "#4ADE80" }}>
+                              {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: "2px solid #D4A843" }}>

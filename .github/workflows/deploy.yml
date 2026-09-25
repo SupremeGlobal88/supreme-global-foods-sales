@@ -35,7 +35,8 @@ jobs:
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
-        run: npm run build
+        run: |
+          npx vite build 2>&1 || (echo "VITE BUILD FAILED"; npx vite build --debug 2>&1 || true; exit 1)
 
       - name: List dist files
         if: always()

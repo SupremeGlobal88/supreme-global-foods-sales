@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import * as staticData from "@/data/staticData";
+import { getStorageItem } from "@/lib/compressedStorage";
 import {
   Download, Search, Building2, Package, DollarSign,
   Calendar, Filter, FileSpreadsheet, Store, ShoppingCart,
@@ -104,7 +105,7 @@ export default function SalesReportPage() {
   // Load orders from localStorage
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("sgf_orders");
+      const raw = getStorageItem("sgf_orders", "[]");
       if (raw) {
         const parsed = JSON.parse(raw);
         setOrders(Array.isArray(parsed) ? parsed : []);

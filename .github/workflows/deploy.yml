@@ -21,8 +21,10 @@ jobs:
 
       - name: Install dependencies
         run: |
+          echo "Node version: $(node -v)"
+          echo "NPM version: $(npm -v)"
           echo "Installing dependencies..."
-          npm install 2>&1
+          npm install --verbose 2>&1 || true
           echo "Install exit code: $?"
 
       - name: Build

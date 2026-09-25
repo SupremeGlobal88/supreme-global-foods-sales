@@ -31,6 +31,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/my-invoices": ["sales_rep", "sales_manager", "admin", "super_admin"],
   "/customer-statement": ["admin", "super_admin"],
   "/sales-rep-reports": ["sales_rep", "sales_manager", "admin", "super_admin"],
+  "/sales-report": ["sales_rep", "sales_manager", "admin", "super_admin"],
   "/corporate-customers": ["admin", "super_admin"],
   "/purchase-orders": ["admin", "super_admin"],
   "/purchase-order/:id": ["admin", "super_admin"],

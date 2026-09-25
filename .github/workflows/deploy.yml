@@ -20,7 +20,10 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          echo "Installing dependencies..."
+          npm install 2>&1
+          echo "Install exit code: $?"
 
       - name: Build
         env:

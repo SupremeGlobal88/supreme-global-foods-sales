@@ -23,8 +23,15 @@ jobs:
         run: |
           echo "Node version: $(node -v)"
           echo "NPM version: $(npm -v)"
-          npm ci --no-audit --no-fund --prefer-offline || npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund 2>&1 | tee npm-install.log
           echo "Install completed"
+
+      - name: Upload npm install log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-install-log
+          path: npm-install.log
 
       - name: Verify install
         run: |

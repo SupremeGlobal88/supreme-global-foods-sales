@@ -23,9 +23,7 @@ jobs:
         run: |
           echo "Node version: $(node -v)"
           echo "NPM version: $(npm -v)"
-          echo "Installing dependencies..."
-          npm install
-          echo "Install completed"
+          npm install --no-audit --no-fund
 
       - name: Build
         env:

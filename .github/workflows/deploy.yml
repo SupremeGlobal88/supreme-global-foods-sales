@@ -56,4 +56,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           echo "Deploying with wrangler..."
+          echo "Token length: ${#CLOUDFLARE_API_TOKEN}"
+          echo "Account ID: $CLOUDFLARE_ACCOUNT_ID"
           npx wrangler pages deploy dist --project-name=supreme-global-foods-sales --branch=main --commit-dirty=true

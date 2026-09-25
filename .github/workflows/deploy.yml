@@ -25,31 +25,16 @@ jobs:
           echo "NPM version: $(npm -v)"
           npm install --no-audit --no-fund --prefer-offline
           echo "Install completed"
-        continue-on-error: true
 
       - name: Verify install
         run: |
-          ls node_modules/.bin/vite 2>/dev/null && echo "vite installed" || echo "vite NOT installed"
+          ls node_modules/.bin/vite 2>/dev/null && echo "vite installed" || (echo "vite NOT installed"; exit 1)
           ls node_modules/.bin/wrangler 2>/dev/null && echo "wrangler installed" || echo "wrangler NOT installed"
 
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
-        run: |
-          npx vite build 2>&1 | tee build-output.log
-          BUILD_EXIT=${PIPESTATUS[0]}
-          if [ $BUILD_EXIT -ne 0 ]; then
-            echo "=== BUILD FAILED WITH EXIT CODE $BUILD_EXIT ==="
-            cat build-output.log
-            exit $BUILD_EXIT
-          fi
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: build-output.log
+        run: npm run build
 
       - name: List dist files
         if: always()

@@ -21,4 +21,7 @@ export default defineConfig({
     outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true,
   },
+  esbuild: {
+    logOverride: { "this-is-undefined-in-esm": "silent" },
+  },
 });

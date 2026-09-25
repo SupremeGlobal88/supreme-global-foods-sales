@@ -32,8 +32,8 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
           echo "Starting build..."
-          npm run build 2>&1
-          echo "Build exit code: $?"
+          npm run build
+          echo "Build completed successfully"
 
       - name: List dist files
         if: always()

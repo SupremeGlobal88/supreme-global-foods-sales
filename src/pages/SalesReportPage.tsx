@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import * as staticData from "@/data/staticData";
 import { getStorageItem } from "@/lib/compressedStorage";
+import { trpc } from "@/providers/trpc";
 import {
   Download, Search, Building2, Package, DollarSign,
   Calendar, Filter, FileSpreadsheet, Store, ShoppingCart,
@@ -125,10 +126,30 @@ export default function SalesReportPage() {
     return Array.isArray(arr) ? arr : [];
   }, []);
 
+  // Load stock items from tRPC (same source as OrdersPage)
+  const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
+
   const getProductById = (id: string | undefined): Product | undefined => {
     if (!id) return undefined;
     const idStr = safeString(id);
-    return products.find((p) => {
+
+    // 1. Try stock items first (this is where order stockItemId points)
+    const stockItem = (stockItems || []).find((s: any) => {
+      if (!s) return false;
+      return safeString(s.id) === idStr || safeString(s.productCode) === idStr;
+    });
+    if (stockItem) {
+      return {
+        id: stockItem.id,
+        productCode: safeString(stockItem.productCode) || idStr,
+        productName: safeString(stockItem.productName) || safeString(stockItem.name) || idStr,
+        category: safeString(stockItem.category),
+        species: safeString(stockItem.species),
+      };
+    }
+
+    // 2. Fall back to STATIC_PRODUCTS
+    const staticProd = products.find((p) => {
       if (!p) return false;
       return (
         safeString(p.id) === idStr ||
@@ -136,6 +157,10 @@ export default function SalesReportPage() {
         safeString(p.productName).toLowerCase().trim() === idStr.toLowerCase().trim()
       );
     });
+    if (staticProd) return staticProd;
+
+    // 3. Last resort — return unknown with the raw ID
+    return { productCode: idStr, productName: idStr };
   };
 
   const getCustomerByCode = (code: string | undefined): Customer | undefined => {

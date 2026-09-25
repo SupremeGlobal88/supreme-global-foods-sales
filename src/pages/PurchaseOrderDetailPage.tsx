@@ -398,16 +398,17 @@ export default function PurchaseOrderDetailPage() {
         ? (stockItems as any[]).find((s: any) => s.id === pl.linkedStockItemId)
         : null;
 
+      const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
       const descLower = (pl.productDescription || "").toLowerCase();
-      const isSheep = descLower.includes("sheep") || descLower.includes("lamb");
+      const poLineDescLower = (poLine?.customerDescription || "").toLowerCase();
+      const isSheep = descLower.includes("sheep") || descLower.includes("lamb") ||
+                      poLineDescLower.includes("sheep") || poLineDescLower.includes("lamb");
       const casingType = isSheep ? "SHEEP CASINGS" : "HOG CASINGS";
 
       const productDesc = pl.productDescription || "";
       const fullDesc = stock
         ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
         : productDesc;
-
-      const poLine = (po.lineItems || [])[pl.poLineIndex || 0];
 
       // Check if a COC already exists for this packing list line
       const existingCOC = cocByPackingLine.get(pl.id);

@@ -38,12 +38,12 @@ interface Order {
 interface Customer {
   id?: number;
   name?: string;
-  code?: string;
+  customerCode?: string;
   address?: string;
   city?: string;
   province?: string;
   postalCode?: string;
-  contact?: string;
+  contactPerson?: string;
   phone?: string;
   email?: string;
   businessReg?: string;
@@ -53,6 +53,8 @@ interface Customer {
   creditLimit?: number;
   paymentTerms?: string;
   priceTier?: string;
+  groupName?: string;
+  businessName?: string;
 }
 
 interface Product {
@@ -163,12 +165,12 @@ export default function SalesReportPage() {
     return { productCode: idStr, productName: idStr };
   };
 
-  const getCustomerByCode = (code: string | undefined): Customer | undefined => {
-    if (!code) return undefined;
-    const codeStr = safeString(code);
+  const getCustomerById = (id: string | number | undefined): Customer | undefined => {
+    if (id === undefined || id === null || id === "") return undefined;
+    const idNum = safeNum(id);
     return customers.find((c) => {
       if (!c) return false;
-      return safeString(c.code) === codeStr || safeString(c.id) === codeStr;
+      return safeNum(c.id) === idNum;
     });
   };
 
@@ -176,10 +178,16 @@ export default function SalesReportPage() {
   const groupOptions = useMemo(() => {
     const groups = new Set<string>();
     customers.forEach((c) => {
-      const name = safeString(c?.name).trim();
-      if (name) {
-        const firstWord = name.split(/\s+/)[0];
-        if (firstWord && firstWord.length > 1) groups.add(firstWord);
+      // Use groupName first, then first word of name
+      const group = safeString(c?.groupName).trim();
+      if (group) {
+        groups.add(group);
+      } else {
+        const name = safeString(c?.name).trim();
+        if (name) {
+          const firstWord = name.split(/\s+/)[0];
+          if (firstWord && firstWord.length > 1) groups.add(firstWord);
+        }
       }
     });
     return Array.from(groups).sort();
@@ -188,13 +196,16 @@ export default function SalesReportPage() {
   // Filtered orders
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      const customer = getCustomerByCode(order?.customerId);
-      const custName = safeString(customer?.name || order?.customerName);
+      const customer = getCustomerById(order?.customerId);
+      const custName = safeString(customer?.name || customer?.businessName || order?.customerName);
+      const custGroup = safeString(customer?.groupName);
 
       // Group filter
       if (groupFilter) {
         const gf = groupFilter.toLowerCase();
-        if (!custName.toLowerCase().startsWith(gf)) return false;
+        const nameMatch = custName.toLowerCase().startsWith(gf);
+        const groupMatch = custGroup.toLowerCase().startsWith(gf);
+        if (!nameMatch && !groupMatch) return false;
       }
 
       // Status filter
@@ -225,12 +236,12 @@ export default function SalesReportPage() {
     const map = new Map<string, StoreSummary>();
 
     filteredOrders.forEach((order) => {
-      const customer = getCustomerByCode(order?.customerId);
-      const key = safeString(customer?.code || order?.customerId || "unknown");
+      const customer = getCustomerById(order?.customerId);
+      const key = customer?.id ? String(customer.id) : safeString(order?.customerId || "unknown");
 
       if (!map.has(key)) {
         map.set(key, {
-          customer: customer || { name: safeString(order?.customerName) || "Unknown", code: key },
+          customer: customer || { name: safeString(order?.customerName) || "Unknown", customerCode: key },
           totalOrders: 0,
           totalQuantity: 0,
           totalValue: 0,
@@ -378,9 +389,9 @@ export default function SalesReportPage() {
       ];
       storeSummaries.forEach((s) => {
         storeRows.push([
-          safeString(s?.customer?.code),
-          safeString(s?.customer?.name),
-          safeString(s?.customer?.contact),
+          safeString(s?.customer?.customerCode),
+          safeString(s?.customer?.name || s?.customer?.businessName),
+          safeString(s?.customer?.contactPerson),
           safeString(s?.customer?.phone),
           safeString(s?.customer?.email),
           safeString(s?.customer?.city),
@@ -409,7 +420,7 @@ export default function SalesReportPage() {
           const qty = safeNum(p?.quantity);
           const val = safeNum(p?.value);
           prodRows.push([
-            safeString(s?.customer?.name),
+            safeString(s?.customer?.name || s?.customer?.businessName),
             safeString(p?.product?.productCode),
             safeString(p?.product?.productName),
             safeString(p?.product?.category),
@@ -434,7 +445,7 @@ export default function SalesReportPage() {
         ],
       ];
       filteredOrders.forEach((order) => {
-        const customer = getCustomerByCode(order?.customerId);
+        const customer = getCustomerById(order?.customerId);
         order?.items?.forEach((item) => {
           const product = getProductById(item?.stockItemId);
           const qty = safeNum(item?.quantity);
@@ -442,8 +453,8 @@ export default function SalesReportPage() {
           orderRows.push([
             safeString(order?.orderNumber),
             formatDate(order?.createdAt),
-            safeString(customer?.code || order?.customerId),
-            safeString(customer?.name || order?.customerName),
+            safeString(customer?.customerCode || order?.customerId),
+            safeString(customer?.name || customer?.businessName || order?.customerName),
             safeString(product?.productCode || item?.stockItemId),
             safeString(product?.productName || item?.stockItemId),
             qty,
@@ -675,7 +686,7 @@ export default function SalesReportPage() {
               </thead>
               <tbody>
                 {storeSummaries.map((summary) => {
-                  const code = safeString(summary?.customer?.code);
+                  const code = safeString(summary?.customer?.id || summary?.customer?.customerCode);
                   const isExpanded = expandedStores.has(code);
                   return (
                     <>
@@ -685,11 +696,11 @@ export default function SalesReportPage() {
                         onClick={() => toggleStore(code)}
                       >
                         <td className="p-3">
-                          <div className="font-medium text-white">{safeString(summary?.customer?.name)}</div>
-                          <div className="text-xs text-[#8A8B8C]">{code}</div>
+                          <div className="font-medium text-white">{safeString(summary?.customer?.name || summary?.customer?.businessName)}</div>
+                          <div className="text-xs text-[#8A8B8C]">{safeString(summary?.customer?.customerCode)}</div>
                         </td>
                         <td className="p-3 text-[#8A8B8C]">
-                          <div>{safeString(summary?.customer?.contact) || "—"}</div>
+                          <div>{safeString(summary?.customer?.contactPerson) || "—"}</div>
                           <div className="text-xs">{safeString(summary?.customer?.phone) || "—"}</div>
                         </td>
                         <td className="p-3 text-center">

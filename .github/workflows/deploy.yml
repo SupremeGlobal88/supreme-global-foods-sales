@@ -23,7 +23,8 @@ jobs:
         run: |
           echo "Node version: $(node -v)"
           echo "NPM version: $(npm -v)"
-          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund 2>&1
+          echo "Install exit code: $?"
 
       - name: Build
         env:

@@ -32,8 +32,9 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
           echo "Starting build..."
-          npm run build
+          npm run build > build.log 2>&1 || { echo "BUILD FAILED"; cat build.log; exit 1; }
           echo "Build completed successfully"
+          cat build.log
 
       - name: List dist files
         if: always()
@@ -42,6 +43,8 @@ jobs:
           ls -la dist/ || echo "No dist folder"
           echo "---"
           ls -la dist/assets/ || echo "No assets folder"
+          echo "---"
+          if [ -f build.log ]; then cat build.log; fi
 
       - name: Deploy to Cloudflare Pages
         if: success()

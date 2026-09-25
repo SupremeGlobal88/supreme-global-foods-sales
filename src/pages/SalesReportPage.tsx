@@ -8,23 +8,23 @@ import {
 } from "lucide-react";
 
 interface OrderItem {
-  stockItemId: string;
-  quantity: number;
-  unitPrice: number;
-  unit: string;
+  stockItemId?: string;
+  quantity?: number;
+  unitPrice?: number;
+  unit?: string;
   conversion?: number;
   unitLabel?: string;
 }
 
 interface Order {
   id?: string;
-  orderNumber: string;
-  customerId: string;
-  customerName: string;
-  items: OrderItem[];
-  status: string;
-  createdAt: string;
-  totalAmount: number;
+  orderNumber?: string;
+  customerId?: string;
+  customerName?: string;
+  items?: OrderItem[];
+  status?: string;
+  createdAt?: string;
+  totalAmount?: number;
   orderType?: string;
   paymentTerms?: string;
   priceTier?: string;
@@ -34,9 +34,9 @@ interface Order {
 }
 
 interface Customer {
-  id: number;
-  name: string;
-  code: string;
+  id?: number;
+  name?: string;
+  code?: string;
   address?: string;
   city?: string;
   province?: string;
@@ -55,8 +55,8 @@ interface Customer {
 
 interface Product {
   id?: number;
-  productCode: string;
-  productName: string;
+  productCode?: string;
+  productName?: string;
   category?: string;
   species?: string;
   corporatePrice?: number;
@@ -65,17 +65,33 @@ interface Product {
   retailPrice?: number;
 }
 
+interface ProdSummary {
+  product: Product;
+  quantity: number;
+  value: number;
+}
+
 interface StoreSummary {
   customer: Customer;
   totalOrders: number;
   totalQuantity: number;
   totalValue: number;
-  products: Map<string, { product: Product; quantity: number; value: number }>;
+  products: Map<string, ProdSummary>;
+}
+
+function safeString(val: unknown): string {
+  if (val === null || val === undefined) return "";
+  return String(val);
+}
+
+function safeNum(val: unknown): number {
+  if (val === null || val === undefined) return 0;
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
 }
 
 export default function SalesReportPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [groupFilter, setGroupFilter] = useState("");
@@ -98,28 +114,45 @@ export default function SalesReportPage() {
     }
   }, []);
 
-  const customers = (staticData.STATIC_CUSTOMERS || []) as Customer[];
-  const products = (staticData.STATIC_PRODUCTS || []) as Product[];
+  const customers = useMemo<Customer[]>(() => {
+    const arr = (staticData as any).STATIC_CUSTOMERS;
+    return Array.isArray(arr) ? arr : [];
+  }, []);
 
-  const getProductById = (id: string): Product | undefined => {
-    return products.find(
-      (p) =>
-        String(p.id) === String(id) ||
-        p.productCode === id ||
-        String(p.productName).toLowerCase().trim() === String(id).toLowerCase().trim()
-    );
+  const products = useMemo<Product[]>(() => {
+    const arr = (staticData as any).STATIC_PRODUCTS;
+    return Array.isArray(arr) ? arr : [];
+  }, []);
+
+  const getProductById = (id: string | undefined): Product | undefined => {
+    if (!id) return undefined;
+    const idStr = safeString(id);
+    return products.find((p) => {
+      if (!p) return false;
+      return (
+        safeString(p.id) === idStr ||
+        safeString(p.productCode) === idStr ||
+        safeString(p.productName).toLowerCase().trim() === idStr.toLowerCase().trim()
+      );
+    });
   };
 
-  const getCustomerByCode = (code: string): Customer | undefined => {
-    return customers.find((c) => c.code === code || String(c.id) === String(code));
+  const getCustomerByCode = (code: string | undefined): Customer | undefined => {
+    if (!code) return undefined;
+    const codeStr = safeString(code);
+    return customers.find((c) => {
+      if (!c) return false;
+      return safeString(c.code) === codeStr || safeString(c.id) === codeStr;
+    });
   };
 
-  // Extract unique customer group prefixes (first word of business name)
+  // Extract unique customer group prefixes
   const groupOptions = useMemo(() => {
     const groups = new Set<string>();
     customers.forEach((c) => {
-      if (c.name) {
-        const firstWord = c.name.split(/\s+/)[0];
+      const name = safeString(c?.name).trim();
+      if (name) {
+        const firstWord = name.split(/\s+/)[0];
         if (firstWord && firstWord.length > 1) groups.add(firstWord);
       }
     });
@@ -129,26 +162,32 @@ export default function SalesReportPage() {
   // Filtered orders
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      const customer = getCustomerByCode(order.customerId);
-      const custName = customer?.name || order.customerName || "";
+      const customer = getCustomerByCode(order?.customerId);
+      const custName = safeString(customer?.name || order?.customerName);
 
       // Group filter
-      if (groupFilter && !custName.toLowerCase().startsWith(groupFilter.toLowerCase())) {
-        return false;
+      if (groupFilter) {
+        const gf = groupFilter.toLowerCase();
+        if (!custName.toLowerCase().startsWith(gf)) return false;
       }
 
       // Status filter
-      if (statusFilter !== "all" && order.status !== statusFilter) {
+      if (statusFilter !== "all" && safeString(order?.status) !== statusFilter) {
         return false;
       }
 
       // Date filter
-      const orderDate = new Date(order.createdAt);
-      if (dateFrom && orderDate < new Date(dateFrom)) return false;
-      if (dateTo) {
-        const to = new Date(dateTo);
-        to.setHours(23, 59, 59, 999);
-        if (orderDate > to) return false;
+      const orderDate = order?.createdAt ? new Date(order.createdAt) : null;
+      if (orderDate && !isNaN(orderDate.getTime())) {
+        if (dateFrom) {
+          const from = new Date(dateFrom);
+          if (orderDate < from) return false;
+        }
+        if (dateTo) {
+          const to = new Date(dateTo);
+          to.setHours(23, 59, 59, 999);
+          if (orderDate > to) return false;
+        }
       }
 
       return true;
@@ -160,16 +199,12 @@ export default function SalesReportPage() {
     const map = new Map<string, StoreSummary>();
 
     filteredOrders.forEach((order) => {
-      const customer = getCustomerByCode(order.customerId);
-      const key = customer?.code || order.customerId;
+      const customer = getCustomerByCode(order?.customerId);
+      const key = safeString(customer?.code || order?.customerId || "unknown");
 
       if (!map.has(key)) {
         map.set(key, {
-          customer: customer || ({
-            id: 0,
-            name: order.customerName || "Unknown",
-            code: order.customerId,
-          } as Customer),
+          customer: customer || { name: safeString(order?.customerName) || "Unknown", code: key },
           totalOrders: 0,
           totalQuantity: 0,
           totalValue: 0,
@@ -180,22 +215,19 @@ export default function SalesReportPage() {
       const summary = map.get(key)!;
       summary.totalOrders += 1;
 
-      order.items?.forEach((item) => {
-        const product = getProductById(item.stockItemId);
-        const qty = Number(item.quantity) || 0;
-        const price = Number(item.unitPrice) || 0;
+      order?.items?.forEach((item) => {
+        const product = getProductById(item?.stockItemId);
+        const qty = safeNum(item?.quantity);
+        const price = safeNum(item?.unitPrice);
         const value = qty * price;
 
         summary.totalQuantity += qty;
         summary.totalValue += value;
 
-        const prodKey = product?.productCode || item.stockItemId;
+        const prodKey = safeString(product?.productCode || item?.stockItemId || "unknown");
         if (!summary.products.has(prodKey)) {
           summary.products.set(prodKey, {
-            product: product || ({
-              productCode: item.stockItemId,
-              productName: item.stockItemId,
-            } as Product),
+            product: product || { productCode: prodKey, productName: prodKey },
             quantity: 0,
             value: 0,
           });
@@ -227,11 +259,11 @@ export default function SalesReportPage() {
     const prodMap = new Map<string, Product>();
     storeSummaries.forEach((s) => {
       s.products.forEach((p, key) => {
-        if (!prodMap.has(key)) prodMap.set(key, p.product);
+        if (p?.product && !prodMap.has(key)) prodMap.set(key, p.product);
       });
     });
     return Array.from(prodMap.values()).sort((a, b) =>
-      a.productName.localeCompare(b.productName)
+      safeString(a?.productName).localeCompare(safeString(b?.productName))
     );
   }, [storeSummaries]);
 
@@ -244,15 +276,36 @@ export default function SalesReportPage() {
     });
   };
 
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat("en-ZA", {
-      style: "currency",
-      currency: "ZAR",
-      minimumFractionDigits: 2,
-    }).format(val);
+  const formatCurrency = (val: number): string => {
+    try {
+      return new Intl.NumberFormat("en-ZA", {
+        style: "currency",
+        currency: "ZAR",
+        minimumFractionDigits: 2,
+      }).format(safeNum(val));
+    } catch {
+      return `R ${safeNum(val).toFixed(2)}`;
+    }
+  };
 
-  const formatNumber = (val: number) =>
-    new Intl.NumberFormat("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val);
+  const formatNumber = (val: number): string => {
+    try {
+      return new Intl.NumberFormat("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(safeNum(val));
+    } catch {
+      return safeNum(val).toFixed(2);
+    }
+  };
+
+  const formatDate = (val: string | undefined): string => {
+    if (!val) return "";
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return safeString(val);
+    try {
+      return d.toLocaleDateString("en-ZA");
+    } catch {
+      return safeString(val);
+    }
+  };
 
   // ─── EXPORT TO EXCEL ───
   const handleExport = async () => {
@@ -282,11 +335,10 @@ export default function SalesReportPage() {
         ["SHEET INDEX"],
         ["Cover", "This summary page"],
         ["Store Summary", "List of all stores with totals"],
-        ["Product by Store", "Quantities & values per product per store"],
+        ["Product by Store", "Quantities and values per product per store"],
         ["All Orders", "Raw order line items"],
       ];
       const coverWs = XLSX.utils.aoa_to_sheet(coverData);
-      // Style cover sheet
       coverWs["!cols"] = [{ wch: 30 }, { wch: 40 }];
       coverWs["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
       XLSX.utils.book_append_sheet(wb, coverWs, "Cover");
@@ -300,13 +352,13 @@ export default function SalesReportPage() {
       ];
       storeSummaries.forEach((s) => {
         storeRows.push([
-          s.customer.code || "",
-          s.customer.name || "",
-          s.customer.contact || "",
-          s.customer.phone || "",
-          s.customer.email || "",
-          s.customer.city || "",
-          s.customer.province || "",
+          safeString(s?.customer?.code),
+          safeString(s?.customer?.name),
+          safeString(s?.customer?.contact),
+          safeString(s?.customer?.phone),
+          safeString(s?.customer?.email),
+          safeString(s?.customer?.city),
+          safeString(s?.customer?.province),
           s.totalOrders,
           s.totalQuantity,
           s.totalValue,
@@ -325,17 +377,19 @@ export default function SalesReportPage() {
       ];
       storeSummaries.forEach((s) => {
         const sortedProds = Array.from(s.products.entries()).sort(
-          (a, b) => b[1].value - a[1].value
+          (a, b) => (b[1]?.value || 0) - (a[1]?.value || 0)
         );
         sortedProds.forEach(([, p]) => {
+          const qty = safeNum(p?.quantity);
+          const val = safeNum(p?.value);
           prodRows.push([
-            s.customer.name || "",
-            p.product.productCode || "",
-            p.product.productName || "",
-            p.product.category || "",
-            p.quantity,
-            p.quantity > 0 ? p.value / p.quantity : 0,
-            p.value,
+            safeString(s?.customer?.name),
+            safeString(p?.product?.productCode),
+            safeString(p?.product?.productName),
+            safeString(p?.product?.category),
+            qty,
+            qty > 0 ? val / qty : 0,
+            val,
           ]);
         });
       });
@@ -354,25 +408,25 @@ export default function SalesReportPage() {
         ],
       ];
       filteredOrders.forEach((order) => {
-        const customer = getCustomerByCode(order.customerId);
-        order.items?.forEach((item) => {
-          const product = getProductById(item.stockItemId);
-          const qty = Number(item.quantity) || 0;
-          const price = Number(item.unitPrice) || 0;
+        const customer = getCustomerByCode(order?.customerId);
+        order?.items?.forEach((item) => {
+          const product = getProductById(item?.stockItemId);
+          const qty = safeNum(item?.quantity);
+          const price = safeNum(item?.unitPrice);
           orderRows.push([
-            order.orderNumber || "",
-            new Date(order.createdAt).toLocaleDateString("en-ZA"),
-            customer?.code || order.customerId || "",
-            customer?.name || order.customerName || "",
-            product?.productCode || item.stockItemId || "",
-            product?.productName || item.stockItemId || "",
+            safeString(order?.orderNumber),
+            formatDate(order?.createdAt),
+            safeString(customer?.code || order?.customerId),
+            safeString(customer?.name || order?.customerName),
+            safeString(product?.productCode || item?.stockItemId),
+            safeString(product?.productName || item?.stockItemId),
             qty,
-            item.unit || item.unitLabel || "",
+            safeString(item?.unit || item?.unitLabel),
             price,
             qty * price,
-            order.totalAmount || 0,
-            order.status || "",
-            order.salesRepName || "",
+            safeNum(order?.totalAmount),
+            safeString(order?.status),
+            safeString(order?.salesRepName),
           ]);
         });
       });
@@ -390,7 +444,8 @@ export default function SalesReportPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Sales_Report_${groupLabel.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const safeLabel = groupLabel.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_\-]/g, "");
+      a.download = `Sales_Report_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -594,32 +649,33 @@ export default function SalesReportPage() {
               </thead>
               <tbody>
                 {storeSummaries.map((summary) => {
-                  const isExpanded = expandedStores.has(summary.customer.code || "");
+                  const code = safeString(summary?.customer?.code);
+                  const isExpanded = expandedStores.has(code);
                   return (
                     <>
                       <tr
-                        key={summary.customer.code}
+                        key={code}
                         className="border-b border-[#222324]/50 hover:bg-[#131415] transition-colors cursor-pointer"
-                        onClick={() => toggleStore(summary.customer.code || "")}
+                        onClick={() => toggleStore(code)}
                       >
                         <td className="p-3">
-                          <div className="font-medium text-white">{summary.customer.name}</div>
-                          <div className="text-xs text-[#8A8B8C]">{summary.customer.code}</div>
+                          <div className="font-medium text-white">{safeString(summary?.customer?.name)}</div>
+                          <div className="text-xs text-[#8A8B8C]">{code}</div>
                         </td>
                         <td className="p-3 text-[#8A8B8C]">
-                          <div>{summary.customer.contact || "—"}</div>
-                          <div className="text-xs">{summary.customer.phone || "—"}</div>
+                          <div>{safeString(summary?.customer?.contact) || "—"}</div>
+                          <div className="text-xs">{safeString(summary?.customer?.phone) || "—"}</div>
                         </td>
                         <td className="p-3 text-center">
                           <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(74,144,217,0.15)", color: "#4A90D9" }}>
-                            {summary.totalOrders}
+                            {summary?.totalOrders || 0}
                           </span>
                         </td>
                         <td className="p-3 text-right text-white font-medium">
-                          {formatNumber(summary.totalQuantity)}
+                          {formatNumber(summary?.totalQuantity || 0)}
                         </td>
                         <td className="p-3 text-right text-white font-medium">
-                          {formatCurrency(summary.totalValue)}
+                          {formatCurrency(summary?.totalValue || 0)}
                         </td>
                         <td className="p-3 text-center">
                           {isExpanded ? (
@@ -647,14 +703,14 @@ export default function SalesReportPage() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {Array.from(summary.products.entries())
-                                      .sort((a, b) => b[1].value - a[1].value)
+                                    {Array.from(summary?.products?.entries() || [])
+                                      .sort((a, b) => (b[1]?.value || 0) - (a[1]?.value || 0))
                                       .map(([key, p]) => (
                                         <tr key={key} className="border-b border-[#222324]/30">
-                                          <td className="p-2 text-white">{p.product.productName}</td>
-                                          <td className="p-2 text-[#8A8B8C]">{p.product.productCode}</td>
-                                          <td className="p-2 text-right text-white">{formatNumber(p.quantity)}</td>
-                                          <td className="p-2 text-right text-white">{formatCurrency(p.value)}</td>
+                                          <td className="p-2 text-white">{safeString(p?.product?.productName)}</td>
+                                          <td className="p-2 text-[#8A8B8C]">{safeString(p?.product?.productCode)}</td>
+                                          <td className="p-2 text-right text-white">{formatNumber(p?.quantity || 0)}</td>
+                                          <td className="p-2 text-right text-white">{formatCurrency(p?.value || 0)}</td>
                                         </tr>
                                       ))}
                                   </tbody>
@@ -701,29 +757,30 @@ export default function SalesReportPage() {
                   <th className="text-left p-3">Category</th>
                   <th className="text-right p-3">Total Qty</th>
                   <th className="text-right p-3">Total Value</th>
-                  <th className="text-right p-3"># Stores</th>
+                  <th className="text-right p-3">Stores</th>
                 </tr>
               </thead>
               <tbody>
                 {allProducts.map((product) => {
+                  if (!product) return null;
                   let totalQty = 0;
                   let totalValue = 0;
                   let storeCount = 0;
                   storeSummaries.forEach((s) => {
-                    const match = Array.from(s.products.values()).find(
-                      (p) => p.product.productCode === product.productCode
+                    const match = Array.from(s?.products?.values() || []).find(
+                      (p) => safeString(p?.product?.productCode) === safeString(product?.productCode)
                     );
                     if (match) {
-                      totalQty += match.quantity;
-                      totalValue += match.value;
+                      totalQty += safeNum(match?.quantity);
+                      totalValue += safeNum(match?.value);
                       storeCount++;
                     }
                   });
                   return (
-                    <tr key={product.productCode} className="border-b border-[#222324]/50 hover:bg-[#131415]">
-                      <td className="p-3 text-white">{product.productName}</td>
-                      <td className="p-3 text-[#8A8B8C]">{product.productCode}</td>
-                      <td className="p-3 text-[#8A8B8C]">{product.category || "—"}</td>
+                    <tr key={safeString(product?.productCode)} className="border-b border-[#222324]/50 hover:bg-[#131415]">
+                      <td className="p-3 text-white">{safeString(product?.productName)}</td>
+                      <td className="p-3 text-[#8A8B8C]">{safeString(product?.productCode)}</td>
+                      <td className="p-3 text-[#8A8B8C]">{safeString(product?.category) || "—"}</td>
                       <td className="p-3 text-right text-white font-medium">{formatNumber(totalQty)}</td>
                       <td className="p-3 text-right text-white font-medium">{formatCurrency(totalValue)}</td>
                       <td className="p-3 text-right">

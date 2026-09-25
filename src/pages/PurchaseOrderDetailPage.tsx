@@ -703,7 +703,7 @@ export default function PurchaseOrderDetailPage() {
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PACKING</td><td style="padding:6px;border:1px solid #ccc;">${coc.packing || "-"}</td></tr>
         </table>
         <h3 style="font-size:14px;margin:15px 0 10px;">TYPICAL ANALYSIS</h3>
-        <p style="font-size:12px;margin-bottom:15px;">Natural hog casings are simply a thin layer of cleaned hog intestines that provide a natural casing for the sausage. It\'s edible and normally consumed with the sausage.</p>
+        <p style="font-size:12px;margin-bottom:15px;">${coc.animalType === "sheep" ? "Natural sheep casings are simply a thin layer of cleaned sheep intestines that provide a natural casing for the sausage. It\'s edible and normally consumed with the sausage." : "Natural hog casings are simply a thin layer of cleaned hog intestines that provide a natural casing for the sausage. It\'s edible and normally consumed with the sausage."}</p>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;width:30%;">COUNTRY OF ORIGIN</td><td style="padding:6px;border:1px solid #ccc;">${coc.countryOfOrigin || "South Africa"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">STATUS</td><td style="padding:6px;border:1px solid #ccc;">${coc.status || "Non HALAAL"}</td></tr>
@@ -1011,7 +1011,7 @@ export default function PurchaseOrderDetailPage() {
                 <div><span className="text-[#8A8B8C]">Lot/Seal: </span><span className="text-white font-mono" style={{ color: "#D4A843" }}>{coc.lotSealNumber}</span></div>
                 <div><span className="text-[#8A8B8C]">Mfg: </span><span className="text-white">{coc.manufacturingDate}</span></div>
                 <div><span className="text-[#8A8B8C]">Use By: </span><span className="text-white">{coc.useByDate}</span></div>
-                <div><span className="text-[#8A8B8C]">Type: </span><span className="text-white">{coc.casingType || "HOG"}</span></div>
+                <div><span className="text-[#8A8B8C]">Type: </span><span className="text-white">{coc.casingType || "-"}</span></div>
               </div>
             </div>
           ))}

@@ -36,7 +36,20 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
-          npx vite build 2>&1 || (echo "VITE BUILD FAILED"; npx vite build --debug 2>&1 || true; exit 1)
+          npx vite build 2>&1 | tee build-output.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "=== BUILD FAILED WITH EXIT CODE $BUILD_EXIT ==="
+            cat build-output.log
+            exit $BUILD_EXIT
+          fi
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: build-output.log
 
       - name: List dist files
         if: always()

@@ -3,32 +3,17 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { reloadFromStorage } from "@/lib/dataService";
+import { pullFromCloud } from "@/lib/firebaseSync";
 import {
-  DollarSign,
-  ShoppingCart,
-  Users,
-  AlertTriangle,
-  ArrowUpRight,
-  ArrowDownRight,
-  TrendingUp,
-  UserCheck,
-  CheckCircle,
-  FlaskConical,
-  Calendar,
-  Sun,
-  BarChart3,
-  CloudDownload,
-  History,
-  ChevronDown,
+  DollarSign, ShoppingCart, Users, AlertTriangle,
+  ArrowUpRight, ArrowDownRight, TrendingUp, UserCheck,
+  CheckCircle, FlaskConical, Calendar, Sun,
+  BarChart3, CloudDownload, History, ChevronDown,
+  Receipt, Package
 } from "lucide-react";
 import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area,
 } from "recharts";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -48,7 +33,6 @@ function formatCurrency(value: number) {
   return `R ${value.toLocaleString("en-ZA")}`;
 }
 
-/** Generate last N months for dropdown: ["2026-07", "2026-06", ...] */
 function generateMonthOptions(count: number): { value: string; label: string }[] {
   const opts: { value: string; label: string }[] = [{ value: "", label: "All Time" }];
   const now = new Date();
@@ -62,66 +46,32 @@ function generateMonthOptions(count: number): { value: string; label: string }[]
   return opts;
 }
 
-/** Check if a date string falls within the selected month (YYYY-MM) */
 function isInMonth(dateStr: string | undefined | null, month: string): boolean {
-  if (!month || !dateStr) return true; // All time
+  if (!month || !dateStr) return true;
   return (dateStr || "").startsWith(month);
 }
 
-function StatCard({
-  label,
-  value,
-  change,
-  icon: Icon,
-  accent,
-  delay,
-}: {
-  label: string;
-  value: string;
-  change: number;
-  icon: React.ElementType;
-  accent: string;
-  delay: number;
+function KpiCard({ label, value, change, icon: Icon, accent }: {
+  label: string; value: string; change: number;
+  icon: React.ElementType; accent: string;
 }) {
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!cardRef.current) return;
-    gsap.from(cardRef.current, {
-      y: 24,
-      opacity: 0,
-      duration: 0.5,
-      ease: "power3.out",
-      delay,
-      scrollTrigger: {
-        trigger: cardRef.current,
-        start: "top 85%",
-      },
-    });
-  }, [delay]);
-
   const isPositive = change >= 0;
-
   return (
-    <div ref={cardRef} className="card-surface p-6 relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ backgroundColor: accent }} />
-      <div className="flex justify-between items-start mb-4">
-        <span className="label-text">{label}</span>
-        <Icon className="w-5 h-5 text-[#8A8B8C]" />
+    <div className="card-surface p-4 flex items-center gap-4">
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${accent}18` }}>
+        <Icon className="w-5 h-5" style={{ color: accent }} />
       </div>
-      <div className="stat-number mb-2">{value}</div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="status-badge"
-          style={{
-            backgroundColor: isPositive ? "rgba(74, 222, 128, 0.12)" : "rgba(239, 68, 68, 0.12)",
-            color: isPositive ? "#4ADE80" : "#EF4444",
-          }}
-        >
-          {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-          {Math.abs(change)}%
-        </span>
-        <span className="text-xs text-[#8A8B8C] font-body">vs last month</span>
+      <div className="min-w-0 flex-1">
+        <div className="label-text mb-1">{label}</div>
+        <div className="text-xl font-display font-bold text-white tracking-tight truncate">{value}</div>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex items-center gap-0.5"
+            style={{ backgroundColor: isPositive ? "rgba(74,222,128,0.12)" : "rgba(239,68,68,0.12)", color: isPositive ? "#4ADE80" : "#EF4444" }}>
+            {isPositive ? <ArrowUpRight className="w-2.5 h-2.5" /> : <ArrowDownRight className="w-2.5 h-2.5" />}
+            {Math.abs(change)}%
+          </span>
+          <span className="text-[10px] text-[#8A8B8C]">vs last month</span>
+        </div>
       </div>
     </div>
   );
@@ -140,16 +90,12 @@ export default function Dashboard() {
   const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: canViewAll });
 
   const chartRef = useRef<HTMLDivElement>(null);
-  const perfRef = useRef<HTMLDivElement>(null);
-  const salesRef = useRef<HTMLDivElement>(null);
   const [pullStatus, setPullStatus] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState(""); // "" = All Time, "YYYY-MM" = specific month
+  const [selectedMonth, setSelectedMonth] = useState("");
   const utils = trpc.useUtils();
 
-  // Generate month dropdown options
   const monthOptions = useMemo(() => generateMonthOptions(18), []);
 
-  // Filter invoices and orders by selected month
   const filteredInvoices = useMemo(() => {
     if (!selectedMonth) return allInvoices || [];
     return (allInvoices || []).filter((i: any) => isInMonth(i.invoiceDate || i.createdAt, selectedMonth));
@@ -160,7 +106,6 @@ export default function Dashboard() {
     return (recentOrders || []).filter((o: any) => isInMonth(o.createdAt, selectedMonth));
   }, [recentOrders, selectedMonth]);
 
-  // Recompute dashboard stats from filtered data
   const filteredRevenue = useMemo(() =>
     filteredInvoices.filter((i: any) => !i.notes?.includes("Sample")).reduce((s: number, i: any) => s + Number(i.total || i.totalAmount || 0), 0),
   [filteredInvoices]);
@@ -173,11 +118,9 @@ export default function Dashboard() {
     filteredOrders.filter((o: any) => o.orderType !== "sample").length,
   [filteredOrders]);
 
-  // Sales by rep filtered by month (recalculated client-side from filtered orders)
   const filteredSalesBreakdown = useMemo(() => {
-    if (!selectedMonth) return salesBreakdown; // Use server-calculated data for All Time
+    if (!selectedMonth) return salesBreakdown;
     const repNames = ((salesRepStats as any)?.repStats || []).map((r: any) => r.name);
-    const now = new Date();
     const monthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
     const repSales = repNames.map((name: string) => {
       const repOrders = filteredOrders.filter((o: any) => {
@@ -188,9 +131,7 @@ export default function Dashboard() {
       return { name, todaySales: 0, weekSales: 0, monthSales };
     });
     return {
-      today: "",
-      weekRange: "",
-      month: monthLabel,
+      today: "", weekRange: "", month: monthLabel,
       repSales,
       totals: { today: 0, week: 0, month: repSales.reduce((s: number, r: any) => s + r.monthSales, 0) },
     };
@@ -204,56 +145,41 @@ export default function Dashboard() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!perfRef.current) return;
-    gsap.from(perfRef.current, {
-      y: 24, opacity: 0, duration: 0.6, ease: "power3.out", delay: 0.2,
-      scrollTrigger: { trigger: perfRef.current, start: "top 85%" },
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!salesRef.current) return;
-    gsap.from(salesRef.current, {
-      y: 24, opacity: 0, duration: 0.6, ease: "power3.out", delay: 0.1,
-      scrollTrigger: { trigger: salesRef.current, start: "top 85%" },
-    });
-  }, []);
-
-  // CRITICAL FIX: Removed duplicate pullFromCloud() that was running here.
-  // App.tsx already pulls from cloud on startup for ALL users. Having Dashboard
-  // also pull was causing admin users to download 4000+ invoices TWICE,
-  // freezing the UI for 30+ seconds on every page load.
-
-  // Sales rep's own stats
   const myRepName = user?.name || "";
   const myStats = ((salesRepStats as any)?.repStats || []).find((r: Record<string, any>) => r.name === myRepName);
 
+  const outstandingInvoices = useMemo(() =>
+    (filteredInvoices || [])
+      .filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")
+      .sort((a: any, b: any) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime())
+      .slice(0, 12),
+  [filteredInvoices]);
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-5">
+      {/* ─── HEADER ─── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-            Dashboard
-          </h1>
-          <p className="text-[#8A8B8C] font-body mt-1" style={{ fontSize: "0.85rem" }}>
-            {isAdmin ? "Admin Overview" : isSalesManager ? "Sales Manager Overview" : `Sales Rep: ${myRepName}`} &middot; {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
+          <h1 className="font-display text-2xl font-semibold text-white tracking-tight">Dashboard</h1>
+          <p className="text-[#8A8B8C] text-xs mt-0.5">
+            {isAdmin ? "Admin Overview" : isSalesManager ? "Sales Manager Overview" : `Sales Rep: ${myRepName}`}
+            {" "}&middot;{" "}
+            {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Month Selector */}
           <div className="relative">
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="input-field text-sm pr-8 appearance-none cursor-pointer"
+              className="input-field text-xs pr-8 py-2 appearance-none cursor-pointer min-w-[140px]"
               style={{ backgroundColor: "#131415", borderColor: "#222324", color: "#E8E8E9" }}
             >
               {monthOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-[#8A8B8C] pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8A8B8C] pointer-events-none" />
           </div>
           {isAdmin && (
             <button
@@ -266,341 +192,311 @@ export default function Dashboard() {
                   await utils.appointment.list.invalidate();
                   await utils.invoice.list.invalidate();
                   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-                  setPullStatus(total > 0 ? `Pulled ${total} items!` : "No new data");
+                  setPullStatus(total > 0 ? `Pulled ${total}` : "No new data");
                 } catch {
                   setPullStatus("Pull failed");
                 }
                 setTimeout(() => setPullStatus(""), 3000);
               }}
-              className="btn-secondary text-sm"
+              className="btn-secondary text-xs px-3 py-2"
               disabled={!!pullStatus}
             >
-              <CloudDownload className="w-4 h-4" /> {pullStatus || "Pull from Cloud"}
+              <CloudDownload className="w-3.5 h-3.5" />
+              {pullStatus || "Pull from Cloud"}
             </button>
           )}
         </div>
       </div>
 
-      {/* Stat Cards - Admin/manager sees revenue, sales reps don't */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 ${canViewAll ? "xl:grid-cols-4" : "xl:grid-cols-3"} gap-4`}>
+      {/* ─── KPI CARDS ─── */}
+      <div className={`grid grid-cols-2 ${canViewAll ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-3`}>
         {canViewAll && (
-          <StatCard label={selectedMonth ? "MONTH REVENUE" : "TOTAL REVENUE"} value={formatCurrency(filteredRevenue)} change={12.5} icon={DollarSign} accent="#D4A843" delay={0} />
+          <KpiCard label={selectedMonth ? "MONTH REVENUE" : "TOTAL REVENUE"} value={formatCurrency(filteredRevenue)} change={12.5} icon={DollarSign} accent="#D4A843" />
         )}
-        {!canViewAll && myStats && (
-          <StatCard label="MY SALES" value={formatCurrency(myStats.totalSales || 0)} change={8.2} icon={TrendingUp} accent="#D4A843" delay={0} />
+        {!canViewAll && (
+          <KpiCard label="MY SALES" value={formatCurrency(myStats?.totalSales || 0)} change={8.2} icon={TrendingUp} accent="#D4A843" />
         )}
-        {!canViewAll && !myStats && (
-          <StatCard label="MY SALES" value="R 0.00" change={0} icon={TrendingUp} accent="#D4A843" delay={0} />
-        )}
-        <StatCard label={selectedMonth ? "MONTH ORDERS" : "TOTAL ORDERS"} value={(selectedMonth ? filteredOrderCount : (orderStats?.total || 0)).toString()} change={8.2} icon={ShoppingCart} accent="#4ADE80" delay={0.08} />
-        <StatCard label="CUSTOMERS" value={(customerStats?.total || 0).toString()} change={5.1} icon={Users} accent="#6366F1" delay={0.16} />
-        <StatCard label="LOW STOCK ITEMS" value={(stockStats?.lowStock || 0).toString()} change={-2.4} icon={AlertTriangle} accent="#F59E0B" delay={0.24} />
+        <KpiCard label={selectedMonth ? "MONTH ORDERS" : "TOTAL ORDERS"} value={(selectedMonth ? filteredOrderCount : (orderStats?.total || 0)).toString()} change={8.2} icon={ShoppingCart} accent="#4ADE80" />
+        <KpiCard label="CUSTOMERS" value={(customerStats?.total || 0).toString()} change={5.1} icon={Users} accent="#6366F1" />
+        <KpiCard label="LOW STOCK" value={(stockStats?.lowStock || 0).toString()} change={-2.4} icon={AlertTriangle} accent="#F59E0B" />
       </div>
 
-      {/* Sage Historical Data Alert - Admin/manager only */}
+      {/* ─── SAGE BANNER ─── */}
       {canViewAll && (invoiceStats?.sageCount || 0) > 0 && (
-        <div className="card-surface p-4 flex items-center justify-between">
+        <div className="card-surface p-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(99,102,241,0.12)" }}>
-              <History className="w-5 h-5 text-[#818CF8]" />
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(99,102,241,0.12)" }}>
+              <History className="w-4 h-4 text-[#818CF8]" />
             </div>
             <div>
-              <div className="text-sm font-display font-semibold text-white">Sage Historical Data Loaded</div>
+              <div className="text-sm font-medium text-white">Sage Historical Data Loaded</div>
               <div className="text-xs text-[#8A8B8C]">
-                {invoiceStats?.sageCount} historical invoice(s) · Outstanding: R {(invoiceStats?.sageOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                {invoiceStats?.sageCount} historical invoices &middot; Outstanding: R {(invoiceStats?.sageOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
               </div>
             </div>
           </div>
-          <a href="#/invoices" className="btn-secondary text-xs">
-            <History className="w-3.5 h-3.5" /> View Invoices
+          <a href="#/invoices" className="btn-secondary text-xs px-3 py-1.5">
+            <Receipt className="w-3 h-3" /> View
           </a>
         </div>
       )}
 
-      {/* Revenue Chart - Admin/manager only */}
+      {/* ─── MAIN CONTENT: 2-COLUMN LAYOUT ─── */}
       {canViewAll && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div ref={chartRef} className="card-surface p-6 xl:col-span-2">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-white text-lg">Revenue Overview</h2>
-              <div className="flex gap-1 p-1 rounded-full" style={{ backgroundColor: "#0A0A0B" }}>
-                {["7D", "30D", "90D"].map((range) => (
-                  <button key={range} className="px-3 py-1 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: range === "30D" ? "#D4A843" : "transparent", color: range === "30D" ? "#0A0A0B" : "#8A8B8C" }}>
-                    {range}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueData}>
-                  <defs>
-                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#D4A843" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#D4A843" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#222324" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fill: "#8A8B8C", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={{ stroke: "#222324" }} tickLine={false} />
-                  <YAxis tick={{ fill: "#8A8B8C", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `R ${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ backgroundColor: "#18191A", border: "1px solid #222324", borderRadius: 8, color: "#FFFFFF", fontFamily: "Inter", fontSize: 13 }} formatter={(value: number) => [formatCurrency(value), ""]} />
-                  <Area type="monotone" dataKey="revenue" stroke="#D4A843" strokeWidth={2} fill="url(#revenueGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
-          {/* Outstanding Invoices - Payment Due */}
-          <div className="card-surface p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" style={{ color: "#EF4444" }} />
-                <h2 className="font-display font-semibold text-white text-lg">Outstanding Invoices - Payment Due</h2>
-              </div>
-              <span className="text-xs font-mono-data text-[#8A8B8C]">{((filteredInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length} invoices{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-[#2A2B2C]">
-                    <th className="text-left p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Invoice #</th>
-                    <th className="text-left p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Customer</th>
-                    <th className="text-right p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Amount Due</th>
-                    <th className="text-right p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Due Date</th>
-                    <th className="text-right p-2 text-[10px] font-semibold tracking-wider text-[#8A8B8C] uppercase">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {((filteredInvoices || [])
-                    .filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")
-                    .sort((a: any, b: any) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime())
-                    .slice(0, 20)
-                  ).map((inv: any) => {
-                    const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(inv.dueDate || Date.now()).getTime()) / 86400000));
-                    return (
-                      <tr key={inv.id} className="border-b border-[#1C1D1E] hover:bg-[#1C1D1E]">
-                        <td className="p-2 text-sm font-display font-semibold" style={{ color: "#D4A843" }}>{inv.invoiceNumber}</td>
-                        <td className="p-2 text-sm text-white font-body">{inv.customer?.name || inv.customerName || "Unknown"}</td>
-                        <td className="p-2 text-right text-sm font-display font-semibold text-white">R {Number(inv.balanceDue).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                        <td className="p-2 text-right text-sm text-[#8A8B8C] font-body">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-ZA") : "-"}</td>
-                        <td className="p-2 text-right">
-                          <span className={`text-xs font-body px-2 py-0.5 rounded-full ${daysOverdue > 30 ? "bg-red-900/30 text-red-400" : daysOverdue > 7 ? "bg-yellow-900/30 text-yellow-400" : "bg-green-900/30 text-green-400"}`}>
-                            {daysOverdue === 0 ? "Due today" : daysOverdue + " days"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {((filteredInvoices || []).filter((i: any) => (i.balanceDue || 0) > 0 && i.status !== "paid")).length === 0 && (
-                    <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">{selectedMonth ? "No outstanding invoices for this month" : "No outstanding invoices - all paid!"}</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* LEFT COLUMN (2/3) */}
+          <div className="xl:col-span-2 space-y-4">
 
-          <div className="card-surface p-6">
-            <h2 className="font-display font-semibold text-white text-lg mb-4">Recent Orders</h2>
-            <div className="space-y-3">
-              {(filteredOrders || []).slice(0, 5).map((order: any) => (
-                <div key={order.id} className="flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-[#131415]">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-mono-data text-xs text-[#D4A843]">{order.orderNumber}</div>
-                    <div className="text-sm text-[#E8E8E9] truncate font-body">{order.customer?.name || "Unknown"}</div>
-                  </div>
-                  <div className="text-right ml-4">
-                    <div className="text-sm text-white font-display font-semibold">R {Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-                    <span className="status-badge text-xs mt-1" style={{ backgroundColor: order.status === "delivered" ? "rgba(74, 222, 128, 0.12)" : order.status === "pending" ? "rgba(245, 158, 11, 0.12)" : "rgba(99, 102, 241, 0.12)", color: order.status === "delivered" ? "#4ADE80" : order.status === "pending" ? "#F59E0B" : "#6366F1" }}>
-                      {order.status}
-                    </span>
-                  </div>
+            {/* Revenue Chart */}
+            <div ref={chartRef} className="card-surface p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-display font-semibold text-white text-sm">Revenue Overview</h2>
+                <div className="flex gap-1 p-0.5 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                  {["7D", "30D", "90D"].map((range) => (
+                    <button key={range} className="px-2.5 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer"
+                      style={{ backgroundColor: range === "30D" ? "#D4A843" : "transparent", color: range === "30D" ? "#0A0A0B" : "#8A8B8C" }}>
+                      {range}
+                    </button>
+                  ))}
                 </div>
-              ))}
-              {(!filteredOrders || filteredOrders.length === 0) && (
-                <div className="text-center py-8 text-[#8A8B8C] font-body text-sm">{selectedMonth ? "No orders for this month" : "No orders yet"}</div>
-              )}
+              </div>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={revenueData}>
+                    <defs>
+                      <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#D4A843" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#D4A843" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#222324" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill: "#8A8B8C", fontSize: 11, fontFamily: "JetBrains Mono" }} axisLine={{ stroke: "#222324" }} tickLine={false} />
+                    <YAxis tick={{ fill: "#8A8B8C", fontSize: 11, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `R ${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={{ backgroundColor: "#18191A", border: "1px solid #222324", borderRadius: 8, color: "#FFF", fontSize: 12 }} formatter={(value: number) => [formatCurrency(value), ""]} />
+                    <Area type="monotone" dataKey="revenue" stroke="#D4A843" strokeWidth={2} fill="url(#revGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Sales Rep Sales Breakdown - Admin/manager only */}
-      {canViewAll && (filteredSalesBreakdown || salesBreakdown) && (
-        <div ref={salesRef} className="card-surface p-6">
-          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-[#D4A843]" /> Sales by Rep{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</h2>
-          {!selectedMonth && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-              <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-                <div className="flex items-center gap-2 mb-2"><Sun className="w-4 h-4 text-[#F59E0B]" /><span className="label-text">TODAY</span></div>
-                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.today || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-                <div className="text-xs text-[#8A8B8C] mt-1">{(filteredSalesBreakdown || salesBreakdown)?.today || ""}</div>
-              </div>
-              <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-                <div className="flex items-center gap-2 mb-2"><Calendar className="w-4 h-4 text-[#6366F1]" /><span className="label-text">THIS WEEK</span></div>
-                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.week || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-                <div className="text-xs text-[#8A8B8C] mt-1">{(filteredSalesBreakdown || salesBreakdown)?.weekRange || ""}</div>
-              </div>
-              <div className="p-4 rounded-lg" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-                <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-[#4ADE80]" /><span className="label-text">THIS MONTH</span></div>
-                <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.month || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-                <div className="text-xs text-[#8A8B8C] mt-1">{(filteredSalesBreakdown || salesBreakdown)?.month || ""}</div>
-              </div>
-            </div>
-          )}
-          {selectedMonth && (
-            <div className="p-4 rounded-lg mb-4" style={{ backgroundColor: "#131415", border: "1px solid #222324" }}>
-              <div className="flex items-center gap-2 mb-2"><BarChart3 className="w-4 h-4 text-[#D4A843]" /><span className="label-text">TOTAL</span></div>
-              <div className="stat-number" style={{ color: "#D4A843", fontSize: "1.5rem" }}>R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.month || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-            </div>
-          )}
+            {/* Sales by Rep */}
+            {(filteredSalesBreakdown || salesBreakdown) && (
+              <div className="card-surface p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-display font-semibold text-white text-sm flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-[#D4A843]" />
+                    Sales by Rep{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}
+                  </h2>
+                </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr style={{ backgroundColor: "#131415", borderBottom: "1px solid #222324" }}>
-                  <th className="text-left p-3 label-text">Sales Rep</th>
-                  {!selectedMonth && <th className="text-right p-3 label-text">Today</th>}
-                  {!selectedMonth && <th className="text-right p-3 label-text">This Week</th>}
-                  <th className="text-right p-3 label-text">{selectedMonth ? "Sales" : "This Month"}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {((filteredSalesBreakdown || salesBreakdown)?.repSales || []).map((rep: any) => (
-                  <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
-                    <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
-                    {!selectedMonth && <td className="p-3 text-right text-sm font-display" style={{ color: rep.todaySales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.todaySales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>}
-                    {!selectedMonth && <td className="p-3 text-right text-sm font-display" style={{ color: rep.weekSales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.weekSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>}
-                    <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(rep.monthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
-                {((filteredSalesBreakdown || salesBreakdown)?.repSales || []).length === 0 && (
-                  <tr><td colSpan={selectedMonth ? 2 : 4} className="p-8 text-center text-[#8A8B8C] font-body">{selectedMonth ? "No sales for this month" : "No sales data available"}</td></tr>
+                {!selectedMonth && (
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {[
+                      { label: "TODAY", value: (filteredSalesBreakdown || salesBreakdown)?.totals?.today || 0, icon: Sun, color: "#F59E0B", date: (filteredSalesBreakdown || salesBreakdown)?.today },
+                      { label: "THIS WEEK", value: (filteredSalesBreakdown || salesBreakdown)?.totals?.week || 0, icon: Calendar, color: "#6366F1", date: (filteredSalesBreakdown || salesBreakdown)?.weekRange },
+                      { label: "THIS MONTH", value: (filteredSalesBreakdown || salesBreakdown)?.totals?.month || 0, icon: BarChart3, color: "#4ADE80", date: (filteredSalesBreakdown || salesBreakdown)?.month },
+                    ].map((s) => (
+                      <div key={s.label} className="p-3 rounded-lg border border-[#222324] bg-[#131415]/50">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <s.icon className="w-3 h-3" style={{ color: s.color }} />
+                          <span className="label-text">{s.label}</span>
+                        </div>
+                        <div className="text-base font-display font-bold text-white">R {Number(s.value).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                        <div className="text-[10px] text-[#8A8B8C] mt-0.5 truncate">{s.date}</div>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                {selectedMonth && (
+                  <div className="p-3 rounded-lg border border-[#222324] bg-[#131415]/50 mb-3">
+                    <span className="label-text">TOTAL</span>
+                    <div className="text-base font-display font-bold text-white mt-1">R {Number((filteredSalesBreakdown || salesBreakdown)?.totals?.month || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                  </div>
+                )}
 
-      {/* Sales Rep Performance - Admin/manager only */}
-      {canViewAll && (
-        <div ref={perfRef} className="card-surface p-6">
-          <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-[#D4A843]" /> Sales Rep Overview{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr style={{ borderBottom: "1px solid #222324" }}>
-                  <th className="text-left p-3 label-text">Sales Rep</th>
-                  <th className="text-right p-3 label-text">Customers</th>
-                  <th className="text-right p-3 label-text">Orders</th>
-                  <th className="text-right p-3 label-text">{selectedMonth ? "Month Sales" : "Total Sales"}</th>
-                  <th className="text-left p-3 label-text">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
-                  // Calculate month-filtered sales for this rep
-                  const repMonthSales = selectedMonth
-                    ? (filteredOrders || []).filter((o: any) => {
-                        const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer;
-                        return cust?.salesRepName === rep.name && o.orderType !== "sample";
-                      }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
-                    : rep.totalSales;
-                  return (
-                    <tr key={rep.name} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
-                      <td className="p-3 text-sm text-white font-body font-medium">{rep.name}</td>
-                      <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{rep.customerCount}</td>
-                      <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{selectedMonth ? (filteredOrders || []).filter((o: any) => { const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer; return cust?.salesRepName === rep.name && o.orderType !== "sample"; }).length : rep.orderCount}</td>
-                      <td className="p-3 text-right text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                      <td className="p-3"><span className="status-badge" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span></td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[#222324] text-[#8A8B8C] text-[10px] uppercase tracking-wider">
+                        <th className="text-left p-2">Rep</th>
+                        {!selectedMonth && <th className="text-right p-2">Today</th>}
+                        {!selectedMonth && <th className="text-right p-2">Week</th>}
+                        <th className="text-right p-2">{selectedMonth ? "Sales" : "Month"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {((filteredSalesBreakdown || salesBreakdown)?.repSales || []).map((rep: any) => (
+                        <tr key={rep.name} className="border-b border-[#18191A] hover:bg-[#131415]">
+                          <td className="p-2 text-sm text-white font-medium">{rep.name}</td>
+                          {!selectedMonth && <td className="p-2 text-right text-sm" style={{ color: rep.todaySales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.todaySales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>}
+                          {!selectedMonth && <td className="p-2 text-right text-sm" style={{ color: rep.weekSales > 0 ? "#D4A843" : "#8A8B8C" }}>R {Number(rep.weekSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>}
+                          <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(rep.monthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Sales Rep Overview */}
+            <div className="card-surface p-4">
+              <h2 className="font-display font-semibold text-white text-sm mb-3 flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-[#D4A843]" />
+                Sales Rep Overview{selectedMonth ? ` · ${monthOptions.find(m => m.value === selectedMonth)?.label || ""}` : ""}
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#222324] text-[#8A8B8C] text-[10px] uppercase tracking-wider">
+                      <th className="text-left p-2">Rep</th>
+                      <th className="text-right p-2">Customers</th>
+                      <th className="text-right p-2">Orders</th>
+                      <th className="text-right p-2">{selectedMonth ? "Month Sales" : "Total Sales"}</th>
+                      <th className="text-left p-2">Status</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
+                      const repMonthSales = selectedMonth
+                        ? (filteredOrders || []).filter((o: any) => {
+                            const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer;
+                            return cust?.salesRepName === rep.name && o.orderType !== "sample";
+                          }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
+                        : rep.totalSales;
+                      return (
+                        <tr key={rep.name} className="border-b border-[#18191A] hover:bg-[#131415]">
+                          <td className="p-2 text-sm text-white font-medium">{rep.name}</td>
+                          <td className="p-2 text-right text-sm text-[#E8E8E9]">{rep.customerCount}</td>
+                          <td className="p-2 text-right text-sm text-[#E8E8E9]">
+                            {selectedMonth
+                              ? (filteredOrders || []).filter((o: any) => { const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer; return cust?.salesRepName === rep.name && o.orderType !== "sample"; }).length
+                              : rep.orderCount}
+                          </td>
+                          <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2"><span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-900/30 text-green-400">Active</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN (1/3) */}
+          <div className="space-y-4">
+
+            {/* Outstanding Invoices */}
+            <div className="card-surface p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-display font-semibold text-white text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
+                  Outstanding
+                </h2>
+                <span className="text-[10px] text-[#8A8B8C]">{outstandingInvoices.length} invoices</span>
+              </div>
+              <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                {outstandingInvoices.map((inv: any) => {
+                  const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(inv.dueDate || Date.now()).getTime()) / 86400000));
+                  return (
+                    <div key={inv.id} className="p-2.5 rounded-lg border border-[#222324] bg-[#131415]/40 hover:bg-[#131415] transition-colors">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-display font-semibold text-[#D4A843]">{inv.invoiceNumber}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${daysOverdue > 30 ? "bg-red-900/30 text-red-400" : daysOverdue > 7 ? "bg-yellow-900/30 text-yellow-400" : "bg-green-900/30 text-green-400"}`}>
+                          {daysOverdue === 0 ? "Due" : `${daysOverdue}d`}
+                        </span>
+                      </div>
+                      <div className="text-xs text-white truncate">{inv.customer?.name || inv.customerName || "Unknown"}</div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-[#8A8B8C]">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-ZA") : "—"}</span>
+                        <span className="text-xs font-display font-semibold text-white">R {Number(inv.balanceDue).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
                   );
                 })}
-                {(!salesRepStats?.repStats || salesRepStats.repStats.length === 0) && (
-                  <tr><td colSpan={5} className="p-8 text-center text-[#8A8B8C] font-body">No sales rep data available</td></tr>
+                {outstandingInvoices.length === 0 && (
+                  <div className="text-center py-6 text-[#8A8B8C] text-xs">{selectedMonth ? "No outstanding for this month" : "All paid up!"}</div>
                 )}
-              </tbody>
-            </table>
+              </div>
+            </div>
+
+            {/* Recent Orders */}
+            <div className="card-surface p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-display font-semibold text-white text-sm flex items-center gap-2">
+                  <Package className="w-4 h-4 text-[#4ADE80]" />
+                  Recent Orders
+                </h2>
+              </div>
+              <div className="space-y-2">
+                {(filteredOrders || []).slice(0, 6).map((order: any) => (
+                  <div key={order.id} className="flex items-center justify-between p-2.5 rounded-lg border border-[#222324] bg-[#131415]/40 hover:bg-[#131415] transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-mono-data text-[#D4A843]">{order.orderNumber}</div>
+                      <div className="text-xs text-[#E8E8E9] truncate">{order.customer?.name || "Unknown"}</div>
+                    </div>
+                    <div className="text-right ml-3 flex-shrink-0">
+                      <div className="text-xs text-white font-display font-semibold">R {Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block"
+                        style={{
+                          backgroundColor: order.status === "delivered" ? "rgba(74,222,128,0.12)" : order.status === "pending" ? "rgba(245,158,11,0.12)" : "rgba(99,102,241,0.12)",
+                          color: order.status === "delivered" ? "#4ADE80" : order.status === "pending" ? "#F59E0B" : "#6366F1",
+                        }}>
+                        {order.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {(!filteredOrders || filteredOrders.length === 0) && (
+                  <div className="text-center py-6 text-[#8A8B8C] text-xs">{selectedMonth ? "No orders this month" : "No orders yet"}</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Order Status Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">PENDING</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)" }}>
-              <ShoppingCart className="w-4 h-4" style={{ color: "#F59E0B" }} />
+      {/* ─── ORDER STATUS ─── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "PENDING", value: orderStats?.pending ?? 0, icon: ShoppingCart, color: "#F59E0B", desc: "Awaiting" },
+          { label: "PICKING", value: orderStats?.picking ?? 0, icon: Package, color: "#6366F1", desc: "In warehouse" },
+          { label: "READY", value: orderStats?.ready ?? 0, icon: CheckCircle, color: "#4ADE80", desc: "For delivery" },
+          { label: "DELIVERED", value: orderStats?.delivered ?? 0, icon: CheckCircle, color: "#D4A843", desc: "Completed" },
+        ].map((s) => (
+          <div key={s.label} className="card-surface p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="label-text">{s.label}</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${s.color}18` }}>
+                <s.icon className="w-4 h-4" style={{ color: s.color }} />
+              </div>
             </div>
+            <div className="text-xl font-display font-bold" style={{ color: s.color }}>{s.value}</div>
+            <div className="text-[10px] text-[#8A8B8C] mt-0.5">{s.desc}</div>
           </div>
-          <div className="stat-number" style={{ color: "#F59E0B" }}>{orderStats?.pending ?? 0}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">Awaiting picking</div>
-        </div>
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">PICKING</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)" }}>
-              <ShoppingCart className="w-4 h-4" style={{ color: "#6366F1" }} />
-            </div>
-          </div>
-          <div className="stat-number" style={{ color: "#6366F1" }}>{orderStats?.picking ?? 0}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">In warehouse</div>
-        </div>
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">READY</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)" }}>
-              <ShoppingCart className="w-4 h-4" style={{ color: "#4ADE80" }} />
-            </div>
-          </div>
-          <div className="stat-number" style={{ color: "#4ADE80" }}>{orderStats?.ready ?? 0}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">For delivery</div>
-        </div>
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">DELIVERED</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
-              <CheckCircle className="w-4 h-4" style={{ color: "#D4A843" }} />
-            </div>
-          </div>
-          <div className="stat-number" style={{ color: "#D4A843" }}>{orderStats?.delivered ?? 0}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">Completed</div>
-        </div>
+        ))}
       </div>
 
-      {/* Invoice + Sample Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">OVERDUE INVOICES</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)" }}>
-              <AlertTriangle className="w-4 h-4" style={{ color: "#EF4444" }} />
+      {/* ─── BOTTOM STATS ─── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {[
+          { label: "OVERDUE INVOICES", value: invoiceStats?.overdue ?? 0, icon: AlertTriangle, color: "#EF4444", desc: "Past due" },
+          { label: "SAMPLE ORDERS", value: orderStats?.samples ?? 0, icon: FlaskConical, color: "#8B5CF6", desc: "Follow-ups" },
+          { label: "OUTSTANDING", value: `R ${(selectedMonth ? filteredOutstanding : (invoiceStats?.outstanding ?? 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`, icon: DollarSign, color: "#D4A843", desc: "Unpaid" },
+        ].map((s) => (
+          <div key={s.label} className="card-surface p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="label-text">{s.label}</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${s.color}18` }}>
+                <s.icon className="w-4 h-4" style={{ color: s.color }} />
+              </div>
             </div>
+            <div className="text-xl font-display font-bold truncate" style={{ color: s.color }}>{s.value}</div>
+            <div className="text-[10px] text-[#8A8B8C] mt-0.5">{s.desc}</div>
           </div>
-          <div className="stat-number" style={{ color: "#EF4444" }}>{invoiceStats?.overdue ?? 0}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">Past due date</div>
-        </div>
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">SAMPLE ORDERS</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(139, 92, 246, 0.12)" }}>
-              <FlaskConical className="w-4 h-4" style={{ color: "#8B5CF6" }} />
-            </div>
-          </div>
-          <div className="stat-number" style={{ color: "#8B5CF6" }}>{orderStats?.samples ?? 0}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">With follow-ups</div>
-        </div>
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-text">OUTSTANDING</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)" }}>
-              <DollarSign className="w-4 h-4" style={{ color: "#D4A843" }} />
-            </div>
-          </div>
-          <div className="stat-number" style={{ color: "#D4A843" }}>R {(selectedMonth ? filteredOutstanding : (invoiceStats?.outstanding ?? 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
-          <div className="text-xs text-[#8A8B8C] font-body mt-1">Unpaid invoices</div>
-        </div>
+        ))}
       </div>
     </div>
   );

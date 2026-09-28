@@ -284,6 +284,7 @@ export default function OrdersPage() {
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
+  const [canOverrideSampleQty, setCanOverrideSampleQty] = useState(false);
 
   const [formData, setFormData] = useState({
     customerId: 0, orderType: "regular" as "regular" | "sample" | "quote",
@@ -350,7 +351,7 @@ export default function OrdersPage() {
       // CRITICAL FIX: Close popup IMMEDIATELY before any async work.
       // Previously setShowForm(false) was AFTER await invalidate() calls.
       // If refetching 5000+ items hangs, the popup stays open forever.
-      setShowForm(false); setEditingOrder(null); resetForm();
+      setShowForm(false); setEditingOrder(null); setCanOverrideSampleQty(false); setCanOverrideSampleQty(false); resetForm();
       // Background sync — don't block the UI
       reloadFromStorage();
       utils.order.list.invalidate();
@@ -366,12 +367,12 @@ export default function OrdersPage() {
     },
     onSettled: () => {
       // Safety net: always re-enable the form regardless of success/failure
-      setShowForm(false); setEditingOrder(null);
+      setShowForm(false); setEditingOrder(null); setCanOverrideSampleQty(false);
     },
   });
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
-      setShowForm(false); setEditingOrder(null); resetForm();
+      setShowForm(false); setEditingOrder(null); setCanOverrideSampleQty(false); setCanOverrideSampleQty(false); resetForm();
       reloadFromStorage();
       utils.order.list.invalidate();
       utils.order.getStats.invalidate();
@@ -384,7 +385,7 @@ export default function OrdersPage() {
       alert("Update failed: " + (err.message || "Unknown error"));
     },
     onSettled: () => {
-      setShowForm(false); setEditingOrder(null);
+      setShowForm(false); setEditingOrder(null); setCanOverrideSampleQty(false);
     },
   });
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
@@ -549,7 +550,7 @@ export default function OrdersPage() {
       }
       if (formData.orderType === "sample") updated[index].quantity = 1;
     }
-    if (formData.orderType === "sample" && field === "quantity" && value > 1 && !(editingOrder && isSuperAdmin)) updated[index].quantity = 1;
+    if (formData.orderType === "sample" && field === "quantity" && value > 1 && !canOverrideSampleQty) updated[index].quantity = 1;
     setFormData({ ...formData, items: updated });
   }
 
@@ -582,7 +583,7 @@ export default function OrdersPage() {
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
         if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        if (Number(item.quantity) > 1 && !(editingOrder && isSuperAdmin)) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
+        if (Number(item.quantity) > 1 && !canOverrideSampleQty) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
 
@@ -720,6 +721,7 @@ export default function OrdersPage() {
 
   function startEditOrder(order: any) {
     setEditingOrder(order);
+    setCanOverrideSampleQty(order?.orderType === "sample" && isSuperAdmin);
     setAdminOverride(false);
     setAdminPin("");
     setFormData({
@@ -1037,7 +1039,7 @@ export default function OrdersPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Orders</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} total value</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
+        <button onClick={() => { setShowForm(true); setEditingOrder(null); setCanOverrideSampleQty(false); resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1316,7 +1318,7 @@ export default function OrdersPage() {
                   ? "New Quote"
                   : "New Order"}
               </h2>
-              <button onClick={() => { setShowForm(false); setEditingOrder(null); setAdminOverride(false); setAdminPin(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => { setShowForm(false); setEditingOrder(null); setCanOverrideSampleQty(false); setAdminOverride(false); setAdminPin(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             {editingOrder && (
               <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
@@ -1506,10 +1508,10 @@ export default function OrdersPage() {
                               ))}
                             </select>
                           )}
-                          {formData.orderType === "sample" && !(editingOrder && isSuperAdmin) ? (
+                          {formData.orderType === "sample" && !canOverrideSampleQty ? (
                             <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>{item.quantity}</div>
                           ) : (
-                            <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} max={editingOrder && isAdmin ? undefined : (availInUnit > 0 ? availInUnit : undefined)} />
+                            <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} max={canOverrideSampleQty || (editingOrder && isAdmin) ? undefined : (availInUnit > 0 ? availInUnit : undefined)} />
                           )}
                           <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
                         </div>

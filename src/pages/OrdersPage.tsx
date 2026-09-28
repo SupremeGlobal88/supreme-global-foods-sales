@@ -285,6 +285,12 @@ export default function OrdersPage() {
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
+  const editingOrderRef = useRef<any>(null);
+  const userRoleRef = useRef<string | undefined>(undefined);
+
+  // Keep refs in sync with state for use inside setFormData updaters
+  useEffect(() => { editingOrderRef.current = editingOrder; }, [editingOrder]);
+  useEffect(() => { userRoleRef.current = user?.role; }, [user]);
 
   const [formData, setFormData] = useState({
     customerId: 0, orderType: "regular" as "regular" | "sample" | "quote",
@@ -533,12 +539,14 @@ export default function OrdersPage() {
   function handleRemoveItem(index: number) { setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) }); }
 
   const handleUpdateItem = (index: number, field: string, value: number | string) => {
-    // Determine if super admin is editing a sample order
-    const isEditingSample = !!editingOrder && editingOrder.orderType === "sample";
-    const isSuper = user?.role === "super_admin";
-    const allowQtyOverride = isEditingSample && isSuper;
-
     setFormData((prev) => {
+      // Read latest values from refs (always up-to-date, no closure issues)
+      const currentEditingOrder = editingOrderRef.current;
+      const currentRole = userRoleRef.current;
+      const isEditingSample = !!currentEditingOrder && currentEditingOrder.orderType === "sample";
+      const isSuper = currentRole === "super_admin";
+      const allowQtyOverride = isEditingSample && isSuper;
+
       const updated = [...prev.items];
       updated[index] = { ...updated[index], [field]: value };
       if (field === "stockItemId" && Number(value) > 0) {
@@ -556,7 +564,10 @@ export default function OrdersPage() {
         if (prev.orderType === "sample" && !allowQtyOverride) updated[index].quantity = 1;
       }
       if (prev.orderType === "sample" && field === "quantity" && Number(value) > 1 && !allowQtyOverride) {
+        console.log("[handleUpdateItem] BLOCKED qty > 1 for sample — editingOrder=", currentEditingOrder?.id, "role=", currentRole, "allowOverride=", allowQtyOverride);
         updated[index].quantity = 1;
+      } else if (field === "quantity") {
+        console.log("[handleUpdateItem] ALLOWED qty=", value, "— editingOrder=", currentEditingOrder?.id, "role=", currentRole, "allowOverride=", allowQtyOverride);
       }
       return { ...prev, items: updated };
     });
@@ -591,7 +602,9 @@ export default function OrdersPage() {
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
         if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        const allowQtyOverride = !!editingOrder && editingOrder.orderType === "sample" && user?.role === "super_admin";
+        const currentEditingOrder = editingOrderRef.current;
+        const currentRole = userRoleRef.current;
+        const allowQtyOverride = !!currentEditingOrder && currentEditingOrder.orderType === "sample" && currentRole === "super_admin";
         if (Number(item.quantity) > 1 && !allowQtyOverride) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }

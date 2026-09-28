@@ -274,7 +274,7 @@ const statusTabs = [
 
 export default function OrdersPage() {
   const { user } = useAuth();
-  const { isAdmin, isSalesRep, role } = useRole();
+  const { isAdmin, isSalesRep, isSuperAdmin, role } = useRole();
   const myRepName = user?.name || "";
   const banking = getBankingDetails();
   const utils = trpc.useUtils();
@@ -549,7 +549,7 @@ export default function OrdersPage() {
       }
       if (formData.orderType === "sample") updated[index].quantity = 1;
     }
-    if (formData.orderType === "sample" && field === "quantity" && value > 1) updated[index].quantity = 1;
+    if (formData.orderType === "sample" && field === "quantity" && value > 1 && !(editingOrder && isSuperAdmin)) updated[index].quantity = 1;
     setFormData({ ...formData, items: updated });
   }
 
@@ -582,7 +582,7 @@ export default function OrdersPage() {
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
         if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        if (Number(item.quantity) > 1) return { valid: false, error: "Sample orders: 1 unit per product max." };
+        if (Number(item.quantity) > 1 && !(editingOrder && isSuperAdmin)) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
 
@@ -1506,8 +1506,8 @@ export default function OrdersPage() {
                               ))}
                             </select>
                           )}
-                          {formData.orderType === "sample" ? (
-                            <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>1</div>
+                          {formData.orderType === "sample" && !(editingOrder && isSuperAdmin) ? (
+                            <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>{item.quantity}</div>
                           ) : (
                             <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} max={editingOrder && isAdmin ? undefined : (availInUnit > 0 ? availInUnit : undefined)} />
                           )}

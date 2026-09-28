@@ -1332,14 +1332,20 @@ if (typeof window !== "undefined") {
     const count = e.detail?.count || 0;
     if (count > 0 && isFirebaseReady()) {
       console.log(`[FirebaseSync] Pushing repaired quotes to cloud...`);
-      const allOrders = JSON.parse(localStorage.getItem("sgf_orders") || "[]");
-      if (allOrders.length > 0) {
-        fbPush("order", allOrders).catch((err: any) => console.error("[FirebaseSync] push orders failed:", err?.message || err));
-      }
-      const allProducts = JSON.parse(localStorage.getItem("sgf_products") || "[]");
-      if (allProducts.length > 0) {
-        fbPush("stock", allProducts).catch((err: any) => console.error("[FirebaseSync] push stock failed:", err?.message || err));
-      }
+      try {
+        const allOrdersRaw = getStorageItem("sgf_orders");
+        const allOrders = allOrdersRaw ? JSON.parse(allOrdersRaw) : [];
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
+          fbPush("order", allOrders).catch((err: any) => console.error("[FirebaseSync] push orders failed:", err?.message || err));
+        }
+      } catch { /* ignore */ }
+      try {
+        const allProductsRaw = getStorageItem("sgf_products");
+        const allProducts = allProductsRaw ? JSON.parse(allProductsRaw) : [];
+        if (Array.isArray(allProducts) && allProducts.length > 0) {
+          fbPush("stock", allProducts).catch((err: any) => console.error("[FirebaseSync] push stock failed:", err?.message || err));
+        }
+      } catch { /* ignore */ }
     }
   });
 
@@ -1347,10 +1353,13 @@ if (typeof window !== "undefined") {
     const count = e.detail?.removed || 0;
     if (count > 0 && isFirebaseReady()) {
       console.log(`[FirebaseSync] Pushing cleaned invoices to cloud...`);
-      const allInvoices = JSON.parse(localStorage.getItem("sgf_invoices") || "[]");
-      if (allInvoices.length > 0) {
-        fbPush("invoice", allInvoices).catch((err: any) => console.error("[FirebaseSync] push invoices failed:", err?.message || err));
-      }
+      try {
+        const allInvoicesRaw = getStorageItem("sgf_invoices");
+        const allInvoices = allInvoicesRaw ? JSON.parse(allInvoicesRaw) : [];
+        if (Array.isArray(allInvoices) && allInvoices.length > 0) {
+          fbPush("invoice", allInvoices).catch((err: any) => console.error("[FirebaseSync] push invoices failed:", err?.message || err));
+        }
+      } catch { /* ignore */ }
     }
   });
 }

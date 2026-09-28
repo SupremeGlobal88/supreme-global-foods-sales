@@ -87,6 +87,23 @@ export default function App() {
   const { isAuthenticated } = useAuth();
 
   useEffect(() => {
+    // === CLEANUP: Remove corrupted localStorage data from old compression bugs ===
+    const COMPRESSED_KEYS = ["sgf_orders","sgf_products","sgf_invoices","sgf_customers","sgf_stock","sgf_checkins","sgf_appointments","sgf_salesReps","sgf_users","sgf_specialPrices","sgf_auditLog","sgf_followUps","sgf_followUpActions","sgf_collectionNotes","sgf_collectionPromises","sgf_accountHolds","sgf_receipts","sgf_creditNotes","sgf_purchaseOrders","sgf_barrels","sgf_cocs","sgf_packingListLines","sgf_corporateCustomers"];
+    for (const key of COMPRESSED_KEYS) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw && raw.length > 0) {
+          // If first char is not a valid JSON start, it's corrupted compressed data
+          const first = raw.charCodeAt(0);
+          const isJson = raw.trim().startsWith("[") || raw.trim().startsWith("{") || raw.trim().startsWith("\"");
+          if (!isJson) {
+            console.warn(`[App] Removing corrupted localStorage key: ${key}`);
+            localStorage.removeItem(key);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
     checkUrlForFirebaseConfig();
     registerDataServiceRefresh(reloadFromStorage);
     initFirebase();

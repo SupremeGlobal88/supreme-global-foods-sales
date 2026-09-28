@@ -706,7 +706,7 @@ export default function OrdersPage() {
       notes: formData.notes,
       items: validItems.map((item) => ({
         stockItemId: Number(item.stockItemId) || 0,
-        quantity: formData.orderType === "sample" ? 1 : Number(item.quantity) || 0,
+        quantity: formData.orderType === "sample" && !_sampleQtyOverride ? 1 : Number(item.quantity) || 0,
         unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined),
         unit: item.unit || "each",
         conversion: item.conversion || 1,

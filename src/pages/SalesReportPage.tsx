@@ -1,82 +1,77 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import * as staticData from "@/data/staticData";
-import { getStorageItem } from "@/lib/compressedStorage";
 import { trpc } from "@/providers/trpc";
+import { getStorageItem } from "@/lib/compressedStorage";
 import {
   Download, Search, Building2, Package, DollarSign,
   Calendar, Filter, FileSpreadsheet, Store, ShoppingCart,
-  TrendingUp, ChevronDown, ChevronUp, X
+  TrendingUp, ChevronDown, ChevronUp, X, Loader2
 } from "lucide-react";
 
 interface OrderItem {
-  stockItemId?: string;
+  stockItemId?: string | number;
+  productName?: string;
+  productCode?: string;
   quantity?: number;
   unitPrice?: number;
   unit?: string;
   conversion?: number;
   unitLabel?: string;
+  lineTotal?: number;
 }
 
 interface Order {
-  id?: string;
+  id?: string | number;
   orderNumber?: string;
-  customerId?: string;
+  customerId?: string | number;
   customerName?: string;
   items?: OrderItem[];
   status?: string;
   createdAt?: string;
   totalAmount?: number;
   orderType?: string;
-  paymentTerms?: string;
-  priceTier?: string;
-  deliveryAddress?: string;
-  notes?: string;
   salesRepName?: string;
 }
 
 interface Customer {
   id?: number;
   name?: string;
+  businessName?: string;
   customerCode?: string;
-  address?: string;
-  city?: string;
-  province?: string;
-  postalCode?: string;
+  groupName?: string;
   contactPerson?: string;
   phone?: string;
   email?: string;
-  businessReg?: string;
-  vatNumber?: string;
-  vatStatus?: string;
-  isCorporate?: boolean;
-  creditLimit?: number;
-  paymentTerms?: string;
-  priceTier?: string;
-  groupName?: string;
-  businessName?: string;
+  city?: string;
+  province?: string;
 }
 
-interface Product {
+interface StockItem {
   id?: number;
   productCode?: string;
   productName?: string;
   category?: string;
   species?: string;
-  corporatePrice?: number;
-  bulkPrice?: number;
-  wholesalePrice?: number;
-  retailPrice?: number;
 }
 
 interface ProdSummary {
-  product: Product;
+  productName: string;
+  productCode: string;
+  category: string;
   quantity: number;
   value: number;
 }
 
 interface StoreSummary {
-  customer: Customer;
+  customerId: string;
+  customerName: string;
+  customerCode: string;
+  groupName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  city: string;
+  province: string;
   totalOrders: number;
   totalQuantity: number;
   totalValue: number;
@@ -98,6 +93,7 @@ export default function SalesReportPage() {
   const { user } = useAuth();
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [groupFilter, setGroupFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -105,88 +101,106 @@ export default function SalesReportPage() {
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
 
-  // Load orders from localStorage
+  // Cloud-first: load customers via tRPC (syncs from Firebase via localLink)
+  const { data: customersData, isLoading: customersLoading } = trpc.customer.list.useQuery();
+  // Cloud-first: load stock items via tRPC
+  const { data: stockItemsData, isLoading: stockLoading } = trpc.stock.search.useQuery({ query: " " });
+
+  const customers: Customer[] = customersData || [];
+  const stockItems: StockItem[] = stockItemsData || [];
+
+  // Load orders from localStorage (already cloud-synced by other pages)
   useEffect(() => {
+    setOrdersLoading(true);
     try {
       const raw = getStorageItem("sgf_orders", "[]");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setOrders(Array.isArray(parsed) ? parsed : []);
-      }
+      const parsed = JSON.parse(raw || "[]");
+      setOrders(Array.isArray(parsed) ? parsed : []);
     } catch {
       setOrders([]);
+    } finally {
+      setOrdersLoading(false);
     }
   }, []);
 
-  const customers = useMemo<Customer[]>(() => {
-    const arr = (staticData as any).STATIC_CUSTOMERS;
-    return Array.isArray(arr) ? arr : [];
-  }, []);
-
-  const products = useMemo<Product[]>(() => {
-    const arr = (staticData as any).STATIC_PRODUCTS;
-    return Array.isArray(arr) ? arr : [];
-  }, []);
-
-  // Load stock items from tRPC (same source as OrdersPage)
-  const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
-
-  const getProductById = (id: string | undefined): Product | undefined => {
-    if (!id) return undefined;
-    const idStr = safeString(id);
-
-    // 1. Try stock items first (this is where order stockItemId points)
-    const stockItem = (stockItems || []).find((s: any) => {
-      if (!s) return false;
-      return safeString(s.id) === idStr || safeString(s.productCode) === idStr;
+  // Build lookup maps for fast access
+  const customerMap = useMemo(() => {
+    const map = new Map<string, Customer>();
+    customers.forEach((c) => {
+      if (c?.id !== undefined) map.set(String(c.id), c);
     });
-    if (stockItem) {
+    return map;
+  }, [customers]);
+
+  const stockMap = useMemo(() => {
+    const map = new Map<string, StockItem>();
+    stockItems.forEach((s) => {
+      if (s?.id !== undefined) map.set(String(s.id), s);
+    });
+    return map;
+  }, [stockItems]);
+
+  // Resolve customer name from order
+  const resolveCustomer = (order: Order): { name: string; code: string; group: string; contact: string; phone: string; email: string; city: string; province: string } => {
+    // 1. Try stored customerName
+    const storedName = safeString(order?.customerName).trim();
+
+    // 2. Try customer lookup by ID
+    const customer = customerMap.get(String(order?.customerId));
+
+    const name = storedName || safeString(customer?.name || customer?.businessName).trim() || "Unknown";
+    return {
+      name,
+      code: safeString(customer?.customerCode),
+      group: safeString(customer?.groupName),
+      contact: safeString(customer?.contactPerson),
+      phone: safeString(customer?.phone),
+      email: safeString(customer?.email),
+      city: safeString(customer?.city),
+      province: safeString(customer?.province),
+    };
+  };
+
+  // Resolve product info from order item
+  const resolveProduct = (item: OrderItem): { name: string; code: string; category: string } => {
+    // 1. Try stored productName/productCode
+    const storedName = safeString(item?.productName).trim();
+    const storedCode = safeString(item?.productCode).trim();
+
+    if (storedName && storedName !== "Unknown") {
+      return { name: storedName, code: storedCode || storedName, category: "" };
+    }
+
+    // 2. Try stock item lookup
+    const stock = stockMap.get(String(item?.stockItemId));
+    if (stock) {
       return {
-        id: stockItem.id,
-        productCode: safeString(stockItem.productCode) || idStr,
-        productName: safeString(stockItem.productName) || safeString(stockItem.name) || idStr,
-        category: safeString(stockItem.category),
-        species: safeString(stockItem.species),
+        name: safeString(stock.productName || stock.productCode),
+        code: safeString(stock.productCode),
+        category: safeString(stock.category),
       };
     }
 
-    // 2. Fall back to STATIC_PRODUCTS
-    const staticProd = products.find((p) => {
-      if (!p) return false;
-      return (
-        safeString(p.id) === idStr ||
-        safeString(p.productCode) === idStr ||
-        safeString(p.productName).toLowerCase().trim() === idStr.toLowerCase().trim()
-      );
-    });
-    if (staticProd) return staticProd;
-
-    // 3. Last resort — return unknown with the raw ID
-    return { productCode: idStr, productName: idStr };
+    // 3. Fallback to raw ID
+    const idStr = safeString(item?.stockItemId);
+    return { name: idStr || "Unknown Product", code: idStr, category: "" };
   };
 
-  const getCustomerById = (id: string | number | undefined): Customer | undefined => {
-    if (id === undefined || id === null || id === "") return undefined;
-    const idNum = safeNum(id);
-    return customers.find((c) => {
-      if (!c) return false;
-      return safeNum(c.id) === idNum;
-    });
-  };
-
-  // Extract unique customer group prefixes
+  // Extract unique group options
   const groupOptions = useMemo(() => {
     const groups = new Set<string>();
     customers.forEach((c) => {
-      // Use groupName first, then first word of name
       const group = safeString(c?.groupName).trim();
-      if (group) {
-        groups.add(group);
-      } else {
+      if (group) groups.add(group);
+    });
+    // Also add first-word fallbacks for customers without groupName
+    customers.forEach((c) => {
+      const group = safeString(c?.groupName).trim();
+      if (!group) {
         const name = safeString(c?.name).trim();
         if (name) {
-          const firstWord = name.split(/\s+/)[0];
-          if (firstWord && firstWord.length > 1) groups.add(firstWord);
+          const first = name.split(/\s+/)[0];
+          if (first && first.length > 1) groups.add(first);
         }
       }
     });
@@ -196,22 +210,18 @@ export default function SalesReportPage() {
   // Filtered orders
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      const customer = getCustomerById(order?.customerId);
-      const custName = safeString(customer?.name || customer?.businessName || order?.customerName);
-      const custGroup = safeString(customer?.groupName);
+      const cust = resolveCustomer(order);
 
       // Group filter
       if (groupFilter) {
         const gf = groupFilter.toLowerCase();
-        const nameMatch = custName.toLowerCase().startsWith(gf);
-        const groupMatch = custGroup.toLowerCase().startsWith(gf);
+        const nameMatch = cust.name.toLowerCase().startsWith(gf);
+        const groupMatch = cust.group.toLowerCase().startsWith(gf);
         if (!nameMatch && !groupMatch) return false;
       }
 
       // Status filter
-      if (statusFilter !== "all" && safeString(order?.status) !== statusFilter) {
-        return false;
-      }
+      if (statusFilter !== "all" && safeString(order?.status) !== statusFilter) return false;
 
       // Date filter
       const orderDate = order?.createdAt ? new Date(order.createdAt) : null;
@@ -229,19 +239,27 @@ export default function SalesReportPage() {
 
       return true;
     });
-  }, [orders, groupFilter, statusFilter, dateFrom, dateTo]);
+  }, [orders, groupFilter, statusFilter, dateFrom, dateTo, customerMap]);
 
   // Build store summaries
   const storeSummaries = useMemo(() => {
     const map = new Map<string, StoreSummary>();
 
     filteredOrders.forEach((order) => {
-      const customer = getCustomerById(order?.customerId);
-      const key = customer?.id ? String(customer.id) : safeString(order?.customerId || "unknown");
+      const cust = resolveCustomer(order);
+      const key = String(order?.customerId || "unknown");
 
       if (!map.has(key)) {
         map.set(key, {
-          customer: customer || { name: safeString(order?.customerName) || "Unknown", customerCode: key },
+          customerId: key,
+          customerName: cust.name,
+          customerCode: cust.code,
+          groupName: cust.group,
+          contactPerson: cust.contact,
+          phone: cust.phone,
+          email: cust.email,
+          city: cust.city,
+          province: cust.province,
           totalOrders: 0,
           totalQuantity: 0,
           totalValue: 0,
@@ -253,30 +271,32 @@ export default function SalesReportPage() {
       summary.totalOrders += 1;
 
       order?.items?.forEach((item) => {
-        const product = getProductById(item?.stockItemId);
+        const prod = resolveProduct(item);
         const qty = safeNum(item?.quantity);
         const price = safeNum(item?.unitPrice);
-        const value = qty * price;
+        const value = safeNum(item?.lineTotal) || qty * price;
 
         summary.totalQuantity += qty;
         summary.totalValue += value;
 
-        const prodKey = safeString(product?.productCode || item?.stockItemId || "unknown");
+        const prodKey = prod.code || prod.name;
         if (!summary.products.has(prodKey)) {
           summary.products.set(prodKey, {
-            product: product || { productCode: prodKey, productName: prodKey },
+            productName: prod.name,
+            productCode: prod.code,
+            category: prod.category,
             quantity: 0,
             value: 0,
           });
         }
-        const prodSummary = summary.products.get(prodKey)!;
-        prodSummary.quantity += qty;
-        prodSummary.value += value;
+        const ps = summary.products.get(prodKey)!;
+        ps.quantity += qty;
+        ps.value += value;
       });
     });
 
     return Array.from(map.values()).sort((a, b) => b.totalValue - a.totalValue);
-  }, [filteredOrders]);
+  }, [filteredOrders, customerMap, stockMap]);
 
   // Overall totals
   const totals = useMemo(() => {
@@ -291,17 +311,20 @@ export default function SalesReportPage() {
     );
   }, [storeSummaries]);
 
-  // All unique products across filtered orders
+  // All unique products
   const allProducts = useMemo(() => {
-    const prodMap = new Map<string, Product>();
+    const prodMap = new Map<string, ProdSummary>();
     storeSummaries.forEach((s) => {
       s.products.forEach((p, key) => {
-        if (p?.product && !prodMap.has(key)) prodMap.set(key, p.product);
+        if (!prodMap.has(key)) {
+          prodMap.set(key, { ...p, quantity: 0, value: 0 });
+        }
+        const existing = prodMap.get(key)!;
+        existing.quantity += p.quantity;
+        existing.value += p.value;
       });
     });
-    return Array.from(prodMap.values()).sort((a, b) =>
-      safeString(a?.productName).localeCompare(safeString(b?.productName))
-    );
+    return Array.from(prodMap.values()).sort((a, b) => b.value - a.value);
   }, [storeSummaries]);
 
   const toggleStore = (code: string) => {
@@ -315,11 +338,7 @@ export default function SalesReportPage() {
 
   const formatCurrency = (val: number): string => {
     try {
-      return new Intl.NumberFormat("en-ZA", {
-        style: "currency",
-        currency: "ZAR",
-        minimumFractionDigits: 2,
-      }).format(safeNum(val));
+      return new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR", minimumFractionDigits: 2 }).format(safeNum(val));
     } catch {
       return `R ${safeNum(val).toFixed(2)}`;
     }
@@ -337,12 +356,10 @@ export default function SalesReportPage() {
     if (!val) return "";
     const d = new Date(val);
     if (isNaN(d.getTime())) return safeString(val);
-    try {
-      return d.toLocaleDateString("en-ZA");
-    } catch {
-      return safeString(val);
-    }
+    try { return d.toLocaleDateString("en-ZA"); } catch { return safeString(val); }
   };
+
+  const isLoading = ordersLoading || customersLoading || stockLoading;
 
   // ─── EXPORT TO EXCEL ───
   const handleExport = async () => {
@@ -354,8 +371,8 @@ export default function SalesReportPage() {
       const reportDate = new Date().toLocaleDateString("en-ZA");
       const groupLabel = groupFilter || "All Customers";
 
-      // ── Sheet 1: Cover ──
-      const coverData = [
+      // Cover
+      const coverWs = XLSX.utils.aoa_to_sheet([
         ["SUPREME GLOBAL FOODS — SALES REPORT"],
         [],
         ["Report Date:", reportDate],
@@ -374,115 +391,59 @@ export default function SalesReportPage() {
         ["Store Summary", "List of all stores with totals"],
         ["Product by Store", "Quantities and values per product per store"],
         ["All Orders", "Raw order line items"],
-      ];
-      const coverWs = XLSX.utils.aoa_to_sheet(coverData);
+      ]);
       coverWs["!cols"] = [{ wch: 30 }, { wch: 40 }];
       coverWs["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
       XLSX.utils.book_append_sheet(wb, coverWs, "Cover");
 
-      // ── Sheet 2: Store Summary ──
+      // Store Summary
       const storeRows = [
-        [
-          "Store Code", "Store Name", "Contact", "Phone", "Email",
-          "City", "Province", "Total Orders", "Total Quantity", "Total Value (R)"
-        ],
+        ["Store Code", "Store Name", "Group", "Contact", "Phone", "Email", "City", "Province", "Total Orders", "Total Quantity", "Total Value (R)"],
       ];
       storeSummaries.forEach((s) => {
-        storeRows.push([
-          safeString(s?.customer?.customerCode),
-          safeString(s?.customer?.name || s?.customer?.businessName),
-          safeString(s?.customer?.contactPerson),
-          safeString(s?.customer?.phone),
-          safeString(s?.customer?.email),
-          safeString(s?.customer?.city),
-          safeString(s?.customer?.province),
-          s.totalOrders,
-          s.totalQuantity,
-          s.totalValue,
-        ]);
+        storeRows.push([s.customerCode, s.customerName, s.groupName, s.contactPerson, s.phone, s.email, s.city, s.province, s.totalOrders, s.totalQuantity, s.totalValue]);
       });
       const storeWs = XLSX.utils.aoa_to_sheet(storeRows);
-      storeWs["!cols"] = [
-        { wch: 14 }, { wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 28 },
-        { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }
-      ];
+      storeWs["!cols"] = [{ wch: 14 }, { wch: 30 }, { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 28 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];
       XLSX.utils.book_append_sheet(wb, storeWs, "Store Summary");
 
-      // ── Sheet 3: Product by Store ──
-      const prodRows: (string | number)[][] = [
-        ["Store Name", "Product Code", "Product Name", "Category", "Quantity", "Unit Price (R)", "Total Value (R)"],
-      ];
+      // Product by Store
+      const prodRows: (string | number)[][] = [["Store Name", "Product Code", "Product Name", "Category", "Quantity", "Unit Price (R)", "Total Value (R)"]];
       storeSummaries.forEach((s) => {
-        const sortedProds = Array.from(s.products.entries()).sort(
-          (a, b) => (b[1]?.value || 0) - (a[1]?.value || 0)
-        );
-        sortedProds.forEach(([, p]) => {
-          const qty = safeNum(p?.quantity);
-          const val = safeNum(p?.value);
-          prodRows.push([
-            safeString(s?.customer?.name || s?.customer?.businessName),
-            safeString(p?.product?.productCode),
-            safeString(p?.product?.productName),
-            safeString(p?.product?.category),
-            qty,
-            qty > 0 ? val / qty : 0,
-            val,
-          ]);
+        Array.from(s.products.entries()).sort((a, b) => b[1].value - a[1].value).forEach(([, p]) => {
+          const qty = safeNum(p.quantity);
+          prodRows.push([s.customerName, p.productCode, p.productName, p.category, qty, qty > 0 ? p.value / qty : 0, p.value]);
         });
       });
       const prodWs = XLSX.utils.aoa_to_sheet(prodRows);
-      prodWs["!cols"] = [
-        { wch: 30 }, { wch: 16 }, { wch: 35 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }
-      ];
+      prodWs["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 35 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
       XLSX.utils.book_append_sheet(wb, prodWs, "Product by Store");
 
-      // ── Sheet 4: All Orders ──
-      const orderRows: (string | number)[][] = [
-        [
-          "Order Number", "Order Date", "Store Code", "Store Name",
-          "Product Code", "Product Name", "Quantity", "Unit", "Unit Price (R)",
-          "Line Total (R)", "Order Total (R)", "Status", "Sales Rep"
-        ],
-      ];
+      // All Orders
+      const orderRows: (string | number)[][] = [["Order Number", "Order Date", "Store Code", "Store Name", "Group", "Product Code", "Product Name", "Category", "Quantity", "Unit", "Unit Price (R)", "Line Total (R)", "Order Total (R)", "Status", "Sales Rep"]];
       filteredOrders.forEach((order) => {
-        const customer = getCustomerById(order?.customerId);
+        const cust = resolveCustomer(order);
         order?.items?.forEach((item) => {
-          const product = getProductById(item?.stockItemId);
+          const prod = resolveProduct(item);
           const qty = safeNum(item?.quantity);
           const price = safeNum(item?.unitPrice);
           orderRows.push([
-            safeString(order?.orderNumber),
-            formatDate(order?.createdAt),
-            safeString(customer?.customerCode || order?.customerId),
-            safeString(customer?.name || customer?.businessName || order?.customerName),
-            safeString(product?.productCode || item?.stockItemId),
-            safeString(product?.productName || item?.stockItemId),
-            qty,
-            safeString(item?.unit || item?.unitLabel),
-            price,
-            qty * price,
-            safeNum(order?.totalAmount),
-            safeString(order?.status),
-            safeString(order?.salesRepName),
+            safeString(order?.orderNumber), formatDate(order?.createdAt), cust.code, cust.name, cust.group,
+            prod.code, prod.name, prod.category, qty, safeString(item?.unit || item?.unitLabel), price,
+            safeNum(item?.lineTotal) || qty * price, safeNum(order?.totalAmount), safeString(order?.status), safeString(order?.salesRepName),
           ]);
         });
       });
       const orderWs = XLSX.utils.aoa_to_sheet(orderRows);
-      orderWs["!cols"] = [
-        { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 16 },
-        { wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
-        { wch: 14 }, { wch: 12 }, { wch: 18 }
-      ];
+      orderWs["!cols"] = [{ wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 35 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 }];
       XLSX.utils.book_append_sheet(wb, orderWs, "All Orders");
 
-      // Download
       const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([wbout], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const safeLabel = groupLabel.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_\-]/g, "");
-      a.download = `Sales_Report_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `Sales_Report_${groupLabel.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_\-]/g, "")}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -506,22 +467,8 @@ export default function SalesReportPage() {
             Export detailed sales data by customer group, store, and product.
           </p>
         </div>
-        <button
-          onClick={handleExport}
-          disabled={!filteredOrders.length || isExporting}
-          className="btn-primary inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isExporting ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Exporting...
-            </>
-          ) : (
-            <>
-              <Download className="w-4 h-4" />
-              Export to Excel
-            </>
-          )}
+        <button onClick={handleExport} disabled={!filteredOrders.length || isExporting || isLoading} className="btn-primary inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          {isExporting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Exporting...</> : <><Download className="w-4 h-4" />Export to Excel</>}
         </button>
       </div>
 
@@ -532,71 +479,32 @@ export default function SalesReportPage() {
           <span className="font-medium">Filters</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Customer Group */}
           <div>
             <label className="block text-xs text-[#8A8B8C] mb-1.5">Customer Group</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
-              <input
-                type="text"
-                list="group-options"
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-                placeholder="e.g. OBC, Spar, Superspar"
-                className="input-field w-full pl-9 text-sm"
-              />
-              <datalist id="group-options">
-                {groupOptions.map((g) => (
-                  <option key={g} value={g} />
-                ))}
-              </datalist>
-              {groupFilter && (
-                <button
-                  onClick={() => setGroupFilter("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8B8C] hover:text-white"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <input type="text" list="group-options" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} placeholder="e.g. OBC, Spar, Superspar" className="input-field w-full pl-9 text-sm" />
+              <datalist id="group-options">{groupOptions.map((g) => (<option key={g} value={g} />))}</datalist>
+              {groupFilter && <button onClick={() => setGroupFilter("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8B8C] hover:text-white"><X className="w-3.5 h-3.5" /></button>}
             </div>
           </div>
-
-          {/* Date From */}
           <div>
             <label className="block text-xs text-[#8A8B8C] mb-1.5">Date From</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="input-field w-full pl-9 text-sm"
-              />
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input-field w-full pl-9 text-sm" />
             </div>
           </div>
-
-          {/* Date To */}
           <div>
             <label className="block text-xs text-[#8A8B8C] mb-1.5">Date To</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="input-field w-full pl-9 text-sm"
-              />
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input-field w-full pl-9 text-sm" />
             </div>
           </div>
-
-          {/* Status */}
           <div>
             <label className="block text-xs text-[#8A8B8C] mb-1.5">Order Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="input-field w-full text-sm"
-            >
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field w-full text-sm">
               <option value="all">All Statuses</option>
               <option value="pending">Pending</option>
               <option value="processing">Processing</option>
@@ -607,176 +515,169 @@ export default function SalesReportPage() {
         </div>
       </div>
 
+      {/* Loading state */}
+      {isLoading && (
+        <div className="card p-8 text-center text-[#8A8B8C]">
+          <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: "#D4A843" }} />
+          <p>Loading data from cloud...</p>
+        </div>
+      )}
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="card p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(212,168,67,0.15)" }}>
-              <Store className="w-5 h-5" style={{ color: "#D4A843" }} />
+      {!isLoading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="card p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(212,168,67,0.15)" }}>
+                <Store className="w-5 h-5" style={{ color: "#D4A843" }} />
+              </div>
+              <div>
+                <div className="text-2xl font-display font-semibold text-white">{totals.stores}</div>
+                <div className="text-xs text-[#8A8B8C]">Stores</div>
+              </div>
             </div>
-            <div>
-              <div className="text-2xl font-display font-semibold text-white">{totals.stores}</div>
-              <div className="text-xs text-[#8A8B8C]">Stores</div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(74,144,217,0.15)" }}>
+                <ShoppingCart className="w-5 h-5" style={{ color: "#4A90D9" }} />
+              </div>
+              <div>
+                <div className="text-2xl font-display font-semibold text-white">{totals.orders}</div>
+                <div className="text-xs text-[#8A8B8C]">Orders</div>
+              </div>
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(99,190,123,0.15)" }}>
+                <Package className="w-5 h-5" style={{ color: "#63BE7B" }} />
+              </div>
+              <div>
+                <div className="text-2xl font-display font-semibold text-white">{formatNumber(totals.quantity)}</div>
+                <div className="text-xs text-[#8A8B8C]">Total Quantity</div>
+              </div>
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(168,117,237,0.15)" }}>
+                <DollarSign className="w-5 h-5" style={{ color: "#A875ED" }} />
+              </div>
+              <div>
+                <div className="text-2xl font-display font-semibold text-white">{formatCurrency(totals.value)}</div>
+                <div className="text-xs text-[#8A8B8C]">Total Value</div>
+              </div>
             </div>
           </div>
         </div>
-        <div className="card p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(74,144,217,0.15)" }}>
-              <ShoppingCart className="w-5 h-5" style={{ color: "#4A90D9" }} />
-            </div>
-            <div>
-              <div className="text-2xl font-display font-semibold text-white">{totals.orders}</div>
-              <div className="text-xs text-[#8A8B8C]">Orders</div>
-            </div>
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(99,190,123,0.15)" }}>
-              <Package className="w-5 h-5" style={{ color: "#63BE7B" }} />
-            </div>
-            <div>
-              <div className="text-2xl font-display font-semibold text-white">{formatNumber(totals.quantity)}</div>
-              <div className="text-xs text-[#8A8B8C]">Total Quantity</div>
-            </div>
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(168,117,237,0.15)" }}>
-              <DollarSign className="w-5 h-5" style={{ color: "#A875ED" }} />
-            </div>
-            <div>
-              <div className="text-2xl font-display font-semibold text-white">{formatCurrency(totals.value)}</div>
-              <div className="text-xs text-[#8A8B8C]">Total Value</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Store List Table */}
-      <div className="card overflow-hidden">
-        <div className="p-4 border-b border-[#222324] flex items-center justify-between">
-          <h2 className="font-display font-semibold text-white flex items-center gap-2">
-            <Building2 className="w-5 h-5" style={{ color: "#D4A843" }} />
-            Store Breakdown
-            <span className="text-sm font-normal text-[#8A8B8C]">({storeSummaries.length} stores)</span>
-          </h2>
-        </div>
-
-        {storeSummaries.length === 0 ? (
-          <div className="p-8 text-center text-[#8A8B8C]">
-            <Store className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>No orders match the selected filters.</p>
-            <p className="text-sm mt-1">Try adjusting your filters or create some orders first.</p>
+      {!isLoading && (
+        <div className="card overflow-hidden">
+          <div className="p-4 border-b border-[#222324] flex items-center justify-between">
+            <h2 className="font-display font-semibold text-white flex items-center gap-2">
+              <Building2 className="w-5 h-5" style={{ color: "#D4A843" }} />
+              Store Breakdown
+              <span className="text-sm font-normal text-[#8A8B8C]">({storeSummaries.length} stores)</span>
+            </h2>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#222324] text-[#8A8B8C] text-xs uppercase tracking-wider">
-                  <th className="text-left p-3">Store</th>
-                  <th className="text-left p-3">Contact</th>
-                  <th className="text-center p-3">Orders</th>
-                  <th className="text-right p-3">Quantity</th>
-                  <th className="text-right p-3">Total Value</th>
-                  <th className="text-center p-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {storeSummaries.map((summary) => {
-                  const code = safeString(summary?.customer?.id || summary?.customer?.customerCode);
-                  const isExpanded = expandedStores.has(code);
-                  return (
-                    <>
-                      <tr
-                        key={code}
-                        className="border-b border-[#222324]/50 hover:bg-[#131415] transition-colors cursor-pointer"
-                        onClick={() => toggleStore(code)}
-                      >
-                        <td className="p-3">
-                          <div className="font-medium text-white">{safeString(summary?.customer?.name || summary?.customer?.businessName)}</div>
-                          <div className="text-xs text-[#8A8B8C]">{safeString(summary?.customer?.customerCode)}</div>
-                        </td>
-                        <td className="p-3 text-[#8A8B8C]">
-                          <div>{safeString(summary?.customer?.contactPerson) || "—"}</div>
-                          <div className="text-xs">{safeString(summary?.customer?.phone) || "—"}</div>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(74,144,217,0.15)", color: "#4A90D9" }}>
-                            {summary?.totalOrders || 0}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right text-white font-medium">
-                          {formatNumber(summary?.totalQuantity || 0)}
-                        </td>
-                        <td className="p-3 text-right text-white font-medium">
-                          {formatCurrency(summary?.totalValue || 0)}
-                        </td>
-                        <td className="p-3 text-center">
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 text-[#8A8B8C]" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />
-                          )}
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan={6} className="p-0">
-                            <div className="p-4 space-y-3" style={{ backgroundColor: "#0D0D0E" }}>
-                              <div className="text-xs font-medium text-[#8A8B8C] uppercase tracking-wider mb-2">
-                                Products Purchased
-                              </div>
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr className="border-b border-[#222324] text-[#8A8B8C]">
-                                      <th className="text-left p-2">Product</th>
-                                      <th className="text-left p-2">Code</th>
-                                      <th className="text-right p-2">Qty</th>
-                                      <th className="text-right p-2">Value</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {Array.from(summary?.products?.entries() || [])
-                                      .sort((a, b) => (b[1]?.value || 0) - (a[1]?.value || 0))
-                                      .map(([key, p]) => (
+
+          {storeSummaries.length === 0 ? (
+            <div className="p-8 text-center text-[#8A8B8C]">
+              <Store className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>No orders match the selected filters.</p>
+              <p className="text-sm mt-1">Try adjusting your filters or create some orders first.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#222324] text-[#8A8B8C] text-xs uppercase tracking-wider">
+                    <th className="text-left p-3">Store</th>
+                    <th className="text-left p-3">Group</th>
+                    <th className="text-left p-3">Contact</th>
+                    <th className="text-center p-3">Orders</th>
+                    <th className="text-right p-3">Quantity</th>
+                    <th className="text-right p-3">Total Value</th>
+                    <th className="text-center p-3 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {storeSummaries.map((summary) => {
+                    const isExpanded = expandedStores.has(summary.customerId);
+                    return (
+                      <>
+                        <tr key={summary.customerId} className="border-b border-[#222324]/50 hover:bg-[#131415] transition-colors cursor-pointer" onClick={() => toggleStore(summary.customerId)}>
+                          <td className="p-3">
+                            <div className="font-medium text-white">{summary.customerName}</div>
+                            <div className="text-xs text-[#8A8B8C]">{summary.customerCode || summary.customerId}</div>
+                          </td>
+                          <td className="p-3 text-[#8A8B8C]">{summary.groupName || "—"}</td>
+                          <td className="p-3 text-[#8A8B8C]">
+                            <div>{summary.contactPerson || "—"}</div>
+                            <div className="text-xs">{summary.phone || "—"}</div>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(74,144,217,0.15)", color: "#4A90D9" }}>{summary.totalOrders}</span>
+                          </td>
+                          <td className="p-3 text-right text-white font-medium">{formatNumber(summary.totalQuantity)}</td>
+                          <td className="p-3 text-right text-white font-medium">{formatCurrency(summary.totalValue)}</td>
+                          <td className="p-3 text-center">{isExpanded ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}</td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} className="p-0">
+                              <div className="p-4 space-y-3" style={{ backgroundColor: "#0D0D0E" }}>
+                                <div className="text-xs font-medium text-[#8A8B8C] uppercase tracking-wider mb-2">Products Purchased</div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="border-b border-[#222324] text-[#8A8B8C]">
+                                        <th className="text-left p-2">Product</th>
+                                        <th className="text-left p-2">Code</th>
+                                        <th className="text-right p-2">Qty</th>
+                                        <th className="text-right p-2">Value</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {Array.from(summary.products.entries()).sort((a, b) => b[1].value - a[1].value).map(([key, p]) => (
                                         <tr key={key} className="border-b border-[#222324]/30">
-                                          <td className="p-2 text-white">{safeString(p?.product?.productName)}</td>
-                                          <td className="p-2 text-[#8A8B8C]">{safeString(p?.product?.productCode)}</td>
-                                          <td className="p-2 text-right text-white">{formatNumber(p?.quantity || 0)}</td>
-                                          <td className="p-2 text-right text-white">{formatCurrency(p?.value || 0)}</td>
+                                          <td className="p-2 text-white">{p.productName}</td>
+                                          <td className="p-2 text-[#8A8B8C]">{p.productCode}</td>
+                                          <td className="p-2 text-right text-white">{formatNumber(p.quantity)}</td>
+                                          <td className="p-2 text-right text-white">{formatCurrency(p.value)}</td>
                                         </tr>
                                       ))}
-                                  </tbody>
-                                </table>
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-[#222324]" style={{ backgroundColor: "#131415" }}>
-                  <td className="p-3 font-semibold text-white" colSpan={2}>TOTAL</td>
-                  <td className="p-3 text-center font-semibold" style={{ color: "#4A90D9" }}>{totals.orders}</td>
-                  <td className="p-3 text-right font-semibold text-white">{formatNumber(totals.quantity)}</td>
-                  <td className="p-3 text-right font-semibold text-white">{formatCurrency(totals.value)}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[#222324]" style={{ backgroundColor: "#131415" }}>
+                    <td className="p-3 font-semibold text-white" colSpan={3}>TOTAL</td>
+                    <td className="p-3 text-center font-semibold" style={{ color: "#4A90D9" }}>{totals.orders}</td>
+                    <td className="p-3 text-right font-semibold text-white">{formatNumber(totals.quantity)}</td>
+                    <td className="p-3 text-right font-semibold text-white">{formatCurrency(totals.value)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Product Summary Table */}
-      {allProducts.length > 0 && (
+      {!isLoading && allProducts.length > 0 && (
         <div className="card overflow-hidden">
           <div className="p-4 border-b border-[#222324]">
             <h2 className="font-display font-semibold text-white flex items-center gap-2">
@@ -798,32 +699,17 @@ export default function SalesReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {allProducts.map((product) => {
-                  if (!product) return null;
-                  let totalQty = 0;
-                  let totalValue = 0;
-                  let storeCount = 0;
-                  storeSummaries.forEach((s) => {
-                    const match = Array.from(s?.products?.values() || []).find(
-                      (p) => safeString(p?.product?.productCode) === safeString(product?.productCode)
-                    );
-                    if (match) {
-                      totalQty += safeNum(match?.quantity);
-                      totalValue += safeNum(match?.value);
-                      storeCount++;
-                    }
-                  });
+                {allProducts.map((p) => {
+                  const storeCount = storeSummaries.filter((s) => s.products.has(p.productCode || p.productName)).length;
                   return (
-                    <tr key={safeString(product?.productCode)} className="border-b border-[#222324]/50 hover:bg-[#131415]">
-                      <td className="p-3 text-white">{safeString(product?.productName)}</td>
-                      <td className="p-3 text-[#8A8B8C]">{safeString(product?.productCode)}</td>
-                      <td className="p-3 text-[#8A8B8C]">{safeString(product?.category) || "—"}</td>
-                      <td className="p-3 text-right text-white font-medium">{formatNumber(totalQty)}</td>
-                      <td className="p-3 text-right text-white font-medium">{formatCurrency(totalValue)}</td>
+                    <tr key={p.productCode || p.productName} className="border-b border-[#222324]/50 hover:bg-[#131415]">
+                      <td className="p-3 text-white">{p.productName}</td>
+                      <td className="p-3 text-[#8A8B8C]">{p.productCode || "—"}</td>
+                      <td className="p-3 text-[#8A8B8C]">{p.category || "—"}</td>
+                      <td className="p-3 text-right text-white font-medium">{formatNumber(p.quantity)}</td>
+                      <td className="p-3 text-right text-white font-medium">{formatCurrency(p.value)}</td>
                       <td className="p-3 text-right">
-                        <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843" }}>
-                          {storeCount}
-                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843" }}>{storeCount}</span>
                       </td>
                     </tr>
                   );
@@ -835,13 +721,15 @@ export default function SalesReportPage() {
       )}
 
       {/* Info banner */}
-      <div className="card p-4 flex items-start gap-3" style={{ backgroundColor: "rgba(212,168,67,0.05)" }}>
-        <TrendingUp className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#D4A843" }} />
-        <div className="text-sm text-[#8A8B8C]">
-          <p className="text-white font-medium mb-1">About this report</p>
-          <p>This report reads from your local order data and shows sales grouped by customer group (e.g., OBC, Spar, Superspar). Use the filters above to narrow down results, then click <strong className="text-white">Export to Excel</strong> to download a multi-sheet workbook with Store Summary, Product by Store, and All Orders.</p>
+      {!isLoading && (
+        <div className="card p-4 flex items-start gap-3" style={{ backgroundColor: "rgba(212,168,67,0.05)" }}>
+          <TrendingUp className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#D4A843" }} />
+          <div className="text-sm text-[#8A8B8C]">
+            <p className="text-white font-medium mb-1">About this report</p>
+            <p>This report reads from your cloud-synced order data. Product and customer names are pulled directly from orders. Use the filters above to narrow by customer group (e.g., OBC, Spar), date range, or status. Click <strong className="text-white">Export to Excel</strong> to download a multi-sheet workbook.</p>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

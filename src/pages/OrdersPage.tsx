@@ -11,6 +11,9 @@ import {
   Shield,
 } from "lucide-react";
 
+// Module-level flag for sample quantity override (avoids React closure issues)
+let _sampleQtyOverride = false;
+
 const PRICE_TIERS = [
   { key: "corporate", label: "Corporate", color: "#D4A843" },
   { key: "bulk", label: "Bulk", color: "#6366F1" },
@@ -285,12 +288,6 @@ export default function OrdersPage() {
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
-  const editingOrderRef = useRef<any>(null);
-  const userRoleRef = useRef<string | undefined>(undefined);
-
-  // Keep refs in sync with state for use inside setFormData updaters
-  useEffect(() => { editingOrderRef.current = editingOrder; }, [editingOrder]);
-  useEffect(() => { userRoleRef.current = user?.role; }, [user]);
 
   const [formData, setFormData] = useState({
     customerId: 0, orderType: "regular" as "regular" | "sample" | "quote",
@@ -357,7 +354,7 @@ export default function OrdersPage() {
       // CRITICAL FIX: Close popup IMMEDIATELY before any async work.
       // Previously setShowForm(false) was AFTER await invalidate() calls.
       // If refetching 5000+ items hangs, the popup stays open forever.
-      setShowForm(false); setEditingOrder(null); resetForm();
+      setShowForm(false); setEditingOrder(null); _sampleQtyOverride = false; _sampleQtyOverride = false; resetForm();
       // Background sync — don't block the UI
       reloadFromStorage();
       utils.order.list.invalidate();
@@ -373,12 +370,12 @@ export default function OrdersPage() {
     },
     onSettled: () => {
       // Safety net: always re-enable the form regardless of success/failure
-      setShowForm(false); setEditingOrder(null);
+      setShowForm(false); setEditingOrder(null); _sampleQtyOverride = false;
     },
   });
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
-      setShowForm(false); setEditingOrder(null); resetForm();
+      setShowForm(false); setEditingOrder(null); _sampleQtyOverride = false; _sampleQtyOverride = false; resetForm();
       reloadFromStorage();
       utils.order.list.invalidate();
       utils.order.getStats.invalidate();
@@ -391,7 +388,7 @@ export default function OrdersPage() {
       alert("Update failed: " + (err.message || "Unknown error"));
     },
     onSettled: () => {
-      setShowForm(false); setEditingOrder(null);
+      setShowForm(false); setEditingOrder(null); _sampleQtyOverride = false;
     },
   });
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
@@ -540,13 +537,6 @@ export default function OrdersPage() {
 
   const handleUpdateItem = (index: number, field: string, value: number | string) => {
     setFormData((prev) => {
-      // Read latest values from refs (always up-to-date, no closure issues)
-      const currentEditingOrder = editingOrderRef.current;
-      const currentRole = userRoleRef.current;
-      const isEditingSample = !!currentEditingOrder && currentEditingOrder.orderType === "sample";
-      const isSuper = currentRole === "super_admin";
-      const allowQtyOverride = isEditingSample && isSuper;
-
       const updated = [...prev.items];
       updated[index] = { ...updated[index], [field]: value };
       if (field === "stockItemId" && Number(value) > 0) {
@@ -561,13 +551,13 @@ export default function OrdersPage() {
           updated[index].conversion = 1;
           updated[index].unitLabel = "Each";
         }
-        if (prev.orderType === "sample" && !allowQtyOverride) updated[index].quantity = 1;
+        if (prev.orderType === "sample" && !_sampleQtyOverride) updated[index].quantity = 1;
       }
-      if (prev.orderType === "sample" && field === "quantity" && Number(value) > 1 && !allowQtyOverride) {
-        console.log("[handleUpdateItem] BLOCKED qty > 1 for sample — editingOrder=", currentEditingOrder?.id, "role=", currentRole, "allowOverride=", allowQtyOverride);
+      if (prev.orderType === "sample" && field === "quantity" && Number(value) > 1 && !_sampleQtyOverride) {
+        console.log("[handleUpdateItem] BLOCKED qty > 1 — _sampleQtyOverride=", _sampleQtyOverride);
         updated[index].quantity = 1;
       } else if (field === "quantity") {
-        console.log("[handleUpdateItem] ALLOWED qty=", value, "— editingOrder=", currentEditingOrder?.id, "role=", currentRole, "allowOverride=", allowQtyOverride);
+        console.log("[handleUpdateItem] ALLOWED qty=", value, "— _sampleQtyOverride=", _sampleQtyOverride);
       }
       return { ...prev, items: updated };
     });
@@ -602,10 +592,7 @@ export default function OrdersPage() {
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
         if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        const currentEditingOrder = editingOrderRef.current;
-        const currentRole = userRoleRef.current;
-        const allowQtyOverride = !!currentEditingOrder && currentEditingOrder.orderType === "sample" && currentRole === "super_admin";
-        if (Number(item.quantity) > 1 && !allowQtyOverride) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
+        if (Number(item.quantity) > 1 && !_sampleQtyOverride) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
 
@@ -743,6 +730,7 @@ export default function OrdersPage() {
 
   function startEditOrder(order: any) {
     setEditingOrder(order);
+    _sampleQtyOverride = order?.orderType === "sample" && user?.role === "super_admin";
     setAdminOverride(false);
     setAdminPin("");
     setFormData({
@@ -1060,7 +1048,7 @@ export default function OrdersPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Orders</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} total value</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
+        <button onClick={() => { setShowForm(true); setEditingOrder(null); _sampleQtyOverride = false; resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1339,7 +1327,7 @@ export default function OrdersPage() {
                   ? "New Quote"
                   : "New Order"}
               </h2>
-              <button onClick={() => { setShowForm(false); setEditingOrder(null); setAdminOverride(false); setAdminPin(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => { setShowForm(false); setEditingOrder(null); _sampleQtyOverride = false; setAdminOverride(false); setAdminPin(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             {editingOrder && (
               <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
@@ -1352,9 +1340,8 @@ export default function OrdersPage() {
             )}
             {(() => {
               const showBanner = editingOrder?.orderType === "sample";
-              const isSuper = user?.role === "super_admin";
               if (!showBanner) return null;
-              return isSuper ? (
+              return _sampleQtyOverride ? (
                 <div className="mb-4 p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", border: "1px solid rgba(212, 168, 67, 0.3)", color: "#D4A843" }}>
                   <Shield className="w-4 h-4" />
                   <span className="font-semibold">Super Admin Override Active</span>
@@ -1548,7 +1535,7 @@ export default function OrdersPage() {
                             </select>
                           )}
                           {(() => {
-                            const allowEdit = !(formData.orderType === "sample" && editingOrder && user?.role !== "super_admin");
+                            const allowEdit = !(formData.orderType === "sample" && editingOrder && !_sampleQtyOverride);
                             if (!allowEdit) {
                               return <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>{item.quantity}</div>;
                             }

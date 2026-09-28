@@ -35,16 +35,26 @@ export function getStorageItem(key: string, defaultValue: string = "[]"): string
 
   if (!shouldCompress(key)) return raw;
 
-  // Try decompressed first (new format)
+  // Try decompressed first (new format) — validate it's actually valid JSON
   try {
     const decompressed = LZString.decompressFromUTF16(raw);
-    if (decompressed) return decompressed;
+    if (decompressed) {
+      JSON.parse(decompressed); // validate
+      return decompressed;
+    }
   } catch {
-    // Not compressed, fall through
+    // Decompression failed or produced invalid JSON, fall through
   }
 
   // Fall back to plain JSON (backward compatibility)
-  return raw;
+  try {
+    JSON.parse(raw); // validate raw is JSON too
+    return raw;
+  } catch {
+    // Raw is also corrupted, return default
+    console.warn(`[compressedStorage] Corrupted data for ${key}, returning default.`);
+    return defaultValue;
+  }
 }
 
 export function setStorageItem(key: string, value: string): void {

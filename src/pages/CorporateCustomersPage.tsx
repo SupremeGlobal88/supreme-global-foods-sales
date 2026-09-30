@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { getCompanyConfig, getAllCompanies, type CompanyKey } from "@/lib/companyConfig";
 import {
-  Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package, Globe, AlertCircle,
+  Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package, Globe, AlertCircle, Users, Link2, Unlink,
 } from "lucide-react";
 
 export default function CorporateCustomersPage() {
@@ -31,9 +31,11 @@ export default function CorporateCustomersPage() {
     notes: "",
     isActive: true,
   });
+  const [linkedCustomerId, setLinkedCustomerId] = useState<number | null>(null);
   const [companyFilter, setCompanyFilter] = useState<"all" | CompanyKey>("all");
 
   const { data: customers } = trpc.corporateCustomer.list.useQuery();
+  const { data: existingCustomers } = trpc.customer.search.useQuery({ query: " " });
   const createCustomer = trpc.corporateCustomer.create.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.corporateCustomer.list.invalidate(); setShowForm(false); resetForm(); },
   });
@@ -55,6 +57,30 @@ export default function CorporateCustomersPage() {
 
   function resetForm() {
     setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", vatExempt: false, contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true });
+    setLinkedCustomerId(null);
+  }
+
+  function populateFromExistingCustomer(customerId: number) {
+    const cust = (existingCustomers || []).find((c: any) => c.id === customerId);
+    if (!cust) return;
+    setLinkedCustomerId(customerId);
+    setFormData((prev) => ({
+      ...prev,
+      name: cust.name || prev.name,
+      code: cust.customerCode || prev.code,
+      company: (cust.company as CompanyKey) || prev.company,
+      vatNumber: cust.vatNumber || prev.vatNumber,
+      vatExempt: !!cust.vatExempt,
+      contactPerson: cust.contactPerson || prev.contactPerson,
+      email: cust.email || prev.email,
+      phone: cust.phone || prev.phone,
+      deliveryAddress: cust.physicalAddress || prev.deliveryAddress,
+      city: cust.city || prev.city,
+      province: cust.province || prev.province,
+      postalCode: cust.postalCode || prev.postalCode,
+      paymentTerms: (cust.paymentTerms as typeof prev.paymentTerms) || prev.paymentTerms,
+      notes: cust.notes || prev.notes,
+    }));
   }
 
   function handleEdit(c: any) {
@@ -89,7 +115,7 @@ export default function CorporateCustomersPage() {
           </h1>
           <p className="text-sm text-[#8A8B8C] mt-1">Manage corporate clients who send purchase orders (e.g., Deli-Spices)</p>
         </div>
-        <button onClick={() => { resetForm(); setEditingId(null); setShowForm(true); }} className="btn-gold flex items-center gap-2">
+        <button onClick={() => { resetForm(); setEditingId(null); setLinkedCustomerId(null); setShowForm(true); }} className="btn-gold flex items-center gap-2">
           <Plus className="w-4 h-4" /> Add Corporate Customer
         </button>
       </div>
@@ -242,6 +268,52 @@ export default function CorporateCustomersPage() {
               <button onClick={() => setShowForm(false)} className="p-1 rounded hover:bg-[#222324]"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
+              {/* Link existing customer (only when adding new) */}
+              {!editingId && (
+                <div className="col-span-2 p-3 rounded-lg border border-[#333334]" style={{ backgroundColor: "rgba(212, 168, 67, 0.06)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="w-4 h-4" style={{ color: "#D4A843" }} />
+                    <span className="text-sm font-medium text-white">Link Existing Customer</span>
+                    <span className="text-xs text-[#8A8B8C]">— Auto-fill from customer database</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={linkedCustomerId ?? ""}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        if (id > 0) populateFromExistingCustomer(id);
+                        else { setLinkedCustomerId(null); }
+                      }}
+                      className="input-field flex-1 text-sm"
+                    >
+                      <option value="">Select an existing customer...</option>
+                      {(existingCustomers || [])
+                        .filter((c: any) => c.name)
+                        .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""))
+                        .map((c: any) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.customerCode ? `(${c.customerCode})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    {linkedCustomerId && (
+                      <button
+                        type="button"
+                        onClick={() => { setLinkedCustomerId(null); resetForm(); }}
+                        className="px-3 py-2 rounded-lg text-xs flex items-center gap-1 border border-[#333334] hover:bg-[#222324] text-[#8A8B8C]"
+                      >
+                        <Unlink className="w-3 h-3" /> Unlink
+                      </button>
+                    )}
+                  </div>
+                  {linkedCustomerId && (
+                    <div className="flex items-center gap-1.5 mt-2 text-xs" style={{ color: "#D4A843" }}>
+                      <Link2 className="w-3 h-3" />
+                      <span>Fields auto-populated from linked customer. Edit below if needed.</span>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><label className="label-text">Company Name *</label><input required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field w-full" /></div>
                 <div>

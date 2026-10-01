@@ -47,9 +47,11 @@ export default function PackingListPage() {
     onSuccess: async () => { reloadFromStorage(); await utils.packingList.listByPurchaseOrder.invalidate(poId); },
   });
 
-  // Cloud-first: invalidate tRPC cache when Firebase pushes packing list updates from other users
+  // Cloud-first: force refetch packing list data every 3s + on Firebase events
   useEffect(() => {
-    const refresh = () => { utils.packingList.listByPurchaseOrder.invalidate(); };
+    const refresh = () => {
+      utils.packingList.listByPurchaseOrder.refetch();
+    };
     refresh();
     const interval = setInterval(refresh, 3000);
     window.addEventListener("firebaseDataReceived", refresh);

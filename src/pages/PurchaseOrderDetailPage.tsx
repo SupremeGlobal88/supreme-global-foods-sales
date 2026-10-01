@@ -30,13 +30,13 @@ export default function PurchaseOrderDetailPage() {
   const [selectedBarrelId, setSelectedBarrelId] = useState<number | null>(null);
   const [stockPickerFilter, setStockPickerFilter] = useState("");
 
-  // Cloud-first: invalidate tRPC cache when Firebase pushes data from other users
+  // Cloud-first: force refetch data every 3s + on Firebase events
   useEffect(() => {
     const refresh = () => {
-      utils.packingList.listByPurchaseOrder.invalidate();
-      utils.coc.listByPurchaseOrder.invalidate();
-      utils.barrel.listByPurchaseOrder.invalidate();
-      utils.purchaseOrder.list.invalidate();
+      utils.packingList.listByPurchaseOrder.refetch();
+      utils.coc.listByPurchaseOrder.refetch();
+      utils.barrel.listByPurchaseOrder.refetch();
+      utils.purchaseOrder.list.refetch();
     };
     refresh();
     const interval = setInterval(refresh, 3000);

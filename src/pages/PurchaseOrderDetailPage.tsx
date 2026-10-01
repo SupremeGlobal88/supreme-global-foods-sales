@@ -32,16 +32,17 @@ export default function PurchaseOrderDetailPage() {
 
   // Cloud-first: invalidate tRPC cache when Firebase pushes data from other users
   useEffect(() => {
-    const handle = (e: any) => {
-      const type = e.detail?.type;
-      if (type === "packingListLines") utils.packingList.listByPurchaseOrder.invalidate(poId);
-      if (type === "certificatesOfCompliance") utils.coc.listByPurchaseOrder.invalidate(poId);
-      if (type === "barrels") utils.barrel.listByPurchaseOrder.invalidate(poId);
-      if (type === "purchaseOrders") utils.purchaseOrder.list.invalidate();
+    const refresh = () => {
+      utils.packingList.listByPurchaseOrder.invalidate();
+      utils.coc.listByPurchaseOrder.invalidate();
+      utils.barrel.listByPurchaseOrder.invalidate();
+      utils.purchaseOrder.list.invalidate();
     };
-    window.addEventListener("firebaseDataReceived", handle);
-    return () => window.removeEventListener("firebaseDataReceived", handle);
-  }, [poId, utils]);
+    refresh();
+    const interval = setInterval(refresh, 3000);
+    window.addEventListener("firebaseDataReceived", refresh);
+    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
+  }, [utils]);
 
   // Edit form state
   const [editForm, setEditForm] = useState({

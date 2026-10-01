@@ -49,14 +49,12 @@ export default function PackingListPage() {
 
   // Cloud-first: invalidate tRPC cache when Firebase pushes packing list updates from other users
   useEffect(() => {
-    const handle = (e: any) => {
-      if (e.detail?.type === "packingListLines") {
-        utils.packingList.listByPurchaseOrder.invalidate(poId);
-      }
-    };
-    window.addEventListener("firebaseDataReceived", handle);
-    return () => window.removeEventListener("firebaseDataReceived", handle);
-  }, [poId, utils]);
+    const refresh = () => { utils.packingList.listByPurchaseOrder.invalidate(); };
+    refresh();
+    const interval = setInterval(refresh, 3000);
+    window.addEventListener("firebaseDataReceived", refresh);
+    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
+  }, [utils]);
 
   const po = (purchaseOrders || []).find((p: any) => p.id === poId);
 

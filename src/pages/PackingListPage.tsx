@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, dataService } from "@/lib/dataService";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import { useParams, useNavigate } from "react-router";
 import {
@@ -12,7 +12,6 @@ export default function PackingListPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const poId = parseInt(id || "0");
-  const utils = trpc.useUtils();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -34,29 +33,31 @@ export default function PackingListPage() {
   });
 
   const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
-  const { data: packingListLines } = trpc.packingList.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
 
-  const createLine = trpc.packingList.create.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.packingList.listByPurchaseOrder.invalidate(poId); closeForm(); },
-  });
-  const updateLine = trpc.packingList.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.packingList.listByPurchaseOrder.invalidate(poId); closeForm(); },
-  });
-  const deleteLine = trpc.packingList.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.packingList.listByPurchaseOrder.invalidate(poId); },
-  });
-
-  // Cloud-first: force refetch packing list data every 3s + on Firebase events
+  // Cloud-first: read packing list lines DIRECTLY from dataService (bypasses tRPC cache)
+  const [liveLines, setLiveLines] = useState<any[]>([]);
   useEffect(() => {
-    const refresh = () => {
-      utils.packingList.listByPurchaseOrder.refetch();
-    };
+    function refresh() {
+      if (poId > 0) {
+        setLiveLines(dataService.packingList.listByPurchaseOrder(poId));
+      }
+    }
     refresh();
     const interval = setInterval(refresh, 3000);
     window.addEventListener("firebaseDataReceived", refresh);
     return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
-  }, [utils]);
+  }, [poId]);
+
+  const createLine = trpc.packingList.create.useMutation({
+    onSuccess: async () => { reloadFromStorage(); setLiveLines(dataService.packingList.listByPurchaseOrder(poId)); closeForm(); },
+  });
+  const updateLine = trpc.packingList.update.useMutation({
+    onSuccess: async () => { reloadFromStorage(); setLiveLines(dataService.packingList.listByPurchaseOrder(poId)); closeForm(); },
+  });
+  const deleteLine = trpc.packingList.delete.useMutation({
+    onSuccess: async () => { reloadFromStorage(); setLiveLines(dataService.packingList.listByPurchaseOrder(poId)); },
+  });
 
   const po = (purchaseOrders || []).find((p: any) => p.id === poId);
 
@@ -142,7 +143,7 @@ export default function PackingListPage() {
 
   function handlePrint() {
     const cfg = getCompanyConfig(po.company);
-    const lines = packingListLines || [];
+    const lines = liveLines || [];
     const totalBundles = lines.reduce((s: number, l: any) => s + (l.quantityBundles || 0), 0);
     const totalGross = lines.reduce((s: number, l: any) => s + (l.grossWeight || 0), 0);
     const totalNet = lines.reduce((s: number, l: any) => s + (l.netWeight || 0), 0);

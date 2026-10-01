@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
-import { reloadFromStorage } from "@/lib/dataService";
+import { reloadFromStorage, dataService } from "@/lib/dataService";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import { useParams, useNavigate } from "react-router";
 import {
@@ -30,19 +30,23 @@ export default function PurchaseOrderDetailPage() {
   const [selectedBarrelId, setSelectedBarrelId] = useState<number | null>(null);
   const [stockPickerFilter, setStockPickerFilter] = useState("");
 
-  // Cloud-first: force refetch data every 3s + on Firebase events
+  // Cloud-first: read data DIRECTLY from dataService (bypasses tRPC cache)
+  const [liveBarrels, setLiveBarrels] = useState<any[]>([]);
+  const [liveCOCs, setLiveCOCs] = useState<any[]>([]);
+  const [livePackingLines, setLivePackingLines] = useState<any[]>([]);
   useEffect(() => {
-    const refresh = () => {
-      utils.packingList.listByPurchaseOrder.refetch();
-      utils.coc.listByPurchaseOrder.refetch();
-      utils.barrel.listByPurchaseOrder.refetch();
-      utils.purchaseOrder.list.refetch();
-    };
+    function refresh() {
+      if (poId > 0) {
+        setLiveBarrels(dataService.barrel.listByPurchaseOrder(poId));
+        setLiveCOCs(dataService.coc.listByPurchaseOrder(poId));
+        setLivePackingLines(dataService.packingList.listByPurchaseOrder(poId));
+      }
+    }
     refresh();
     const interval = setInterval(refresh, 3000);
     window.addEventListener("firebaseDataReceived", refresh);
     return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
-  }, [utils]);
+  }, [poId]);
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -82,10 +86,11 @@ export default function PurchaseOrderDetailPage() {
   const { data: purchaseOrders, isLoading: poLoading } = trpc.purchaseOrder.list.useQuery();
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
-  const { data: barrels } = trpc.barrel.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
-  const { data: cocs } = trpc.coc.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
   const { data: allCocsList } = trpc.coc.list.useQuery();
-  const { data: packingLines } = trpc.packingList.listByPurchaseOrder.useQuery(poId, { enabled: !!poId });
+  // Use live state for real-time sync (bypasses tRPC cache)
+  const barrels = liveBarrels;
+  const cocs = liveCOCs;
+  const packingLines = livePackingLines;
 
   const updateStatus = trpc.purchaseOrder.updateStatus.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); },
@@ -126,16 +131,16 @@ export default function PurchaseOrderDetailPage() {
     },
   });
   const deleteBarrel = trpc.barrel.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.barrel.listByPurchaseOrder.invalidate(poId); },
+    onSuccess: async () => { reloadFromStorage(); setLiveBarrels(dataService.barrel.listByPurchaseOrder(poId)); },
   });
   const createCOC = trpc.coc.create.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.coc.listByPurchaseOrder.invalidate(poId); setShowCOCForm(false); },
+    onSuccess: async () => { reloadFromStorage(); setLiveCOCs(dataService.coc.listByPurchaseOrder(poId)); setShowCOCForm(false); },
   });
   const deleteCOC = trpc.coc.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.coc.listByPurchaseOrder.invalidate(poId); },
+    onSuccess: async () => { reloadFromStorage(); setLiveCOCs(dataService.coc.listByPurchaseOrder(poId)); },
   });
   const bulkGenerateCOCs = trpc.coc.bulkGenerateForPO.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.coc.listByPurchaseOrder.invalidate(poId); },
+    onSuccess: async () => { reloadFromStorage(); setLiveCOCs(dataService.coc.listByPurchaseOrder(poId)); },
   });
 
   const po = (purchaseOrders || []).find((p: any) => p.id === poId);

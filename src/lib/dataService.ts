@@ -4535,6 +4535,7 @@ export const dataService = {
       };
       certificatesOfCompliance.push(newItem);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      saveItem("sgf_cocs", certificatesOfCompliance);
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
@@ -4542,6 +4543,7 @@ export const dataService = {
       if (idx >= 0) {
         certificatesOfCompliance[idx] = { ...certificatesOfCompliance[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+        saveItem("sgf_cocs", certificatesOfCompliance);
         return certificatesOfCompliance[idx];
       }
       return null;
@@ -4549,6 +4551,7 @@ export const dataService = {
     delete: (id: number) => {
       certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id !== id);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      saveItem("sgf_cocs", certificatesOfCompliance);
       return { success: true };
     },
     /** Atomically delete all existing COCs for a PO and create new ones.
@@ -4584,8 +4587,9 @@ export const dataService = {
         created.push(newCOC);
       }
 
-      // 4. Save ONCE to localStorage — atomic write
+      // 4. Save ONCE to localStorage — atomic write (both keys)
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      saveItem("sgf_cocs", certificatesOfCompliance);
       return created;
     },
   },

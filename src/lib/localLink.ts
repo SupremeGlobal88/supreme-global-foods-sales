@@ -603,12 +603,17 @@ export function createLocalLink() {
                 // Step 4: Also read localStorage COCs for this PO and clear them
                 const localCOCs = dataService.coc.listByPurchaseOrder(poId);
                 for (const c of localCOCs) { dataService.coc.delete(c.id); }
+                // Step 4b: Clear the Firebase sync key too — otherwise the subscription
+                // will merge stale data with new data and create duplicates
+                setStorageItem("sgf_cocs", "[]");
                 // Step 5: Now create all new COCs in localStorage with fresh IDs
                 const { deleteOrphanIds } = input;
                 if (deleteOrphanIds && deleteOrphanIds.length > 0) {
                   for (const oid of deleteOrphanIds) { await removeCOC(oid); }
                 }
                 const created = dataService.coc.bulkGenerateForPO(poId, cocDataList, deleteOrphanIds || []);
+                // Step 5b: Also save to the Firebase sync key so subscription sees correct state
+                setStorageItem("sgf_cocs", JSON.stringify(created));
                 // Step 6: Push all new COCs to Firebase
                 for (const c of created) { await pushCOC(c); }
                 reloadFromStorage(["sgf_cocs"]);

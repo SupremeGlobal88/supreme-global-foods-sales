@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
@@ -46,6 +46,17 @@ export default function PackingListPage() {
   const deleteLine = trpc.packingList.delete.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.packingList.listByPurchaseOrder.invalidate(poId); },
   });
+
+  // Cloud-first: invalidate tRPC cache when Firebase pushes packing list updates from other users
+  useEffect(() => {
+    const handle = (e: any) => {
+      if (e.detail?.type === "packingListLines") {
+        utils.packingList.listByPurchaseOrder.invalidate(poId);
+      }
+    };
+    window.addEventListener("firebaseDataReceived", handle);
+    return () => window.removeEventListener("firebaseDataReceived", handle);
+  }, [poId, utils]);
 
   const po = (purchaseOrders || []).find((p: any) => p.id === poId);
 

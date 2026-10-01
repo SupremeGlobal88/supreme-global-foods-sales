@@ -30,6 +30,19 @@ export default function PurchaseOrderDetailPage() {
   const [selectedBarrelId, setSelectedBarrelId] = useState<number | null>(null);
   const [stockPickerFilter, setStockPickerFilter] = useState("");
 
+  // Cloud-first: invalidate tRPC cache when Firebase pushes data from other users
+  useEffect(() => {
+    const handle = (e: any) => {
+      const type = e.detail?.type;
+      if (type === "packingListLines") utils.packingList.listByPurchaseOrder.invalidate(poId);
+      if (type === "certificatesOfCompliance") utils.coc.listByPurchaseOrder.invalidate(poId);
+      if (type === "barrels") utils.barrel.listByPurchaseOrder.invalidate(poId);
+      if (type === "purchaseOrders") utils.purchaseOrder.list.invalidate();
+    };
+    window.addEventListener("firebaseDataReceived", handle);
+    return () => window.removeEventListener("firebaseDataReceived", handle);
+  }, [poId, utils]);
+
   // Edit form state
   const [editForm, setEditForm] = useState({
     poNumber: "", orderDate: "", dueDate: "", memoDate: "",

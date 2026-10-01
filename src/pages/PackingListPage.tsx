@@ -251,7 +251,7 @@ export default function PackingListPage() {
   }
 
   const poLines = po.lineItems || [];
-  const lines = packingListLines || [];
+  const lines = liveLines || [];
   const totalBundles = lines.reduce((s: number, l: any) => s + (l.quantityBundles || 0), 0);
   const cfg = getCompanyConfig(po.company);
 

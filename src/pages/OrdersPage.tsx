@@ -1158,6 +1158,7 @@ export default function OrdersPage() {
                               <>
                                 <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
                                 <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
+                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Mark this quote as accepted by customer?")) updateStatus.mutate({ id: order.id, status: "accepted" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><CheckCircle className="w-3 h-3" /> Accept</button>
                                 <button onClick={(e) => { e.stopPropagation(); if (confirm("Customer accepted the quote? Convert to order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
                               </>
                             )}
@@ -1257,6 +1258,9 @@ export default function OrdersPage() {
                               <button onClick={() => sendQuoteEmail(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email Quote</button>
                               {order.status === "draft" && (
                                 <button onClick={() => { if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Mark as Sent</button>
+                              )}
+                              {order.status === "sent" && (
+                                <button onClick={() => { if (confirm("Mark this quote as accepted by customer?")) updateStatus.mutate({ id: order.id, status: "accepted" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><CheckCircle className="w-3 h-3" /> Mark as Accepted</button>
                               )}
                               {(order.status === "sent" || order.status === "accepted") && (
                                 <button onClick={() => { if (confirm(`Convert this ${order.status === "sent" ? "sent" : "accepted"} quote to an order?`)) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>

@@ -124,8 +124,7 @@ export default function Dashboard() {
     const monthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
     const repSales = repNames.map((name: string) => {
       const repOrders = filteredOrders.filter((o: any) => {
-        const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer;
-        return cust?.salesRepName === name && o.orderType !== "sample";
+        return o.customer?.salesRepName === name && o.orderType !== "sample";
       });
       const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
       return { name, todaySales: 0, weekSales: 0, monthSales };
@@ -361,8 +360,7 @@ export default function Dashboard() {
                     {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
                       const repMonthSales = selectedMonth
                         ? (filteredOrders || []).filter((o: any) => {
-                            const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer;
-                            return cust?.salesRepName === rep.name && o.orderType !== "sample";
+                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample";
                           }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
                         : rep.totalSales;
                       return (
@@ -371,7 +369,7 @@ export default function Dashboard() {
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">{rep.customerCount}</td>
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">
                             {selectedMonth
-                              ? (filteredOrders || []).filter((o: any) => { const cust = (recentOrders || []).find((ro: any) => ro.id === o.customerId)?.customer; return cust?.salesRepName === rep.name && o.orderType !== "sample"; }).length
+                              ? (filteredOrders || []).filter((o: any) => o.customer?.salesRepName === rep.name && o.orderType !== "sample").length
                               : rep.orderCount}
                           </td>
                           <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>

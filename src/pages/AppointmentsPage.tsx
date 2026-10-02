@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { reloadFromStorage } from "@/lib/dataService";
@@ -56,6 +56,28 @@ export default function AppointmentsPage() {
   const [mapTarget, setMapTarget] = useState<MapTarget>(null);
   const [geoError, setGeoError] = useState("");
   const [checkinOutcome, setCheckinOutcome] = useState<"visit" | "order" | "sample">("visit");
+
+  // Customer type-ahead search state
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [editCustomerSearch, setEditCustomerSearch] = useState("");
+  const [showEditCustomerDropdown, setShowEditCustomerDropdown] = useState(false);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  const editCustomerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+      if (editCustomerDropdownRef.current && !editCustomerDropdownRef.current.contains(e.target as Node)) {
+        setShowEditCustomerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Check-out flow
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
@@ -163,6 +185,8 @@ export default function AppointmentsPage() {
   function resetForm() {
     setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10) + "T09:00", startTime: "09:00", location: "" });
     setNewCustomer({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale", paymentTerms: "cod" });
+    setCustomerSearch("");
+    setEditCustomerSearch("");
   }
 
   function handleAddNewCustomerAndSchedule() {
@@ -683,7 +707,7 @@ export default function AppointmentsPage() {
                           <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
                           {canManage(appt.salesRepName || "") && (
                             <>
-                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); const cust = (customers || []).find((c: any) => c.id === appt.customerId); setEditCustomerSearch(cust?.name || ""); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
                               <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                             </>
                           )}
@@ -718,7 +742,7 @@ export default function AppointmentsPage() {
                           <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
                           {canManage(appt.salesRepName || "") && (
                             <>
-                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); const cust = (customers || []).find((c: any) => c.id === appt.customerId); setEditCustomerSearch(cust?.name || ""); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
                               <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                             </>
                           )}
@@ -1225,12 +1249,43 @@ export default function AppointmentsPage() {
 
             {scheduleMode === "existing" ? (
               <form onSubmit={handleScheduleSubmit} className="space-y-4">
-                <div>
+                <div ref={customerDropdownRef} className="relative">
                   <label className="label-text block mb-1.5">Customer *</label>
-                  <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
-                    <option value={0}>Select customer...</option>
-                    {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={customerSearch}
+                      onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                      onFocus={() => setShowCustomerDropdown(true)}
+                      placeholder={formData.customerId > 0 ? (customers || []).find((c: any) => c.id === formData.customerId)?.name || "Search customer..." : "Type to search customer..."}
+                      className="input-field w-full pr-10"
+                      required={formData.customerId === 0}
+                    />
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
+                  </div>
+                  {showCustomerDropdown && (
+                    <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#2A2A2C] bg-[#1A1A1C] shadow-xl">
+                      {(customers || [])
+                        .filter((c: any) => !customerSearch || c.name?.toLowerCase().includes(customerSearch.toLowerCase()) || c.contactPerson?.toLowerCase().includes(customerSearch.toLowerCase()))
+                        .sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0)
+                        .map((c: any) => (
+                          <div
+                            key={c.id}
+                            onClick={() => { setFormData({ ...formData, customerId: c.id }); setCustomerSearch(c.name); setShowCustomerDropdown(false); }}
+                            className="px-4 py-2.5 cursor-pointer hover:bg-[#2A2A2C] transition-colors flex items-center justify-between"
+                          >
+                            <div>
+                              <div className="text-sm font-body text-[#E8E8E9]">{c.name}</div>
+                              {c.contactPerson && <div className="text-xs text-[#8A8B8C]">{c.contactPerson}</div>}
+                            </div>
+                            {formData.customerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
+                          </div>
+                        ))}
+                      {(customers || []).filter((c: any) => !customerSearch || c.name?.toLowerCase().includes(customerSearch.toLowerCase())).length === 0 && (
+                        <div className="px-4 py-3 text-sm text-[#8A8B8C]">No customers found</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / First visit" /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1304,12 +1359,43 @@ export default function AppointmentsPage() {
                 },
               });
             }} className="space-y-4">
-              <div>
+              <div ref={editCustomerDropdownRef} className="relative">
                 <label className="label-text block mb-1.5">Customer</label>
-                <select value={formData.customerId} onChange={(e) => setFormData({ ...formData, customerId: parseInt(e.target.value) })} className="input-field" required>
-                  <option value={0}>Select customer...</option>
-                  {(customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={editCustomerSearch}
+                    onChange={(e) => { setEditCustomerSearch(e.target.value); setShowEditCustomerDropdown(true); }}
+                    onFocus={() => setShowEditCustomerDropdown(true)}
+                    placeholder={formData.customerId > 0 ? (customers || []).find((c: any) => c.id === formData.customerId)?.name || "Search customer..." : "Type to search customer..."}
+                    className="input-field w-full pr-10"
+                    required={formData.customerId === 0}
+                  />
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
+                </div>
+                {showEditCustomerDropdown && (
+                  <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#2A2A2C] bg-[#1A1A1C] shadow-xl">
+                    {(customers || [])
+                      .filter((c: any) => !editCustomerSearch || c.name?.toLowerCase().includes(editCustomerSearch.toLowerCase()) || c.contactPerson?.toLowerCase().includes(editCustomerSearch.toLowerCase()))
+                      .sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0)
+                      .map((c: any) => (
+                        <div
+                          key={c.id}
+                          onClick={() => { setFormData({ ...formData, customerId: c.id }); setEditCustomerSearch(c.name); setShowEditCustomerDropdown(false); }}
+                          className="px-4 py-2.5 cursor-pointer hover:bg-[#2A2A2C] transition-colors flex items-center justify-between"
+                        >
+                          <div>
+                            <div className="text-sm font-body text-[#E8E8E9]">{c.name}</div>
+                            {c.contactPerson && <div className="text-xs text-[#8A8B8C]">{c.contactPerson}</div>}
+                          </div>
+                          {formData.customerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
+                        </div>
+                      ))}
+                    {(customers || []).filter((c: any) => !editCustomerSearch || c.name?.toLowerCase().includes(editCustomerSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-3 text-sm text-[#8A8B8C]">No customers found</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / Follow-up visit" /></div>
               <div className="grid grid-cols-2 gap-4">

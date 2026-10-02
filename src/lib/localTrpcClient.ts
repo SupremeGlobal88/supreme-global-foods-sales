@@ -91,6 +91,8 @@ export async function localTrpcCall(path: string, input?: any): Promise<any> {
       return localApi.appointments.list();
     case "appointment.create":
       return localApi.appointments.create(input);
+    case "appointment.update":
+      return localApi.appointments.update(input.id, input.data);
     case "appointment.updateStatus":
       return localApi.appointments.updateStatus(input.id, input.status);
 

@@ -6,25 +6,74 @@ import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
   Navigation, User, Filter, ExternalLink, LogIn, LogOut,
   AlertTriangle, Phone, Briefcase, Search, ChevronDown, ChevronUp,
-  Edit, Trash2,
+  Edit, Trash2, Bell, RotateCcw, Ban, StickyNote,
 } from "lucide-react";
 
 type MapTarget = { customerId: number; address: string } | null;
+
+// ─── Appointment Type & Title Constants ───
+const APPOINTMENT_TYPES = [
+  { value: "site_visit", label: "Site Visit" },
+  { value: "call", label: "Call the Customer" },
+  { value: "whatsapp", label: "WhatsApp the Customer" },
+  { value: "email", label: "Email the Customer" },
+  { value: "other", label: "Other" },
+];
+
+const EXISTING_CUSTOMER_TITLES = [
+  { value: "routine_checkin", label: "Routine Check-in / Visit" },
+  { value: "sample_followup", label: "Sample Trails / Sample Follow-up" },
+  { value: "payment_collection", label: "Payment Collections" },
+  { value: "complaints", label: "Complaints or Issues" },
+  { value: "collect_returned", label: "Collect Returned Stock" },
+  { value: "confirm_next_order", label: "Confirm Next Order" },
+  { value: "payment_terms", label: "Payment Terms" },
+];
+
+const NEW_CUSTOMER_TITLES = [
+  { value: "first_site_visit", label: "First Site Visit Scheduled" },
+  { value: "sample_trails", label: "Sample Trails Scheduled" },
+];
+
+const EXISTING_CUSTOMER_OUTCOMES = [
+  { value: "placed_order", label: "The customer placed a new order" },
+  { value: "pricing_too_high", label: "No order — our Pricing is too High" },
+  { value: "no_stock", label: "Could not place order — we don't have stock" },
+  { value: "not_available", label: "Customer was not available" },
+  { value: "schedule_next", label: "Schedule next appointment" },
+  { value: "other", label: "Other" },
+];
+
+const CURRENT_SUPPLIERS = [
+  { value: "EXIM", label: "EXIM" },
+  { value: "Crown National", label: "Crown National" },
+  { value: "Freddy Hirsch Group", label: "Freddy Hirsch Group" },
+  { value: "Deli Spice", label: "Deli Spice" },
+  { value: "Cooper Casings", label: "Cooper Casings" },
+];
+
+const NEW_CUSTOMER_ACTIONS = [
+  { value: "schedule_sample", label: "Schedule Sample Trails for Customer" },
+  { value: "send_portfolio", label: "Send Business Portfolio and Compliance" },
+  { value: "pricing_too_high", label: "Customer said our Pricing is too high" },
+  { value: "dont_change", label: "Customer said he does not want to change supplier" },
+  { value: "not_available", label: "Customer was not available" },
+  { value: "reschedule", label: "Reschedule meeting with customer" },
+  { value: "schedule_next", label: "Schedule next appointment" },
+  { value: "other", label: "Other" },
+];
 
 export default function AppointmentsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isManager = user?.role === "sales_manager";
   const myRepName = user?.name || "";
-  // Sales manager sees ALL reps' appointments/check-ins (view-only), like admin
   const canViewAll = isAdmin || isManager;
-  // Edit/delete only own appointments (admins can manage all)
   const canManage = (repName: string) => isAdmin || repName === myRepName;
   const utils = trpc.useUtils();
 
   // ===================== STATE =====================
 
-  // Tabs: visits (checkins), schedule (appointments), followups, geoAudit
   const [activeTab, setActiveTab] = useState<"visits" | "schedule" | "followups" | "geoAudit">("visits");
 
   // Geo Audit state
@@ -46,6 +95,8 @@ export default function AppointmentsPage() {
     customerId: 0, title: "", notes: "",
     appointmentDate: new Date().toISOString().slice(0, 16),
     startTime: "09:00", location: "",
+    appointmentType: "site_visit" as string,
+    customerType: "existing" as "existing" | "new",
   });
   const [newCustomer, setNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days" });
 
@@ -56,6 +107,9 @@ export default function AppointmentsPage() {
   const [mapTarget, setMapTarget] = useState<MapTarget>(null);
   const [geoError, setGeoError] = useState("");
   const [checkinOutcome, setCheckinOutcome] = useState<"visit" | "order" | "sample">("visit");
+  const [checkinAppointmentId, setCheckinAppointmentId] = useState<number | null>(null);
+  const [checkinAppointmentType, setCheckinAppointmentType] = useState("site_visit");
+  const [checkinTitle, setCheckinTitle] = useState("");
 
   // Customer type-ahead search state
   const [customerSearch, setCustomerSearch] = useState("");
@@ -64,6 +118,78 @@ export default function AppointmentsPage() {
   const [showEditCustomerDropdown, setShowEditCustomerDropdown] = useState(false);
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const editCustomerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Check-out flow
+  const [showCheckoutForm, setShowCheckoutForm] = useState(false);
+  const [checkoutCheckinId, setCheckoutCheckinId] = useState(0);
+  const [checkoutNotes, setCheckoutNotes] = useState("");
+  const [checkoutOutcome, setCheckoutOutcome] = useState("");
+  const [checkoutOutcomeNotes, setCheckoutOutcomeNotes] = useState("");
+  const [checkoutCurrentSupplier, setCheckoutCurrentSupplier] = useState("");
+  const [checkoutNewCustomerActions, setCheckoutNewCustomerActions] = useState<string[]>([]);
+  const [checkoutCustomerType, setCheckoutCustomerType] = useState<"existing" | "new">("existing");
+
+  const [filterRep, setFilterRep] = useState<string>("all");
+  const [expandedVisit, setExpandedVisit] = useState<number | null>(null);
+  const [expandedAppt, setExpandedAppt] = useState<number | null>(null);
+
+  // Customer search for check-in
+  const [checkinSearch, setCheckinSearch] = useState("");
+
+  // Follow-up action logging
+  const [showActionForm, setShowActionForm] = useState(false);
+  const [actionCustomerId, setActionCustomerId] = useState(0);
+  const [actionType, setActionType] = useState<"phone_call" | "site_visit" | "email" | "whatsapp" | "sms" | "other">("phone_call");
+  const [actionNotes, setActionNotes] = useState("");
+  const [expandedCustomerActions, setExpandedCustomerActions] = useState<number | null>(null);
+  const [actionScheduleFollowUp, setActionScheduleFollowUp] = useState(false);
+  const [actionFollowUpDate, setActionFollowUpDate] = useState("");
+
+  // ===================== DATA =====================
+
+  const { data: appointments } = trpc.appointment.list.useQuery();
+  const { data: checkins } = trpc.checkIn.list.useQuery();
+  const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
+  const { data: apptStats } = trpc.appointment.getStats.useQuery();
+  const { data: checkinStats } = trpc.checkIn.getStats.useQuery();
+  const { data: followUpCustomers } = trpc.customer.getCustomersNeedingFollowUp.useQuery({ days: 10 });
+  const { data: followUpActions } = trpc.followUpAction.list.useQuery();
+
+  // ===================== 30-MINUTE REMINDER EFFECT =====================
+  useEffect(() => {
+    if (!myRepName) return;
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const upcomingAppointments = (appointments || [])
+        .filter((a: any) => a.status === "scheduled" && a.salesRepName === myRepName && !a.reminderSent);
+      upcomingAppointments.forEach((appt: any) => {
+        const apptTime = new Date(appt.appointmentDate).getTime();
+        const diffMs = apptTime - now;
+        const diffMins = Math.round(diffMs / 60000);
+        if (diffMins <= 30 && diffMins > 0) {
+          const custName = appt.customer?.name || "Customer";
+          const apptType = APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Appointment";
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("Appointment Reminder", {
+              body: `${apptType} with ${custName} in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`,
+              icon: "/favicon.ico",
+            });
+          }
+          // Mark reminder as sent
+          const idx = appointments.findIndex((a: any) => a.id == appt.id);
+          if (idx >= 0) {
+            appointments[idx].reminderSent = true;
+            localStorage.setItem("sgf_appointments", JSON.stringify(appointments));
+          }
+        }
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [myRepName, appointments]);
 
   // Click outside to close dropdowns
   useEffect(() => {
@@ -79,39 +205,8 @@ export default function AppointmentsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Check-out flow
-  const [showCheckoutForm, setShowCheckoutForm] = useState(false);
-  const [checkoutCheckinId, setCheckoutCheckinId] = useState(0);
-  const [checkoutNotes, setCheckoutNotes] = useState("");
-
-  const [filterRep, setFilterRep] = useState<string>("all");
-  const [expandedVisit, setExpandedVisit] = useState<number | null>(null);
-  const [expandedAppt, setExpandedAppt] = useState<number | null>(null);
-
-  // Customer search for check-in
-  const [checkinSearch, setCheckinSearch] = useState("");
-
-  // Follow-up action logging
-  const [showActionForm, setShowActionForm] = useState(false);
-  const [actionCustomerId, setActionCustomerId] = useState(0);
-  const [actionType, setActionType] = useState<"phone_call" | "site_visit" | "email" | "whatsapp" | "sms" | "other">("phone_call");
-  const [actionNotes, setActionNotes] = useState("");
-  const [expandedCustomerActions, setExpandedCustomerActions] = useState<number | null>(null);
-
-  // ===================== DATA =====================
-
-  const { data: appointments } = trpc.appointment.list.useQuery();
-  const { data: checkins } = trpc.checkIn.list.useQuery();
-  const { data: customers } = trpc.customer.search.useQuery({ query: " " });
-  const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
-  const { data: apptStats } = trpc.appointment.getStats.useQuery();
-  const { data: checkinStats } = trpc.checkIn.getStats.useQuery();
-  const { data: followUpCustomers } = trpc.customer.getCustomersNeedingFollowUp.useQuery({ days: 10 });
-  const { data: followUpActions } = trpc.followUpAction.list.useQuery();
-
   // ===================== MUTATIONS =====================
 
-  // Create new customer from appointments page
   const createCustomer = trpc.customer.create.useMutation({
     onSuccess: async (res: any) => {
       reloadFromStorage();
@@ -163,6 +258,7 @@ export default function AppointmentsPage() {
       reloadFromStorage();
       await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
       setMapTarget(null); setGeoError(""); setShowCheckinForm(false); setCheckinCustomerId(0); setCheckinNotes("");
+      setCheckinAppointmentId(null); setCheckinAppointmentType("site_visit"); setCheckinTitle("");
     },
   });
   const checkoutMutation = trpc.checkIn.checkout.useMutation({
@@ -170,6 +266,8 @@ export default function AppointmentsPage() {
       reloadFromStorage();
       await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
       setShowCheckoutForm(false); setCheckoutCheckinId(0); setCheckoutNotes("");
+      setCheckoutOutcome(""); setCheckoutOutcomeNotes(""); setCheckoutCurrentSupplier("");
+      setCheckoutNewCustomerActions([]);
     },
   });
   const createFollowUpAction = trpc.followUpAction.create.useMutation({
@@ -177,13 +275,21 @@ export default function AppointmentsPage() {
       reloadFromStorage();
       await utils.followUpAction.list.invalidate();
       setShowActionForm(false); setActionCustomerId(0); setActionNotes(""); setActionType("phone_call");
+      setActionScheduleFollowUp(false); setActionFollowUpDate("");
+    },
+  });
+  const updateAppointmentStatus = trpc.appointment.updateStatus.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.appointment.list.invalidate();
+      await utils.appointment.getStats.invalidate();
     },
   });
 
   // ===================== HELPERS =====================
 
   function resetForm() {
-    setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10) + "T09:00", startTime: "09:00", location: "" });
+    setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10) + "T09:00", startTime: "09:00", location: "", appointmentType: "site_visit", customerType: "existing" });
     setNewCustomer({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale", paymentTerms: "cod" });
     setCustomerSearch("");
     setEditCustomerSearch("");
@@ -191,7 +297,6 @@ export default function AppointmentsPage() {
 
   function handleAddNewCustomerAndSchedule() {
     if (!newCustomer.name.trim()) { alert("Enter customer name"); return; }
-    // Actually create the customer in the main database
     createCustomer.mutate({
       name: newCustomer.name.trim(),
       businessName: newCustomer.name.trim(),
@@ -221,10 +326,54 @@ export default function AppointmentsPage() {
     ? (filterRep === "all" ? (followUpCustomers || []) : (followUpCustomers || []).filter((c: any) => c.salesRepName === filterRep))
     : (followUpCustomers || []).filter((c: any) => c.salesRepName === myRepName);
 
+  // ===================== APPOINTMENT ACTIONS =====================
+
+  function cancelAppointment(apptId: number) {
+    if (!confirm("Cancel this appointment?")) return;
+    updateAppointmentStatus.mutate({ id: apptId, status: "cancelled" });
+  }
+
+  function rescheduleAppointment(appt: any) {
+    setEditingAppointment(appt);
+    setFormData({
+      customerId: appt.customerId || 0,
+      title: appt.title || "",
+      notes: appt.notes || "",
+      appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16),
+      startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00",
+      location: appt.location || "",
+      appointmentType: appt.appointmentType || "site_visit",
+      customerType: appt.customerType || "existing",
+    });
+    const cust = (customers || []).find((c: any) => c.id === appt.customerId);
+    setEditCustomerSearch(cust?.name || "");
+    setShowEditForm(true);
+  }
+
+  function openCheckinForAppointment(appt: any) {
+    setCheckinAppointmentId(appt.id);
+    setCheckinAppointmentType(appt.appointmentType || "site_visit");
+    setCheckinTitle(appt.title || "");
+    setCheckinCustomerId(appt.customerId || 0);
+    setCheckinNotes("");
+    setShowCheckinForm(true);
+  }
+
+  function openCheckoutFormForAppointment(checkinId: number, customerType: "existing" | "new" = "existing") {
+    setShowCheckoutForm(true);
+    setCheckoutCheckinId(checkinId);
+    setCheckoutNotes("");
+    setCheckoutOutcome("");
+    setCheckoutOutcomeNotes("");
+    setCheckoutCurrentSupplier("");
+    setCheckoutNewCustomerActions([]);
+    setCheckoutCustomerType(customerType);
+  }
+
   // ===================== GEO AUDIT CLUSTERING =====================
 
   type GeoCluster = {
-    key: string; // "rep|lat|lng"
+    key: string;
     repName: string;
     roundedLat: number;
     roundedLng: number;
@@ -239,7 +388,6 @@ export default function AppointmentsPage() {
     const monthStart = new Date(y, m - 1, 1);
     const monthEnd = new Date(y, m, 1);
 
-    // Filter by month and rep (admin only; sales reps see their own)
     let filtered = allCheckins.filter((ci: any) => {
       const d = new Date(ci.createdAt || 0);
       return d >= monthStart && d < monthEnd;
@@ -251,16 +399,13 @@ export default function AppointmentsPage() {
       filtered = filtered.filter((ci: any) => ci.salesRepName === geoAuditRepFilter);
     }
 
-    // Round to 3 decimal places ≈ 100m precision
     const round3 = (n: number) => Math.round((n || 0) * 1000) / 1000;
-
     const clusters = new Map<string, GeoCluster>();
 
     filtered.forEach((ci: any) => {
       const rep = ci.salesRepName || "Unknown";
       const lat = round3(ci.latitude);
       const lng = round3(ci.longitude);
-      // Skip check-ins without GPS
       if (!lat && !lng) return;
       const key = `${rep}|${lat}|${lng}`;
       const cName = ci.customer?.name || ci.location || "Unknown";
@@ -281,13 +426,11 @@ export default function AppointmentsPage() {
       cluster.uniqueCustomers.add(cName);
     });
 
-    // Flag clusters where same rep at same GPS visited 2+ different customer names
     const result = Array.from(clusters.values()).map((c) => ({
       ...c,
       isFlagged: c.uniqueCustomers.size >= 2,
     }));
 
-    // Sort: flagged first, then by rep name, then by visit count desc
     result.sort((a, b) => {
       if (a.isFlagged !== b.isFlagged) return a.isFlagged ? -1 : 1;
       if (a.repName !== b.repName) return a.repName.localeCompare(b.repName);
@@ -297,7 +440,6 @@ export default function AppointmentsPage() {
     return result;
   }, [checkins, geoAuditMonth, geoAuditRepFilter, canViewAll, myRepName]);
 
-  // Flatten flagged visits for table display (flagged clusters only, or all visits)
   const geoAuditRows = useMemo(() => {
     const rows: any[] = [];
     geoAuditClusters.forEach((cluster) => {
@@ -313,7 +455,6 @@ export default function AppointmentsPage() {
         });
       });
     });
-    // Sort by date desc
     rows.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     return rows;
   }, [geoAuditClusters, geoAuditFlagOnly]);
@@ -328,6 +469,9 @@ export default function AppointmentsPage() {
     setMapTarget(null);
     setGeoError("");
     setCheckinOutcome("visit");
+    setCheckinAppointmentId(null);
+    setCheckinAppointmentType("site_visit");
+    setCheckinTitle("");
   }
 
   function submitCheckinForm() {
@@ -338,17 +482,24 @@ export default function AppointmentsPage() {
     setGeoError("");
     setMapTarget(null);
 
+    const checkinData: any = {
+      customerId: checkinCustomerId,
+      notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || customer.physicalAddress || ""}`,
+      salesRepName: myRepName,
+      location: customer.physicalAddress || customer.name,
+      outcome: checkinOutcome,
+      appointmentId: checkinAppointmentId || undefined,
+      appointmentType: checkinAppointmentType,
+      title: checkinTitle,
+    };
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           createCheckin.mutate({
-            customerId: checkinCustomerId,
+            ...checkinData,
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || customer.physicalAddress || ""}`,
-            salesRepName: myRepName,
-            location: customer.physicalAddress || customer.name,
-            outcome: checkinOutcome,
           });
         },
         () => {
@@ -378,20 +529,38 @@ export default function AppointmentsPage() {
       salesRepName: myRepName,
       location: customer?.physicalAddress || mapTarget.address,
       outcome: checkinOutcome,
+      appointmentId: checkinAppointmentId || undefined,
+      appointmentType: checkinAppointmentType,
+      title: checkinTitle,
     });
   }
 
   // ===================== CHECK-OUT FLOW =====================
 
   function openCheckoutForm(checkinId: number) {
+    const ci = (checkins || []).find((c: any) => c.id === checkinId);
+    const linkedAppt = ci?.appointmentId ? (appointments || []).find((a: any) => a.id == ci.appointmentId) : null;
     setShowCheckoutForm(true);
     setCheckoutCheckinId(checkinId);
     setCheckoutNotes("");
+    setCheckoutOutcome(linkedAppt?.outcome || "");
+    setCheckoutOutcomeNotes(linkedAppt?.outcomeNotes || "");
+    setCheckoutCurrentSupplier(linkedAppt?.currentSupplier || "");
+    setCheckoutNewCustomerActions(linkedAppt?.newCustomerActions || []);
+    setCheckoutCustomerType(linkedAppt?.customerType || "existing");
   }
 
   function submitCheckout() {
     if (checkoutCheckinId === 0) return;
-    checkoutMutation.mutate({ id: checkoutCheckinId, notes: checkoutNotes });
+    checkoutMutation.mutate({
+      id: checkoutCheckinId,
+      notes: checkoutNotes,
+      outcome: checkoutOutcome,
+      outcomeNotes: checkoutOutcomeNotes,
+      currentSupplier: checkoutCurrentSupplier,
+      newCustomerActions: checkoutNewCustomerActions,
+      customerType: checkoutCustomerType,
+    });
   }
 
   function openActionForm(customerId: number) {
@@ -399,6 +568,8 @@ export default function AppointmentsPage() {
     setActionType("phone_call");
     setActionNotes("");
     setShowActionForm(true);
+    setActionScheduleFollowUp(false);
+    setActionFollowUpDate("");
   }
 
   function submitActionForm() {
@@ -409,6 +580,17 @@ export default function AppointmentsPage() {
       notes: actionNotes,
       salesRepName: myRepName,
     });
+    if (actionScheduleFollowUp && actionFollowUpDate) {
+      createAppointment.mutate({
+        customerId: actionCustomerId,
+        title: `Follow-up: ${actionType.replace("_", " ")}`,
+        notes: actionNotes,
+        appointmentDate: actionFollowUpDate,
+        salesRepName: myRepName,
+        appointmentType: actionType === "site_visit" ? "site_visit" : actionType === "phone_call" ? "call" : actionType === "whatsapp" ? "whatsapp" : actionType === "email" ? "email" : "other",
+        customerType: "existing",
+      });
+    }
   }
 
   // ===================== SCHEDULE APPOINTMENT =====================
@@ -429,6 +611,7 @@ export default function AppointmentsPage() {
   const upcoming = myAppointments.filter((a: any) => a.status === "scheduled");
   const inProgress = myAppointments.filter((a: any) => a.status === "in_progress");
   const completed = myAppointments.filter((a: any) => a.status === "completed");
+  const cancelledOrRescheduled = myAppointments.filter((a: any) => a.status === "cancelled" || a.status === "rescheduled");
 
   // Check-in groups
   const activeCheckins = myCheckins.filter((ci: any) => ci.status === "checked_in");
@@ -571,6 +754,12 @@ export default function AppointmentsPage() {
                         <div className="text-sm text-[#E8E8E9] font-body mb-1">
                           {ci.customer?.name || (ci.notes?.includes("Customer:") ? ci.notes.split("\n").find((l: string) => l.startsWith("Customer:"))?.replace("Customer: ", "") : "Unknown Customer")}
                         </div>
+                        {ci.appointmentType && (
+                          <div className="text-xs text-[#D4A843] mb-1">
+                            {APPOINTMENT_TYPES.find((t) => t.value === ci.appointmentType)?.label || ci.appointmentType}
+                            {ci.title && ` · ${ci.title}`}
+                          </div>
+                        )}
                         {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
                       </div>
                       <div className="text-right">
@@ -628,6 +817,12 @@ export default function AppointmentsPage() {
                         <div className="text-sm text-[#E8E8E9] font-body mb-1">
                           {ci.customer?.name || (ci.notes?.includes("Customer:") ? ci.notes.split("\n").find((l: string) => l.startsWith("Customer:"))?.replace("Customer: ", "") : "Unknown Customer")}
                         </div>
+                        {ci.appointmentType && (
+                          <div className="text-xs text-[#D4A843] mb-1">
+                            {APPOINTMENT_TYPES.find((t) => t.value === ci.appointmentType)?.label || ci.appointmentType}
+                            {ci.title && ` · ${ci.title}`}
+                          </div>
+                        )}
                         {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
                       </div>
                       <div className="text-right flex flex-col items-end gap-1">
@@ -655,6 +850,32 @@ export default function AppointmentsPage() {
                             <span className="text-xs text-[#8A8B8C]">
                               ({new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} - {new Date(ci.checkedOutAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })})
                             </span>
+                          </div>
+                        )}
+                        {ci.outcome && (
+                          <div className="text-xs">
+                            <span className="label-text">Outcome:</span>{" "}
+                            <span className="px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
+                              {EXISTING_CUSTOMER_OUTCOMES.find((o) => o.value === ci.outcome)?.label || ci.outcome}
+                            </span>
+                          </div>
+                        )}
+                        {ci.currentSupplier && (
+                          <div className="text-xs text-[#8A8B8C]">Current Supplier: <span className="text-[#E8E8E9]">{ci.currentSupplier}</span></div>
+                        )}
+                        {ci.newCustomerActions && ci.newCustomerActions.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {ci.newCustomerActions.map((a: string) => (
+                              <span key={a} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
+                                {NEW_CUSTOMER_ACTIONS.find((act) => act.value === a)?.label || a}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {ci.outcomeNotes && (
+                          <div className="p-2 rounded-lg" style={{ backgroundColor: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
+                            <p className="text-xs text-[#EF4444] font-body font-medium mb-0.5">Outcome notes:</p>
+                            <p className="text-xs text-[#E8E8E9] font-body">{ci.outcomeNotes}</p>
                           </div>
                         )}
                         {ci.latitude && ci.longitude && (
@@ -685,37 +906,41 @@ export default function AppointmentsPage() {
         <div className="space-y-6">
           <div>
             <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#D4A843]" /> Scheduled Appointments ({myAppointments.length})
+              <Calendar className="w-5 h-5 text-[#D4A843]" /> Scheduled Appointments
             </h2>
 
+            {/* IN PROGRESS */}
             {inProgress.length > 0 && (
-              <div className="mb-4">
-                <h3 className="label-text mb-2" style={{ color: "#6366F1" }}>IN PROGRESS</h3>
+              <div className="mb-6">
+                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#6366F1" }}>
+                  <LogIn className="w-4 h-4" /> IN PROGRESS ({inProgress.length})
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {inProgress.map((appt: any) => (
                     <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #6366F1" }}>
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <User className="w-3 h-3 text-[#D4A843]" />
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#6366F1" }}>
+                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
+                            </span>
                             <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
                           </div>
                           <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
+                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
-                          {canManage(appt.salesRepName || "") && (
-                            <>
-                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); const cust = (customers || []).find((c: any) => c.id === appt.customerId); setEditCustomerSearch(cust?.name || ""); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
-                              <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                            </>
-                          )}
-                        </div>
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C] mb-3">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
                         {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                      </div>
+                      <div className="flex gap-2">
+                        {canManage(appt.salesRepName || "") && (
+                          <button onClick={() => openCheckinForAppointment(appt)} className="btn-primary flex-1 justify-center text-xs" style={{ backgroundColor: "#6366F1", borderColor: "#6366F1" }}>
+                            <LogIn className="w-3 h-3" /> Complete Check-in
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -723,30 +948,113 @@ export default function AppointmentsPage() {
               </div>
             )}
 
+            {/* UPCOMING */}
             {upcoming.length > 0 && (
-              <div className="mb-4">
-                <h3 className="label-text mb-2" style={{ color: "#F59E0B" }}>UPCOMING</h3>
+              <div className="mb-6">
+                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#F59E0B" }}>
+                  <Bell className="w-4 h-4" /> UPCOMING ({upcoming.length})
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {upcoming.map((appt: any) => (
                     <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <User className="w-3 h-3 text-[#D4A843]" />
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>
+                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
+                            </span>
                             <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
                           </div>
                           <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || appt.notes?.split("\n")[0]?.replace("Customer: ", "") || "No customer"}</p>
+                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
-                          {canManage(appt.salesRepName || "") && (
-                            <>
-                              <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "" }); const cust = (customers || []).find((c: any) => c.id === appt.customerId); setEditCustomerSearch(cust?.name || ""); setShowEditForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
-                              <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                            </>
-                          )}
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C] mb-3">
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                        {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        {canManage(appt.salesRepName || "") && (
+                          <>
+                            <button onClick={() => openCheckinForAppointment(appt)} className="btn-primary flex-1 justify-center text-xs" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}>
+                              <LogIn className="w-3 h-3" /> Check In
+                            </button>
+                            <button onClick={() => cancelAppointment(appt.id)} className="btn-secondary text-xs" style={{ color: "#EF4444" }}>
+                              <Ban className="w-3 h-3" /> Cancel
+                            </button>
+                            <button onClick={() => rescheduleAppointment(appt)} className="btn-secondary text-xs">
+                              <RotateCcw className="w-3 h-3" /> Reschedule
+                            </button>
+                            <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "", appointmentType: appt.appointmentType || "site_visit", customerType: appt.customerType || "existing" }); const cust = (customers || []).find((c: any) => c.id === appt.customerId); setEditCustomerSearch(cust?.name || ""); setShowEditForm(true); }} className="btn-secondary text-xs" title="Edit"><Edit className="w-3 h-3" /></button>
+                            <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="btn-secondary text-xs" style={{ color: "#EF4444" }} title="Delete"><Trash2 className="w-3 h-3" /></button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* COMPLETED */}
+            {completed.length > 0 && (
+              <div className="mb-6">
+                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#4ADE80" }}>
+                  <CheckCircle className="w-4 h-4" /> COMPLETED ({completed.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {completed.map((appt: any) => (
+                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #4ADE80", opacity: 0.85 }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(74,222,128,0.15)", color: "#4ADE80" }}>
+                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
+                            </span>
+                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                          </div>
+                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
                         </div>
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Completed</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
+                        {appt.durationMinutes && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{appt.durationMinutes} min</span>}
+                        {appt.outcome && (
+                          <span className="px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
+                            {EXISTING_CUSTOMER_OUTCOMES.find((o) => o.value === appt.outcome)?.label || appt.outcome}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* CANCELLED / RESCHEDULED */}
+            {cancelledOrRescheduled.length > 0 && (
+              <div className="mb-6">
+                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#8A8B8C" }}>
+                  <Ban className="w-4 h-4" /> CANCELLED / RESCHEDULED ({cancelledOrRescheduled.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {cancelledOrRescheduled.map((appt: any) => (
+                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #8A8B8C", opacity: 0.7 }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(138,139,140,0.15)", color: "#8A8B8C" }}>
+                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
+                            </span>
+                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
+                          </div>
+                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
+                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
+                        </div>
+                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(138, 139, 140, 0.12)", color: "#8A8B8C" }}>{appt.status === "cancelled" ? "Cancelled" : "Rescheduled"}</span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
@@ -816,7 +1124,6 @@ export default function AppointmentsPage() {
                             <span className="text-[#8A8B8C]">{c.totalOrders} total orders</span>
                           </div>
 
-                          {/* Previous actions */}
                           {customerActions.length > 0 && isExpanded && (
                             <div className="mt-3 space-y-2 pt-3" style={{ borderTop: "1px solid #222324" }}>
                               <p className="text-xs font-body font-medium text-[#8A8B8C] mb-2">Previous Actions:</p>
@@ -965,9 +1272,7 @@ export default function AppointmentsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Group by cluster for flagged items, flat list for all */}
               {geoAuditFlagOnly ? (
-                // Flagged clusters: grouped view
                 geoAuditClusters.filter((c) => c.isFlagged).map((cluster) => (
                   <div key={cluster.key} className="card-surface p-4" style={{ borderLeft: "3px solid #EF4444" }}>
                     <div className="flex items-start justify-between mb-3">
@@ -1021,7 +1326,6 @@ export default function AppointmentsPage() {
                   </div>
                 ))
               ) : (
-                // All visits: flat table
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -1030,8 +1334,10 @@ export default function AppointmentsPage() {
                         <th className="pb-3 pr-4 label-text">Sales Rep</th>
                         <th className="pb-3 pr-4 label-text">Customer</th>
                         <th className="pb-3 pr-4 label-text">Date & Time</th>
+                        <th className="pb-3 pr-4 label-text">Type</th>
                         <th className="pb-3 pr-4 label-text">GPS Location</th>
                         <th className="pb-3 pr-4 label-text">Outcome</th>
+                        <th className="pb-3 pr-4 label-text">Duration</th>
                         <th className="pb-3 label-text text-right">Map</th>
                       </tr>
                     </thead>
@@ -1061,6 +1367,11 @@ export default function AppointmentsPage() {
                           <td className="py-3 pr-4 text-[#8A8B8C]">
                             {new Date(row.createdAt).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                           </td>
+                          <td className="py-3 pr-4">
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
+                              {APPOINTMENT_TYPES.find((t) => t.value === row.appointmentType)?.label || row.appointmentType || "visit"}
+                            </span>
+                          </td>
                           <td className="py-3 pr-4 text-[#8A8B8C] font-mono-data">
                             {row.latitude != null && row.longitude != null ? (
                               <span>{row.latitude.toFixed(6)}, {row.longitude.toFixed(6)}</span>
@@ -1069,9 +1380,12 @@ export default function AppointmentsPage() {
                             )}
                           </td>
                           <td className="py-3 pr-4">
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
-                              {row.outcome || "visit"}
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
+                              {row.outcome || "—"}
                             </span>
+                          </td>
+                          <td className="py-3 pr-4 text-[#8A8B8C]">
+                            {row.durationMinutes ? `${row.durationMinutes}m` : "—"}
                           </td>
                           <td className="py-3 text-right">
                             {row.latitude != null && row.longitude != null ? (
@@ -1106,11 +1420,19 @@ export default function AppointmentsPage() {
           <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><LogIn className="w-5 h-5 text-[#4ADE80]" /> Check In</h2>
-              <button onClick={() => { setShowCheckinForm(false); setMapTarget(null); setGeoError(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => { setShowCheckinForm(false); setMapTarget(null); setGeoError(""); setCheckinAppointmentId(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
 
             {!mapTarget ? (
               <div className="space-y-4">
+                {checkinAppointmentId && (
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.2)" }}>
+                    <p className="text-xs text-[#D4A843] font-medium">Linked Appointment</p>
+                    <p className="text-sm text-white font-body">{checkinTitle}</p>
+                    <p className="text-xs text-[#8A8B8C]">{APPOINTMENT_TYPES.find((t) => t.value === checkinAppointmentType)?.label || checkinAppointmentType}</p>
+                  </div>
+                )}
+
                 {/* Customer search */}
                 <div>
                   <label className="label-text block mb-1.5">Search Customer *</label>
@@ -1146,6 +1468,20 @@ export default function AppointmentsPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Appointment type */}
+                <div>
+                  <label className="label-text block mb-1.5">Appointment Type</label>
+                  <select
+                    value={checkinAppointmentType}
+                    onChange={(e) => setCheckinAppointmentType(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    {APPOINTMENT_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Visit outcome */}
@@ -1207,17 +1543,97 @@ export default function AppointmentsPage() {
       {/* Check-Out Form Modal */}
       {showCheckoutForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><LogOut className="w-5 h-5 text-[#EF4444]" /> Check Out</h2>
               <button onClick={() => setShowCheckoutForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <div className="space-y-4">
-              <p className="text-sm text-[#8A8B8C] font-body">End your visit and record any notes about the appointment.</p>
+              {/* Customer type toggle */}
+              <div>
+                <label className="label-text block mb-1.5">Customer Type</label>
+                <div className="flex p-1 rounded-full" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
+                  <button
+                    onClick={() => setCheckoutCustomerType("existing")}
+                    className="flex-1 py-2 rounded-full text-xs font-body font-medium cursor-pointer"
+                    style={{ backgroundColor: checkoutCustomerType === "existing" ? "#D4A843" : "transparent", color: checkoutCustomerType === "existing" ? "#0A0A0B" : "#8A8B8C" }}
+                  >Existing Customer</button>
+                  <button
+                    onClick={() => setCheckoutCustomerType("new")}
+                    className="flex-1 py-2 rounded-full text-xs font-body font-medium cursor-pointer"
+                    style={{ backgroundColor: checkoutCustomerType === "new" ? "#D4A843" : "transparent", color: checkoutCustomerType === "new" ? "#0A0A0B" : "#8A8B8C" }}
+                  >New Customer</button>
+                </div>
+              </div>
+
+              {checkoutCustomerType === "existing" ? (
+                <>
+                  <div>
+                    <label className="label-text block mb-1.5">Visit Outcome *</label>
+                    <select
+                      value={checkoutOutcome}
+                      onChange={(e) => setCheckoutOutcome(e.target.value)}
+                      className="input-field w-full"
+                      required
+                    >
+                      <option value="">Select outcome...</option>
+                      {EXISTING_CUSTOMER_OUTCOMES.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="label-text block mb-1.5">Current Supplier *</label>
+                    <select
+                      value={checkoutCurrentSupplier}
+                      onChange={(e) => setCheckoutCurrentSupplier(e.target.value)}
+                      className="input-field w-full"
+                      required
+                    >
+                      <option value="">Select supplier...</option>
+                      {CURRENT_SUPPLIERS.map((s) => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label-text block mb-1.5">Action Items</label>
+                    <div className="space-y-2">
+                      {NEW_CUSTOMER_ACTIONS.map((a) => (
+                        <label key={a.value} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checkoutNewCustomerActions.includes(a.value)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCheckoutNewCustomerActions([...checkoutNewCustomerActions, a.value]);
+                              } else {
+                                setCheckoutNewCustomerActions(checkoutNewCustomerActions.filter((x) => x !== a.value));
+                              }
+                            }}
+                            className="w-4 h-4 accent-[#D4A843]"
+                          />
+                          <span className="text-xs text-[#E8E8E9] font-body">{a.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="label-text block mb-1.5">Outcome Notes</label>
+                <textarea value={checkoutOutcomeNotes} onChange={(e) => setCheckoutOutcomeNotes(e.target.value)} className="input-field" rows={2} placeholder="Additional details about the outcome..." />
+              </div>
+
               <div>
                 <label className="label-text block mb-1.5">Visit Notes</label>
-                <textarea value={checkoutNotes} onChange={(e) => setCheckoutNotes(e.target.value)} className="input-field" rows={3} placeholder="e.g. Took sample order, discussed pricing, follow-up in 2 weeks..." />
+                <textarea value={checkoutNotes} onChange={(e) => setCheckoutNotes(e.target.value)} className="input-field" rows={2} placeholder="General notes about the visit..." />
               </div>
+
               <button onClick={submitCheckout} className="btn-primary w-full justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}><LogOut className="w-4 h-4" /> Check Out Now</button>
             </div>
           </div>
@@ -1236,12 +1652,12 @@ export default function AppointmentsPage() {
             {/* Toggle: Existing vs New Customer */}
             <div className="flex p-1 rounded-full mb-5" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
               <button
-                onClick={() => setScheduleMode("existing")}
+                onClick={() => { setScheduleMode("existing"); setFormData({ ...formData, customerType: "existing" }); }}
                 className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer"
                 style={{ backgroundColor: scheduleMode === "existing" ? "#D4A843" : "transparent", color: scheduleMode === "existing" ? "#0A0A0B" : "#8A8B8C" }}
               >Existing Customer</button>
               <button
-                onClick={() => setScheduleMode("new")}
+                onClick={() => { setScheduleMode("new"); setFormData({ ...formData, customerType: "new" }); }}
                 className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer"
                 style={{ backgroundColor: scheduleMode === "new" ? "#D4A843" : "transparent", color: scheduleMode === "new" ? "#0A0A0B" : "#8A8B8C" }}
               >New Customer</button>
@@ -1287,7 +1703,38 @@ export default function AppointmentsPage() {
                     </div>
                   )}
                 </div>
-                <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / First visit" /></div>
+
+                {/* Appointment Type */}
+                <div>
+                  <label className="label-text block mb-1.5">Appointment Type *</label>
+                  <select
+                    value={formData.appointmentType}
+                    onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value })}
+                    className="input-field w-full"
+                    required
+                  >
+                    {APPOINTMENT_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="label-text block mb-1.5">Title *</label>
+                  <select
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className="input-field w-full"
+                    required
+                  >
+                    <option value="">Select title...</option>
+                    {EXISTING_CUSTOMER_TITLES.map((t) => (
+                      <option key={t.value} value={t.label}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
                   <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
@@ -1321,7 +1768,38 @@ export default function AppointmentsPage() {
                     </select>
                   </div>
                 </div>
-                <div><label className="label-text block mb-1.5">Appointment Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" placeholder="e.g. First visit / Product demo" /></div>
+
+                {/* Appointment Type */}
+                <div>
+                  <label className="label-text block mb-1.5">Appointment Type *</label>
+                  <select
+                    value={formData.appointmentType}
+                    onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value })}
+                    className="input-field w-full"
+                    required
+                  >
+                    {APPOINTMENT_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="label-text block mb-1.5">Title *</label>
+                  <select
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className="input-field w-full"
+                    required
+                  >
+                    <option value="">Select title...</option>
+                    {NEW_CUSTOMER_TITLES.map((t) => (
+                      <option key={t.value} value={t.label}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
                   <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
@@ -1342,7 +1820,7 @@ export default function AppointmentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><Edit className="w-5 h-5 text-[#D4A843]" /> Edit Appointment</h2>
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><Edit className="w-5 h-5 text-[#D4A843]" /> {editingAppointment.status === "rescheduled" ? "Reschedule" : "Edit"} Appointment</h2>
               <button onClick={() => { setShowEditForm(false); setEditingAppointment(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <form onSubmit={(e) => {
@@ -1356,6 +1834,9 @@ export default function AppointmentsPage() {
                   appointmentDate: formData.appointmentDate,
                   location: formData.location,
                   customerId: formData.customerId,
+                  appointmentType: formData.appointmentType,
+                  customerType: formData.customerType,
+                  status: editingAppointment.status === "cancelled" ? "scheduled" : editingAppointment.status === "rescheduled" ? "scheduled" : editingAppointment.status,
                 },
               });
             }} className="space-y-4">
@@ -1397,7 +1878,38 @@ export default function AppointmentsPage() {
                   </div>
                 )}
               </div>
-              <div><label className="label-text block mb-1.5">Title *</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="input-field" required placeholder="e.g. Product demo / Follow-up visit" /></div>
+
+              {/* Appointment Type */}
+              <div>
+                <label className="label-text block mb-1.5">Appointment Type *</label>
+                <select
+                  value={formData.appointmentType}
+                  onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value })}
+                  className="input-field w-full"
+                  required
+                >
+                  {APPOINTMENT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="label-text block mb-1.5">Title *</label>
+                <select
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="input-field w-full"
+                  required
+                >
+                  <option value="">Select title...</option>
+                  {(formData.customerType === "new" ? NEW_CUSTOMER_TITLES : EXISTING_CUSTOMER_TITLES).map((t) => (
+                    <option key={t.value} value={t.label}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
                 <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
@@ -1407,7 +1919,7 @@ export default function AppointmentsPage() {
               <div className="flex gap-3">
                 <button type="button" onClick={() => { if (confirm("Delete this appointment?")) { deleteAppointment.mutate(editingAppointment.id); setShowEditForm(false); setEditingAppointment(null); } }} className="btn-secondary flex items-center gap-2" style={{ color: "#EF4444", borderColor: "#EF4444" }}><Trash2 className="w-4 h-4" /> Delete</button>
                 <button type="submit" className="btn-primary flex-1 justify-center" disabled={updateAppointment.isPending}>
-                  {updateAppointment.isPending ? "Saving..." : "Save Changes"}
+                  {updateAppointment.isPending ? "Saving..." : (editingAppointment.status === "rescheduled" ? "Reschedule" : "Save Changes")}
                 </button>
               </div>
             </form>
@@ -1527,6 +2039,28 @@ export default function AppointmentsPage() {
                   placeholder="e.g. Discussed new product line, sent pricing, follow-up next week..."
                 />
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="scheduleFollowUp"
+                  checked={actionScheduleFollowUp}
+                  onChange={(e) => setActionScheduleFollowUp(e.target.checked)}
+                  className="w-4 h-4 accent-[#D4A843]"
+                />
+                <label htmlFor="scheduleFollowUp" className="text-xs text-[#E8E8E9] font-body cursor-pointer">Schedule follow-up appointment</label>
+              </div>
+              {actionScheduleFollowUp && (
+                <div>
+                  <label className="label-text block mb-1.5">Follow-up Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={actionFollowUpDate}
+                    onChange={(e) => setActionFollowUpDate(e.target.value)}
+                    className="input-field w-full"
+                    required={actionScheduleFollowUp}
+                  />
+                </div>
+              )}
               <button onClick={submitActionForm} className="btn-primary w-full justify-center">
                 <CheckCircle className="w-4 h-4" /> Log Action
               </button>

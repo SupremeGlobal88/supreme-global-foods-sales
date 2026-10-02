@@ -1054,10 +1054,10 @@ function getAvailableStock(productId: number): number {
   return product ? Math.max(0, product.quantity || 0) : 0;
 }
 
-// getCommittedStock: kept for reference, counts items from active non-sample orders
+// getCommittedStock: kept for reference, counts items from active non-sample/non-quote orders
 function getCommittedStock(productId: number): number {
   return orders
-    .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
+    .filter((o) => o.orderType !== "quote" && o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
     .flatMap((o) => o.items || [])
     .filter((item: any) => item.stockItemId == productId)
     .reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
@@ -2339,9 +2339,9 @@ export const dataService = {
         for (const item of requestedItems) {
           const product = products.find((p) => p.id == item.stockItemId);
           if (!product) continue;
-          // Calculate committed stock (non-delivered/cancelled orders)
+          // Calculate committed stock (non-delivered/cancelled orders, EXCLUDE quotes)
           const committed = orders
-            .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
+            .filter((o) => o.orderType !== "quote" && o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
             .flatMap((o) => o.items || [])
             .filter((it: any) => it.stockItemId == item.stockItemId)
             .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);

@@ -6,12 +6,10 @@ import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
   Navigation, User, Filter, ExternalLink, LogIn, LogOut,
   AlertTriangle, Phone, Briefcase, Search, ChevronDown, ChevronUp,
-  Edit, Trash2, Bell, RotateCcw, Ban, StickyNote,
+  Edit, Trash2, Bell, RotateCcw, XCircle, ClipboardList,
 } from "lucide-react";
 
-type MapTarget = { customerId: number; address: string } | null;
-
-// ─── Appointment Type & Title Constants ───
+// ─── Appointment Type Options ───
 const APPOINTMENT_TYPES = [
   { value: "site_visit", label: "Site Visit" },
   { value: "call", label: "Call the Customer" },
@@ -20,6 +18,7 @@ const APPOINTMENT_TYPES = [
   { value: "other", label: "Other" },
 ];
 
+// ─── Title Options for Existing Customers ───
 const EXISTING_CUSTOMER_TITLES = [
   { value: "routine_checkin", label: "Routine Check-in / Visit" },
   { value: "sample_followup", label: "Sample Trails / Sample Follow-up" },
@@ -30,11 +29,13 @@ const EXISTING_CUSTOMER_TITLES = [
   { value: "payment_terms", label: "Payment Terms" },
 ];
 
+// ─── Title Options for New Customers ───
 const NEW_CUSTOMER_TITLES = [
   { value: "first_site_visit", label: "First Site Visit Scheduled" },
   { value: "sample_trails", label: "Sample Trails Scheduled" },
 ];
 
+// ─── Outcome Options for Existing Customers ───
 const EXISTING_CUSTOMER_OUTCOMES = [
   { value: "placed_order", label: "The customer placed a new order" },
   { value: "pricing_too_high", label: "No order — our Pricing is too High" },
@@ -44,6 +45,7 @@ const EXISTING_CUSTOMER_OUTCOMES = [
   { value: "other", label: "Other" },
 ];
 
+// ─── Current Supplier Options ───
 const CURRENT_SUPPLIERS = [
   { value: "EXIM", label: "EXIM" },
   { value: "Crown National", label: "Crown National" },
@@ -52,6 +54,7 @@ const CURRENT_SUPPLIERS = [
   { value: "Cooper Casings", label: "Cooper Casings" },
 ];
 
+// ─── New Customer Action Items ───
 const NEW_CUSTOMER_ACTIONS = [
   { value: "schedule_sample", label: "Schedule Sample Trails for Customer" },
   { value: "send_portfolio", label: "Send Business Portfolio and Compliance" },
@@ -63,17 +66,22 @@ const NEW_CUSTOMER_ACTIONS = [
   { value: "other", label: "Other" },
 ];
 
+type MapTarget = { customerId: number; address: string } | null;
+
 export default function AppointmentsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isManager = user?.role === "sales_manager";
   const myRepName = user?.name || "";
+  // Sales manager sees ALL reps' appointments/check-ins (view-only), like admin
   const canViewAll = isAdmin || isManager;
+  // Edit/delete only own appointments (admins can manage all)
   const canManage = (repName: string) => isAdmin || repName === myRepName;
   const utils = trpc.useUtils();
 
   // ===================== STATE =====================
 
+  // Tabs: visits (checkins), schedule (appointments), followups, geoAudit
   const [activeTab, setActiveTab] = useState<"visits" | "schedule" | "followups" | "geoAudit">("visits");
 
   // Geo Audit state
@@ -92,11 +100,17 @@ export default function AppointmentsPage() {
   const [showEditCheckinForm, setShowEditCheckinForm] = useState(false);
   const [editingCheckin, setEditingCheckin] = useState<any>(null);
   const [formData, setFormData] = useState({
-    customerId: 0, title: "", notes: "",
+    customerId: 0,
+    title: "",
+    notes: "",
     appointmentDate: new Date().toISOString().slice(0, 16),
-    startTime: "09:00", location: "",
-    appointmentType: "site_visit" as string,
-    customerType: "existing" as "existing" | "new",
+    startTime: "09:00",
+    location: "",
+    appointmentType: "site_visit" as "site_visit" | "call" | "whatsapp" | "email" | "other",
+    outcome: "",
+    outcomeNotes: "",
+    currentSupplier: "",
+    newCustomerActions: [] as string[],
   });
   const [newCustomer, setNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days" });
 
@@ -119,6 +133,20 @@ export default function AppointmentsPage() {
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const editCustomerDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Click outside to close dropdowns
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+      if (editCustomerDropdownRef.current && !editCustomerDropdownRef.current.contains(e.target as Node)) {
+        setShowEditCustomerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Check-out flow
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
   const [checkoutCheckinId, setCheckoutCheckinId] = useState(0);
@@ -139,11 +167,11 @@ export default function AppointmentsPage() {
   // Follow-up action logging
   const [showActionForm, setShowActionForm] = useState(false);
   const [actionCustomerId, setActionCustomerId] = useState(0);
-  const [actionType, setActionType] = useState<"phone_call" | "site_visit" | "email" | "whatsapp" | "sms" | "other">("phone_call");
+  const [actionType, setActionType] = useState("site_visit");
   const [actionNotes, setActionNotes] = useState("");
-  const [expandedCustomerActions, setExpandedCustomerActions] = useState<number | null>(null);
+  const [actionTitle, setActionTitle] = useState("");
   const [actionScheduleFollowUp, setActionScheduleFollowUp] = useState(false);
-  const [actionFollowUpDate, setActionFollowUpDate] = useState("");
+  const [expandedCustomerActions, setExpandedCustomerActions] = useState<number | null>(null);
 
   // ===================== DATA =====================
 
@@ -156,57 +184,9 @@ export default function AppointmentsPage() {
   const { data: followUpCustomers } = trpc.customer.getCustomersNeedingFollowUp.useQuery({ days: 10 });
   const { data: followUpActions } = trpc.followUpAction.list.useQuery();
 
-  // ===================== 30-MINUTE REMINDER EFFECT =====================
-  useEffect(() => {
-    if (!myRepName) return;
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-    const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const upcomingAppointments = (appointments || [])
-        .filter((a: any) => a.status === "scheduled" && a.salesRepName === myRepName && !a.reminderSent);
-      upcomingAppointments.forEach((appt: any) => {
-        const apptTime = new Date(appt.appointmentDate).getTime();
-        const diffMs = apptTime - now;
-        const diffMins = Math.round(diffMs / 60000);
-        if (diffMins <= 30 && diffMins > 0) {
-          const custName = appt.customer?.name || "Customer";
-          const apptType = APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Appointment";
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification("Appointment Reminder", {
-              body: `${apptType} with ${custName} in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`,
-              icon: "/favicon.ico",
-            });
-          }
-          // Mark reminder as sent
-          const idx = appointments.findIndex((a: any) => a.id == appt.id);
-          if (idx >= 0) {
-            appointments[idx].reminderSent = true;
-            localStorage.setItem("sgf_appointments", JSON.stringify(appointments));
-          }
-        }
-      });
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [myRepName, appointments]);
-
-  // Click outside to close dropdowns
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target as Node)) {
-        setShowCustomerDropdown(false);
-      }
-      if (editCustomerDropdownRef.current && !editCustomerDropdownRef.current.contains(e.target as Node)) {
-        setShowEditCustomerDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   // ===================== MUTATIONS =====================
 
+  // Create new customer from appointments page
   const createCustomer = trpc.customer.create.useMutation({
     onSuccess: async (res: any) => {
       reloadFromStorage();
@@ -214,7 +194,21 @@ export default function AppointmentsPage() {
       await utils.customer.getStats.invalidate();
       if (res?.id) {
         setFormData({ ...formData, customerId: res.id });
-        setScheduleMode("existing");
+        // Auto-create the appointment for the new customer
+        const payload: any = {
+          customerId: res.id,
+          title: formData.title,
+          notes: formData.notes,
+          appointmentDate: formData.appointmentDate,
+          startTime: formData.startTime,
+          location: formData.location,
+          appointmentType: formData.appointmentType,
+          salesRepName: myRepName,
+        };
+        if (formData.currentSupplier) payload.currentSupplier = formData.currentSupplier;
+        if (formData.newCustomerActions.length > 0) payload.newCustomerActions = formData.newCustomerActions;
+        // Auto-schedule the appointment
+        createAppointment.mutate(payload);
       }
     },
   });
@@ -222,62 +216,104 @@ export default function AppointmentsPage() {
   const createAppointment = trpc.appointment.create.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
-      setShowForm(false); resetForm();
+      await utils.appointment.list.invalidate();
+      await utils.appointment.getStats.invalidate();
+      setShowForm(false);
+      resetForm();
     },
   });
+
   const updateAppointment = trpc.appointment.update.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
-      setShowEditForm(false); setEditingAppointment(null); resetForm();
+      await utils.appointment.list.invalidate();
+      await utils.appointment.getStats.invalidate();
+      setShowEditForm(false);
+      setEditingAppointment(null);
+      resetForm();
     },
   });
+
+  // Cloud-first: dedicated mutation for marking reminder as sent
+  const markReminderSent = trpc.appointment.update.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.appointment.list.invalidate();
+    },
+  });
+
   const deleteAppointment = trpc.appointment.delete.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.appointment.list.invalidate(); await utils.appointment.getStats.invalidate();
+      await utils.appointment.list.invalidate();
+      await utils.appointment.getStats.invalidate();
     },
   });
+
   const updateCheckin = trpc.checkIn.update.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
-      setShowEditCheckinForm(false); setEditingCheckin(null);
+      await utils.checkIn.list.invalidate();
+      await utils.checkIn.getStats.invalidate();
+      setShowEditCheckinForm(false);
+      setEditingCheckin(null);
     },
   });
+
   const deleteCheckin = trpc.checkIn.delete.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
-      setShowEditCheckinForm(false); setEditingCheckin(null);
+      await utils.checkIn.list.invalidate();
+      await utils.checkIn.getStats.invalidate();
+      setShowEditCheckinForm(false);
+      setEditingCheckin(null);
     },
   });
+
   const createCheckin = trpc.checkIn.create.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
-      setMapTarget(null); setGeoError(""); setShowCheckinForm(false); setCheckinCustomerId(0); setCheckinNotes("");
-      setCheckinAppointmentId(null); setCheckinAppointmentType("site_visit"); setCheckinTitle("");
+      await utils.checkIn.list.invalidate();
+      await utils.checkIn.getStats.invalidate();
+      setMapTarget(null);
+      setGeoError("");
+      setShowCheckinForm(false);
+      setCheckinCustomerId(0);
+      setCheckinNotes("");
+      setCheckinAppointmentId(null);
+      setCheckinAppointmentType("site_visit");
+      setCheckinTitle("");
     },
   });
+
   const checkoutMutation = trpc.checkIn.checkout.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
-      await utils.checkIn.list.invalidate(); await utils.checkIn.getStats.invalidate();
-      setShowCheckoutForm(false); setCheckoutCheckinId(0); setCheckoutNotes("");
-      setCheckoutOutcome(""); setCheckoutOutcomeNotes(""); setCheckoutCurrentSupplier("");
+      await utils.checkIn.list.invalidate();
+      await utils.checkIn.getStats.invalidate();
+      setShowCheckoutForm(false);
+      setCheckoutCheckinId(0);
+      setCheckoutNotes("");
+      setCheckoutOutcome("");
+      setCheckoutOutcomeNotes("");
+      setCheckoutCurrentSupplier("");
       setCheckoutNewCustomerActions([]);
     },
   });
+
   const createFollowUpAction = trpc.followUpAction.create.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
       await utils.followUpAction.list.invalidate();
-      setShowActionForm(false); setActionCustomerId(0); setActionNotes(""); setActionType("phone_call");
-      setActionScheduleFollowUp(false); setActionFollowUpDate("");
+      setShowActionForm(false);
+      setActionCustomerId(0);
+      setActionNotes("");
+      setActionType("site_visit");
+      setActionTitle("");
+      setActionScheduleFollowUp(false);
     },
   });
+
   const updateAppointmentStatus = trpc.appointment.updateStatus.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -289,7 +325,19 @@ export default function AppointmentsPage() {
   // ===================== HELPERS =====================
 
   function resetForm() {
-    setFormData({ customerId: 0, title: "", notes: "", appointmentDate: new Date().toISOString().slice(0, 10) + "T09:00", startTime: "09:00", location: "", appointmentType: "site_visit", customerType: "existing" });
+    setFormData({
+      customerId: 0,
+      title: "",
+      notes: "",
+      appointmentDate: new Date().toISOString().slice(0, 10) + "T09:00",
+      startTime: "09:00",
+      location: "",
+      appointmentType: "site_visit",
+      outcome: "",
+      outcomeNotes: "",
+      currentSupplier: "",
+      newCustomerActions: [],
+    });
     setNewCustomer({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale", paymentTerms: "cod" });
     setCustomerSearch("");
     setEditCustomerSearch("");
@@ -343,7 +391,10 @@ export default function AppointmentsPage() {
       startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00",
       location: appt.location || "",
       appointmentType: appt.appointmentType || "site_visit",
-      customerType: appt.customerType || "existing",
+      outcome: appt.outcome || "",
+      outcomeNotes: appt.outcomeNotes || "",
+      currentSupplier: appt.currentSupplier || "",
+      newCustomerActions: appt.newCustomerActions || [],
     });
     const cust = (customers || []).find((c: any) => c.id === appt.customerId);
     setEditCustomerSearch(cust?.name || "");
@@ -355,203 +406,79 @@ export default function AppointmentsPage() {
     setCheckinAppointmentType(appt.appointmentType || "site_visit");
     setCheckinTitle(appt.title || "");
     setCheckinCustomerId(appt.customerId || 0);
-    setCheckinNotes("");
-    setShowCheckinForm(true);
-  }
-
-  function openCheckoutFormForAppointment(checkinId: number, customerType: "existing" | "new" = "existing") {
-    setShowCheckoutForm(true);
-    setCheckoutCheckinId(checkinId);
-    setCheckoutNotes("");
-    setCheckoutOutcome("");
-    setCheckoutOutcomeNotes("");
-    setCheckoutCurrentSupplier("");
-    setCheckoutNewCustomerActions([]);
-    setCheckoutCustomerType(customerType);
-  }
-
-  // ===================== GEO AUDIT CLUSTERING =====================
-
-  type GeoCluster = {
-    key: string;
-    repName: string;
-    roundedLat: number;
-    roundedLng: number;
-    visits: any[];
-    uniqueCustomers: Set<string>;
-    isFlagged: boolean;
-  };
-
-  const geoAuditClusters = useMemo<GeoCluster[]>(() => {
-    const allCheckins = checkins || [];
-    const [y, m] = geoAuditMonth.split("-").map(Number);
-    const monthStart = new Date(y, m - 1, 1);
-    const monthEnd = new Date(y, m, 1);
-
-    let filtered = allCheckins.filter((ci: any) => {
-      const d = new Date(ci.createdAt || 0);
-      return d >= monthStart && d < monthEnd;
-    });
-
-    if (!canViewAll) {
-      filtered = filtered.filter((ci: any) => ci.salesRepName === myRepName);
-    } else if (geoAuditRepFilter !== "all") {
-      filtered = filtered.filter((ci: any) => ci.salesRepName === geoAuditRepFilter);
-    }
-
-    const round3 = (n: number) => Math.round((n || 0) * 1000) / 1000;
-    const clusters = new Map<string, GeoCluster>();
-
-    filtered.forEach((ci: any) => {
-      const rep = ci.salesRepName || "Unknown";
-      const lat = round3(ci.latitude);
-      const lng = round3(ci.longitude);
-      if (!lat && !lng) return;
-      const key = `${rep}|${lat}|${lng}`;
-      const cName = ci.customer?.name || ci.location || "Unknown";
-
-      if (!clusters.has(key)) {
-        clusters.set(key, {
-          key,
-          repName: rep,
-          roundedLat: lat,
-          roundedLng: lng,
-          visits: [],
-          uniqueCustomers: new Set<string>(),
-          isFlagged: false,
-        });
-      }
-      const cluster = clusters.get(key)!;
-      cluster.visits.push(ci);
-      cluster.uniqueCustomers.add(cName);
-    });
-
-    const result = Array.from(clusters.values()).map((c) => ({
-      ...c,
-      isFlagged: c.uniqueCustomers.size >= 2,
-    }));
-
-    result.sort((a, b) => {
-      if (a.isFlagged !== b.isFlagged) return a.isFlagged ? -1 : 1;
-      if (a.repName !== b.repName) return a.repName.localeCompare(b.repName);
-      return b.visits.length - a.visits.length;
-    });
-
-    return result;
-  }, [checkins, geoAuditMonth, geoAuditRepFilter, canViewAll, myRepName]);
-
-  const geoAuditRows = useMemo(() => {
-    const rows: any[] = [];
-    geoAuditClusters.forEach((cluster) => {
-      if (geoAuditFlagOnly && !cluster.isFlagged) return;
-      cluster.visits.forEach((visit) => {
-        rows.push({
-          ...visit,
-          _clusterKey: cluster.key,
-          _isFlagged: cluster.isFlagged,
-          _roundedLat: cluster.roundedLat,
-          _roundedLng: cluster.roundedLng,
-          _uniqueCustomers: cluster.uniqueCustomers.size,
-        });
-      });
-    });
-    rows.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-    return rows;
-  }, [geoAuditClusters, geoAuditFlagOnly]);
-
-  // ===================== CHECK-IN FLOW =====================
-
-  function openCheckinForm() {
-    setShowCheckinForm(true);
-    setCheckinCustomerId(0);
-    setCheckinNotes("");
-    setCheckinSearch("");
-    setMapTarget(null);
-    setGeoError("");
     setCheckinOutcome("visit");
-    setCheckinAppointmentId(null);
-    setCheckinAppointmentType("site_visit");
-    setCheckinTitle("");
+    setShowCheckinForm(true);
   }
 
-  function submitCheckinForm() {
-    if (checkinCustomerId === 0) { alert("Select a customer"); return; }
-    const customer = (customers || []).find((c) => c.id === checkinCustomerId);
-    if (!customer) return;
-
-    setGeoError("");
-    setMapTarget(null);
-
-    const checkinData: any = {
-      customerId: checkinCustomerId,
-      notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || customer.physicalAddress || ""}`,
-      salesRepName: myRepName,
-      location: customer.physicalAddress || customer.name,
-      outcome: checkinOutcome,
-      appointmentId: checkinAppointmentId || undefined,
-      appointmentType: checkinAppointmentType,
-      title: checkinTitle,
-    };
-
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          createCheckin.mutate({
-            ...checkinData,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          });
-        },
-        () => {
-          setGeoError("GPS unavailable — confirm location on map");
-          setMapTarget({
-            customerId: checkinCustomerId,
-            address: customer.physicalAddress || customer.name,
-          });
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      setGeoError("GPS not available — confirm location on map");
-      setMapTarget({
-        customerId: checkinCustomerId,
-        address: customer.physicalAddress || customer.name,
-      });
+  // ===================== 30-MINUTE REMINDER EFFECT =====================
+  useEffect(() => {
+    if (!myRepName) return;
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
     }
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const upcomingAppointments = (appointments || [])
+        .filter((a: any) => a.status === "scheduled" && a.salesRepName === myRepName && !a.reminderSent);
+      upcomingAppointments.forEach((appt: any) => {
+        const apptTime = new Date(appt.appointmentDate).getTime();
+        const diffMs = apptTime - now;
+        const diffMins = Math.round(diffMs / 60000);
+        if (diffMins <= 30 && diffMins > 0) {
+          const custName = appt.customer?.name || "Customer";
+          const apptType = APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Appointment";
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("Appointment Reminder", {
+              body: `${apptType} with ${custName} in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`,
+              icon: "/favicon.ico",
+            });
+          }
+          // Cloud-first: mark reminder as sent through the proper mutation pipeline
+          markReminderSent.mutate({ id: appt.id, data: { reminderSent: true } });
+        }
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [myRepName, appointments, markReminderSent]);
+
+  // ===================== CHECK-IN HANDLERS =====================
+
+  function getGeoAndCheckIn(customerId: number) {
+    setGeoError("");
+    if (!navigator.geolocation) {
+      setGeoError("Geolocation not supported");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const customer = (customers || []).find((c: any) => c.id === customerId);
+        const linkedAppt = checkinAppointmentId
+          ? (appointments || []).find((a: any) => a.id === checkinAppointmentId)
+          : null;
+        createCheckin.mutate({
+          customerId,
+          notes: checkinNotes || checkinTitle || "",
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          location: customer?.physicalAddress || customer?.address || "",
+          salesRepName: myRepName,
+          outcome: checkinOutcome,
+          appointmentId: checkinAppointmentId,
+          appointmentType: linkedAppt?.appointmentType || checkinAppointmentType,
+          title: linkedAppt?.title || checkinTitle || "",
+        });
+      },
+      (err) => {
+        setGeoError(`Location error: ${err.message}`);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   }
 
-  function confirmMapCheckin() {
-    if (!mapTarget) return;
-    const customer = (customers || []).find((c) => c.id === mapTarget.customerId);
-    createCheckin.mutate({
-      customerId: mapTarget.customerId,
-      notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || customer?.physicalAddress || mapTarget.address}`,
-      salesRepName: myRepName,
-      location: customer?.physicalAddress || mapTarget.address,
-      outcome: checkinOutcome,
-      appointmentId: checkinAppointmentId || undefined,
-      appointmentType: checkinAppointmentType,
-      title: checkinTitle,
-    });
-  }
-
-  // ===================== CHECK-OUT FLOW =====================
-
-  function openCheckoutForm(checkinId: number) {
-    const ci = (checkins || []).find((c: any) => c.id === checkinId);
-    const linkedAppt = ci?.appointmentId ? (appointments || []).find((a: any) => a.id == ci.appointmentId) : null;
-    setShowCheckoutForm(true);
-    setCheckoutCheckinId(checkinId);
-    setCheckoutNotes("");
-    setCheckoutOutcome(linkedAppt?.outcome || "");
-    setCheckoutOutcomeNotes(linkedAppt?.outcomeNotes || "");
-    setCheckoutCurrentSupplier(linkedAppt?.currentSupplier || "");
-    setCheckoutNewCustomerActions(linkedAppt?.newCustomerActions || []);
-    setCheckoutCustomerType(linkedAppt?.customerType || "existing");
-  }
+  // ===================== CHECK-OUT HANDLERS =====================
 
   function submitCheckout() {
-    if (checkoutCheckinId === 0) return;
+    if (!checkoutOutcome) { alert("Select an outcome"); return; }
     checkoutMutation.mutate({
       id: checkoutCheckinId,
       notes: checkoutNotes,
@@ -563,1108 +490,657 @@ export default function AppointmentsPage() {
     });
   }
 
-  function openActionForm(customerId: number) {
-    setActionCustomerId(customerId);
-    setActionType("phone_call");
-    setActionNotes("");
-    setShowActionForm(true);
-    setActionScheduleFollowUp(false);
-    setActionFollowUpDate("");
-  }
+  // ===================== FOLLOW-UP ACTION HANDLERS =====================
 
   function submitActionForm() {
-    if (actionCustomerId === 0) return;
+    if (!actionNotes.trim()) { alert("Enter action notes"); return; }
     createFollowUpAction.mutate({
       customerId: actionCustomerId,
-      actionType,
+      actionType: actionType as any,
       notes: actionNotes,
+      title: actionTitle,
       salesRepName: myRepName,
     });
-    if (actionScheduleFollowUp && actionFollowUpDate) {
-      createAppointment.mutate({
-        customerId: actionCustomerId,
-        title: `Follow-up: ${actionType.replace("_", " ")}`,
-        notes: actionNotes,
-        appointmentDate: actionFollowUpDate,
-        salesRepName: myRepName,
-        appointmentType: actionType === "site_visit" ? "site_visit" : actionType === "phone_call" ? "call" : actionType === "whatsapp" ? "whatsapp" : actionType === "email" ? "email" : "other",
-        customerType: "existing",
+  }
+
+  // ===================== GEO AUDIT =====================
+
+  const geoAuditData = useMemo(() => {
+    const [year, month] = geoAuditMonth.split("-").map(Number);
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59);
+
+    const monthCheckins = (checkins || []).filter((ci: any) => {
+      const d = new Date(ci.checkInTime);
+      return d >= startOfMonth && d <= endOfMonth;
+    });
+
+    const monthAppointments = (appointments || []).filter((a: any) => {
+      const d = new Date(a.appointmentDate);
+      return d >= startOfMonth && d <= endOfMonth;
+    });
+
+    const rows = (customers || [])
+      .filter((c: any) => {
+        if (geoAuditRepFilter !== "all" && c.salesRepName !== geoAuditRepFilter) return false;
+        return true;
+      })
+      .map((c: any) => {
+        const ci = monthCheckins
+          .filter((x: any) => x.customerId === c.id)
+          .sort((a: any, b: any) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime())[0];
+        const appt = monthAppointments
+          .filter((a: any) => a.customerId === c.id && a.status === "scheduled")
+          .sort((a: any, b: any) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0];
+
+        let flag = "";
+        if (!ci && !appt) flag = "No visit & no appointment";
+        else if (!ci && appt) flag = "Has appointment, no visit yet";
+        else if (ci && !appt) {
+          const daysSince = Math.floor((Date.now() - new Date(ci.checkInTime).getTime()) / 86400000);
+          flag = daysSince > 14 ? `No follow-up appt (${daysSince}d since last visit)` : "";
+        }
+        else if (ci && appt) {
+          const apptDate = new Date(appt.appointmentDate).getTime();
+          const ciDate = new Date(ci.checkInTime).getTime();
+          if (apptDate < ciDate) flag = "Appointment before last visit — stale?";
+        }
+
+        return {
+          customer: c,
+          lastVisit: ci,
+          nextAppt: appt,
+          flag,
+        };
       });
-    }
-  }
 
-  // ===================== SCHEDULE APPOINTMENT =====================
-
-  function handleScheduleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (formData.customerId === 0) { alert("Select a customer"); return; }
-    if (!formData.title.trim()) { alert("Enter a title"); return; }
-    createAppointment.mutate({
-      ...formData,
-      salesRepName: myRepName,
-      appointmentDate: formData.appointmentDate,
-    });
-  }
-
-  // ===================== APPOINTMENT STATUS GROUPS =====================
-
-  const upcoming = myAppointments.filter((a: any) => a.status === "scheduled");
-  const inProgress = myAppointments.filter((a: any) => a.status === "in_progress");
-  const completed = myAppointments.filter((a: any) => a.status === "completed");
-  const cancelledOrRescheduled = myAppointments.filter((a: any) => a.status === "cancelled" || a.status === "rescheduled");
-
-  // Check-in groups
-  const activeCheckins = myCheckins.filter((ci: any) => ci.status === "checked_in");
-  const completedCheckins = myCheckins.filter((ci: any) => ci.status === "checked_out");
-
-  // Customer search for check-in
-  const filteredCheckinCustomers = useMemo(() => {
-    const q = checkinSearch.toLowerCase().trim();
-    if (!q) return customers || [];
-    return (customers || []).filter((c: any) =>
-      (c.name || "").toLowerCase().includes(q) ||
-      (c.customerCode || "").toLowerCase().includes(q) ||
-      (c.city || "").toLowerCase().includes(q)
-    );
-  }, [customers, checkinSearch]);
-
-  // ===================== GOOGLE MAPS URLS =====================
-
-  const mapEmbedUrl = mapTarget
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(mapTarget.address)}&z=15&ie=UTF8&iwloc=&output=embed`
-    : "";
-  const mapLinkUrl = mapTarget
-    ? `https://www.google.com/maps?q=${encodeURIComponent(mapTarget.address)}`
-    : "";
+    return rows.filter((r: any) => !geoAuditFlagOnly || r.flag);
+  }, [checkins, appointments, customers, geoAuditMonth, geoAuditFlagOnly, geoAuditRepFilter]);
 
   // ===================== RENDER =====================
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Appointments</h1>
-          <p className="text-[#8A8B8C] font-body text-sm mt-1">
-            {apptStats?.total || 0} appointments &middot; {checkinStats?.checkedIn || 0} currently checked in &middot; {checkinStats?.total || 0} total visits
-          </p>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          <button onClick={openCheckinForm} className="btn-primary" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}>
-            <LogIn className="w-4 h-4" /> Check In at Location
-          </button>
-          <button onClick={() => { setShowForm(true); resetForm(); }} className="btn-primary"><Plus className="w-4 h-4" /> Schedule</button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="card-surface p-4"><div className="label-text mb-1">TOTAL APPOINTMENTS</div><div className="stat-number">{apptStats?.total || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">TODAY</div><div className="stat-number" style={{ color: "#D4A843" }}>{apptStats?.today || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">CHECKED IN NOW</div><div className="stat-number" style={{ color: "#4ADE80" }}>{checkinStats?.checkedIn || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">COMPLETED VISITS</div><div className="stat-number" style={{ color: "#6366F1" }}>{checkinStats?.checkedOut || 0}</div></div>
-      </div>
-
-      {/* Follow-up Alert Banner */}
-      {myFollowUps && myFollowUps.length > 0 && (
-        <div className="card-surface p-4" style={{ backgroundColor: "rgba(245, 158, 11, 0.06)", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
-          <div className="flex items-center gap-3 mb-3">
-            <AlertTriangle className="w-5 h-5" style={{ color: "#F59E0B" }} />
-            <h3 className="font-display font-semibold text-white text-sm" style={{ color: "#F59E0B" }}>
-              {myFollowUps.length} customer{myFollowUps.length > 1 ? "s" : ""} need{myFollowUps.length === 1 ? "s" : ""} follow-up (no order in 10+ days)
-            </h3>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {myFollowUps.slice(0, 5).map((c: any) => (
-              <button
-                key={c.id}
-                onClick={() => setActiveTab("followups")}
-                className="text-xs px-3 py-1.5 rounded-full font-body"
-                style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B", border: "1px solid rgba(245, 158, 11, 0.2)" }}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <h1 className="font-display text-2xl font-bold text-white flex items-center gap-2">
+          <Calendar className="w-6 h-6 text-[#D4A843]" />
+          Appointments & Visits
+        </h1>
+        <div className="flex items-center gap-3">
+          {canViewAll && (
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-[#8A8B8C]" />
+              <select
+                value={filterRep}
+                onChange={(e) => setFilterRep(e.target.value)}
+                className="input-field text-sm py-1.5"
               >
-                {c.name} ({c.daysSinceLastOrder === 999 ? "Never" : c.daysSinceLastOrder + "d"})
-              </button>
-            ))}
-            {myFollowUps.length > 5 && (
-              <button onClick={() => setActiveTab("followups")} className="text-xs px-3 py-1.5 rounded-full font-body" style={{ color: "#8A8B8C" }}>
-                +{myFollowUps.length - 5} more
-              </button>
-            )}
-          </div>
+                <option value="all">All Reps</option>
+                {(salesReps || []).map((r: any) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <button
+            onClick={() => { setShowForm(true); setScheduleMode("existing"); resetForm(); }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Schedule Appointment
+          </button>
         </div>
-      )}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="card-surface p-4" style={{ borderRadius: 12 }}>
+          <div className="text-xs text-[#8A8B8C] font-body mb-1">Scheduled</div>
+          <div className="text-2xl font-display font-bold text-white">{apptStats?.scheduled || 0}</div>
+        </div>
+        <div className="card-surface p-4" style={{ borderRadius: 12 }}>
+          <div className="text-xs text-[#8A8B8C] font-body mb-1">Today</div>
+          <div className="text-2xl font-display font-bold text-[#D4A843]">{apptStats?.today || 0}</div>
+        </div>
+        <div className="card-surface p-4" style={{ borderRadius: 12 }}>
+          <div className="text-xs text-[#8A8B8C] font-body mb-1">This Week</div>
+          <div className="text-2xl font-display font-bold text-white">{apptStats?.thisWeek || 0}</div>
+        </div>
+        <div className="card-surface p-4" style={{ borderRadius: 12 }}>
+          <div className="text-xs text-[#8A8B8C] font-body mb-1">Active Visits</div>
+          <div className="text-2xl font-display font-bold text-[#4ADE80]">{checkinStats?.active || 0}</div>
+        </div>
+      </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
-        {(["visits", "schedule", "followups", "geoAudit"] as const).map((tab) => (
+      <div className="flex gap-2 border-b border-[#2A2A2C]">
+        {[
+          { key: "visits", label: "Visits", icon: LogIn },
+          { key: "schedule", label: "Schedule", icon: Calendar },
+          { key: "followups", label: "Follow-ups", icon: Phone },
+          { key: "geoAudit", label: "Geo Audit", icon: MapPin },
+        ].map((tab) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="flex-1 py-2 rounded-md text-sm font-body font-medium transition-all cursor-pointer"
-            style={{
-              backgroundColor: activeTab === tab ? "#222324" : "transparent",
-              color: activeTab === tab ? "#D4A843" : "#8A8B8C",
-            }}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as any)}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-body font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? "border-[#D4A843] text-[#D4A843]"
+                : "border-transparent text-[#8A8B8C] hover:text-white"
+            }`}
           >
-            {tab === "visits" && `Visits (${myCheckins.length})`}
-            {tab === "schedule" && `Schedule (${myAppointments.length})`}
-            {tab === "followups" && `Follow-ups (${myFollowUps?.length || 0})`}
-            {tab === "geoAudit" && `Geo Audit`}
+            <tab.icon className="w-4 h-4" />
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Sales Rep Filter — Admin/Manager Only */}
-      {canViewAll && (
-        <div className="card-surface p-4">
-          <div className="flex items-center gap-3">
-            <Filter className="w-4 h-4 text-[#8A8B8C]" />
-            <label className="label-text">Filter by Sales Rep:</label>
-            <select value={filterRep} onChange={(e) => setFilterRep(e.target.value)} className="input-field w-auto">
-              <option value="all">All Sales Reps</option>
-              {(salesReps || []).map((rep: string) => <option key={rep} value={rep}>{rep}</option>)}
-            </select>
-          </div>
-        </div>
-      )}
-
-      {/* ===================== VISITS TAB ===================== */}
+      {/* ─── VISITS TAB ─── */}
       {activeTab === "visits" && (
-        <div className="space-y-6">
-          {/* Active Visits — Checked In */}
-          {activeCheckins.length > 0 && (
-            <div>
-              <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
-                <LogIn className="w-5 h-5 text-[#4ADE80]" /> Active Visits — Checked In ({activeCheckins.length})
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {activeCheckins.map((ci: any) => (
-                  <div key={ci.id} className="card-surface p-4" style={{ borderLeft: "3px solid #4ADE80" }}>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <User className="w-4 h-4 text-[#D4A843]" />
-                          <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
-                          {canViewAll && (
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ADE80" }}>
-                              {ci.outcome || "visit"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-[#E8E8E9] font-body mb-1">
-                          {ci.customer?.name || (ci.notes?.includes("Customer:") ? ci.notes.split("\n").find((l: string) => l.startsWith("Customer:"))?.replace("Customer: ", "") : "Unknown Customer")}
-                        </div>
-                        {ci.appointmentType && (
-                          <div className="text-xs text-[#D4A843] mb-1">
-                            {APPOINTMENT_TYPES.find((t) => t.value === ci.appointmentType)?.label || ci.appointmentType}
-                            {ci.title && ` · ${ci.title}`}
-                          </div>
-                        )}
-                        {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
-                      </div>
-                      <div className="text-right">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Active</span>
-                        <div className="text-xs text-[#8A8B8C] mt-1">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
-                        <div className="text-xs text-[#8A8B8C] font-mono-data">{new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}</div>
-                      </div>
-                    </div>
-                    {ci.latitude && ci.longitude && (
-                      <div className="mt-3 p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
-                        <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
-                        <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
-                      </div>
-                    )}
-                    {ci.notes && <p className="text-xs text-[#8A8B8C] mt-2 italic">{ci.notes}</p>}
-                    <div className="flex gap-2 mt-3">
-                      {canManage(ci.salesRepName || "") && (
-                        <>
-                          <button onClick={() => openCheckoutForm(ci.id)} className="btn-primary flex-1 justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}>
-                            <LogOut className="w-4 h-4" /> Check Out
-                          </button>
-                          <button onClick={() => { setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="btn-secondary" title="Edit"><Edit className="w-4 h-4" /></button>
-                          <button onClick={() => { if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="btn-secondary" style={{ color: "#EF4444" }} title="Delete"><Trash2 className="w-4 h-4" /></button>
-                        </>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+              <LogIn className="w-5 h-5 text-[#D4A843]" />
+              Active & Past Visits
+            </h2>
+            <button
+              onClick={() => { setShowCheckinForm(true); setCheckinCustomerId(0); setCheckinNotes(""); setCheckinAppointmentId(null); setCheckinAppointmentType("site_visit"); setCheckinTitle(""); setCheckinOutcome("visit"); }}
+              className="btn-primary flex items-center gap-2"
+            >
+              <LogIn className="w-4 h-4" /> Check In
+            </button>
+          </div>
+
+          {myCheckins.length === 0 && (
+            <div className="card-surface p-8 text-center" style={{ borderRadius: 12 }}>
+              <LogIn className="w-10 h-10 text-[#8A8B8C] mx-auto mb-3" />
+              <p className="text-[#8A8B8C] font-body">No visits yet</p>
+            </div>
+          )}
+
+          {myCheckins.map((ci: any) => {
+            const isActive = !ci.checkOutTime;
+            const customer = (customers || []).find((c: any) => c.id === ci.customerId);
+            const appt = ci.appointmentId ? (appointments || []).find((a: any) => a.id === ci.appointmentId) : null;
+            return (
+              <div key={ci.id} className="card-surface p-4" style={{ borderRadius: 12 }}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded text-xs font-body font-medium ${
+                        isActive ? "bg-[#4ADE8020] text-[#4ADE80]" : "bg-[#8A8B8C20] text-[#8A8B8C]"
+                      }`}>
+                        {isActive ? "Active" : "Completed"}
+                      </span>
+                      {appt && (
+                        <span className="px-2 py-0.5 rounded text-xs font-body bg-[#D4A84320] text-[#D4A843]">
+                          {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType}
+                        </span>
+                      )}
+                      {ci.title && (
+                        <span className="text-xs text-[#8A8B8C] font-body">{ci.title}</span>
                       )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Completed Visits — Checked Out */}
-          <div>
-            <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-[#6366F1]" /> Completed Visits ({completedCheckins.length})
-            </h2>
-            {completedCheckins.length === 0 ? (
-              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No completed visits yet. Check in at a customer, then check out when done.</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {completedCheckins.map((ci: any) => (
-                  <div key={ci.id} className="card-surface p-4">
-                    <div className="flex items-start justify-between cursor-pointer" onClick={() => setExpandedVisit(expandedVisit === ci.id ? null : ci.id)}>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <User className="w-4 h-4 text-[#D4A843]" />
-                          <span className="text-sm font-body font-semibold text-white">{ci.salesRepName || "Unknown Rep"}</span>
-                          {canViewAll && (
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
-                              {ci.outcome || "visit"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-[#E8E8E9] font-body mb-1">
-                          {ci.customer?.name || (ci.notes?.includes("Customer:") ? ci.notes.split("\n").find((l: string) => l.startsWith("Customer:"))?.replace("Customer: ", "") : "Unknown Customer")}
-                        </div>
-                        {ci.appointmentType && (
-                          <div className="text-xs text-[#D4A843] mb-1">
-                            {APPOINTMENT_TYPES.find((t) => t.value === ci.appointmentType)?.label || ci.appointmentType}
-                            {ci.title && ` · ${ci.title}`}
-                          </div>
-                        )}
-                        {ci.location && <div className="flex items-center gap-1 text-xs text-[#8A8B8C]"><MapPin className="w-3 h-3" />{ci.location}</div>}
-                      </div>
-                      <div className="text-right flex flex-col items-end gap-1">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Done</span>
-                        <div className="flex gap-1">
-                          {canManage(ci.salesRepName || "") && (
-                            <>
-                              <button onClick={(e) => { e.stopPropagation(); setEditingCheckin(ci); setShowEditCheckinForm(true); }} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors p-1" title="Edit"><Edit className="w-3.5 h-3.5" /></button>
-                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this check-in?")) deleteCheckin.mutate(ci.id); }} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors p-1" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </>
-                          )}
-                        </div>
-                        <div className="text-xs text-[#8A8B8C]">{new Date(ci.createdAt).toLocaleDateString("en-ZA")}</div>
-                      </div>
+                    <div className="font-body font-medium text-white">{customer?.name || ci.location || "Unknown"}</div>
+                    <div className="text-xs text-[#8A8B8C] font-body mt-1">
+                      {ci.salesRepName && <span className="mr-3">Rep: {ci.salesRepName}</span>}
+                      <span>In: {new Date(ci.checkInTime).toLocaleString()}</span>
                     </div>
-
-                    {expandedVisit === ci.id && (
-                      <div className="mt-3 space-y-2 pt-3" style={{ borderTop: "1px solid #222324" }}>
-                        {ci.durationMinutes !== undefined && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-3 h-3 text-[#D4A843]" />
-                            <span className="text-xs text-[#D4A843] font-body font-medium">
-                              {ci.durationMinutes < 60 ? `${ci.durationMinutes} min` : `${Math.floor(ci.durationMinutes / 60)}h ${ci.durationMinutes % 60}m`}
-                            </span>
-                            <span className="text-xs text-[#8A8B8C]">
-                              ({new Date(ci.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })} - {new Date(ci.checkedOutAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })})
-                            </span>
-                          </div>
-                        )}
-                        {ci.outcome && (
-                          <div className="text-xs">
-                            <span className="label-text">Outcome:</span>{" "}
-                            <span className="px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
-                              {EXISTING_CUSTOMER_OUTCOMES.find((o) => o.value === ci.outcome)?.label || ci.outcome}
-                            </span>
-                          </div>
-                        )}
-                        {ci.currentSupplier && (
-                          <div className="text-xs text-[#8A8B8C]">Current Supplier: <span className="text-[#E8E8E9]">{ci.currentSupplier}</span></div>
-                        )}
-                        {ci.newCustomerActions && ci.newCustomerActions.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {ci.newCustomerActions.map((a: string) => (
-                              <span key={a} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
-                                {NEW_CUSTOMER_ACTIONS.find((act) => act.value === a)?.label || a}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {ci.outcomeNotes && (
-                          <div className="p-2 rounded-lg" style={{ backgroundColor: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
-                            <p className="text-xs text-[#EF4444] font-body font-medium mb-0.5">Outcome notes:</p>
-                            <p className="text-xs text-[#E8E8E9] font-body">{ci.outcomeNotes}</p>
-                          </div>
-                        )}
-                        {ci.latitude && ci.longitude && (
-                          <div className="p-2 rounded-lg flex items-center justify-between" style={{ backgroundColor: "#0A0A0B" }}>
-                            <span className="text-xs font-mono-data text-[#8A8B8C]">{ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
-                            <a href={`https://www.google.com/maps?q=${ci.latitude},${ci.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">View on Map</a>
-                          </div>
-                        )}
-                        {ci.notes && <p className="text-xs text-[#8A8B8C] italic">Check-in: {ci.notes}</p>}
-                        {ci.checkoutNotes && (
-                          <div className="p-2 rounded-lg" style={{ backgroundColor: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.15)" }}>
-                            <p className="text-xs text-[#EF4444] font-body font-medium mb-0.5">Check-out notes:</p>
-                            <p className="text-xs text-[#E8E8E9] font-body">{ci.checkoutNotes}</p>
-                          </div>
-                        )}
+                    {ci.checkOutTime && (
+                      <div className="text-xs text-[#8A8B8C] font-body mt-1">
+                        <span>Out: {new Date(ci.checkOutTime).toLocaleString()}</span>
+                        {ci.duration && <span className="ml-3">Duration: {Math.round(ci.duration / 60)} min</span>}
+                      </div>
+                    )}
+                    {ci.notes && (
+                      <div className="mt-2 text-sm text-[#E8E8E9] font-body bg-[#0A0A0B] p-2 rounded">
+                        {ci.notes}
+                      </div>
+                    )}
+                    {ci.outcome && (
+                      <div className="mt-1 text-xs text-[#D4A843] font-body">
+                        Outcome: {ci.outcome}
+                      </div>
+                    )}
+                    {ci.outcomeNotes && (
+                      <div className="mt-1 text-xs text-[#8A8B8C] font-body">
+                        {ci.outcomeNotes}
+                      </div>
+                    )}
+                    {ci.currentSupplier && (
+                      <div className="mt-1 text-xs text-[#8A8B8C] font-body">
+                        Current Supplier: {ci.currentSupplier}
+                      </div>
+                    )}
+                    {ci.newCustomerActions && ci.newCustomerActions.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {ci.newCustomerActions.map((a: string, i: number) => (
+                          <span key={i} className="px-2 py-0.5 rounded text-xs font-body bg-[#6366F120] text-[#6366F1]">
+                            {NEW_CUSTOMER_ACTIONS.find((x) => x.value === a)?.label || a}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ===================== SCHEDULE TAB ===================== */}
-      {activeTab === "schedule" && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#D4A843]" /> Scheduled Appointments
-            </h2>
-
-            {/* IN PROGRESS */}
-            {inProgress.length > 0 && (
-              <div className="mb-6">
-                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#6366F1" }}>
-                  <LogIn className="w-4 h-4" /> IN PROGRESS ({inProgress.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {inProgress.map((appt: any) => (
-                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #6366F1" }}>
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#6366F1" }}>
-                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
-                            </span>
-                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                          </div>
-                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
-                        </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>In Progress</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C] mb-3">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                        {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
-                      </div>
+                  <div className="flex flex-col gap-2">
+                    {isActive ? (
+                      <button
+                        onClick={() => { setShowCheckoutForm(true); setCheckoutCheckinId(ci.id); setCheckoutCustomerType(ci.customerType || "existing"); }}
+                        className="btn-primary flex items-center gap-1 text-xs"
+                      >
+                        <LogOut className="w-3 h-3" /> Check Out
+                      </button>
+                    ) : (
                       <div className="flex gap-2">
-                        {canManage(appt.salesRepName || "") && (
-                          <button onClick={() => openCheckinForAppointment(appt)} className="btn-primary flex-1 justify-center text-xs" style={{ backgroundColor: "#6366F1", borderColor: "#6366F1" }}>
-                            <LogIn className="w-3 h-3" /> Complete Check-in
-                          </button>
-                        )}
+                        <button
+                          onClick={() => { setEditingCheckin(ci); setShowEditCheckinForm(true); }}
+                          className="p-2 rounded-lg hover:bg-[#2A2A2C] transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4 text-[#8A8B8C]" />
+                        </button>
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
-
-            {/* UPCOMING */}
-            {upcoming.length > 0 && (
-              <div className="mb-6">
-                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#F59E0B" }}>
-                  <Bell className="w-4 h-4" /> UPCOMING ({upcoming.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {upcoming.map((appt: any) => (
-                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>
-                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
-                            </span>
-                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                          </div>
-                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
-                        </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", color: "#F59E0B" }}>Scheduled</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C] mb-3">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                        {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
-                      </div>
-                      <div className="flex gap-2 flex-wrap">
-                        {canManage(appt.salesRepName || "") && (
-                          <>
-                            <button onClick={() => openCheckinForAppointment(appt)} className="btn-primary flex-1 justify-center text-xs" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}>
-                              <LogIn className="w-3 h-3" /> Check In
-                            </button>
-                            <button onClick={() => cancelAppointment(appt.id)} className="btn-secondary text-xs" style={{ color: "#EF4444" }}>
-                              <Ban className="w-3 h-3" /> Cancel
-                            </button>
-                            <button onClick={() => rescheduleAppointment(appt)} className="btn-secondary text-xs">
-                              <RotateCcw className="w-3 h-3" /> Reschedule
-                            </button>
-                            <button onClick={() => { setEditingAppointment(appt); setFormData({ customerId: appt.customerId || 0, title: appt.title || "", notes: appt.notes || "", appointmentDate: appt.appointmentDate || new Date().toISOString().slice(0, 16), startTime: appt.appointmentDate ? appt.appointmentDate.slice(11, 16) : "09:00", location: appt.location || "", appointmentType: appt.appointmentType || "site_visit", customerType: appt.customerType || "existing" }); const cust = (customers || []).find((c: any) => c.id === appt.customerId); setEditCustomerSearch(cust?.name || ""); setShowEditForm(true); }} className="btn-secondary text-xs" title="Edit"><Edit className="w-3 h-3" /></button>
-                            <button onClick={() => { if (confirm("Delete this appointment?")) deleteAppointment.mutate(appt.id); }} className="btn-secondary text-xs" style={{ color: "#EF4444" }} title="Delete"><Trash2 className="w-3 h-3" /></button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* COMPLETED */}
-            {completed.length > 0 && (
-              <div className="mb-6">
-                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#4ADE80" }}>
-                  <CheckCircle className="w-4 h-4" /> COMPLETED ({completed.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {completed.map((appt: any) => (
-                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #4ADE80", opacity: 0.85 }}>
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(74,222,128,0.15)", color: "#4ADE80" }}>
-                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
-                            </span>
-                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                          </div>
-                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
-                        </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Completed</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                        {appt.durationMinutes && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{appt.durationMinutes} min</span>}
-                        {appt.outcome && (
-                          <span className="px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
-                            {EXISTING_CUSTOMER_OUTCOMES.find((o) => o.value === appt.outcome)?.label || appt.outcome}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* CANCELLED / RESCHEDULED */}
-            {cancelledOrRescheduled.length > 0 && (
-              <div className="mb-6">
-                <h3 className="label-text mb-2 flex items-center gap-2" style={{ color: "#8A8B8C" }}>
-                  <Ban className="w-4 h-4" /> CANCELLED / RESCHEDULED ({cancelledOrRescheduled.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {cancelledOrRescheduled.map((appt: any) => (
-                    <div key={appt.id} className="card-surface p-4" style={{ borderLeft: "3px solid #8A8B8C", opacity: 0.7 }}>
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(138,139,140,0.15)", color: "#8A8B8C" }}>
-                              {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType || "Site Visit"}
-                            </span>
-                            <span className="text-xs font-body" style={{ color: "#D4A843" }}>{appt.salesRepName || "Unassigned"}</span>
-                          </div>
-                          <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
-                          <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
-                        </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(138, 139, 140, 0.12)", color: "#8A8B8C" }}>{appt.status === "cancelled" ? "Cancelled" : "Rescheduled"}</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>
-                        {appt.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{appt.location}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {myAppointments.length === 0 && (
-              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">No appointments scheduled. Tap "Schedule" to create one.</div>
-            )}
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ===================== FOLLOW-UPS TAB ===================== */}
-      {activeTab === "followups" && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="font-display font-semibold text-white text-lg mb-4 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-[#F59E0B]" /> Customers Needing Follow-up
-            </h2>
-            {myFollowUps?.length === 0 ? (
-              <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">
-                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-[#4ADE80]" />
-                <p className="text-[#4ADE80] font-body font-medium mb-1">All caught up!</p>
-                <p className="text-sm">All customers have ordered within the last 10 days.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {myFollowUps?.map((c: any) => {
-                  const customerActions = (followUpActions || []).filter((fa: any) => fa.customerId === c.id);
-                  const isExpanded = expandedCustomerActions === c.id;
-                  return (
-                    <div key={c.id} className="card-surface p-4" style={{ borderLeft: "3px solid #F59E0B" }}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Briefcase className="w-4 h-4 text-[#D4A843]" />
-                            <span className="text-sm font-body font-semibold text-white">{c.name}</span>
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(245,158,11,0.12)", color: "#F59E0B" }}>
-                              {c.priceTier || "wholesale"}
-                            </span>
-                            {customerActions.length > 0 && (
-                              <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ADE80" }}>
-                                {customerActions.length} action{customerActions.length > 1 ? "s" : ""} logged
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 text-xs text-[#8A8B8C] mb-2">
-                            {c.contactPerson && <span className="flex items-center gap-1"><User className="w-3 h-3" />{c.contactPerson}</span>}
-                            {c.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</span>}
-                            {c.physicalAddress && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{c.physicalAddress}{c.city ? `, ${c.city}` : ""}</span>}
-                          </div>
-                          <div className="flex items-center gap-4 text-xs">
-                            <span className="text-[#EF4444] font-medium">
-                              {c.daysSinceLastOrder === 999 ? "Never ordered" : `${c.daysSinceLastOrder} days since last order`}
-                            </span>
-                            {c.lastOrder && (
-                              <span className="text-[#8A8B8C]">
-                                Last: {new Date(c.lastOrderDate).toLocaleDateString("en-ZA")} — R {Number(c.lastOrder.total || 0).toFixed(2)}
-                              </span>
-                            )}
-                            <span className="text-[#8A8B8C]">{c.totalOrders} total orders</span>
-                          </div>
+      {/* ─── SCHEDULE TAB ─── */}
+      {activeTab === "schedule" && (
+        <div className="space-y-4">
+          <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-[#D4A843]" />
+            Scheduled Appointments
+          </h2>
 
-                          {customerActions.length > 0 && isExpanded && (
-                            <div className="mt-3 space-y-2 pt-3" style={{ borderTop: "1px solid #222324" }}>
-                              <p className="text-xs font-body font-medium text-[#8A8B8C] mb-2">Previous Actions:</p>
-                              {customerActions.map((fa: any) => (
-                                <div key={fa.id} className="flex items-start gap-2 p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}>
-                                  <span className="text-xs px-2 py-0.5 rounded font-medium shrink-0" style={{
-                                    backgroundColor: fa.actionType === "site_visit" ? "rgba(99,102,241,0.15)" : fa.actionType === "phone_call" ? "rgba(74,222,128,0.15)" : fa.actionType === "whatsapp" ? "rgba(37,211,102,0.15)" : fa.actionType === "email" ? "rgba(59,130,246,0.15)" : "rgba(212,168,67,0.15)",
-                                    color: fa.actionType === "site_visit" ? "#6366F1" : fa.actionType === "phone_call" ? "#4ADE80" : fa.actionType === "whatsapp" ? "#25D366" : fa.actionType === "email" ? "#3B82F6" : "#D4A843",
-                                  }}>
-                                    {(fa.actionType || "other").replace("_", " ")}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    {fa.notes && <p className="text-xs text-[#E8E8E9] font-body">{fa.notes}</p>}
-                                    <p className="text-xs text-[#8A8B8C]">{fa.salesRepName || "Unknown"} — {new Date(fa.createdAt).toLocaleDateString("en-ZA")}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2 ml-4">
-                          <span className="text-xs font-body" style={{ color: "#D4A843" }}>{c.salesRepName || "Unassigned"}</span>
-                          <button
-                            onClick={() => openActionForm(c.id)}
-                            className="text-xs px-3 py-1.5 rounded-lg font-body font-medium cursor-pointer"
-                            style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843", border: "1px solid rgba(212,168,67,0.3)" }}
-                          >
-                            + Log Action
-                          </button>
-                          {customerActions.length > 0 && (
-                            <button
-                              onClick={() => setExpandedCustomerActions(isExpanded ? null : c.id)}
-                              className="text-xs cursor-pointer"
-                              style={{ color: "#8A8B8C" }}
-                            >
-                              {isExpanded ? "Hide" : "View Actions"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ===================== GEO AUDIT TAB ===================== */}
-      {activeTab === "geoAudit" && (
-        <div className="space-y-6">
-          {/* Controls */}
-          <div className="card-surface p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-[#8A8B8C]" />
-                <label className="label-text">Month:</label>
-                <input
-                  type="month"
-                  value={geoAuditMonth}
-                  onChange={(e) => setGeoAuditMonth(e.target.value)}
-                  className="input-field w-auto"
-                />
-              </div>
-              {canViewAll && (
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-[#8A8B8C]" />
-                  <label className="label-text">Rep:</label>
-                  <select
-                    value={geoAuditRepFilter}
-                    onChange={(e) => setGeoAuditRepFilter(e.target.value)}
-                    className="input-field w-auto"
-                  >
-                    <option value="all">All Reps</option>
-                    {(salesReps || []).map((rep: string) => (
-                      <option key={rep} value={rep}>{rep}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setGeoAuditFlagOnly(!geoAuditFlagOnly)}
-                  className="text-xs px-3 py-1.5 rounded-lg font-body font-medium cursor-pointer transition-all"
-                  style={{
-                    backgroundColor: geoAuditFlagOnly ? "rgba(239,68,68,0.15)" : "#222324",
-                    color: geoAuditFlagOnly ? "#EF4444" : "#8A8B8C",
-                    border: geoAuditFlagOnly ? "1px solid rgba(239,68,68,0.3)" : "1px solid transparent",
-                  }}
-                >
-                  {geoAuditFlagOnly ? "Showing Only Flagged" : "Show All Visits"}
-                </button>
-              </div>
-              <div className="ml-auto text-xs text-[#8A8B8C]">
-                {geoAuditClusters.filter((c) => c.isFlagged).length} flagged cluster{geoAuditClusters.filter((c) => c.isFlagged).length !== 1 ? "s" : ""} &middot; {geoAuditRows.length} visit{geoAuditRows.length !== 1 ? "s" : ""}
-              </div>
-            </div>
-          </div>
-
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="card-surface p-4">
-              <div className="label-text mb-1">TOTAL CLUSTERS</div>
-              <div className="stat-number">{geoAuditClusters.length}</div>
-            </div>
-            <div className="card-surface p-4">
-              <div className="label-text mb-1">FLAGGED</div>
-              <div className="stat-number" style={{ color: "#EF4444" }}>
-                {geoAuditClusters.filter((c) => c.isFlagged).length}
-              </div>
-            </div>
-            <div className="card-surface p-4">
-              <div className="label-text mb-1">TOTAL VISITS</div>
-              <div className="stat-number" style={{ color: "#D4A843" }}>
-                {geoAuditClusters.reduce((sum, c) => sum + c.visits.length, 0)}
-              </div>
-            </div>
-            <div className="card-surface p-4">
-              <div className="label-text mb-1">REPS WITH FLAGS</div>
-              <div className="stat-number" style={{ color: "#F59E0B" }}>
-                {new Set(geoAuditClusters.filter((c) => c.isFlagged).map((c) => c.repName)).size}
-              </div>
-            </div>
-          </div>
-
-          {/* Flagged Alert Banner */}
-          {geoAuditClusters.filter((c) => c.isFlagged).length > 0 && (
-            <div className="card-surface p-4" style={{ backgroundColor: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-[#EF4444]" />
-                <p className="text-sm font-body font-medium text-[#EF4444]">
-                  {geoAuditClusters.filter((c) => c.isFlagged).length} location cluster{geoAuditClusters.filter((c) => c.isFlagged).length > 1 ? "s" : ""} flagged:
-                  same GPS coordinates, different customer names. Tap "Show All Visits" to see every visit, or keep "Showing Only Flagged" to focus on suspicious activity.
-                </p>
-              </div>
+          {myAppointments.length === 0 && (
+            <div className="card-surface p-8 text-center" style={{ borderRadius: 12 }}>
+              <Calendar className="w-10 h-10 text-[#8A8B8C] mx-auto mb-3" />
+              <p className="text-[#8A8B8C] font-body">No appointments scheduled</p>
             </div>
           )}
 
-          {/* Geo Audit Table */}
-          {geoAuditRows.length === 0 ? (
-            <div className="card-surface p-8 text-center text-[#8A8B8C] font-body">
-              <MapPin className="w-12 h-12 mx-auto mb-3 text-[#8A8B8C]" />
-              <p className="font-medium mb-1">No visits found</p>
-              <p className="text-sm">No check-ins with GPS for {geoAuditMonth}.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {geoAuditFlagOnly ? (
-                geoAuditClusters.filter((c) => c.isFlagged).map((cluster) => (
-                  <div key={cluster.key} className="card-surface p-4" style={{ borderLeft: "3px solid #EF4444" }}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
-                          <span className="text-sm font-body font-semibold text-white">{cluster.repName}</span>
-                          <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
-                            FLAGGED
-                          </span>
-                        </div>
-                        <p className="text-xs text-[#8A8B8C]">
-                          GPS: {cluster.roundedLat.toFixed(3)}, {cluster.roundedLng.toFixed(3)} &middot; {cluster.visits.length} visits &middot; {cluster.uniqueCustomers.size} different customer names
-                        </p>
-                      </div>
-                      <a
-                        href={`https://www.google.com/maps?q=${cluster.roundedLat},${cluster.roundedLng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-[#D4A843] underline flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" /> View Map
-                      </a>
+          {myAppointments.map((appt: any) => {
+            const customer = (customers || []).find((c: any) => c.id === appt.customerId);
+            const isExpanded = expandedAppt === appt.id;
+            const canEdit = canManage(appt.salesRepName);
+            const apptDate = new Date(appt.appointmentDate);
+            const isPast = apptDate < new Date();
+            const isToday = apptDate.toDateString() === new Date().toDateString();
+
+            return (
+              <div key={appt.id} className="card-surface p-4" style={{ borderRadius: 12 }}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 cursor-pointer" onClick={() => setExpandedAppt(isExpanded ? null : appt.id)}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded text-xs font-body font-medium ${
+                        appt.status === "cancelled" ? "bg-[#EF444420] text-[#EF4444]" :
+                        appt.status === "completed" ? "bg-[#4ADE8020] text-[#4ADE80]" :
+                        appt.status === "in_progress" ? "bg-[#6366F120] text-[#6366F1]" :
+                        isPast ? "bg-[#8A8B8C20] text-[#8A8B8C]" :
+                        isToday ? "bg-[#D4A84320] text-[#D4A843]" :
+                        "bg-[#3B82F620] text-[#3B82F6]"
+                      }`}>
+                        {appt.status === "cancelled" ? "Cancelled" :
+                         appt.status === "completed" ? "Completed" :
+                         appt.status === "in_progress" ? "In Progress" :
+                         isPast ? "Past" :
+                         isToday ? "Today" :
+                         "Upcoming"}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-xs font-body bg-[#2A2A2C] text-[#8A8B8C]">
+                        {APPOINTMENT_TYPES.find((t) => t.value === appt.appointmentType)?.label || appt.appointmentType}
+                      </span>
+                      {appt.reminderSent && (
+                        <Bell className="w-3 h-3 text-[#D4A843]" title="Reminder sent" />
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      {cluster.visits.map((visit: any) => (
-                        <div key={visit.id} className="flex items-center justify-between p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}>
-                          <div className="flex items-center gap-3">
-                            <User className="w-4 h-4 text-[#8A8B8C]" />
-                            <div>
-                              <p className="text-sm font-body text-[#E8E8E9]">
-                                {visit.customer?.name || visit.location || "Unknown Customer"}
-                              </p>
-                              <p className="text-xs text-[#8A8B8C]">
-                                {new Date(visit.createdAt).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                {visit.outcome && ` · ${visit.outcome}`}
-                              </p>
-                            </div>
-                          </div>
+                    <div className="font-body font-medium text-white">{appt.title || "Untitled"}</div>
+                    <div className="text-sm text-[#E8E8E9] font-body">{customer?.name || "Unknown Customer"}</div>
+                    <div className="text-xs text-[#8A8B8C] font-body mt-1">
+                      <Clock className="w-3 h-3 inline mr-1" />
+                      {apptDate.toLocaleString()}
+                      {appt.location && <span className="ml-3"><MapPin className="w-3 h-3 inline mr-1" />{appt.location}</span>}
+                    </div>
+                    {appt.salesRepName && (
+                      <div className="text-xs text-[#8A8B8C] font-body mt-1">
+                        Rep: {appt.salesRepName}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {canEdit && appt.status === "scheduled" && !isPast && (
+                      <>
+                        <button
+                          onClick={() => openCheckinForAppointment(appt)}
+                          className="btn-primary flex items-center gap-1 text-xs"
+                          title="Check In"
+                        >
+                          <LogIn className="w-3 h-3" /> Check In
+                        </button>
+                        <button
+                          onClick={() => rescheduleAppointment(appt)}
+                          className="p-2 rounded-lg hover:bg-[#2A2A2C] transition-colors"
+                          title="Reschedule"
+                        >
+                          <RotateCcw className="w-4 h-4 text-[#8A8B8C]" />
+                        </button>
+                        <button
+                          onClick={() => cancelAppointment(appt.id)}
+                          className="p-2 rounded-lg hover:bg-[#2A2A2C] transition-colors"
+                          title="Cancel"
+                        >
+                          <XCircle className="w-4 h-4 text-[#EF4444]" />
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => setExpandedAppt(isExpanded ? null : appt.id)}
+                      className="p-2 rounded-lg hover:bg-[#2A2A2C] transition-colors"
+                    >
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
+                    </button>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-[#2A2A2C] space-y-3">
+                    {appt.notes && (
+                      <div>
+                        <div className="text-xs text-[#8A8B8C] font-body mb-1">Notes</div>
+                        <div className="text-sm text-[#E8E8E9] font-body bg-[#0A0A0B] p-3 rounded">{appt.notes}</div>
+                      </div>
+                    )}
+                    {appt.outcome && (
+                      <div>
+                        <div className="text-xs text-[#8A8B8C] font-body mb-1">Outcome</div>
+                        <div className="text-sm text-[#D4A843] font-body">{appt.outcome}</div>
+                      </div>
+                    )}
+                    {appt.outcomeNotes && (
+                      <div>
+                        <div className="text-xs text-[#8A8B8C] font-body mb-1">Outcome Notes</div>
+                        <div className="text-sm text-[#E8E8E9] font-body">{appt.outcomeNotes}</div>
+                      </div>
+                    )}
+                    {appt.currentSupplier && (
+                      <div>
+                        <div className="text-xs text-[#8A8B8C] font-body mb-1">Current Supplier</div>
+                        <div className="text-sm text-[#E8E8E9] font-body">{appt.currentSupplier}</div>
+                      </div>
+                    )}
+                    {appt.newCustomerActions && appt.newCustomerActions.length > 0 && (
+                      <div>
+                        <div className="text-xs text-[#8A8B8C] font-body mb-1">Actions</div>
+                        <div className="flex flex-wrap gap-2">
+                          {appt.newCustomerActions.map((a: string, i: number) => (
+                            <span key={i} className="px-2 py-1 rounded text-xs font-body bg-[#6366F120] text-[#6366F1]">
+                              {NEW_CUSTOMER_ACTIONS.find((x) => x.value === a)?.label || a}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {customer && (
+                      <div className="flex gap-2">
+                        {customer.phone && (
+                          <a href={`tel:${customer.phone}`} className="btn-secondary flex items-center gap-1 text-xs">
+                            <Phone className="w-3 h-3" /> Call
+                          </a>
+                        )}
+                        {customer.physicalAddress && (
                           <a
-                            href={visit.latitude && visit.longitude ? `https://www.google.com/maps?q=${visit.latitude},${visit.longitude}` : `https://www.google.com/maps?q=${cluster.roundedLat},${cluster.roundedLng}`}
+                            href={`https://maps.google.com/?q=${encodeURIComponent(customer.physicalAddress)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-[#D4A843] underline"
+                            className="btn-secondary flex items-center gap-1 text-xs"
                           >
-                            Map
+                            <Navigation className="w-3 h-3" /> Directions
                           </a>
-                        </div>
-                      ))}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left" style={{ borderBottom: "1px solid #222324" }}>
-                        <th className="pb-3 pr-4 label-text">Status</th>
-                        <th className="pb-3 pr-4 label-text">Sales Rep</th>
-                        <th className="pb-3 pr-4 label-text">Customer</th>
-                        <th className="pb-3 pr-4 label-text">Date & Time</th>
-                        <th className="pb-3 pr-4 label-text">Type</th>
-                        <th className="pb-3 pr-4 label-text">GPS Location</th>
-                        <th className="pb-3 pr-4 label-text">Outcome</th>
-                        <th className="pb-3 pr-4 label-text">Duration</th>
-                        <th className="pb-3 label-text text-right">Map</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {geoAuditRows.map((row: any) => (
-                        <tr
-                          key={row.id}
-                          className="font-body transition-colors"
-                          style={{
-                            borderBottom: "1px solid #18191A",
-                            backgroundColor: row._isFlagged ? "rgba(239,68,68,0.04)" : "transparent",
-                          }}
-                        >
-                          <td className="py-3 pr-4">
-                            {row._isFlagged ? (
-                              <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
-                                FLAGGED
-                              </span>
-                            ) : (
-                              <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: "rgba(74,222,128,0.15)", color: "#4ADE80" }}>
-                                OK
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 pr-4 text-white">{row.salesRepName || "Unknown"}</td>
-                          <td className="py-3 pr-4 text-[#E8E8E9]">{row.customer?.name || row.location || "Unknown"}</td>
-                          <td className="py-3 pr-4 text-[#8A8B8C]">
-                            {new Date(row.createdAt).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                          </td>
-                          <td className="py-3 pr-4">
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(212,168,67,0.12)", color: "#D4A843" }}>
-                              {APPOINTMENT_TYPES.find((t) => t.value === row.appointmentType)?.label || row.appointmentType || "visit"}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-[#8A8B8C] font-mono-data">
-                            {row.latitude != null && row.longitude != null ? (
-                              <span>{row.latitude.toFixed(6)}, {row.longitude.toFixed(6)}</span>
-                            ) : (
-                              <span>No GPS</span>
-                            )}
-                          </td>
-                          <td className="py-3 pr-4">
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(99,102,241,0.12)", color: "#6366F1" }}>
-                              {row.outcome || "—"}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-[#8A8B8C]">
-                            {row.durationMinutes ? `${row.durationMinutes}m` : "—"}
-                          </td>
-                          <td className="py-3 text-right">
-                            {row.latitude != null && row.longitude != null ? (
-                              <a
-                                href={`https://www.google.com/maps?q=${row.latitude},${row.longitude}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-[#D4A843] underline inline-flex items-center gap-1"
-                              >
-                                <ExternalLink className="w-3 h-3" /> Map
-                              </a>
-                            ) : (
-                              <span className="text-xs text-[#8A8B8C]">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ===================== MODALS ===================== */}
+      {/* ─── FOLLOW-UPS TAB ─── */}
+      {activeTab === "followups" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+              <Phone className="w-5 h-5 text-[#D4A843]" />
+              Customers Needing Follow-up
+            </h2>
+            <button
+              onClick={() => { setShowActionForm(true); setActionCustomerId(0); setActionNotes(""); setActionType("site_visit"); setActionTitle(""); setActionScheduleFollowUp(false); }}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Log Action
+            </button>
+          </div>
 
-      {/* Check-in Form Modal */}
-      {showCheckinForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><LogIn className="w-5 h-5 text-[#4ADE80]" /> Check In</h2>
-              <button onClick={() => { setShowCheckinForm(false); setMapTarget(null); setGeoError(""); setCheckinAppointmentId(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+          {myFollowUps.length === 0 && (
+            <div className="card-surface p-8 text-center" style={{ borderRadius: 12 }}>
+              <CheckCircle className="w-10 h-10 text-[#4ADE80] mx-auto mb-3" />
+              <p className="text-[#8A8B8C] font-body">All caught up! No follow-ups needed.</p>
             </div>
+          )}
 
-            {!mapTarget ? (
-              <div className="space-y-4">
-                {checkinAppointmentId && (
-                  <div className="p-3 rounded-lg" style={{ backgroundColor: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.2)" }}>
-                    <p className="text-xs text-[#D4A843] font-medium">Linked Appointment</p>
-                    <p className="text-sm text-white font-body">{checkinTitle}</p>
-                    <p className="text-xs text-[#8A8B8C]">{APPOINTMENT_TYPES.find((t) => t.value === checkinAppointmentType)?.label || checkinAppointmentType}</p>
-                  </div>
-                )}
+          {myFollowUps.map((customer: any) => {
+            const actions = (followUpActions || []).filter((a: any) => a.customerId === customer.id).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            const isExpanded = expandedCustomerActions === customer.id;
+            const lastAction = actions[0];
+            const daysSince = lastAction ? Math.floor((Date.now() - new Date(lastAction.createdAt).getTime()) / 86400000) : null;
 
-                {/* Customer search */}
-                <div>
-                  <label className="label-text block mb-1.5">Search Customer *</label>
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
-                    <input
-                      type="text"
-                      value={checkinSearch}
-                      onChange={(e) => setCheckinSearch(e.target.value)}
-                      placeholder="Type to search customers..."
-                      className="input-field w-full pl-10"
-                    />
-                  </div>
-                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
-                    {filteredCheckinCustomers.length === 0 && (
-                      <div className="p-3 text-xs text-[#8A8B8C]">No customers found</div>
+            return (
+              <div key={customer.id} className="card-surface p-4" style={{ borderRadius: 12 }}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="font-body font-medium text-white">{customer.name}</div>
+                    <div className="text-sm text-[#E8E8E9] font-body">{customer.contactPerson || "No contact"}</div>
+                    <div className="text-xs text-[#8A8B8C] font-body mt-1">
+                      Rep: {customer.salesRepName || "Unassigned"}
+                      {customer.phone && <span className="ml-3">{customer.phone}</span>}
+                    </div>
+                    {lastAction && (
+                      <div className="mt-2 text-xs text-[#8A8B8C] font-body">
+                        Last action: <span className="text-[#D4A843]">{lastAction.actionType}</span> ({daysSince}d ago)
+                        {lastAction.notes && <span className="block mt-1 text-[#E8E8E9]">{lastAction.notes}</span>}
+                      </div>
                     )}
-                    {filteredCheckinCustomers.map((c: any) => (
-                      <div
-                        key={c.id}
-                        onClick={() => setCheckinCustomerId(c.id)}
-                        className="p-3 cursor-pointer flex items-center justify-between"
-                        style={{
-                          borderBottom: "1px solid #222324",
-                          backgroundColor: checkinCustomerId === c.id ? "rgba(212,168,67,0.1)" : "transparent",
-                        }}
-                      >
-                        <div>
-                          <div className="text-sm font-body" style={{ color: checkinCustomerId === c.id ? "#D4A843" : "#E8E8E9" }}>{c.name}</div>
-                          <div className="text-xs text-[#8A8B8C]">{c.physicalAddress}{c.city ? `, ${c.city}` : ""}</div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => { setActionCustomerId(customer.id); setShowActionForm(true); }}
+                      className="btn-primary flex items-center gap-1 text-xs"
+                    >
+                      <ClipboardList className="w-3 h-3" /> Log Action
+                    </button>
+                    <button
+                      onClick={() => setExpandedCustomerActions(isExpanded ? null : customer.id)}
+                      className="text-xs text-[#8A8B8C] font-body hover:text-white transition-colors"
+                    >
+                      {isExpanded ? "Hide history" : `View history (${actions.length})`}
+                    </button>
+                  </div>
+                </div>
+
+                {isExpanded && actions.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-[#2A2A2C] space-y-2">
+                    {actions.map((action: any) => (
+                      <div key={action.id} className="text-xs font-body bg-[#0A0A0B] p-2 rounded">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#D4A843]">{action.actionType}</span>
+                          <span className="text-[#8A8B8C]">{new Date(action.createdAt).toLocaleDateString()}</span>
+                          {action.salesRepName && <span className="text-[#8A8B8C]">by {action.salesRepName}</span>}
                         </div>
-                        {checkinCustomerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
+                        {action.notes && <div className="text-[#E8E8E9] mt-1">{action.notes}</div>}
+                        {action.title && <div className="text-[#8A8B8C] mt-1">{action.title}</div>}
                       </div>
                     ))}
                   </div>
-                </div>
-
-                {/* Appointment type */}
-                <div>
-                  <label className="label-text block mb-1.5">Appointment Type</label>
-                  <select
-                    value={checkinAppointmentType}
-                    onChange={(e) => setCheckinAppointmentType(e.target.value)}
-                    className="input-field w-full"
-                  >
-                    {APPOINTMENT_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Visit outcome */}
-                <div>
-                  <label className="label-text block mb-1.5">Visit Outcome</label>
-                  <div className="flex gap-2">
-                    {(["visit", "order", "sample"] as const).map((o) => (
-                      <button
-                        key={o}
-                        onClick={() => setCheckinOutcome(o)}
-                        className="flex-1 py-2 rounded-lg text-xs font-body font-medium capitalize cursor-pointer"
-                        style={{
-                          backgroundColor: checkinOutcome === o ? "#D4A843" : "#222324",
-                          color: checkinOutcome === o ? "#0A0A0B" : "#8A8B8C",
-                        }}
-                      >
-                        {o}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="label-text block mb-1.5">Notes (optional)</label>
-                  <textarea value={checkinNotes} onChange={(e) => setCheckinNotes(e.target.value)} className="input-field" rows={2} placeholder="What did you discuss?" />
-                </div>
-                {geoError && <p className="text-xs text-[#EF4444]">{geoError}</p>}
-                <button onClick={submitCheckinForm} className="btn-primary w-full justify-center"><Navigation className="w-4 h-4" /> Check In Now</button>
-                <p className="text-xs text-[#8A8B8C] font-body text-center">GPS will be captured automatically. If unavailable, you'll confirm on Google Maps.</p>
+                )}
               </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-[#D4A843] font-body">GPS unavailable — confirm your location on the map below.</p>
-                <div className="rounded-lg overflow-hidden" style={{ border: "1px solid #222324" }}>
-                  <iframe
-                    src={mapEmbedUrl}
-                    width="100%"
-                    height="280"
-                    style={{ border: 0, filter: "grayscale(0.3)" }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    title="Customer Location"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <a href={mapLinkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Open in Google Maps</a>
-                  <div className="flex gap-2">
-                    <button onClick={() => setMapTarget(null)} className="btn-secondary text-xs">Back</button>
-                    <button onClick={confirmMapCheckin} className="btn-primary text-xs" style={{ backgroundColor: "#4ADE80", borderColor: "#4ADE80", color: "#0A0A0B" }}><CheckCircle className="w-3 h-3" /> Confirm</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Check-Out Form Modal */}
-      {showCheckoutForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><LogOut className="w-5 h-5 text-[#EF4444]" /> Check Out</h2>
-              <button onClick={() => setShowCheckoutForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
-            </div>
-            <div className="space-y-4">
-              {/* Customer type toggle */}
-              <div>
-                <label className="label-text block mb-1.5">Customer Type</label>
-                <div className="flex p-1 rounded-full" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
-                  <button
-                    onClick={() => setCheckoutCustomerType("existing")}
-                    className="flex-1 py-2 rounded-full text-xs font-body font-medium cursor-pointer"
-                    style={{ backgroundColor: checkoutCustomerType === "existing" ? "#D4A843" : "transparent", color: checkoutCustomerType === "existing" ? "#0A0A0B" : "#8A8B8C" }}
-                  >Existing Customer</button>
-                  <button
-                    onClick={() => setCheckoutCustomerType("new")}
-                    className="flex-1 py-2 rounded-full text-xs font-body font-medium cursor-pointer"
-                    style={{ backgroundColor: checkoutCustomerType === "new" ? "#D4A843" : "transparent", color: checkoutCustomerType === "new" ? "#0A0A0B" : "#8A8B8C" }}
-                  >New Customer</button>
-                </div>
-              </div>
-
-              {checkoutCustomerType === "existing" ? (
-                <>
-                  <div>
-                    <label className="label-text block mb-1.5">Visit Outcome *</label>
-                    <select
-                      value={checkoutOutcome}
-                      onChange={(e) => setCheckoutOutcome(e.target.value)}
-                      className="input-field w-full"
-                      required
-                    >
-                      <option value="">Select outcome...</option>
-                      {EXISTING_CUSTOMER_OUTCOMES.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="label-text block mb-1.5">Current Supplier *</label>
-                    <select
-                      value={checkoutCurrentSupplier}
-                      onChange={(e) => setCheckoutCurrentSupplier(e.target.value)}
-                      className="input-field w-full"
-                      required
-                    >
-                      <option value="">Select supplier...</option>
-                      {CURRENT_SUPPLIERS.map((s) => (
-                        <option key={s.value} value={s.value}>{s.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label-text block mb-1.5">Action Items</label>
-                    <div className="space-y-2">
-                      {NEW_CUSTOMER_ACTIONS.map((a) => (
-                        <label key={a.value} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={checkoutNewCustomerActions.includes(a.value)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setCheckoutNewCustomerActions([...checkoutNewCustomerActions, a.value]);
-                              } else {
-                                setCheckoutNewCustomerActions(checkoutNewCustomerActions.filter((x) => x !== a.value));
-                              }
-                            }}
-                            className="w-4 h-4 accent-[#D4A843]"
-                          />
-                          <span className="text-xs text-[#E8E8E9] font-body">{a.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </>
+      {/* ─── GEO AUDIT TAB ─── */}
+      {activeTab === "geoAudit" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-[#D4A843]" />
+              Geo Audit
+            </h2>
+            <div className="flex items-center gap-3">
+              <input
+                type="month"
+                value={geoAuditMonth}
+                onChange={(e) => setGeoAuditMonth(e.target.value)}
+                className="input-field text-sm py-1.5"
+              />
+              {canViewAll && (
+                <select
+                  value={geoAuditRepFilter}
+                  onChange={(e) => setGeoAuditRepFilter(e.target.value)}
+                  className="input-field text-sm py-1.5"
+                >
+                  <option value="all">All Reps</option>
+                  {(salesReps || []).map((r: any) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
               )}
-
-              <div>
-                <label className="label-text block mb-1.5">Outcome Notes</label>
-                <textarea value={checkoutOutcomeNotes} onChange={(e) => setCheckoutOutcomeNotes(e.target.value)} className="input-field" rows={2} placeholder="Additional details about the outcome..." />
-              </div>
-
-              <div>
-                <label className="label-text block mb-1.5">Visit Notes</label>
-                <textarea value={checkoutNotes} onChange={(e) => setCheckoutNotes(e.target.value)} className="input-field" rows={2} placeholder="General notes about the visit..." />
-              </div>
-
-              <button onClick={submitCheckout} className="btn-primary w-full justify-center" style={{ backgroundColor: "#EF4444", borderColor: "#EF4444" }}><LogOut className="w-4 h-4" /> Check Out Now</button>
+              <label className="flex items-center gap-2 text-sm text-[#E8E8E9] font-body cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={geoAuditFlagOnly}
+                  onChange={(e) => setGeoAuditFlagOnly(e.target.checked)}
+                  className="w-4 h-4 accent-[#D4A843]"
+                />
+                Flagged only
+              </label>
             </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#2A2A2C]">
+                  <th className="text-left py-2 px-3 text-[#8A8B8C] font-body font-medium">Customer</th>
+                  <th className="text-left py-2 px-3 text-[#8A8B8C] font-body font-medium">Rep</th>
+                  <th className="text-left py-2 px-3 text-[#8A8B8C] font-body font-medium">Last Visit</th>
+                  <th className="text-left py-2 px-3 text-[#8A8B8C] font-body font-medium">Next Appt</th>
+                  <th className="text-left py-2 px-3 text-[#8A8B8C] font-body font-medium">Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {geoAuditData.map((row: any) => (
+                  <tr key={row.customer.id} className="border-b border-[#2A2A2C] hover:bg-[#1A1A1C]">
+                    <td className="py-2 px-3 text-white font-body">{row.customer.name}</td>
+                    <td className="py-2 px-3 text-[#8A8B8C] font-body">{row.customer.salesRepName || "-"}</td>
+                    <td className="py-2 px-3 text-[#8A8B8C] font-body">
+                      {row.lastVisit ? new Date(row.lastVisit.checkInTime).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="py-2 px-3 text-[#8A8B8C] font-body">
+                      {row.nextAppt ? new Date(row.nextAppt.appointmentDate).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="py-2 px-3">
+                      {row.flag ? (
+                        <span className="flex items-center gap-1 text-xs text-[#EF4444] font-body">
+                          <AlertTriangle className="w-3 h-3" /> {row.flag}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#4ADE80] font-body">OK</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {geoAuditData.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-[#8A8B8C] font-body">
+                      No customers found for selected filters
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* Schedule Form Modal */}
+      {/* ===================== SCHEDULE APPOINTMENT MODAL ===================== */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg">Schedule Appointment</h2>
-              <button onClick={() => setShowForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                <Plus className="w-5 h-5 text-[#D4A843]" />
+                Schedule Appointment
+              </h2>
+              <button onClick={() => setShowForm(false)} className="cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
             </div>
 
-            {/* Toggle: Existing vs New Customer */}
-            <div className="flex p-1 rounded-full mb-5" style={{ backgroundColor: "#18191A", border: "1px solid #222324" }}>
+            {/* Existing / New toggle */}
+            <div className="flex gap-2 mb-4">
               <button
-                onClick={() => { setScheduleMode("existing"); setFormData({ ...formData, customerType: "existing" }); }}
-                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer"
-                style={{ backgroundColor: scheduleMode === "existing" ? "#D4A843" : "transparent", color: scheduleMode === "existing" ? "#0A0A0B" : "#8A8B8C" }}
-              >Existing Customer</button>
+                onClick={() => setScheduleMode("existing")}
+                className={`flex-1 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
+                  scheduleMode === "existing"
+                    ? "bg-[#D4A843] text-[#0A0A0B]"
+                    : "bg-[#2A2A2C] text-[#8A8B8C]"
+                }`}
+              >
+                Existing Customer
+              </button>
               <button
-                onClick={() => { setScheduleMode("new"); setFormData({ ...formData, customerType: "new" }); }}
-                className="flex-1 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer"
-                style={{ backgroundColor: scheduleMode === "new" ? "#D4A843" : "transparent", color: scheduleMode === "new" ? "#0A0A0B" : "#8A8B8C" }}
-              >New Customer</button>
+                onClick={() => setScheduleMode("new")}
+                className={`flex-1 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
+                  scheduleMode === "new"
+                    ? "bg-[#D4A843] text-[#0A0A0B]"
+                    : "bg-[#2A2A2C] text-[#8A8B8C]"
+                }`}
+              >
+                New Customer
+              </button>
             </div>
 
             {scheduleMode === "existing" ? (
-              <form onSubmit={handleScheduleSubmit} className="space-y-4">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!formData.customerId) { alert("Select a customer"); return; }
+                  if (!formData.title) { alert("Select a title"); return; }
+                  const payload: any = {
+                    customerId: formData.customerId,
+                    title: formData.title,
+                    notes: formData.notes,
+                    appointmentDate: formData.appointmentDate,
+                    startTime: formData.startTime,
+                    location: formData.location,
+                    appointmentType: formData.appointmentType,
+                    salesRepName: myRepName,
+                  };
+                  if (formData.currentSupplier) payload.currentSupplier = formData.currentSupplier;
+                  if (formData.newCustomerActions.length > 0) payload.newCustomerActions = formData.newCustomerActions;
+                  createAppointment.mutate(payload);
+                }}
+                className="space-y-4"
+              >
+                {/* Customer type-ahead */}
                 <div ref={customerDropdownRef} className="relative">
                   <label className="label-text block mb-1.5">Customer *</label>
                   <div className="relative">
@@ -1673,7 +1149,7 @@ export default function AppointmentsPage() {
                       value={customerSearch}
                       onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
                       onFocus={() => setShowCustomerDropdown(true)}
-                      placeholder={formData.customerId > 0 ? (customers || []).find((c: any) => c.id === formData.customerId)?.name || "Search customer..." : "Type to search customer..."}
+                      placeholder="Type to search customer..."
                       className="input-field w-full pr-10"
                       required={formData.customerId === 0}
                     />
@@ -1709,7 +1185,7 @@ export default function AppointmentsPage() {
                   <label className="label-text block mb-1.5">Appointment Type *</label>
                   <select
                     value={formData.appointmentType}
-                    onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value as any })}
                     className="input-field w-full"
                     required
                   >
@@ -1736,62 +1212,143 @@ export default function AppointmentsPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
-                  <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+                  <div>
+                    <label className="label-text block mb-1.5">Date *</label>
+                    <input
+                      type="date"
+                      value={formData.appointmentDate.slice(0, 10)}
+                      onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })}
+                      className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label-text block mb-1.5">Time *</label>
+                    <input
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      className="input-field"
+                      required
+                    />
+                  </div>
                 </div>
-                <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
-                <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
-                <button type="submit" className="btn-primary w-full justify-center">Schedule Appointment</button>
+                <div>
+                  <label className="label-text block mb-1.5">Location</label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    className="input-field"
+                    placeholder="e.g. Customer office address"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Notes</label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="input-field"
+                    rows={3}
+                    placeholder="Any additional details..."
+                  />
+                </div>
+                <button type="submit" className="btn-primary w-full justify-center" disabled={createAppointment.isPending}>
+                  {createAppointment.isPending ? "Scheduling..." : "Schedule Appointment"}
+                </button>
               </form>
             ) : (
+              /* New Customer Form */
               <div className="space-y-4">
                 <div>
-                  <label className="label-text block mb-1.5">Customer Name *</label>
-                  <input type="text" value={newCustomer.name} onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })} className="input-field" placeholder="e.g. Joe's Butchery" />
+                  <label className="label-text block mb-1.5">Business Name *</label>
+                  <input
+                    type="text"
+                    value={newCustomer.name}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                    className="input-field"
+                    placeholder="Customer business name"
+                    required
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={newCustomer.contactPerson} onChange={(e) => setNewCustomer({ ...newCustomer, contactPerson: e.target.value })} className="input-field" placeholder="e.g. John Smith" /></div>
-                  <div><label className="label-text block mb-1.5">Phone</label><input type="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} className="input-field" placeholder="e.g. 011 123 4567" /></div>
+                <div>
+                  <label className="label-text block mb-1.5">Contact Person</label>
+                  <input
+                    type="text"
+                    value={newCustomer.contactPerson}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, contactPerson: e.target.value })}
+                    className="input-field"
+                    placeholder="Primary contact name"
+                  />
                 </div>
-                <div><label className="label-text block mb-1.5">Address</label><input type="text" value={newCustomer.address} onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })} className="input-field" placeholder="e.g. 123 Main St, Germiston" /></div>
-                <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-text block mb-1.5">Phone</label>
+                  <input
+                    type="tel"
+                    value={newCustomer.phone}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                    className="input-field"
+                    placeholder="Contact phone number"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Address</label>
+                  <input
+                    type="text"
+                    value={newCustomer.address}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+                    className="input-field"
+                    placeholder="Physical address"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="label-text block mb-1.5">Price Tier</label>
-                    <select value={newCustomer.priceTier} onChange={(e) => setNewCustomer({ ...newCustomer, priceTier: e.target.value as any })} className="input-field">
-                      <option value="wholesale">Wholesale</option><option value="bulk">Bulk</option><option value="corporate">Corporate</option><option value="retail">Retail</option>
+                    <select
+                      value={newCustomer.priceTier}
+                      onChange={(e) => setNewCustomer({ ...newCustomer, priceTier: e.target.value as any })}
+                      className="input-field w-full"
+                    >
+                      <option value="wholesale">Wholesale</option>
+                      <option value="bulk">Bulk</option>
+                      <option value="corporate">Corporate</option>
+                      <option value="retail">Retail</option>
                     </select>
                   </div>
                   <div>
                     <label className="label-text block mb-1.5">Payment Terms</label>
-                    <select value={newCustomer.paymentTerms} onChange={(e) => setNewCustomer({ ...newCustomer, paymentTerms: e.target.value as any })} className="input-field">
-                      <option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option>
+                    <select
+                      value={newCustomer.paymentTerms}
+                      onChange={(e) => setNewCustomer({ ...newCustomer, paymentTerms: e.target.value as any })}
+                      className="input-field w-full"
+                    >
+                      <option value="cod">COD</option>
+                      <option value="7_days">7 Days</option>
+                      <option value="14_days">14 Days</option>
+                      <option value="30_days">30 Days</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Appointment Type */}
+                {/* New customer appointment details */}
                 <div>
                   <label className="label-text block mb-1.5">Appointment Type *</label>
                   <select
                     value={formData.appointmentType}
-                    onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value as any })}
                     className="input-field w-full"
-                    required
                   >
                     {APPOINTMENT_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
                 </div>
-
-                {/* Title */}
                 <div>
                   <label className="label-text block mb-1.5">Title *</label>
                   <select
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     className="input-field w-full"
-                    required
                   >
                     <option value="">Select title...</option>
                     {NEW_CUSTOMER_TITLES.map((t) => (
@@ -1799,13 +1356,46 @@ export default function AppointmentsPage() {
                     ))}
                   </select>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
-                  <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+                  <div>
+                    <label className="label-text block mb-1.5">Date *</label>
+                    <input
+                      type="date"
+                      value={formData.appointmentDate.slice(0, 10)}
+                      onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="label-text block mb-1.5">Time *</label>
+                    <input
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      className="input-field"
+                    />
+                  </div>
                 </div>
-                <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office" /></div>
-                <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
+                <div>
+                  <label className="label-text block mb-1.5">Location</label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    className="input-field"
+                    placeholder="e.g. Customer office"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Notes</label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="input-field"
+                    rows={3}
+                    placeholder="Any additional details..."
+                  />
+                </div>
                 <button onClick={handleAddNewCustomerAndSchedule} className="btn-primary w-full justify-center">
                   <Plus className="w-4 h-4" /> Create Customer & Schedule
                 </button>
@@ -1815,31 +1405,278 @@ export default function AppointmentsPage() {
         </div>
       )}
 
+      {/* ===================== CHECK-IN MODAL ===================== */}
+      {showCheckinForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                <LogIn className="w-5 h-5 text-[#D4A843]" />
+                Check In
+              </h2>
+              <button onClick={() => setShowCheckinForm(false)} className="cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
+            </div>
+
+            {/* Customer search */}
+            <div className="mb-4">
+              <label className="label-text block mb-1.5">Customer *</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={checkinSearch}
+                  onChange={(e) => setCheckinSearch(e.target.value)}
+                  placeholder="Type to search customer..."
+                  className="input-field w-full pr-10"
+                />
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
+              </div>
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[#2A2A2C] bg-[#1A1A1C]">
+                {(customers || [])
+                  .filter((c: any) => !checkinSearch || c.name?.toLowerCase().includes(checkinSearch.toLowerCase()) || c.contactPerson?.toLowerCase().includes(checkinSearch.toLowerCase()))
+                  .sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0)
+                  .map((c: any) => (
+                    <div
+                      key={c.id}
+                      onClick={() => { setCheckinCustomerId(c.id); setCheckinSearch(c.name); }}
+                      className={`px-4 py-2.5 cursor-pointer hover:bg-[#2A2A2C] transition-colors flex items-center justify-between ${
+                        checkinCustomerId === c.id ? "bg-[#D4A84320]" : ""
+                      }`}
+                    >
+                      <div>
+                        <div className="text-sm font-body text-[#E8E8E9]">{c.name}</div>
+                        {c.contactPerson && <div className="text-xs text-[#8A8B8C]">{c.contactPerson}</div>}
+                      </div>
+                      {checkinCustomerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
+                    </div>
+                  ))}
+                {(customers || []).filter((c: any) => !checkinSearch || c.name?.toLowerCase().includes(checkinSearch.toLowerCase())).length === 0 && (
+                  <div className="px-4 py-3 text-sm text-[#8A8B8C]">No customers found</div>
+                )}
+              </div>
+            </div>
+
+            {/* Outcome */}
+            <div className="mb-4">
+              <label className="label-text block mb-1.5">Visit Type</label>
+              <div className="flex gap-2">
+                {(["visit", "order", "sample"] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => setCheckinOutcome(o)}
+                    className="flex-1 py-2 rounded-lg text-xs font-body font-medium capitalize cursor-pointer"
+                    style={{ backgroundColor: checkinOutcome === o ? "#D4A843" : "#222324", color: checkinOutcome === o ? "#0A0A0B" : "#8A8B8C" }}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Linked appointment info */}
+            {checkinAppointmentId && (
+              <div className="mb-4 p-3 rounded-lg bg-[#D4A84310] border border-[#D4A84330]">
+                <div className="text-xs text-[#D4A843] font-body mb-1">Linked Appointment</div>
+                <div className="text-sm text-white font-body">{checkinTitle || "Appointment"}</div>
+                <div className="text-xs text-[#8A8B8C] font-body">
+                  {APPOINTMENT_TYPES.find((t) => t.value === checkinAppointmentType)?.label || checkinAppointmentType}
+                </div>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="label-text block mb-1.5">Notes</label>
+              <textarea
+                value={checkinNotes}
+                onChange={(e) => setCheckinNotes(e.target.value)}
+                className="input-field"
+                rows={3}
+                placeholder="Check-in notes..."
+              />
+            </div>
+
+            {geoError && (
+              <div className="mb-4 p-3 rounded-lg bg-[#EF444410] border border-[#EF444430] text-sm text-[#EF4444] font-body">
+                {geoError}
+              </div>
+            )}
+
+            <button
+              onClick={() => getGeoAndCheckIn(checkinCustomerId)}
+              className="btn-primary w-full justify-center"
+              disabled={!checkinCustomerId || createCheckin.isPending}
+            >
+              {createCheckin.isPending ? "Checking in..." : "Check In with Location"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== CHECK-OUT MODAL ===================== */}
+      {showCheckoutForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                <LogOut className="w-5 h-5 text-[#D4A843]" />
+                Check Out
+              </h2>
+              <button onClick={() => setShowCheckoutForm(false)} className="cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
+            </div>
+
+            {/* Customer Type Toggle */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setCheckoutCustomerType("existing")}
+                className={`flex-1 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
+                  checkoutCustomerType === "existing"
+                    ? "bg-[#D4A843] text-[#0A0A0B]"
+                    : "bg-[#2A2A2C] text-[#8A8B8C]"
+                }`}
+              >
+                Existing Customer
+              </button>
+              <button
+                onClick={() => setCheckoutCustomerType("new")}
+                className={`flex-1 py-2 rounded-lg text-sm font-body font-medium transition-colors ${
+                  checkoutCustomerType === "new"
+                    ? "bg-[#D4A843] text-[#0A0A0B]"
+                    : "bg-[#2A2A2C] text-[#8A8B8C]"
+                }`}
+              >
+                New Customer
+              </button>
+            </div>
+
+            {checkoutCustomerType === "existing" ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="label-text block mb-1.5">Outcome *</label>
+                  <select
+                    value={checkoutOutcome}
+                    onChange={(e) => setCheckoutOutcome(e.target.value)}
+                    className="input-field w-full"
+                    required
+                  >
+                    <option value="">Select outcome...</option>
+                    {EXISTING_CUSTOMER_OUTCOMES.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Outcome Notes</label>
+                  <textarea
+                    value={checkoutOutcomeNotes}
+                    onChange={(e) => setCheckoutOutcomeNotes(e.target.value)}
+                    className="input-field"
+                    rows={3}
+                    placeholder="Additional details about the outcome..."
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="label-text block mb-1.5">Current Supplier</label>
+                  <select
+                    value={checkoutCurrentSupplier}
+                    onChange={(e) => setCheckoutCurrentSupplier(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    <option value="">Select supplier...</option>
+                    {CURRENT_SUPPLIERS.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Actions</label>
+                  <div className="space-y-2">
+                    {NEW_CUSTOMER_ACTIONS.map((a) => (
+                      <label key={a.value} className="flex items-center gap-2 text-sm text-[#E8E8E9] font-body cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checkoutNewCustomerActions.includes(a.value)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setCheckoutNewCustomerActions([...checkoutNewCustomerActions, a.value]);
+                            } else {
+                              setCheckoutNewCustomerActions(checkoutNewCustomerActions.filter((x) => x !== a.value));
+                            }
+                          }}
+                          className="w-4 h-4 accent-[#D4A843]"
+                        />
+                        {a.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <label className="label-text block mb-1.5">Notes</label>
+              <textarea
+                value={checkoutNotes}
+                onChange={(e) => setCheckoutNotes(e.target.value)}
+                className="input-field"
+                rows={3}
+                placeholder="General notes..."
+              />
+            </div>
+
+            <button
+              onClick={submitCheckout}
+              className="btn-primary w-full justify-center mt-4"
+              disabled={checkoutMutation.isPending}
+            >
+              {checkoutMutation.isPending ? "Checking out..." : "Complete Check-out"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ===================== EDIT APPOINTMENT MODAL ===================== */}
       {showEditForm && editingAppointment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><Edit className="w-5 h-5 text-[#D4A843]" /> {editingAppointment.status === "rescheduled" ? "Reschedule" : "Edit"} Appointment</h2>
-              <button onClick={() => { setShowEditForm(false); setEditingAppointment(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                <Edit className="w-5 h-5 text-[#D4A843]" />
+                {editingAppointment.status === "rescheduled" ? "Reschedule" : "Edit"} Appointment
+              </h2>
+              <button onClick={() => { setShowEditForm(false); setEditingAppointment(null); }} className="cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
             </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!editingAppointment) return;
-              updateAppointment.mutate({
-                id: editingAppointment.id,
-                data: {
-                  title: formData.title,
-                  notes: formData.notes,
-                  appointmentDate: formData.appointmentDate,
-                  location: formData.location,
-                  customerId: formData.customerId,
-                  appointmentType: formData.appointmentType,
-                  customerType: formData.customerType,
-                  status: editingAppointment.status === "cancelled" ? "scheduled" : editingAppointment.status === "rescheduled" ? "scheduled" : editingAppointment.status,
-                },
-              });
-            }} className="space-y-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!editingAppointment) return;
+                updateAppointment.mutate({
+                  id: editingAppointment.id,
+                  data: {
+                    title: formData.title,
+                    notes: formData.notes,
+                    appointmentDate: formData.appointmentDate,
+                    location: formData.location,
+                    customerId: formData.customerId,
+                    appointmentType: formData.appointmentType,
+                    outcome: formData.outcome,
+                    outcomeNotes: formData.outcomeNotes,
+                    currentSupplier: formData.currentSupplier,
+                    newCustomerActions: formData.newCustomerActions,
+                    status: editingAppointment.status === "cancelled" ? "scheduled" : editingAppointment.status === "rescheduled" ? "scheduled" : editingAppointment.status,
+                  },
+                });
+              }}
+              className="space-y-4"
+            >
               <div ref={editCustomerDropdownRef} className="relative">
                 <label className="label-text block mb-1.5">Customer</label>
                 <div className="relative">
@@ -1884,7 +1721,7 @@ export default function AppointmentsPage() {
                 <label className="label-text block mb-1.5">Appointment Type *</label>
                 <select
                   value={formData.appointmentType}
-                  onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, appointmentType: e.target.value as any })}
                   className="input-field w-full"
                   required
                 >
@@ -1904,20 +1741,63 @@ export default function AppointmentsPage() {
                   required
                 >
                   <option value="">Select title...</option>
-                  {(formData.customerType === "new" ? NEW_CUSTOMER_TITLES : EXISTING_CUSTOMER_TITLES).map((t) => (
+                  {EXISTING_CUSTOMER_TITLES.map((t) => (
                     <option key={t.value} value={t.label}>{t.label}</option>
                   ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="label-text block mb-1.5">Date *</label><input type="date" value={formData.appointmentDate.slice(0, 10)} onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })} className="input-field" required /></div>
-                <div><label className="label-text block mb-1.5">Time *</label><input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="input-field" required /></div>
+                <div>
+                  <label className="label-text block mb-1.5">Date *</label>
+                  <input
+                    type="date"
+                    value={formData.appointmentDate.slice(0, 10)}
+                    onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value + "T" + formData.startTime })}
+                    className="input-field"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1.5">Time *</label>
+                  <input
+                    type="time"
+                    value={formData.startTime}
+                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                    className="input-field"
+                    required
+                  />
+                </div>
               </div>
-              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className="input-field" placeholder="e.g. Customer office address" /></div>
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={3} placeholder="Any additional details..." /></div>
+              <div>
+                <label className="label-text block mb-1.5">Location</label>
+                <input
+                  type="text"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  className="input-field"
+                  placeholder="e.g. Customer office address"
+                />
+              </div>
+              <div>
+                <label className="label-text block mb-1.5">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="input-field"
+                  rows={3}
+                  placeholder="Any additional details..."
+                />
+              </div>
               <div className="flex gap-3">
-                <button type="button" onClick={() => { if (confirm("Delete this appointment?")) { deleteAppointment.mutate(editingAppointment.id); setShowEditForm(false); setEditingAppointment(null); } }} className="btn-secondary flex items-center gap-2" style={{ color: "#EF4444", borderColor: "#EF4444" }}><Trash2 className="w-4 h-4" /> Delete</button>
+                <button
+                  type="button"
+                  onClick={() => { if (confirm("Delete this appointment?")) { deleteAppointment.mutate(editingAppointment.id); setShowEditForm(false); setEditingAppointment(null); } }}
+                  className="btn-secondary flex items-center gap-2"
+                  style={{ color: "#EF4444", borderColor: "#EF4444" }}
+                >
+                  <Trash2 className="w-4 h-4" /> Delete
+                </button>
                 <button type="submit" className="btn-primary flex-1 justify-center" disabled={updateAppointment.isPending}>
                   {updateAppointment.isPending ? "Saving..." : (editingAppointment.status === "rescheduled" ? "Reschedule" : "Save Changes")}
                 </button>
@@ -1932,21 +1812,29 @@ export default function AppointmentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, maxHeight: "90vh", overflowY: "auto" }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2"><Edit className="w-5 h-5 text-[#D4A843]" /> Edit Check-in</h2>
-              <button onClick={() => { setShowEditCheckinForm(false); setEditingCheckin(null); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                <Edit className="w-5 h-5 text-[#D4A843]" />
+                Edit Check-in
+              </h2>
+              <button onClick={() => { setShowEditCheckinForm(false); setEditingCheckin(null); }} className="cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
             </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!editingCheckin) return;
-              updateCheckin.mutate({
-                id: editingCheckin.id,
-                data: {
-                  notes: editingCheckin.notes,
-                  location: editingCheckin.location,
-                  outcome: editingCheckin.outcome,
-                },
-              });
-            }} className="space-y-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!editingCheckin) return;
+                updateCheckin.mutate({
+                  id: editingCheckin.id,
+                  data: {
+                    notes: editingCheckin.notes,
+                    location: editingCheckin.location,
+                    outcome: editingCheckin.outcome,
+                  },
+                });
+              }}
+              className="space-y-4"
+            >
               <div>
                 <label className="label-text block mb-1.5">Customer</label>
                 <div className="text-sm text-white font-body p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
@@ -1975,10 +1863,35 @@ export default function AppointmentsPage() {
                   ))}
                 </div>
               </div>
-              <div><label className="label-text block mb-1.5">Location</label><input type="text" value={editingCheckin.location || ""} onChange={(e) => setEditingCheckin({ ...editingCheckin, location: e.target.value })} className="input-field" placeholder="e.g. Customer address" /></div>
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={editingCheckin.notes || ""} onChange={(e) => setEditingCheckin({ ...editingCheckin, notes: e.target.value })} className="input-field" rows={3} placeholder="Check-in notes..." /></div>
+              <div>
+                <label className="label-text block mb-1.5">Location</label>
+                <input
+                  type="text"
+                  value={editingCheckin.location || ""}
+                  onChange={(e) => setEditingCheckin({ ...editingCheckin, location: e.target.value })}
+                  className="input-field"
+                  placeholder="e.g. Customer address"
+                />
+              </div>
+              <div>
+                <label className="label-text block mb-1.5">Notes</label>
+                <textarea
+                  value={editingCheckin.notes || ""}
+                  onChange={(e) => setEditingCheckin({ ...editingCheckin, notes: e.target.value })}
+                  className="input-field"
+                  rows={3}
+                  placeholder="Check-in notes..."
+                />
+              </div>
               <div className="flex gap-3">
-                <button type="button" onClick={() => { if (confirm("Delete this check-in?")) { deleteCheckin.mutate(editingCheckin.id); setShowEditCheckinForm(false); setEditingCheckin(null); } }} className="btn-secondary flex items-center gap-2" style={{ color: "#EF4444", borderColor: "#EF4444" }}><Trash2 className="w-4 h-4" /> Delete</button>
+                <button
+                  type="button"
+                  onClick={() => { if (confirm("Delete this check-in?")) { deleteCheckin.mutate(editingCheckin.id); setShowEditCheckinForm(false); setEditingCheckin(null); } }}
+                  className="btn-secondary flex items-center gap-2"
+                  style={{ color: "#EF4444", borderColor: "#EF4444" }}
+                >
+                  <Trash2 className="w-4 h-4" /> Delete
+                </button>
                 <button type="submit" className="btn-primary flex-1 justify-center" disabled={updateCheckin.isPending}>
                   {updateCheckin.isPending ? "Saving..." : "Save Changes"}
                 </button>
@@ -1994,29 +1907,41 @@ export default function AppointmentsPage() {
           <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-display font-semibold text-white text-lg">Log Follow-up Action</h2>
-              <button onClick={() => setShowActionForm(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => setShowActionForm(false)} className="cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
             </div>
             <div className="space-y-4">
+              {/* Customer */}
               <div>
                 <label className="label-text block mb-1.5">Customer</label>
-                <div className="text-sm text-white font-body p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                  {(customers || []).find((c: any) => c.id === actionCustomerId)?.name || "Unknown"}
-                </div>
+                <select
+                  value={actionCustomerId}
+                  onChange={(e) => setActionCustomerId(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  <option value={0}>Select customer...</option>
+                  {(customers || []).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
+
+              {/* Action Type */}
               <div>
                 <label className="label-text block mb-1.5">Action Type</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {([
+                  {[
                     { value: "phone_call", label: "Phone Call", color: "#4ADE80" },
                     { value: "site_visit", label: "Site Visit", color: "#6366F1" },
                     { value: "email", label: "Email", color: "#3B82F6" },
                     { value: "whatsapp", label: "WhatsApp", color: "#25D366" },
                     { value: "sms", label: "SMS", color: "#D4A843" },
                     { value: "other", label: "Other", color: "#8A8B8C" },
-                  ] as const).map((opt) => (
+                  ].map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => setActionType(opt.value as any)}
+                      onClick={() => setActionType(opt.value)}
                       className="py-2 rounded-lg text-xs font-body font-medium cursor-pointer"
                       style={{
                         backgroundColor: actionType === opt.value ? `${opt.color}20` : "#222324",
@@ -2029,6 +1954,20 @@ export default function AppointmentsPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Title */}
+              <div>
+                <label className="label-text block mb-1.5">Title</label>
+                <input
+                  type="text"
+                  value={actionTitle}
+                  onChange={(e) => setActionTitle(e.target.value)}
+                  className="input-field"
+                  placeholder="Brief title for this action"
+                />
+              </div>
+
+              {/* Notes */}
               <div>
                 <label className="label-text block mb-1.5">Notes</label>
                 <textarea
@@ -2039,30 +1978,13 @@ export default function AppointmentsPage() {
                   placeholder="e.g. Discussed new product line, sent pricing, follow-up next week..."
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="scheduleFollowUp"
-                  checked={actionScheduleFollowUp}
-                  onChange={(e) => setActionScheduleFollowUp(e.target.checked)}
-                  className="w-4 h-4 accent-[#D4A843]"
-                />
-                <label htmlFor="scheduleFollowUp" className="text-xs text-[#E8E8E9] font-body cursor-pointer">Schedule follow-up appointment</label>
-              </div>
-              {actionScheduleFollowUp && (
-                <div>
-                  <label className="label-text block mb-1.5">Follow-up Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    value={actionFollowUpDate}
-                    onChange={(e) => setActionFollowUpDate(e.target.value)}
-                    className="input-field w-full"
-                    required={actionScheduleFollowUp}
-                  />
-                </div>
-              )}
-              <button onClick={submitActionForm} className="btn-primary w-full justify-center">
-                <CheckCircle className="w-4 h-4" /> Log Action
+
+              <button
+                onClick={submitActionForm}
+                className="btn-primary w-full justify-center"
+                disabled={createFollowUpAction.isPending}
+              >
+                {createFollowUpAction.isPending ? "Logging..." : "Log Action"}
               </button>
             </div>
           </div>

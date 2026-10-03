@@ -141,6 +141,39 @@ import { dataService } from "./dataService";
   getByEntity: (input: any) => dataService.auditLog.getByEntity(input),
   getCustomerDeletions: () => dataService.auditLog.list().filter((a: any) => a.action === "delete" && a.entityType === "customer"),
   getAddressChanges: () => dataService.auditLog.list().filter((a: any) => a.action === "update" && a.changes && (a.changes.physicalAddress || a.changes.deliveryAddress)),
+  getStats: () => {
+    const entries = dataService.auditLog.list();
+    return {
+      totalAuditEntries: entries.length,
+      appointmentsCreated: entries.filter((a: any) => a.action === "CREATE" && a.entityType === "appointment").length,
+    };
+  },
+  getFullTrail: (input: any) => {
+    let entries = dataService.auditLog.list();
+    if (input?.salesRep) entries = entries.filter((a: any) => a.userName === input.salesRep);
+    if (input?.dateFrom) entries = entries.filter((a: any) => new Date(a.timestamp) >= new Date(input.dateFrom));
+    if (input?.dateTo) entries = entries.filter((a: any) => new Date(a.timestamp) <= new Date(input.dateTo));
+    return entries.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  },
+  getCheckInReport: (input: any) => {
+    let checkins = dataService.checkIn.list();
+    if (input?.salesRep) checkins = checkins.filter((c: any) => c.salesRepName === input.salesRep);
+    if (input?.dateFrom) checkins = checkins.filter((c: any) => new Date(c.createdAt) >= new Date(input.dateFrom));
+    if (input?.dateTo) checkins = checkins.filter((c: any) => new Date(c.createdAt) <= new Date(input.dateTo));
+    return checkins.map((c: any) => ({ ...c, isGPS: typeof c.latitude === "number" && typeof c.longitude === "number" }));
+  },
+  getMissedAppointments: () => {
+    const appointments = dataService.appointment.list();
+    const checkins = dataService.checkIn.list();
+    const now = new Date();
+    return appointments
+      .filter((a: any) => a.status === "scheduled" && new Date(a.appointmentDate) < now)
+      .filter((a: any) => !checkins.some((c: any) => c.appointmentId == a.id))
+      .map((a: any) => {
+        const customer = dataService.customer.list().find((c: any) => c.id == a.customerId);
+        return { ...a, customerName: customer?.name || "Unknown" };
+      });
+  },
 };
 
 // ─── 6. COC (alias for certificateOfCompliance + extras) ───
@@ -224,7 +257,26 @@ import { dataService } from "./dataService";
   },
 };
 
-// ─── 9. MISSING METHODS ON EXISTING PROPERTIES ───
+// ─── 9. CUSTOMER FOLLOW-UP ───
+(dataService as any).customerFollowUp = {
+  getAllFollowUps: (input: any) => {
+    const followUps = dataService.followUp.list();
+    const customers = dataService.customer.list();
+    return followUps.map((f: any) => {
+      const customer = customers.find((c: any) => c.id == f.customerId);
+      const daysSinceLastOrder = f.daysSinceLastOrder || Math.floor((Date.now() - new Date(f.createdAt || Date.now()).getTime()) / 86400000);
+      return {
+        ...f,
+        customerName: customer?.name || "Unknown",
+        customerCode: customer?.customerCode || "",
+        salesRepName: customer?.salesRepName || f.salesRepName || "",
+        daysSinceLastOrder,
+      };
+    });
+  },
+};
+
+// ─── 10. MISSING METHODS ON EXISTING PROPERTIES ───
 
 // Order methods
 (dataService as any).order.updateStatus = (input: any) => {

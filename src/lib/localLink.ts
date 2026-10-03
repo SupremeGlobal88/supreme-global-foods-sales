@@ -20,7 +20,7 @@ import {
  *  Every query handler calls this to ensure users see LIVE cloud data.
  *  CRITICAL: mergeWithCloudData returns merged array but does NOT write to
  *  localStorage. We must save the result before calling reloadFromStorage().
- *  
+ *
  *  ERROR LOGGING: Every error is logged to console so we can diagnose sync issues.
  *  Previously errors were silently swallowed, making it impossible to debug. */
 // Track last sync time per data type to prevent excessive Firebase reads
@@ -520,11 +520,16 @@ export function createLocalLink() {
               // DASHBOARD — cloud first (orders + invoices)
               case "dashboard.stats": result = dataService.dashboard.stats(); break;
               case "audit.list": result = dataService.audit.list(); break;
+              case "audit.getStats": result = dataService.audit.getStats(); break;
+              case "audit.getFullTrail": result = dataService.audit.getFullTrail(input || {}); break;
+              case "audit.getCheckInReport": result = dataService.audit.getCheckInReport(input || {}); break;
+              case "audit.getMissedAppointments": result = dataService.audit.getMissedAppointments(); break;
               case "audit.getCustomerDeletions": result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": result = dataService.audit.getAddressChanges(); break;
               case "followUp.list": await smartSync("followUps", "sgf_followUps"); result = dataService.followUp.list(); break;
               case "followUp.update": result = dataService.followUp.update(input); if (result) { await pushFollowUp(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "followUp.getStats": result = dataService.followUp.getStats(); break;
+              case "customerFollowUp.getAllFollowUps": result = dataService.customerFollowUp.getAllFollowUps(input || { status: "all" }); break;
               case "sampleReport.getByCustomer": result = dataService.sampleReport.getByCustomer(input); break;
               case "sampleReport.getAll": result = dataService.sampleReport.getAll(); break;
               // COLLECTIONS — cloud first

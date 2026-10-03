@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
 import { reloadFromStorage, repairInvoiceCompanies } from "@/lib/dataService";
+import { getStorageItem } from "@/lib/compressedStorage";
 import { trpc, queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -88,15 +89,20 @@ export default function App() {
 
   useEffect(() => {
     // === CLEANUP: Remove corrupted localStorage data from old compression bugs ===
+    // IMPORTANT: Use getStorageItem() which handles LZ-String decompression.
+    // DO NOT use localStorage.getItem() directly — compressed data does NOT
+    // start with [ { or " and would be incorrectly deleted.
     const COMPRESSED_KEYS = ["sgf_orders","sgf_products","sgf_invoices","sgf_customers","sgf_stock","sgf_checkins","sgf_appointments","sgf_salesReps","sgf_users","sgf_specialPrices","sgf_auditLog","sgf_followUps","sgf_followUpActions","sgf_collectionNotes","sgf_collectionPromises","sgf_accountHolds","sgf_receipts","sgf_creditNotes","sgf_purchaseOrders","sgf_barrels","sgf_cocs","sgf_packingListLines","sgf_corporateCustomers"];
     for (const key of COMPRESSED_KEYS) {
       try {
         const raw = localStorage.getItem(key);
         if (raw && raw.length > 0) {
-          const isJson = raw.trim().startsWith("[") || raw.trim().startsWith("{") || raw.trim().startsWith("\"");
-          if (!isJson) {
-            console.warn(`[App] Removing corrupted localStorage key: ${key}`);
-            localStorage.removeItem(key);
+          // Use getStorageItem to properly decompress and validate
+          const data = getStorageItem(key, "");
+          if (data === "" && raw.length > 10) {
+            // getStorageItem returned empty but raw has content — might be corrupted
+            console.warn(`[App] Potentially corrupted localStorage key: ${key}`);
+            // Don't delete — let getStorageItem handle it on next read
           }
         }
       } catch { /* ignore */ }

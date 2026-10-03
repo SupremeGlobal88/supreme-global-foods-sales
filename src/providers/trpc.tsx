@@ -9,16 +9,14 @@ export const trpc = createTRPCReact<AppRouter>();
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // DISABLE auto-refetch interval. Firebase onValue subscriptions already
-      // push real-time updates to localStorage. React Query only needs to
-      // read from the in-memory dataService arrays. Constant refetching
-      // was causing 7.5+ syncFromCloud calls per second, freezing the UI.
+      // Cloud-first: staleTime MUST be 0 so queries refetch immediately
+      // when Firebase subscriptions invalidate them via CustomEvent.
+      // A 60-second staleTime was preventing the UI from updating
+      // when new cloud data arrived.
+      staleTime: 0,
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      refetchOnMount: false,
-      // Data stays fresh for 60 seconds before React Query considers it stale.
-      // Firebase subscriptions invalidate the cache via CustomEvent dispatch.
-      staleTime: 1000 * 60,
+      refetchOnMount: true,
       gcTime: 1000 * 60 * 5, // 5 minutes cache
     },
   },

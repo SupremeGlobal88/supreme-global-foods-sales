@@ -68,6 +68,20 @@ const NEW_CUSTOMER_ACTIONS = [
 
 type MapTarget = { customerId: number; address: string } | null;
 
+/** Haversine distance between two lat/lng points in metres */
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // Earth radius in metres
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function AppointmentsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -362,9 +376,17 @@ export default function AppointmentsPage() {
   }
 
   // Filter: admin/manager sees all, sales rep sees own
-  const myAppointments = canViewAll
-    ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
-    : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
+  const myAppointments = useMemo(() => {
+    const filtered = canViewAll
+      ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
+      : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
+    // Sort newest → oldest by appointmentDate
+    return filtered.sort((a: any, b: any) => {
+      const da = new Date(a.appointmentDate || 0).getTime();
+      const db = new Date(b.appointmentDate || 0).getTime();
+      return db - da;
+    });
+  }, [canViewAll, filterRep, appointments, myRepName]);
 
   const myCheckins = canViewAll
     ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
@@ -511,7 +533,7 @@ export default function AppointmentsPage() {
     const endOfMonth = new Date(year, month, 0, 23, 59, 59);
 
     const monthCheckins = (checkins || []).filter((ci: any) => {
-      const d = new Date(ci.checkInTime);
+      const d = new Date(ci.createdAt);
       return d >= startOfMonth && d <= endOfMonth;
     });
 
@@ -528,7 +550,7 @@ export default function AppointmentsPage() {
       .map((c: any) => {
         const ci = monthCheckins
           .filter((x: any) => x.customerId === c.id)
-          .sort((a: any, b: any) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime())[0];
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
         const appt = monthAppointments
           .filter((a: any) => a.customerId === c.id && a.status === "scheduled")
           .sort((a: any, b: any) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0];
@@ -537,12 +559,12 @@ export default function AppointmentsPage() {
         if (!ci && !appt) flag = "No visit & no appointment";
         else if (!ci && appt) flag = "Has appointment, no visit yet";
         else if (ci && !appt) {
-          const daysSince = Math.floor((Date.now() - new Date(ci.checkInTime).getTime()) / 86400000);
+          const daysSince = Math.floor((Date.now() - new Date(ci.createdAt).getTime()) / 86400000);
           flag = daysSince > 14 ? `No follow-up appt (${daysSince}d since last visit)` : "";
         }
         else if (ci && appt) {
           const apptDate = new Date(appt.appointmentDate).getTime();
-          const ciDate = new Date(ci.checkInTime).getTime();
+          const ciDate = new Date(ci.createdAt).getTime();
           if (apptDate < ciDate) flag = "Appointment before last visit — stale?";
         }
 
@@ -659,9 +681,10 @@ export default function AppointmentsPage() {
           )}
 
           {myCheckins.map((ci: any) => {
-            const isActive = !ci.checkOutTime;
+            const isActive = !ci.checkedOutAt;
             const customer = (customers || []).find((c: any) => c.id === ci.customerId);
             const appt = ci.appointmentId ? (appointments || []).find((a: any) => a.id === ci.appointmentId) : null;
+            const hasGeo = typeof ci.latitude === "number" && typeof ci.longitude === "number";
             return (
               <div key={ci.id} className="card-surface p-4" style={{ borderRadius: 12 }}>
                 <div className="flex items-start justify-between">
@@ -680,16 +703,37 @@ export default function AppointmentsPage() {
                       {ci.title && (
                         <span className="text-xs text-[#8A8B8C] font-body">{ci.title}</span>
                       )}
+                      {!hasGeo && (
+                        <span className="px-2 py-0.5 rounded text-xs font-body bg-[#EF444420] text-[#EF4444] flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" /> No GPS
+                        </span>
+                      )}
                     </div>
                     <div className="font-body font-medium text-white">{customer?.name || ci.location || "Unknown"}</div>
                     <div className="text-xs text-[#8A8B8C] font-body mt-1">
                       {ci.salesRepName && <span className="mr-3">Rep: {ci.salesRepName}</span>}
-                      <span>In: {new Date(ci.checkInTime).toLocaleString()}</span>
+                      <span>In: {new Date(ci.createdAt).toLocaleString()}</span>
                     </div>
-                    {ci.checkOutTime && (
+                    {ci.checkedOutAt && (
                       <div className="text-xs text-[#8A8B8C] font-body mt-1">
-                        <span>Out: {new Date(ci.checkOutTime).toLocaleString()}</span>
-                        {ci.duration && <span className="ml-3">Duration: {Math.round(ci.duration / 60)} min</span>}
+                        <span>Out: {new Date(ci.checkedOutAt).toLocaleString()}</span>
+                        {ci.durationMinutes != null && <span className="ml-3">Duration: {ci.durationMinutes} min</span>}
+                      </div>
+                    )}
+                    {/* Geo location display */}
+                    {hasGeo && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-[#8A8B8C] font-body">
+                          Lat: {ci.latitude.toFixed(5)}, Lng: {ci.longitude.toFixed(5)}
+                        </span>
+                        <a
+                          href={`https://maps.google.com/?q=${ci.latitude},${ci.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-[#D4A843] font-body hover:underline"
+                        >
+                          <MapPin className="w-3 h-3" /> View on Map
+                        </a>
                       </div>
                     )}
                     {ci.notes && (
@@ -1051,7 +1095,7 @@ export default function AppointmentsPage() {
                     <td className="py-2 px-3 text-white font-body">{row.customer.name}</td>
                     <td className="py-2 px-3 text-[#8A8B8C] font-body">{row.customer.salesRepName || "-"}</td>
                     <td className="py-2 px-3 text-[#8A8B8C] font-body">
-                      {row.lastVisit ? new Date(row.lastVisit.checkInTime).toLocaleDateString() : "-"}
+                      {row.lastVisit ? new Date(row.lastVisit.createdAt).toLocaleDateString() : "-"}
                     </td>
                     <td className="py-2 px-3 text-[#8A8B8C] font-body">
                       {row.nextAppt ? new Date(row.nextAppt.appointmentDate).toLocaleDateString() : "-"}

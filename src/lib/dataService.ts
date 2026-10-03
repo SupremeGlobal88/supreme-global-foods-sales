@@ -1349,6 +1349,86 @@ export const dataService = {
       invoiceGenerationLock = false;
     }
   },
+
+  /** Generate an invoice from a regular order.
+   *  Exposed on dataService so localLink can call it via dataService.generateInvoiceForOrder */
+  generateInvoiceForOrder: (orderId: number): string | null => {
+    if (invoiceGenerationLock) {
+      console.warn("[generateInvoiceForOrder] LOCKED — another invoice is being generated.");
+      return null;
+    }
+    invoiceGenerationLock = true;
+    try {
+      load();
+      const order = orders.find((o) => o.id == orderId);
+      if (!order) return null;
+
+      // Check if invoice already exists for this order
+      const existing = invoices.find((i) => i.orderId == orderId);
+      if (existing) return existing.invoiceNumber;
+
+      const items = order.items || [];
+      const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
+      const vatRate = 0.15;
+      const vatAmount = subtotal * vatRate;
+      const total = subtotal + vatAmount;
+
+      const now = new Date();
+      const dueDate = new Date(now);
+      dueDate.setDate(dueDate.getDate() + 30);
+
+      const invCompany = order.company || "sgf";
+      let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
+      const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+      let safetyCounter = 0;
+      while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
+        const match = invoiceNumber.match(/(SGF|RC)(\d+)/);
+        if (match) {
+          const prefix = match[1];
+          const n = parseInt(match[2]) + 1;
+          invoiceNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
+        }
+        safetyCounter++;
+      }
+
+      const customer = customers.find((c) => c.id == order.customerId);
+      const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+
+      invoices.push({
+        id: nextInvId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        invoiceNumber,
+        company: invCompany,
+        customerId: order.customerId,
+        customer: customer ? { name: customer.name } : order.customer,
+        subtotal,
+        vatAmount,
+        vatRate,
+        total,
+        totalAmount: total,
+        balanceDue: total,
+        amountPaid: 0,
+        status: "draft",
+        paymentTerms: order.paymentTerms || "30_days",
+        invoiceDate: now.toISOString(),
+        dueDate: dueDate.toISOString(),
+        notes: `Invoice for order ${order.orderNumber}`,
+        items: items.map((item: any) => ({
+          description: item.description || products.find((p) => p.id == item.stockItemId)?.productName || "",
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.quantity * item.unitPrice,
+        })),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      });
+      saveItem("sgf_invoices", invoices);
+      return invoiceNumber;
+    } finally {
+      invoiceGenerationLock = false;
+    }
+  },
 };
 
 /** Reset all transaction data (orders, invoices, receipts, etc.) but keep users, customers, products, settings */
@@ -1778,6 +1858,102 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
     saveItem("sgf_invoices", invoices);
   }
   return { changed: changedInvoices.length, invoices: changedInvoices };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ADDITIONAL EXPORTS — required by pages and localLink.ts
+// ═══════════════════════════════════════════════════════════════
+
+/** Generate an invoice from a regular order. Standalone export for direct page usage. */
+export function generateInvoiceForOrder(orderId: number): string | null {
+  return dataService.generateInvoiceForOrder(orderId);
+}
+
+/** Return banking details for payment reminders and statements. */
+export function getBankingDetails(): { bankName: string; accountNumber: string; branchCode: string } {
+  try {
+    const stored = getStorageItem("sgf_bankingDetails");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && parsed.bankName) {
+        return {
+          bankName: parsed.bankName || "FNB",
+          accountNumber: parsed.accountNumber || "1234567890",
+          branchCode: parsed.branchCode || "250655",
+        };
+      }
+    }
+  } catch { /* ignore */ }
+  return { bankName: "FNB", accountNumber: "1234567890", branchCode: "250655" };
+}
+
+/** Find and fix duplicate invoice numbers in the system. */
+export function fixDuplicateInvoiceNumbers(): { changes: any[] } {
+  const changes: any[] = [];
+  const seenNumbers = new Map<string, number[]>();
+
+  for (let i = 0; i < invoices.length; i++) {
+    const num = invoices[i].invoiceNumber;
+    if (!num) continue;
+    if (!seenNumbers.has(num)) {
+      seenNumbers.set(num, [i]);
+    } else {
+      seenNumbers.get(num)!.push(i);
+    }
+  }
+
+  for (const [num, indices] of seenNumbers.entries()) {
+    if (indices.length > 1) {
+      for (let i = 1; i < indices.length; i++) {
+        const idx = indices[i];
+        const company = (invoices[idx].company || "sgf").toLowerCase() === "rc" ? "rc" : "sgf";
+        let newNumber = getNextInvoiceNumberForCompany(company);
+        const existingNumbers = new Set(invoices.map((inv) => inv.invoiceNumber));
+        let safety = 0;
+        while (existingNumbers.has(newNumber) && safety < 100) {
+          const match = newNumber.match(/(SGF|RC)(\d+)/);
+          if (match) {
+            const prefix = match[1];
+            const n = parseInt(match[2]) + 1;
+            newNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
+          }
+          safety++;
+        }
+        invoices[idx].invoiceNumber = newNumber;
+        invoices[idx].updatedAt = new Date().toISOString();
+        changes.push({ oldNumber: num, newNumber, invoiceId: invoices[idx].id });
+      }
+    }
+  }
+
+  if (changes.length > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+  return { changes };
+}
+
+/** Repair missing company fields on invoices so they match invoice number prefix. */
+export function repairInvoiceCompanies(): void {
+  let changed = false;
+  for (const inv of invoices) {
+    const num = String(inv.invoiceNumber || "");
+    if (num.startsWith("RC")) {
+      if (inv.company !== "rc") {
+        inv.company = "rc";
+        inv.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    } else if (num.startsWith("SGF")) {
+      if (inv.company !== "sgf") {
+        inv.company = "sgf";
+        inv.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    saveItem("sgf_invoices", invoices);
+  }
 }
 
 // ─── Special exports for router / page direct access ───

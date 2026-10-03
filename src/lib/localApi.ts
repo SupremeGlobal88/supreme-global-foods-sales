@@ -226,6 +226,16 @@ export const localApi = {
       setStorage(STORAGE_KEYS.appointments, items);
       return newItem;
     },
+    update: (id: number, data: any) => {
+      const items = getStorage<any[]>(STORAGE_KEYS.appointments, []);
+      const idx = items.findIndex((i) => i.id === id);
+      if (idx >= 0) {
+        items[idx] = { ...items[idx], ...data, updatedAt: new Date().toISOString() };
+        setStorage(STORAGE_KEYS.appointments, items);
+        return items[idx];
+      }
+      return null;
+    },
     updateStatus: (id: number, status: string) => {
       const items = getStorage<any[]>(STORAGE_KEYS.appointments, []);
       const idx = items.findIndex((i) => i.id === id);

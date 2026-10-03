@@ -17,6 +17,7 @@ export default function AdminAuditPage() {
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
 
   const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
+  const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: auditStats } = trpc.audit.getStats.useQuery();
   const { data: auditTrail, refetch: refetchTrail } = trpc.audit.getFullTrail.useQuery(
     { salesRep: filterRep === "all" ? undefined : filterRep, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined },
@@ -37,6 +38,27 @@ export default function AdminAuditPage() {
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [cloudError, setCloudError] = useState("");
+
+  // Customer lookup helpers
+  const customerMap = useMemo(() => {
+    const map = new Map<number, any>();
+    (customers || []).forEach((c: any) => {
+      if (c?.id != null) map.set(Number(c.id), c);
+    });
+    return map;
+  }, [customers]);
+
+  const getCustomerName = (customerId: any) => {
+    if (!customerId) return "Unknown Customer";
+    const c = customerMap.get(Number(customerId));
+    return c?.name || "Unknown Customer";
+  };
+
+  const getCustomerAddress = (customerId: any) => {
+    if (!customerId) return null;
+    const c = customerMap.get(Number(customerId));
+    return c?.physicalAddress || c?.address || null;
+  };
 
   async function handleRefresh() {
     setIsRefreshing(true);
@@ -218,7 +240,7 @@ export default function AdminAuditPage() {
                       <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: ci.status === "checked_in" ? "rgba(74,222,128,0.12)" : "rgba(99,102,241,0.12)", color: ci.status === "checked_in" ? "#4ADE80" : "#6366F1" }}>{ci.status === "checked_in" ? "Active" : "Completed"}</span>
                       {ci.isGPS ? <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ADE80" }}><MapPin className="w-3 h-3 inline" /> GPS</span> : <span className="inline-block px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: "rgba(245,158,11,0.12)", color: "#F59E0B" }}><MapPin className="w-3 h-3 inline" /> Map</span>}
                     </div>
-                    <p className="text-sm text-[#E8E8E9] font-body">{ci.customer?.name || "Unknown Customer"}</p>
+                    <p className="text-sm text-[#E8E8E9] font-body">{getCustomerName(ci.customerId)}</p>
                     {ci.location && <p className="text-xs text-[#8A8B8C] mt-0.5">{ci.location}</p>}
                     {ci.durationMinutes !== undefined && (
                       <div className="flex items-center gap-1 mt-1">
@@ -237,16 +259,16 @@ export default function AdminAuditPage() {
                   </div>
                 </div>
                 {/* Customer Address Validation */}
-                {ci.customer?.physicalAddress && (
+                {getCustomerAddress(ci.customerId) && (
                   <div className="mt-3 p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-[#8A8B8C]">Customer address: {ci.customer.physicalAddress}</span>
-                      <a href={`https://www.google.com/maps?q=${encodeURIComponent(ci.customer.physicalAddress)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">Compare on Map</a>
+                      <span className="text-xs text-[#8A8B8C]">Customer address: {getCustomerAddress(ci.customerId)}</span>
+                      <a href={`https://www.google.com/maps?q=${encodeURIComponent(getCustomerAddress(ci.customerId) || "")}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">Compare on Map</a>
                     </div>
                     {ci.latitude && ci.longitude && (
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs font-mono-data text-[#8A8B8C]">GPS: {ci.latitude.toFixed(6)}, {ci.longitude.toFixed(6)}</span>
-                        <a href={`https://www.google.com/maps/dir/${ci.latitude},${ci.longitude}/${encodeURIComponent(ci.customer.physicalAddress)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">Check Distance</a>
+                        <a href={`https://www.google.com/maps/dir/${ci.latitude},${ci.longitude}/${encodeURIComponent(getCustomerAddress(ci.customerId) || "")}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#D4A843] underline">Check Distance</a>
                       </div>
                     )}
                   </div>

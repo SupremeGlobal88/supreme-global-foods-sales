@@ -83,7 +83,6 @@ function checkUrlForFirebaseConfig() {
 }
 
 export default function App() {
-  const utils = trpc.useUtils();
   const [isCloudReady, setIsCloudReady] = useState(false);
   const { isAuthenticated } = useAuth();
 
@@ -152,10 +151,9 @@ export default function App() {
     }
   }, [isAuthenticated, isCloudReady]);
 
-  // When Firebase data changes, invalidate affected queries using tRPC utils.
-  const utilsRef = useRef(utils);
-  utilsRef.current = utils;
-
+  // When Firebase data changes, invalidate affected queries using queryClient directly.
+  // Using queryClient.invalidateQueries is more reliable than tRPC utils.invalidate()
+  // because it bypasses any reference staleness issues.
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingTypes = new Set<string>();
@@ -168,62 +166,61 @@ export default function App() {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         console.log("[Sync] firebaseDataReceived batch:", Array.from(pendingTypes));
-        const u = utilsRef.current;
         for (const t of pendingTypes) {
           switch (t) {
             case "invoices":
-              u.invoice.list.invalidate();
-              u.invoice.getStats.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["invoice","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: [["invoice","getStats"]], refetchType: "active" });
               break;
             case "orders":
-              u.order.list.invalidate();
-              u.order.getStats.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["order","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: [["order","getStats"]], refetchType: "active" });
               break;
             case "customers":
-              u.customer.search.invalidate();
-              u.customer.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["customer","search"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: [["customer","list"]], refetchType: "active" });
               break;
             case "appointments":
-              u.appointment.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["appointment","list"]], refetchType: "active" });
               break;
             case "checkins":
-              u.checkIn.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["checkIn","list"]], refetchType: "active" });
               break;
             case "stock":
-              u.stock.list.invalidate();
-              u.stock.search.invalidate();
-              u.stock.getStats.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["stock","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: [["stock","search"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: [["stock","getStats"]], refetchType: "active" });
               break;
             case "creditNotes":
-              u.invoice.getCreditNotes.invalidate();
-              u.invoice.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["invoice","getCreditNotes"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: [["invoice","list"]], refetchType: "active" });
               break;
             case "followUps":
-              u.followUp.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["followUp","list"]], refetchType: "active" });
               break;
             case "followUpActions":
-              u.followUpAction.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["followUpAction","list"]], refetchType: "active" });
               break;
             case "users":
-              u.user.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["user","list"]], refetchType: "active" });
               break;
             case "salesReps":
-              u.customer.getSalesReps.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["customer","getSalesReps"]], refetchType: "active" });
               break;
             case "corporateCustomers":
-              u.corporateCustomer.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["corporateCustomer","list"]], refetchType: "active" });
               break;
             case "purchaseOrders":
-              u.purchaseOrder.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["purchaseOrder","list"]], refetchType: "active" });
               break;
             case "barrels":
-              u.barrel.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["barrel","list"]], refetchType: "active" });
               break;
             case "certificatesOfCompliance":
-              u.coc.list.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["coc","list"]], refetchType: "active" });
               break;
             case "packingListLines":
-              u.packingList.listByPurchaseOrder.invalidate();
+              queryClient.invalidateQueries({ queryKey: [["packingList","listByPurchaseOrder"]], refetchType: "active" });
               break;
             default:
               console.warn("[Sync] Unknown data type in firebaseDataReceived:", t);

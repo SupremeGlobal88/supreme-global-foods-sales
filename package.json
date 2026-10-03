@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/combine_orders_fix.cjs || true && node scripts/patch_appointments_fix.cjs || true",
+    "prebuild": "node scripts/combine_orders_fix.cjs || true",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

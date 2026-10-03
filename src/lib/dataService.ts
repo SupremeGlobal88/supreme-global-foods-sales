@@ -1591,5 +1591,194 @@ function getNextInvoiceNumberForCompany(company: string): string {
   return `SGF${nextNum}`;
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  MISSING EXPORTS — required by localLink.ts
+// ═══════════════════════════════════════════════════════════════
+
+let AA_RATE_PER_KM = 5.50;
+
+try {
+  const stored = getStorageItem("sgf_aaRate");
+  if (stored) AA_RATE_PER_KM = parseFloat(stored);
+} catch { /* ignore */ }
+
+export function getAARate(): number { return AA_RATE_PER_KM; }
+
+export function setAARate(rate: number): void {
+  AA_RATE_PER_KM = rate;
+  setStorageItem("sgf_aaRate", String(rate));
+}
+
+export interface BankStatementRow {
+  date: string;
+  description: string;
+  amount: number;
+  type: "credit" | "debit";
+  reference?: string;
+}
+
+export function parseBankStatement(rawRows: any[][]): BankStatementRow[] {
+  const rows: BankStatementRow[] = [];
+  for (const r of rawRows) {
+    if (!r || r.length < 3) continue;
+    const amount = parseFloat(String(r[2] || "0").replace(/,/g, ""));
+    if (isNaN(amount) || amount === 0) continue;
+    rows.push({
+      date: String(r[0] || ""),
+      description: String(r[1] || ""),
+      amount: Math.abs(amount),
+      type: amount > 0 ? "credit" : "debit",
+      reference: r[3] ? String(r[3]) : undefined,
+    });
+  }
+  return rows;
+}
+
+export interface PaymentMatchResult {
+  row: BankStatementRow;
+  matchedInvoiceId?: number;
+  matchedInvoiceNumber?: string;
+  matchedCustomerId?: number;
+  matchedCustomerName?: string;
+  confidence: number;
+  matchType: "exact" | "partial" | "none";
+}
+
+export function matchBankPayments(rows: BankStatementRow[]): PaymentMatchResult[] {
+  const results: PaymentMatchResult[] = [];
+  const invs = dataService.invoice.list();
+  const custs = dataService.customer.list();
+
+  for (const row of rows) {
+    let best: PaymentMatchResult = { row, confidence: 0, matchType: "none" };
+
+    const invNumMatch = row.description.match(/(SGF\d+|RC\d{4}|INV[-]?\d+)/i);
+    if (invNumMatch) {
+      const num = invNumMatch[1].toUpperCase();
+      const inv = invs.find((i: any) => i.invoiceNumber?.toUpperCase() === num);
+      if (inv) {
+        best = {
+          row,
+          matchedInvoiceId: inv.id,
+          matchedInvoiceNumber: inv.invoiceNumber,
+          matchedCustomerId: inv.customerId,
+          matchedCustomerName: inv.customer?.name,
+          confidence: 1.0,
+          matchType: "exact",
+        };
+      }
+    }
+
+    if (best.matchType === "none") {
+      for (const c of custs) {
+        const nameParts = (c.name || "").toLowerCase().split(/\s+/);
+        const descLower = row.description.toLowerCase();
+        if (nameParts.length > 0 && nameParts.every((p: string) => descLower.includes(p))) {
+          best = {
+            row,
+            matchedCustomerId: c.id,
+            matchedCustomerName: c.name,
+            confidence: 0.7,
+            matchType: "partial",
+          };
+          break;
+        }
+      }
+    }
+
+    results.push(best);
+  }
+  return results;
+}
+
+export function allocateBankPayments(allocations: any[]): { processed: number; errors: string[] } {
+  const errors: string[] = [];
+  let processed = 0;
+  for (const alloc of allocations) {
+    try {
+      if (!alloc.invoiceId || !alloc.amount) {
+        errors.push("Missing invoiceId or amount");
+        continue;
+      }
+      const inv = dataService.invoice.list().find((i: any) => i.id == alloc.invoiceId);
+      if (!inv) {
+        errors.push(`Invoice ${alloc.invoiceId} not found`);
+        continue;
+      }
+      const currentPaid = Number(inv.amountPaid || 0);
+      const newPaid = currentPaid + Number(alloc.amount);
+      const total = Number(inv.totalAmount || inv.total || 0);
+      const balanceDue = Math.max(0, total - newPaid);
+      const status = balanceDue <= 0 ? "paid" : (newPaid > 0 ? "partial" : inv.status);
+
+      const idx = invoices.findIndex((i: any) => i.id == alloc.invoiceId);
+      if (idx >= 0) {
+        invoices[idx] = { ...invoices[idx], amountPaid: newPaid, balanceDue, status, updatedAt: new Date().toISOString() };
+        saveItem("sgf_invoices", invoices);
+        processed++;
+      }
+    } catch (e: any) {
+      errors.push(String(e?.message || e));
+    }
+  }
+  return { processed, errors };
+}
+
+export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoices: any[] } {
+  const changedInvoices: any[] = [];
+  const ords = dataService.order.list();
+  const invs = dataService.invoice.list();
+
+  for (const inv of invs) {
+    if (inv.status !== "draft") continue;
+    const linkedOrder = ords.find((o: any) => o.id == inv.orderId);
+    if (linkedOrder && linkedOrder.status === "delivered") {
+      const idx = invoices.findIndex((i: any) => i.id == inv.id);
+      if (idx >= 0) {
+        invoices[idx] = { ...invoices[idx], status: "unpaid", updatedAt: new Date().toISOString() };
+        changedInvoices.push(invoices[idx]);
+      }
+    }
+  }
+  if (changedInvoices.length > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+  return { changed: changedInvoices.length, invoices: changedInvoices };
+}
+
+export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
+  const changedInvoices: any[] = [];
+  const invs = dataService.invoice.list();
+
+  for (const inv of invs) {
+    if (!inv.isSageInvoice && inv.source !== "sage") continue;
+    let changed = false;
+    const updates: any = {};
+
+    if (!inv.invoiceDate && inv.createdAt) {
+      updates.invoiceDate = inv.createdAt;
+      changed = true;
+    }
+    if (!inv.dueDate && inv.invoiceDate) {
+      const d = new Date(inv.invoiceDate);
+      d.setDate(d.getDate() + 30);
+      updates.dueDate = d.toISOString();
+      changed = true;
+    }
+
+    if (changed) {
+      const idx = invoices.findIndex((i: any) => i.id == inv.id);
+      if (idx >= 0) {
+        invoices[idx] = { ...invoices[idx], ...updates, updatedAt: new Date().toISOString() };
+        changedInvoices.push(invoices[idx]);
+      }
+    }
+  }
+  if (changedInvoices.length > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+  return { changed: changedInvoices.length, invoices: changedInvoices };
+}
+
 // ─── Special exports for router / page direct access ───
 export { customers, products, orders, invoices, appointments, checkins, users, specialPrices, getEffectivePrice, getNextInvoiceNumberForCompany };

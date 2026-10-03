@@ -339,6 +339,24 @@ if (!dataService.order.getOpenOrders) {
   };
 }
 
+// ─── ORDER GET STATS — required by OrdersPage top bar ───
+if (!dataService.order.getStats) {
+  dataService.order.getStats = () => {
+    const orders = (dataService.order as any).list();
+    return {
+      total: orders.length,
+      totalValue: orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
+      pending: orders.filter((o: any) => o.status === "pending").length,
+      picking: orders.filter((o: any) => o.status === "picking").length,
+      ready: orders.filter((o: any) => o.status === "ready").length,
+      delivered: orders.filter((o: any) => o.status === "delivered").length,
+      cancelled: orders.filter((o: any) => o.status === "cancelled").length,
+      quotes: orders.filter((o: any) => o.orderType === "quote").length,
+      samples: orders.filter((o: any) => o.orderType === "sample").length,
+    };
+  };
+}
+
 // ─── 9. INVOICE missing methods ───
 if (!dataService.invoice.updateInvoice) {
   dataService.invoice.updateInvoice = dataService.invoice.update;

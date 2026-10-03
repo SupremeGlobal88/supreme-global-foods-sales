@@ -174,6 +174,7 @@ export function createLocalLink() {
               case "customer.getCustomersNeedingFollowUp": await smartSync("customers", "sgf_customers"); result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10); break;
               case "order.list": await smartSync("orders", "sgf_orders"); result = dataService.order.list(); break;
               case "order.getById": await smartSync("orders", "sgf_orders"); result = dataService.order.getById(input); break;
+              case "order.getStats": await smartSync("orders", "sgf_orders"); result = dataService.order.getStats(); break;
               case "order.create": {
                 result = dataService.order.create(input);
                 await fbPush("order", result);

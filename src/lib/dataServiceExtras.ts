@@ -4,6 +4,8 @@ import { dataService } from "./dataService";
 //  DATA SERVICE EXTRAS — adds missing properties & aliases
 //  required by localLink.ts case handlers.
 //  SAFETY: This file ONLY adds properties; never overwrites existing ones.
+//  EXCEPTION: order.getStats MUST be overridden because the base
+//  version in dataService.ts only returns total/totalValue/today.
 // ═══════════════════════════════════════════════════════════════
 
 // ─── 1. SIMPLE ALIASES ───
@@ -339,23 +341,23 @@ if (!dataService.order.getOpenOrders) {
   };
 }
 
-// ─── ORDER GET STATS — required by OrdersPage top bar ───
-if (!dataService.order.getStats) {
-  dataService.order.getStats = () => {
-    const orders = (dataService.order as any).list();
-    return {
-      total: orders.length,
-      totalValue: orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
-      pending: orders.filter((o: any) => o.status === "pending").length,
-      picking: orders.filter((o: any) => o.status === "picking").length,
-      ready: orders.filter((o: any) => o.status === "ready").length,
-      delivered: orders.filter((o: any) => o.status === "delivered").length,
-      cancelled: orders.filter((o: any) => o.status === "cancelled").length,
-      quotes: orders.filter((o: any) => o.orderType === "quote").length,
-      samples: orders.filter((o: any) => o.orderType === "sample").length,
-    };
+// ─── ORDER GET STATS — ALWAYS OVERRIDE because base version is incomplete ───
+// The base dataService.ts getStats only returns total/totalValue/today/todayValue.
+// We need the full version with pending/picking/ready/delivered/cancelled/quotes/samples.
+dataService.order.getStats = () => {
+  const orders = (dataService.order as any).list();
+  return {
+    total: orders.length,
+    totalValue: orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
+    pending: orders.filter((o: any) => o.status === "pending").length,
+    picking: orders.filter((o: any) => o.status === "picking").length,
+    ready: orders.filter((o: any) => o.status === "ready").length,
+    delivered: orders.filter((o: any) => o.status === "delivered").length,
+    cancelled: orders.filter((o: any) => o.status === "cancelled").length,
+    quotes: orders.filter((o: any) => o.orderType === "quote").length,
+    samples: orders.filter((o: any) => o.orderType === "sample").length,
   };
-}
+};
 
 // ─── 9. INVOICE missing methods ───
 if (!dataService.invoice.updateInvoice) {

@@ -1,4 +1,5 @@
 import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments, getAARate, setAARate } from "./dataService";
+import "./dataServiceExtras"; // Side-effect: adds missing properties (stock, auth, salesRep, dashboard, audit, etc.)
 import { getStorageItem, setStorageItem } from "./compressedStorage";
 import { observable } from "@trpc/server/observable";
 import {
@@ -164,6 +165,9 @@ export function createLocalLink() {
 
             switch (path) {
               case "auth.me": result = dataService.auth.me(); break;
+              // USER endpoints — required for login page
+              case "user.list": result = dataService.user.list(); break;
+              case "user.authenticate": result = dataService.user.authenticate(input); break;
               // STOCK — smart sync: block if empty, fire-and-forget if has data
               case "stock.list": await smartSync("stock", "sgf_products"); result = dataService.stock.list(); break;
               case "stock.search": await smartSync("stock", "sgf_products"); result = dataService.stock.search(input || { query: "" }); break;

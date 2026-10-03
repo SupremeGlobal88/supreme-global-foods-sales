@@ -2,15 +2,15 @@
 
 The fix for the N/A customer names bug is ready in the `scripts/` folder.
 
-## To apply the fix:
+## Status: FIX DEPLOYED
 
-1. Make any small change to any file (like adding a space to this file) and commit it
-2. The deploy workflow will automatically apply the fix before building
+The fix is automatically applied on every build via the `prebuild` script in package.json.
 
-Or run this locally:
-```bash
-node scripts/combine_orders_fix.js
-git add src/pages/OrdersPage.tsx
-git commit -m "Fix order customer lookup"
-git push
-```
+## What was fixed:
+
+- Orders only store `customerId` (no embedded customer object)
+- Display code was using `order.customer?.name` which is always undefined
+- Changed to use `getCustomer(order)?.name` with loose equality `==` for type safety
+- Fixed search filter to also use customer lookup
+
+## Build triggered: 2026-10-03

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { reloadFromStorage } from "@/lib/dataService";
@@ -13,10 +13,30 @@ export default function FollowUpsPage() {
 
   const { data: followUps } = trpc.followUp.list.useQuery(undefined, { refetchInterval: 5000 });
   const { data: stats } = trpc.followUp.getStats.useQuery(undefined, { refetchInterval: 5000 });
+  const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
 
   const [showForm, setShowForm] = useState<number | null>(null);
   const [reason, setReason] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
+
+  /* Customer lookup map — fixes N/A when customer object not embedded */
+  const customerMap = useMemo(() => {
+    const map = new Map();
+    for (const c of customers || []) map.set(String(c.id), c);
+    for (const c of corporateCustomers || []) map.set(String(c.id), c);
+    return map;
+  }, [customers, corporateCustomers]);
+  const getCustomerName = (customerId: any) => {
+    if (!customerId) return "Unknown Customer";
+    const c = customerMap.get(String(customerId));
+    return c?.name || "Unknown Customer";
+  };
+  const getCustomerRep = (customerId: any) => {
+    if (!customerId) return "";
+    const c = customerMap.get(String(customerId));
+    return c?.salesRepName || "";
+  };
 
   const updateFollowUp = trpc.followUp.update.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.followUp.list.invalidate(); await utils.followUp.getStats.invalidate(); setShowForm(null); setReason(""); setExpectedDate(""); },
@@ -34,8 +54,7 @@ export default function FollowUpsPage() {
   const myFollowUps = canViewAll
     ? (followUps || [])
     : (followUps || []).filter((fu: any) => {
-        const cust = fu.customer;
-        return cust?.salesRepName === myRepName;
+        return getCustomerRep(fu.customerId) === myRepName;
       });
 
   return (
@@ -88,7 +107,7 @@ export default function FollowUpsPage() {
                         {isOverdue ? "OVERDUE" : "DUE"} — {new Date(fu.followUpDate).toLocaleDateString("en-ZA")}
                       </span>
                     </div>
-                    <h3 className="font-display font-semibold text-white text-lg">{fu.customer?.name || "Unknown Customer"}</h3>
+                    <h3 className="font-display font-semibold text-white text-lg">{getCustomerName(fu.customerId)}</h3>
                     <p className="text-[#8A8B8C] text-sm font-body">
                       Sample order: {fu.orderNumber} &middot; Sent: {new Date(fu.createdAt).toLocaleDateString("en-ZA")}
                     </p>

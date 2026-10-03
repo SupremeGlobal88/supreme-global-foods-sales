@@ -1,4 +1,5 @@
 import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments, getAARate, setAARate } from "./dataService";
+import "./dataServicePatches"; // Side-effect: adds missing properties to dataService
 import { getStorageItem, setStorageItem } from "./compressedStorage";
 import { observable } from "@trpc/server/observable";
 import {

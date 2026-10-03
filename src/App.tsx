@@ -93,8 +93,6 @@ export default function App() {
       try {
         const raw = localStorage.getItem(key);
         if (raw && raw.length > 0) {
-          // If first char is not a valid JSON start, it's corrupted compressed data
-          const first = raw.charCodeAt(0);
           const isJson = raw.trim().startsWith("[") || raw.trim().startsWith("{") || raw.trim().startsWith("\"");
           if (!isJson) {
             console.warn(`[App] Removing corrupted localStorage key: ${key}`);
@@ -109,75 +107,46 @@ export default function App() {
     initFirebase();
     const unsub = initAutoSync();
 
-    async function loadFromCloud() {
+    // Load local data FIRST so the app renders immediately with cached data
+    reloadFromStorage();
+    repairInvoiceCompanies();
+
+    // Cloud-first: Pull from cloud in BACKGROUND without blocking UI.
+    // Subscriptions (initAutoSync) already handle real-time sync.
+    // The initial pull is just a safety net to catch missed data.
+    // NEVER block rendering on this — it causes infinite loading screens.
+    (async () => {
       try {
         if (isFirebaseReady()) {
-          // SAFE SYNC: One-way pull FROM cloud only. NEVER push local data at startup.
-          // Individual mutations push via fbPush() — that's the only way data goes TO cloud.
-          // This prevents a major data-loss bug: if we pushed local data here, a device
-          // with stale data could overwrite fresh data created by another user.
-          reloadFromStorage();
-          // Fix any invoices where company field doesn't match invoice number prefix
-          repairInvoiceCompanies();
-          console.log("[Sync] Local data loaded first");
-
-          // CRITICAL: Pull from cloud at startup to ensure all devices start with fresh data.
-          // Subscriptions handle ongoing real-time sync, but the initial pull ensures
-          // we catch any data that was missed while the app was closed.
+          console.log("[Sync] Background cloud pull starting...");
           const counts = await pullFromCloud();
           reloadFromStorage();
-          // CRITICAL FIX: Removed queryClient.clear() which was wiping the entire
-          // React Query cache and forcing ALL queries to refetch from scratch.
-          // This was causing massive UI freeze on startup with 4000+ invoices.
-          // Instead, we let the targeted invalidation handler above refresh
-          // queries lazily as components need them.
-          console.log("[Sync] Cloud data pulled successfully:", counts);
-        } else {
-          console.warn("[Sync] Firebase not ready — skipping initial pull. Will retry via subscriptions.");
+          console.log("[Sync] Background cloud pull complete:", counts);
         }
       } catch (e) {
-        console.warn("[Sync] Error:", e);
-      } finally {
-        // ALWAYS set cloud ready so the app renders — even if Firebase is down or slow.
-        // The previous bug: moving setIsCloudReady(true) inside the if() block meant
-        // if Firebase init was slow or pullFromCloud hung, the app stayed on the
-        // loading screen forever. finally guarantees the app ALWAYS renders.
-        setIsCloudReady(true);
+        console.warn("[Sync] Background pull error:", e);
       }
-    }
+    })();
 
-    // CRITICAL SAFETY NET: If loadFromCloud() hangs for any reason (Firebase get() can
-    // hang indefinitely on slow networks), force the app to render after 15 seconds.
-    // The finally block above should catch most cases, but this is a second line of defense.
+    // Show loading screen for max 3 seconds to give subscriptions a chance to fire,
+    // then render the app. Real-time sync continues in background.
     const safetyTimer = setTimeout(() => {
-      if (!isCloudReady) {
-        console.warn("[Sync] SAFETY TIMEOUT: loadFromCloud took too long, forcing app render");
-        setIsCloudReady(true);
-      }
-    }, 15000);
+      setIsCloudReady(true);
+    }, 3000);
 
-    loadFromCloud();
     return () => { unsub(); clearTimeout(safetyTimer); };
   }, []);
 
   // POST-LOGIN SYNC: Re-sync after user logs in.
-  // The mount sync may have run before Firebase was ready or before login.
-  // This ensures fresh data is loaded AFTER authentication.
   useEffect(() => {
     if (isAuthenticated && isCloudReady) {
       console.log("[Sync] Post-login sync triggered");
       reloadFromStorage();
-      // CRITICAL FIX: Removed queryClient.clear() which wipes the entire cache
-      // and forces all queries to refetch simultaneously, freezing the UI.
       console.log("[Sync] Post-login complete");
     }
   }, [isAuthenticated, isCloudReady]);
 
   // When Firebase data changes, invalidate affected queries using tRPC utils.
-  // CRITICAL FIX: Using utils.*.invalidate() ensures the correct queryKey format
-  // for tRPC + React Query v5. The previous queryClient.invalidateQueries() with
-  // manually-specified queryKey arrays was not matching tRPC's internal key format.
-  // We also debounce to batch rapid startup events from 15+ subscriptions.
   const utilsRef = useRef(utils);
   utilsRef.current = utils;
 
@@ -190,7 +159,6 @@ export default function App() {
       if (!type) return;
       pendingTypes.add(type);
 
-      // Debounce: wait 300ms after the last event before invalidating
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         console.log("[Sync] firebaseDataReceived batch:", Array.from(pendingTypes));
@@ -265,7 +233,7 @@ export default function App() {
     };
   }, []);
 
-  // Show loading screen until fresh cloud data is loaded
+  // Show loading screen for max 3 seconds, then render app
   if (!isCloudReady) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>

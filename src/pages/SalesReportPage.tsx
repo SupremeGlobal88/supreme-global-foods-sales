@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
-import { getStorageItem } from "@/lib/compressedStorage";
 import {
   Download, Search, Building2, Package, DollarSign,
   Calendar, Filter, FileSpreadsheet, Store, ShoppingCart,
@@ -92,8 +91,6 @@ function safeNum(val: unknown): number {
 export default function SalesReportPage() {
   const { user } = useAuth();
 
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
   const [groupFilter, setGroupFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -101,26 +98,14 @@ export default function SalesReportPage() {
   const [expandedStore, setExpandedStore] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Cloud-first: load customers via tRPC
+  // Cloud-first: load ALL data via tRPC so it syncs from Firebase first
+  const { data: ordersData, isLoading: ordersLoading } = trpc.order.list.useQuery();
   const { data: customersData, isLoading: customersLoading } = trpc.customer.list.useQuery();
   const { data: stockItemsData, isLoading: stockLoading } = trpc.stock.search.useQuery({ query: " " });
 
+  const orders: Order[] = ordersData || [];
   const customers: Customer[] = customersData || [];
   const stockItems: StockItem[] = stockItemsData || [];
-
-  // Load orders from localStorage (cloud-synced by other pages)
-  useEffect(() => {
-    setOrdersLoading(true);
-    try {
-      const raw = getStorageItem("sgf_orders", "[]");
-      const parsed = JSON.parse(raw || "[]");
-      setOrders(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setOrders([]);
-    } finally {
-      setOrdersLoading(false);
-    }
-  }, []);
 
   // Build lookup maps
   const customerMap = useMemo(() => {
@@ -306,7 +291,6 @@ export default function SalesReportPage() {
     setIsExporting(true);
     try {
       const XLSX = await import("xlsx");
-      const wb = XLSX.utils.book_new();
       const reportDate = new Date().toLocaleDateString("en-ZA");
       const groupLabel = groupFilter || "All Customers";
 
@@ -380,7 +364,7 @@ export default function SalesReportPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Sales_Report_${groupLabel.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_\-]/g, "")}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `Sales_Report_${groupLabel.replace(/\s+/g, "_").replace(/[^a-zA-Z0_\-]/g, "")}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

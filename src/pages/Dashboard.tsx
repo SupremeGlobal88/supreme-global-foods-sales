@@ -88,6 +88,8 @@ export default function Dashboard() {
   const { data: allInvoices } = trpc.invoice.list.useQuery();
   const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
   const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: canViewAll });
+  const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
 
   const chartRef = useRef<HTMLDivElement>(null);
   const [pullStatus, setPullStatus] = useState("");
@@ -95,6 +97,24 @@ export default function Dashboard() {
   const utils = trpc.useUtils();
 
   const monthOptions = useMemo(() => generateMonthOptions(18), []);
+
+  /* Customer lookup map — fixes N/A when customer object not embedded */
+  const customerMap = useMemo(() => {
+    const map = new Map();
+    for (const c of customers || []) map.set(String(c.id), c);
+    for (const c of corporateCustomers || []) map.set(String(c.id), c);
+    return map;
+  }, [customers, corporateCustomers]);
+  const getCustomerName = (customerId: any) => {
+    if (!customerId) return "Unknown";
+    const c = customerMap.get(String(customerId));
+    return c?.name || "Unknown";
+  };
+  const getCustomerRep = (customerId: any) => {
+    if (!customerId) return "";
+    const c = customerMap.get(String(customerId));
+    return c?.salesRepName || "";
+  };
 
   const filteredInvoices = useMemo(() => {
     if (!selectedMonth) return allInvoices || [];
@@ -124,7 +144,7 @@ export default function Dashboard() {
     const monthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
     const repSales = repNames.map((name: string) => {
       const repOrders = filteredOrders.filter((o: any) => {
-        return o.customer?.salesRepName === name && o.orderType !== "sample";
+        return getCustomerRep(o.customerId) === name && o.orderType !== "sample";
       });
       const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
       return { name, todaySales: 0, weekSales: 0, monthSales };
@@ -134,7 +154,7 @@ export default function Dashboard() {
       repSales,
       totals: { today: 0, week: 0, month: repSales.reduce((s: number, r: any) => s + r.monthSales, 0) },
     };
-  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions]);
+  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions, customerMap]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -360,7 +380,7 @@ export default function Dashboard() {
                     {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
                       const repMonthSales = selectedMonth
                         ? (filteredOrders || []).filter((o: any) => {
-                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample";
+                            return getCustomerRep(o.customerId) === rep.name && o.orderType !== "sample";
                           }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
                         : rep.totalSales;
                       return (
@@ -369,7 +389,7 @@ export default function Dashboard() {
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">{rep.customerCount}</td>
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">
                             {selectedMonth
-                              ? (filteredOrders || []).filter((o: any) => o.customer?.salesRepName === rep.name && o.orderType !== "sample").length
+                              ? (filteredOrders || []).filter((o: any) => getCustomerRep(o.customerId) === rep.name && o.orderType !== "sample").length
                               : rep.orderCount}
                           </td>
                           <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
@@ -406,7 +426,7 @@ export default function Dashboard() {
                           {daysOverdue === 0 ? "Due" : `${daysOverdue}d`}
                         </span>
                       </div>
-                      <div className="text-xs text-white truncate">{inv.customer?.name || inv.customerName || "Unknown"}</div>
+                      <div className="text-xs text-white truncate">{inv.customer?.name || getCustomerName(inv.customerId) || inv.customerName || "Unknown"}</div>
                       <div className="flex items-center justify-between mt-1">
                         <span className="text-[10px] text-[#8A8B8C]">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-ZA") : "—"}</span>
                         <span className="text-xs font-display font-semibold text-white">R {Number(inv.balanceDue).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
@@ -433,7 +453,7 @@ export default function Dashboard() {
                   <div key={order.id} className="flex items-center justify-between p-2.5 rounded-lg border border-[#222324] bg-[#131415]/40 hover:bg-[#131415] transition-colors">
                     <div className="min-w-0 flex-1">
                       <div className="text-[10px] font-mono-data text-[#D4A843]">{order.orderNumber}</div>
-                      <div className="text-xs text-[#E8E8E9] truncate">{order.customer?.name || "Unknown"}</div>
+                      <div className="text-xs text-[#E8E8E9] truncate">{getCustomerName(order.customerId)}</div>
                     </div>
                     <div className="text-right ml-3 flex-shrink-0">
                       <div className="text-xs text-white font-display font-semibold">R {Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>

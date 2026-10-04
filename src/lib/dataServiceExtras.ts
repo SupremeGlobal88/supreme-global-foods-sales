@@ -174,6 +174,32 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading orders:", e);
   }
 
+  // 6. Derive from invoices using multiple field names
+  try {
+    const invoices = dataService.invoice.list();
+    if (Array.isArray(invoices)) {
+      for (const inv of invoices) {
+        const name = getRepNameFromOrder(inv);
+        if (!name) continue;
+        if (!mergedMap.has(name)) {
+          mergedMap.set(name, {
+            id: name,
+            name,
+            email: "",
+            phone: "",
+            region: "",
+            vehicleReg: "",
+            isActive: true,
+            role: "sales_rep",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading invoices:", e);
+  }
+
   const result = Array.from(mergedMap.values());
   console.log("[getSalesRepsFromStorage] Found", result.length, "sales reps");
   return result;
@@ -437,309 +463,103 @@ function buildSampleItem(order: any, item: any): any {
   const vatAmount = subtotal * 0.15;
   const totalCost = subtotal + vatAmount;
   return {
-    productCode: product?.productCode || item.productCode || "",
-    productName: product?.name || item.name || "Unknown Product",
-    dateTaken: order.createdAt,
-    orderNumber: order.orderNumber || order.id,
-    invoiceNumber: order.invoiceNumber || "",
-    quantity,
+    productCode: product?.productCode || item.productCode || item.code || "N/A",
+    productName: product?.name || item.productName || item.name || "Unknown",
     unitCost,
+    quantity,
     subtotal,
     vatAmount,
     totalCost,
+    date: order.createdAt || new Date().toISOString(),
+    customerName: order.customer?.name || order.customerName || "Walk-in",
+    sampleNumber: order.sampleNumber || order.orderNumber || `SMP-${order.id || Date.now()}`,
+    repName: getRepNameFromOrder(order),
+    status: order.status || "pending",
   };
 }
 
-// Helper: detect if an order is a sample using multiple field fallbacks
 function isSampleOrder(o: any): boolean {
   if (!o || typeof o !== "object") return false;
-  if (o.orderType === "sample" || o.isSample === true || o.type === "sample") return true;
-  const orderNum = String(o.orderNumber || "").toUpperCase();
+  if (o.orderType === "sample" || o.type === "sample" || o.isSample === true) return true;
+  const orderNum = String(o.orderNumber || o.sampleNumber || "").toUpperCase();
   if (orderNum.startsWith("SMP-") || orderNum.startsWith("SAMPLE-")) return true;
   return false;
 }
 
-if (!(dataService as any).sampleReport) {
-  (dataService as any).sampleReport = {
-    getByCustomer: (customerId: number) => {
-      const sampleOrders = dataService.order.list().filter((o: any) =>
-        o.customerId == customerId && isSampleOrder(o)
-      );
-
-      const items: any[] = [];
-      let grandSubtotal = 0;
-      let grandVat = 0;
-      let grandTotal = 0;
-
-      for (const order of sampleOrders) {
-        for (const item of (order.items || [])) {
-          const built = buildSampleItem(order, item);
-          items.push(built);
-          grandSubtotal += built.subtotal;
-          grandVat += built.vatAmount;
-          grandTotal += built.totalCost;
-        }
-      }
-
-      return { items, grandSubtotal, grandVat, grandTotal };
-    },
-
-    getAll: () => {
-      const sampleOrders = dataService.order.list().filter((o: any) => isSampleOrder(o));
-
-      const customersMap = new Map<number, any>();
-      let grandSubtotal = 0;
-      let grandVat = 0;
-      let grandTotal = 0;
-
-      for (const order of sampleOrders) {
-        const customerId = order.customerId || 0;
-        if (!customersMap.has(customerId)) {
-          const customer = dataService.customer.getById(customerId);
-          customersMap.set(customerId, {
-            customerId,
-            customerName: customer?.name || order.customerName || "Unknown",
-            customerCode: customer?.customerCode || "",
-            salesRepName: customer?.salesRepName || order.salesRepName || getRepNameFromOrder(order) || "",
-            items: [],
-            sampleCount: 0,
-            totalSubtotal: 0,
-            totalVat: 0,
-            totalCost: 0,
-          });
-        }
-
-        const cust = customersMap.get(customerId);
-        for (const item of (order.items || [])) {
-          const built = buildSampleItem(order, item);
-          cust.items.push(built);
-          cust.sampleCount += 1;
-          cust.totalSubtotal += built.subtotal;
-          cust.totalVat += built.vatAmount;
-          cust.totalCost += built.totalCost;
-          grandSubtotal += built.subtotal;
-          grandVat += built.vatAmount;
-          grandTotal += built.totalCost;
-        }
-      }
-
-      return {
-        customers: Array.from(customersMap.values()),
-        grandSubtotal,
-        grandVat,
-        grandTotal,
-      };
-    },
-  };
-}
-
-// ─── 7. CUSTOMER missing methods ───
-if (!dataService.customer.getStats) {
-  dataService.customer.getStats = () => {
-    const customers = dataService.customer.list();
-    return {
-      total: customers.length,
-      active: customers.filter((c: any) => c.isActive !== false).length,
-    };
-  };
-}
-
-if (!dataService.customer.getSalesReps) {
-  dataService.customer.getSalesReps = () => {
-    const customers = dataService.customer.list();
-    const reps = new Set<string>();
-    customers.forEach((c: any) => {
-      const name = getRepNameFromCustomer(c);
-      if (name) reps.add(name);
-    });
-    return Array.from(reps);
-  };
-}
-
-// ─── 8. ORDER missing methods ───
-if (!dataService.order.getBySalesRep) {
-  dataService.order.getBySalesRep = (salesRepName: string) => {
-    return dataService.order.list().filter((o: any) => getRepNameFromOrder(o) === salesRepName);
-  };
-}
-
-if (!dataService.order.getMonthlySales) {
-  dataService.order.getMonthlySales = () => {
-    const orders = dataService.order.list();
-    const map = new Map<string, number>();
-    orders.forEach((o: any) => {
-      const d = new Date(o.createdAt);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      map.set(key, (map.get(key) || 0) + (o.total || 0));
-    });
-    return Array.from(map.entries()).map(([month, total]) => ({ month, total })).sort((a, b) => a.month.localeCompare(b.month));
-  };
-}
-
-if (!dataService.order.getProductSales) {
-  dataService.order.getProductSales = () => {
-    const orders = dataService.order.list();
-    const map = new Map<number, { name: string; quantity: number; total: number }>();
-    orders.forEach((o: any) => {
-      (o.items || []).forEach((it: any) => {
-        const id = it.stockItemId || it.id;
-        const existing = map.get(id);
-        if (existing) {
-          existing.quantity += it.quantity || 0;
-          existing.total += (it.quantity || 0) * (it.unitPrice || it.price || 0);
-        } else {
-          map.set(id, {
-            name: it.name || "Unknown",
-            quantity: it.quantity || 0,
-            total: (it.quantity || 0) * (it.unitPrice || it.price || 0),
-          });
-        }
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  };
-}
-
-if (!dataService.order.getSalesBreakdown) {
-  dataService.order.getSalesBreakdown = () => {
-    const orders = dataService.order.list();
-    const today = new Date().toDateString();
-    const thisWeekStart = new Date();
-    thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
-    const thisMonth = new Date().getMonth();
-
-    return {
-      today: orders.filter((o: any) => new Date(o.createdAt).toDateString() === today).reduce((s: number, o: any) => s + (o.total || 0), 0),
-      week: orders.filter((o: any) => new Date(o.createdAt) >= thisWeekStart).reduce((s: number, o: any) => s + (o.total || 0), 0),
-      month: orders.filter((o: any) => new Date(o.createdAt).getMonth() === thisMonth).reduce((s: number, o: any) => s + (o.total || 0), 0),
-    };
-  };
-}
-
-if (!dataService.order.getSalesRepVsOrders) {
-  dataService.order.getSalesRepVsOrders = () => {
-    const orders = dataService.order.list();
-    const reps = new Map<string, { orders: number; sales: number }>();
-    orders.forEach((o: any) => {
-      const name = getRepNameFromOrder(o) || "Unassigned";
-      const curr = reps.get(name) || { orders: 0, sales: 0 };
-      curr.orders += 1;
-      curr.sales += o.total || 0;
-      reps.set(name, curr);
-    });
-    return Array.from(reps.entries()).map(([name, data]) => ({ name, ...data }));
-  };
-}
-
-if (!dataService.order.getDailyReport) {
-  dataService.order.getDailyReport = () => {
-    const today = new Date().toDateString();
-    return dataService.order.list().filter((o: any) => new Date(o.createdAt).toDateString() === today);
-  };
-}
-
-if (!dataService.order.getWeeklyReport) {
-  dataService.order.getWeeklyReport = () => {
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    return dataService.order.list().filter((o: any) => new Date(o.createdAt) >= weekStart);
-  };
-}
-
-if (!dataService.order.getMonthlyReport) {
-  dataService.order.getMonthlyReport = () => {
-    const now = new Date();
-    return dataService.order.list().filter((o: any) => {
-      const d = new Date(o.createdAt);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
-  };
-}
-
-if (!dataService.order.getRevenueBySalesRep) {
-  dataService.order.getRevenueBySalesRep = () => {
-    const orders = dataService.order.list();
-    const map = new Map<string, number>();
-    orders.forEach((o: any) => {
-      const name = getRepNameFromOrder(o) || "Unassigned";
-      map.set(name, (map.get(name) || 0) + (o.total || 0));
-    });
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total);
-  };
-}
-
-if (!dataService.order.getSalesByMonth) {
-  dataService.order.getSalesByMonth = () => {
-    const orders = dataService.order.list();
-    const map = new Map<string, number>();
-    orders.forEach((o: any) => {
-      const d = new Date(o.createdAt);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      map.set(key, (map.get(key) || 0) + (o.total || 0));
-    });
-    return Array.from(map.entries()).map(([month, total]) => ({ month, total })).sort((a, b) => a.month.localeCompare(b.month));
-  };
-}
-
-if (!dataService.order.checkExistingSample) {
-  dataService.order.checkExistingSample = (input: any) => {
-    const { customerId, excludeOrderId } = input || {};
-    const samples = dataService.order.list().filter((o: any) =>
-      isSampleOrder(o) &&
-      o.customerId == customerId &&
-      (!excludeOrderId || o.id != excludeOrderId)
-    );
-    return { hasExisting: samples.length > 0, samples };
-  };
-}
-
-if (!dataService.order.getOpenOrders) {
-  dataService.order.getOpenOrders = () => {
-    return dataService.order.list().filter((o: any) =>
-      o.status !== "delivered" && o.status !== "cancelled"
-    );
-  };
-}
-
-if (!dataService.order.generateMissingInvoices) {
-  dataService.order.generateMissingInvoices = () => {
-    return [];
-  };
-}
-
-if (!dataService.order.convertQuoteToOrder) {
-  dataService.order.convertQuoteToOrder = (id: number) => {
+if (!dataService.order.getSampleReport) {
+  dataService.order.getSampleReport = () => {
     const orders = (dataService.order as any).list();
-    const idx = orders.findIndex((o: any) => o.id == id);
+    const sampleOrders = orders.filter((o: any) => isSampleOrder(o));
+    const items: any[] = [];
+    for (const order of sampleOrders) {
+      const lineItems = order.items || order.lineItems || order.products || [];
+      for (const item of lineItems) {
+        items.push(buildSampleItem(order, item));
+      }
+    }
+    const totalCost = items.reduce((sum: number, i: any) => sum + (i.totalCost || 0), 0);
+    const totalVAT = items.reduce((sum: number, i: any) => sum + (i.vatAmount || 0), 0);
+    return { items, totalCost, totalVAT };
+  };
+}
+
+// ─── 7. INVENTORY ───
+if (!dataService.product.getLowStock) {
+  dataService.product.getLowStock = () => {
+    return dataService.product.list().filter((p: any) => (p.quantity || 0) <= (p.minStock || 10));
+  };
+}
+
+if (!dataService.product.updateQuantity) {
+  dataService.product.updateQuantity = (input: any) => {
+    const { id, quantity } = input;
+    const products = dataService.product.list();
+    const idx = products.findIndex((p: any) => p.id == id);
     if (idx >= 0) {
-      orders[idx].orderType = "order";
-      orders[idx].status = "pending";
-      orders[idx].updatedAt = new Date().toISOString();
-      localStorage.setItem("sgf_orders", JSON.stringify(orders));
-      return orders[idx];
+      products[idx].quantity = quantity;
+      products[idx].updatedAt = new Date().toISOString();
+      localStorage.setItem("sgf_products", JSON.stringify(products));
+      return products[idx];
     }
     return null;
   };
 }
 
-if (!dataService.order.createFromInvoice) {
-  dataService.order.createFromInvoice = (input: any) => {
-    const { invoiceId, items } = input || {};
-    const invoices = dataService.invoice.list();
-    const inv = invoices.find((i: any) => i.id == invoiceId);
-    if (!inv) throw new Error("Invoice not found");
-    const newOrder = {
-      id: Date.now(),
-      customerId: inv.customerId,
-      customerName: inv.customer?.name || "",
-      items: items || inv.items || [],
-      total: inv.total || 0,
-      status: "pending",
-      orderType: "order",
-      createdAt: new Date().toISOString(),
-      invoiceId,
-    };
+if (!dataService.product.searchProducts) {
+  dataService.product.searchProducts = (query: string) => {
+    const q = (query || "").toLowerCase().trim();
+    if (!q) return dataService.product.list();
+    return dataService.product.list().filter((p: any) =>
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.productCode || "").toLowerCase().includes(q) ||
+      (p.sku || "").toLowerCase().includes(q)
+    );
+  };
+}
+
+if (!dataService.product.getProductCodes) {
+  dataService.product.getProductCodes = () => {
+    return dataService.product.list().map((p: any) => p.productCode || "").filter(Boolean);
+  };
+}
+
+if (!dataService.product.getBarrelStock) {
+  dataService.product.getBarrelStock = () => {
+    return dataService.product.list().filter((p: any) => (p.name || "").toLowerCase().includes("barrel"));
+  };
+}
+
+// ─── 8. ORDER missing methods ───
+if (!dataService.order.create) {
+  dataService.order.create = (data: any) => {
     const orders = (dataService.order as any).list();
+    const newOrder = {
+      ...data,
+      id: data.id || Date.now(),
+      createdAt: data.createdAt || new Date().toISOString(),
+      status: data.status || "pending",
+      salesRepName: data.salesRepName || dataService.auth?.me?.()?.name || "",
+    };
     orders.push(newOrder);
     localStorage.setItem("sgf_orders", JSON.stringify(orders));
     return newOrder;

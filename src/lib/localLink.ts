@@ -316,8 +316,8 @@ export function createLocalLink() {
               case "followUp.list": await smartSync("followUps", "sgf_followUps"); result = dataService.followUp.list(); break;
               case "followUp.update": result = dataService.followUp.update(input); if (result) { await pushFollowUp(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "followUp.getStats": await smartSync("followUps", "sgf_followUps"); result = dataService.followUp.getStats(); break;
-              case "sampleReport.getByCustomer": await smartSync("orders", "sgf_orders"); result = dataService.sampleReport.getByCustomer(input); break;
-              case "sampleReport.getAll": await smartSync("orders", "sgf_orders"); result = dataService.sampleReport.getAll(); break;
+              case "sampleReport.getByCustomer": await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.sampleReport.getByCustomer(input); break;
+              case "sampleReport.getAll": await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.sampleReport.getAll(); break;
               case "collections.getOverdueInvoices": await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getOverdueInvoices(); break;
               case "collections.getDailyReport": await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getDailyReport(); break;
               case "collections.getStats": await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getStats(); break;

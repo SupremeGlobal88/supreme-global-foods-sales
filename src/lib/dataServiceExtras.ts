@@ -38,79 +38,117 @@ if (!(dataService as any).auth) {
 }
 
 // ─── 3. SALES REP ───
-// CRITICAL FIX: Sales reps are stored as USERS in sgf_users with role "sales_rep"
-// or "sales_manager". The old code read from sgf_salesReps which had only 5
-// hardcoded reps (Adeli, Inhouse, Michael, Nkosana, Tebogo Bila) and did NOT
-// include the actual sales reps like Collin, Aggie, Ronald, etc.
-function getUsersFromStorage(): any[] {
-  try {
-    const raw = localStorage.getItem("sgf_users");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch { /* ignore */ }
-  return [];
-}
+// Sales reps are stored in Firebase under "salesReps" path → localStorage "sgf_salesReps".
+// CRITICAL: They are NOT app users. Users (sgf_users) are for login/auth only.
+// If sgf_salesReps is empty/missing reps, we derive from customer.order salesRepName data.
 
 function getSalesRepsFromStorage(): any[] {
-  // Read actual users with sales_rep / sales_manager roles from sgf_users
-  const users = getUsersFromStorage();
-  const repUsers = users.filter(
-    (u: any) => u.role === "sales_rep" || u.role === "sales_manager"
-  );
-
-  // Also read legacy sgf_salesReps for any extra metadata (email, phone, region)
-  let legacyReps: any[] = [];
+  // 1. Read from sgf_salesReps (Firebase salesReps path)
+  let reps: any[] = [];
   try {
     const raw = localStorage.getItem("sgf_salesReps");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) legacyReps = parsed;
+      if (Array.isArray(parsed)) reps = parsed;
     }
   } catch { /* ignore */ }
 
-  // Merge: user list is source of truth, but enrich with legacy data if available
-  const merged = repUsers.map((user: any) => {
-    const legacy = legacyReps.find(
-      (r: any) => r.name === user.name || r.name === user.fullName
-    );
-    return {
-      id: user.id,
-      name: user.name || user.fullName || "Unnamed",
-      email: user.email || legacy?.email || "",
-      phone: user.phone || legacy?.phone || "",
-      region: user.region || legacy?.region || "",
-      vehicleReg: user.vehicleReg || legacy?.vehicleReg || "",
-      role: user.role || "sales_rep",
-      isActive: user.isActive !== false,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-  });
+  // 2. Build a set of all unique sales rep names from customers and orders
+  //    (this is the SOURCE OF TRUTH for which reps actually exist in the business)
+  const repNamesFromData = new Set<string>();
 
-  // If no sales rep users found in sgf_users, fall back to legacy sgf_salesReps
-  if (merged.length > 0) return merged;
+  try {
+    const customersRaw = localStorage.getItem("sgf_customers");
+    if (customersRaw) {
+      const customers = JSON.parse(customersRaw);
+      if (Array.isArray(customers)) {
+        customers.forEach((c: any) => {
+          if (c.salesRepName) repNamesFromData.add(String(c.salesRepName).trim());
+        });
+      }
+    }
+  } catch { /* ignore */ }
 
-  // Fallback: return legacy reps or hardcoded defaults if nothing else
-  if (legacyReps.length > 0) return legacyReps;
+  try {
+    const ordersRaw = localStorage.getItem("sgf_orders");
+    if (ordersRaw) {
+      const orders = JSON.parse(ordersRaw);
+      if (Array.isArray(orders)) {
+        orders.forEach((o: any) => {
+          if (o.salesRepName) repNamesFromData.add(String(o.salesRepName).trim());
+        });
+      }
+    }
+  } catch { /* ignore */ }
 
-  return [
-    { id: 1, name: "Adeli", isActive: true, role: "sales_rep" },
-    { id: 2, name: "Inhouse", isActive: true, role: "sales_rep" },
-    { id: 3, name: "Michael", isActive: true, role: "sales_rep" },
-    { id: 4, name: "Nkosana", isActive: true, role: "sales_rep" },
-    { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep" },
-  ];
+  // 3. Merge: sgf_salesReps provides rich data (email, phone, etc.), but
+  //    we ensure ALL reps from customer/order data are present.
+  const mergedMap = new Map<string, any>();
+
+  // Add reps from sgf_salesReps first (rich data)
+  for (const rep of reps) {
+    const name = (rep.name || "").trim();
+    if (name) mergedMap.set(name, { ...rep, name });
+  }
+
+  // Add reps from customer/order data that are missing from sgf_salesReps
+  for (const name of repNamesFromData) {
+    if (!mergedMap.has(name)) {
+      mergedMap.set(name, {
+        id: name, // use name as ID since legacy reps use name as key
+        name,
+        email: "",
+        phone: "",
+        region: "",
+        vehicleReg: "",
+        role: "sales_rep",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  // 4. If we still have nothing, return the hardcoded defaults as last resort
+  if (mergedMap.size === 0) {
+    return [
+      { id: 1, name: "Adeli", isActive: true, role: "sales_rep" },
+      { id: 2, name: "Inhouse", isActive: true, role: "sales_rep" },
+      { id: 3, name: "Michael", isActive: true, role: "sales_rep" },
+      { id: 4, name: "Nkosana", isActive: true, role: "sales_rep" },
+      { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep" },
+    ];
+  }
+
+  return Array.from(mergedMap.values());
 }
 
 function saveSalesReps(reps: any[]) {
   try { localStorage.setItem("sgf_salesReps", JSON.stringify(reps)); } catch { /* ignore */ }
 }
 
+function getWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((+date - +yearStart) / 86400000) + 1) / 7);
+}
+
+function getWeekRange(year: number, week: number): string {
+  const d = new Date(year, 0, 1);
+  const dayOffset = (d.getDay() || 7) - 1;
+  const firstMonday = new Date(year, 0, 1 + (dayOffset > 0 ? 7 - dayOffset : 0));
+  const start = new Date(firstMonday);
+  start.setDate(start.getDate() + (week - 1) * 7);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+}
+
 if (!(dataService as any).salesRep) {
   (dataService as any).salesRep = {
     list: () => getSalesRepsFromStorage(),
+
     search: ({ query }: { query: string }) => {
       const q = (query || "").toLowerCase().trim();
       if (!q) return getSalesRepsFromStorage();
@@ -118,28 +156,95 @@ if (!(dataService as any).salesRep) {
         (r.name || "").toLowerCase().includes(q)
       );
     },
-    getById: (_id: number) => null, // sales reps don't have IDs in legacy format
+
+    getById: (id: string | number) => {
+      return getSalesRepsFromStorage().find((r: any) => r.id == id) || null;
+    },
+
+    // Dashboard Sales Rep Overview table expects:
+    // { repStats: [{ name, customerCount, orderCount, totalSales }] }
     getStats: () => {
       const reps = getSalesRepsFromStorage();
-      return { total: reps.length, active: reps.filter((r: any) => r.isActive !== false).length };
-    },
-    getSalesBreakdown: () => {
+      const customers = dataService.customer.list();
       const orders = dataService.order.list();
-      const byRep: Record<string, number> = {};
-      orders.forEach((o: any) => {
-        const name = o.salesRepName || "Unknown";
-        byRep[name] = (byRep[name] || 0) + (o.total || 0);
+
+      const repStats = reps.map((rep: any) => {
+        const repName = rep.name;
+        const customerCount = customers.filter((c: any) => c.salesRepName === repName).length;
+        const repOrders = orders.filter((o: any) => o.salesRepName === repName);
+        const orderCount = repOrders.length;
+        const totalSales = repOrders.reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+        return { name: repName, customerCount, orderCount, totalSales };
       });
-      return Object.entries(byRep).map(([name, total]) => ({ name, total }));
+
+      return { repStats };
     },
+
+    // Dashboard Sales by Rep section expects:
+    // { today, weekRange, month, repSales: [{ name, todaySales, weekSales, monthSales }], totals: { today, week, month } }
+    getSalesBreakdown: () => {
+      const now = new Date();
+      const todayStr = now.toDateString();
+      const currentWeek = getWeekNumber(now);
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const weekRange = getWeekRange(currentYear, currentWeek);
+      const monthName = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+      const orders = dataService.order.list();
+      const reps = getSalesRepsFromStorage();
+
+      let totalToday = 0;
+      let totalWeek = 0;
+      let totalMonth = 0;
+
+      const repSales = reps.map((rep: any) => {
+        const repName = rep.name;
+        const repOrders = orders.filter((o: any) => o.salesRepName === repName);
+
+        const todaySales = repOrders
+          .filter((o: any) => new Date(o.createdAt).toDateString() === todayStr)
+          .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+
+        const weekSales = repOrders
+          .filter((o: any) => {
+            const d = new Date(o.createdAt);
+            return d.getFullYear() === currentYear && getWeekNumber(d) === currentWeek;
+          })
+          .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+
+        const monthSales = repOrders
+          .filter((o: any) => {
+            const d = new Date(o.createdAt);
+            return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+          })
+          .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+
+        totalToday += todaySales;
+        totalWeek += weekSales;
+        totalMonth += monthSales;
+
+        return { name: repName, todaySales, weekSales, monthSales };
+      });
+
+      return {
+        today: todayStr,
+        weekRange,
+        month: monthName,
+        repSales,
+        totals: { today: totalToday, week: totalWeek, month: totalMonth },
+      };
+    },
+
     create: (data: any) => {
       const reps = getSalesRepsFromStorage();
-      const newRep = { ...data, id: Date.now(), isActive: true, createdAt: new Date().toISOString() };
+      const newRep = { ...data, id: data.name || Date.now(), isActive: true, createdAt: new Date().toISOString() };
       reps.push(newRep);
       saveSalesReps(reps);
       return newRep;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
+
+    update: ({ id, data }: { id: string | number; data: any }) => {
       const reps = getSalesRepsFromStorage();
       const idx = reps.findIndex((r: any) => r.id == id);
       if (idx >= 0) {
@@ -150,7 +255,8 @@ if (!(dataService as any).salesRep) {
       }
       return null;
     },
-    toggleActive: (id: number) => {
+
+    toggleActive: (id: string | number) => {
       const reps = getSalesRepsFromStorage();
       const idx = reps.findIndex((r: any) => r.id == id);
       if (idx >= 0) {
@@ -160,7 +266,8 @@ if (!(dataService as any).salesRep) {
       }
       return null;
     },
-    delete: (id: number) => {
+
+    delete: (id: string | number) => {
       const reps = getSalesRepsFromStorage();
       const toDelete = reps.find((r: any) => r.id == id);
       if (toDelete) {
@@ -263,8 +370,6 @@ if (!(dataService as any).collections) {
 
 // ─── 6. SAMPLE REPORT ───
 // CRITICAL FIX: SampleReportsPage.tsx expects structured data, not raw orders.
-// It needs customers array with items, sampleCount, totalSubtotal, totalVat, totalCost,
-// plus grandSubtotal, grandVat, grandTotal at the top level.
 function buildSampleItem(order: any, item: any): any {
   const product = dataService.product.getById(item.stockItemId);
   const unitCost = item.unitPrice || item.price || 0;
@@ -410,7 +515,6 @@ if (!dataService.order.generateMissingInvoices) {
       const hasInvoice = invoices.some((i: any) => i.orderId == order.id);
       if (!hasInvoice) {
         // Generate invoice logic would go here
-        // For now, return empty array
       }
     }
     return generated;
@@ -476,8 +580,6 @@ if (!dataService.order.getOpenOrders) {
 }
 
 // ─── ORDER GET STATS — ALWAYS OVERRIDE because base version is incomplete ───
-// The base dataService.ts getStats only returns total/totalValue/today/todayValue.
-// We need the full version with pending/picking/ready/delivered/cancelled/quotes/samples.
 dataService.order.getStats = () => {
   const orders = (dataService.order as any).list();
   return {

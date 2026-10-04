@@ -4,9 +4,6 @@ import { getStorageItem, setStorageItem } from "./compressedStorage";
 // ═══════════════════════════════════════════════════════════════
 //  DATA SERVICE EXTRAS — adds missing properties & aliases
 //  required by localLink.ts case handlers.
-//  SAFETY: This file ONLY adds properties; never overwrites existing ones.
-//  EXCEPTION: order.getStats MUST be overridden because the base
-//  version in dataService.ts only returns total/totalValue/today.
 // ═══════════════════════════════════════════════════════════════
 
 // ─── 1. SIMPLE ALIASES ───
@@ -39,12 +36,6 @@ if (!(dataService as any).auth) {
 }
 
 // ─── 3. SALES REP ───
-// Sales reps are stored in Firebase under "salesReps" path → localStorage "sgf_salesReps".
-// CRITICAL: They are NOT app users. Users (sgf_users) are for login/auth only.
-// If sgf_salesReps is empty/missing reps, we derive from customer/order data using
-// multiple field fallbacks, and from users array (role === "sales_rep").
-
-// The 5 base hardcoded reps — ALWAYS present as foundation
 const BASE_REPS = [
   { id: 1, name: "Adeli", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
   { id: 2, name: "Inhouse", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
@@ -53,7 +44,6 @@ const BASE_REPS = [
   { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
 ];
 
-// Helper: safely parse a value as a number
 function toNum(v: any): number {
   if (v === null || v === undefined || v === "" || v === false) return 0;
   if (typeof v === "number") return isNaN(v) ? 0 : v;
@@ -61,7 +51,6 @@ function toNum(v: any): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-// Helper: extract rep name from customer using multiple field fallbacks
 function getRepNameFromCustomer(c: any): string {
   if (!c || typeof c !== "object") return "";
   return String(
@@ -69,74 +58,27 @@ function getRepNameFromCustomer(c: any): string {
   ).trim();
 }
 
-// Helper: extract rep name from order/purchaseOrder/invoice using multiple field fallbacks
-function getRepNameFromOrder(o: any): string {
+/** SIMPLE: Every order has a customerId. Look up that customer. 
+ *  The customer's assigned sales rep gets the sale. Period. */
+function getRepFromOrderCustomer(o: any): string {
   if (!o || typeof o !== "object") return "";
-  return String(
-    o.salesRepName || o.salesRep || o.rep || o.repName || o.createdBy || o.userName || o.assignedTo || o.placedBy || o.salesPerson || ""
-  ).trim();
-}
-
-/** CRITICAL FIX: For sales attribution, if an order was placed by an admin or
- *  non-rep user, attribute the sale to the CUSTOMER'S assigned sales rep instead.
- *  Priority: 1) Order's valid sales rep, 2) Customer's assigned rep, 3) Fallback.
- */
-function getRepNameForSales(o: any, validRepNames?: Set<string>): string {
-  if (!o || typeof o !== "object") return "";
-
-  const orderRep = getRepNameFromOrder(o);
-
-  // If the order has a valid sales rep directly assigned, use it
-  if (orderRep && validRepNames && validRepNames.size > 0) {
-    if (validRepNames.has(orderRep.toLowerCase())) return orderRep;
-  } else if (orderRep) {
-    // Basic fallback: exclude obvious admin/system names
-    const lower = orderRep.toLowerCase();
-    if (lower !== "admin" && lower !== "system" && lower !== "administrator" && lower !== "") {
-      return orderRep;
-    }
-  }
-
-  // Look up the customer and use THEIR assigned sales rep
   const customerId = o.customerId ?? o.customer?.id;
-  if (customerId != null) {
-    const customer = dataService.customer.getById(customerId);
-    if (customer) {
-      const custRep = getRepNameFromCustomer(customer);
-      if (custRep) {
-        if (validRepNames && validRepNames.size > 0) {
-          if (validRepNames.has(custRep.toLowerCase())) return custRep;
-        } else {
-          return custRep;
-        }
-      }
-    }
-    const corpCustomer = dataService.corporateCustomer.getById(customerId);
-    if (corpCustomer) {
-      const corpRep = getRepNameFromCustomer(corpCustomer);
-      if (corpRep) {
-        if (validRepNames && validRepNames.size > 0) {
-          if (validRepNames.has(corpRep.toLowerCase())) return corpRep;
-        } else {
-          return corpRep;
-        }
-      }
-    }
-  }
+  if (customerId == null) return "";
 
-  // Final fallback: return whatever the order has (might be admin, might be empty)
-  return orderRep;
+  const customer = dataService.customer.getById(customerId);
+  if (customer) return getRepNameFromCustomer(customer);
+
+  const corpCustomer = dataService.corporateCustomer.getById(customerId);
+  if (corpCustomer) return getRepNameFromCustomer(corpCustomer);
+
+  return "";
 }
 
 function getSalesRepsFromStorage(): any[] {
   const mergedMap = new Map<string, any>();
 
-  // 1. ALWAYS start with base hardcoded reps
-  for (const rep of BASE_REPS) {
-    mergedMap.set(rep.name, { ...rep });
-  }
+  for (const rep of BASE_REPS) mergedMap.set(rep.name, { ...rep });
 
-  // 2. Read from sgf_salesReps (Firebase salesReps path) — with null safety
   try {
     const raw = getStorageItem("sgf_salesReps");
     if (raw) {
@@ -154,7 +96,6 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading sgf_salesReps:", e);
   }
 
-  // 3. Derive from users array (role === "sales_rep") — these ARE sales reps even if stored in users table
   try {
     const users = dataService.user.list();
     if (Array.isArray(users)) {
@@ -164,14 +105,9 @@ function getSalesRepsFromStorage(): any[] {
         if (!name) continue;
         if (!mergedMap.has(name)) {
           mergedMap.set(name, {
-            id: user.id || name,
-            name,
-            email: user.email || "",
-            phone: user.phone || "",
-            region: user.region || "",
-            vehicleReg: user.vehicleReg || "",
-            isActive: user.isActive !== false,
-            role: "sales_rep",
+            id: user.id || name, name, email: user.email || "", phone: user.phone || "",
+            region: user.region || "", vehicleReg: user.vehicleReg || "",
+            isActive: user.isActive !== false, role: "sales_rep",
             createdAt: user.createdAt || new Date().toISOString(),
           });
         }
@@ -181,7 +117,6 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading users:", e);
   }
 
-  // 4. Derive from regular customers using multiple field names
   try {
     const customers = dataService.customer.list();
     if (Array.isArray(customers)) {
@@ -189,17 +124,7 @@ function getSalesRepsFromStorage(): any[] {
         const name = getRepNameFromCustomer(c);
         if (!name) continue;
         if (!mergedMap.has(name)) {
-          mergedMap.set(name, {
-            id: name,
-            name,
-            email: "",
-            phone: "",
-            region: "",
-            vehicleReg: "",
-            isActive: true,
-            role: "sales_rep",
-            createdAt: new Date().toISOString(),
-          });
+          mergedMap.set(name, { id: name, name, email: "", phone: "", region: "", vehicleReg: "", isActive: true, role: "sales_rep", createdAt: new Date().toISOString() });
         }
       }
     }
@@ -207,7 +132,6 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading customers:", e);
   }
 
-  // 4b. Derive from corporate customers too
   try {
     const corpCustomers = dataService.corporateCustomer.list();
     if (Array.isArray(corpCustomers)) {
@@ -215,17 +139,7 @@ function getSalesRepsFromStorage(): any[] {
         const name = getRepNameFromCustomer(c);
         if (!name) continue;
         if (!mergedMap.has(name)) {
-          mergedMap.set(name, {
-            id: name,
-            name,
-            email: "",
-            phone: "",
-            region: "",
-            vehicleReg: "",
-            isActive: true,
-            role: "sales_rep",
-            createdAt: new Date().toISOString(),
-          });
+          mergedMap.set(name, { id: name, name, email: "", phone: "", region: "", vehicleReg: "", isActive: true, role: "sales_rep", createdAt: new Date().toISOString() });
         }
       }
     }
@@ -233,25 +147,14 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading corporate customers:", e);
   }
 
-  // 5. Derive from regular orders using multiple field names
   try {
     const orders = dataService.order.list();
     if (Array.isArray(orders)) {
       for (const o of orders) {
-        const name = getRepNameFromOrder(o);
+        const name = getRepFromOrderCustomer(o);
         if (!name) continue;
         if (!mergedMap.has(name)) {
-          mergedMap.set(name, {
-            id: name,
-            name,
-            email: "",
-            phone: "",
-            region: "",
-            vehicleReg: "",
-            isActive: true,
-            role: "sales_rep",
-            createdAt: new Date().toISOString(),
-          });
+          mergedMap.set(name, { id: name, name, email: "", phone: "", region: "", vehicleReg: "", isActive: true, role: "sales_rep", createdAt: new Date().toISOString() });
         }
       }
     }
@@ -259,25 +162,14 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading orders:", e);
   }
 
-  // 5b. Derive from purchase orders (corporate orders) too
   try {
     const purchaseOrders = dataService.purchaseOrder.list();
     if (Array.isArray(purchaseOrders)) {
       for (const o of purchaseOrders) {
-        const name = getRepNameFromOrder(o);
+        const name = getRepFromOrderCustomer(o);
         if (!name) continue;
         if (!mergedMap.has(name)) {
-          mergedMap.set(name, {
-            id: name,
-            name,
-            email: "",
-            phone: "",
-            region: "",
-            vehicleReg: "",
-            isActive: true,
-            role: "sales_rep",
-            createdAt: new Date().toISOString(),
-          });
+          mergedMap.set(name, { id: name, name, email: "", phone: "", region: "", vehicleReg: "", isActive: true, role: "sales_rep", createdAt: new Date().toISOString() });
         }
       }
     }
@@ -285,25 +177,14 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading purchase orders:", e);
   }
 
-  // 6. Derive from invoices using multiple field names
   try {
     const invoices = dataService.invoice.list();
     if (Array.isArray(invoices)) {
       for (const inv of invoices) {
-        const name = getRepNameFromOrder(inv);
+        const name = getRepFromOrderCustomer(inv);
         if (!name) continue;
         if (!mergedMap.has(name)) {
-          mergedMap.set(name, {
-            id: name,
-            name,
-            email: "",
-            phone: "",
-            region: "",
-            vehicleReg: "",
-            isActive: true,
-            role: "sales_rep",
-            createdAt: new Date().toISOString(),
-          });
+          mergedMap.set(name, { id: name, name, email: "", phone: "", region: "", vehicleReg: "", isActive: true, role: "sales_rep", createdAt: new Date().toISOString() });
         }
       }
     }
@@ -317,9 +198,7 @@ function getSalesRepsFromStorage(): any[] {
 }
 
 function saveSalesReps(reps: any[]) {
-  try {
-    setStorageItem("sgf_salesReps", JSON.stringify(reps));
-  } catch { /* ignore */ }
+  try { setStorageItem("sgf_salesReps", JSON.stringify(reps)); } catch { /* ignore */ }
 }
 
 function getWeekNumber(d: Date): number {
@@ -330,8 +209,6 @@ function getWeekNumber(d: Date): number {
   return Math.ceil((((+date - +yearStart) / 86400000) + 1) / 7);
 }
 
-/** ISO week year: the year that the ISO week belongs to.
- *  e.g. Dec 30 2025 is in ISO week 1 of 2026, so getISOWeekYear returns 2026. */
 function getISOWeekYear(d: Date): number {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = date.getUTCDay() || 7;
@@ -339,12 +216,9 @@ function getISOWeekYear(d: Date): number {
   return date.getUTCFullYear();
 }
 
-/** ISO week range: Monday-Sunday of the given ISO week.
- *  ISO week 1 is the week with the first Thursday of the year. */
 function getWeekRange(year: number, week: number): string {
-  // Jan 4 is always in ISO week 1. Find its Monday.
   const jan4 = new Date(year, 0, 4);
-  const jan4Day = jan4.getDay() || 7; // 1=Mon, 7=Sun
+  const jan4Day = jan4.getDay() || 7;
   const firstMonday = new Date(year, 0, 4 - jan4Day + 1);
   const start = new Date(firstMonday);
   start.setDate(start.getDate() + (week - 1) * 7);
@@ -369,32 +243,23 @@ if (!(dataService as any).salesRep) {
       return getSalesRepsFromStorage().find((r: any) => r.id == id) || null;
     },
 
-    // Dashboard Sales Rep Overview table expects:
-    // { repStats: [{ name, customerCount, orderCount, totalSales }] }
     getStats: () => {
       const reps = getSalesRepsFromStorage();
-      const validRepNames = new Set(reps.map((r: any) => String(r.name || "").toLowerCase().trim()));
-
       const customers = dataService.customer.list();
       const corpCustomers = dataService.corporateCustomer.list();
       const allCustomers = [...customers, ...corpCustomers];
       const orders = dataService.order.list();
       const purchaseOrders = dataService.purchaseOrder.list();
 
-      // Deduplicate orders by ID
       const orderMap = new Map<string | number, any>();
-      for (const o of orders) {
-        if (o && o.id != null) orderMap.set(o.id, o);
-      }
-      for (const o of purchaseOrders) {
-        if (o && o.id != null && !orderMap.has(o.id)) orderMap.set(o.id, o);
-      }
+      for (const o of orders) { if (o && o.id != null) orderMap.set(o.id, o); }
+      for (const o of purchaseOrders) { if (o && o.id != null && !orderMap.has(o.id)) orderMap.set(o.id, o); }
       const allOrders = Array.from(orderMap.values());
 
       const repStats = reps.map((rep: any) => {
         const repName = rep.name;
         const customerCount = allCustomers.filter((c: any) => getRepNameFromCustomer(c) === repName).length;
-        const repOrders = allOrders.filter((o: any) => getRepNameForSales(o, validRepNames) === repName);
+        const repOrders = allOrders.filter((o: any) => getRepFromOrderCustomer(o) === repName);
         const orderCount = repOrders.length;
         const totalSales = repOrders.reduce((sum: number, o: any) => sum + toNum(o.total), 0);
         return { name: repName, customerCount, orderCount, totalSales };
@@ -403,8 +268,6 @@ if (!(dataService as any).salesRep) {
       return { repStats };
     },
 
-    // Dashboard Sales by Rep section expects:
-    // { today, weekRange, month, repSales: [{ name, todaySales, weekSales, monthSales }], totals: { today, week, month } }
     getSalesBreakdown: () => {
       const now = new Date();
       const todayStr = now.toDateString();
@@ -417,20 +280,12 @@ if (!(dataService as any).salesRep) {
       const orders = dataService.order.list();
       const purchaseOrders = dataService.purchaseOrder.list();
 
-      // Deduplicate: if the same order ID exists in both arrays, only keep one
       const orderMap = new Map<string | number, any>();
-      for (const o of orders) {
-        if (o && o.id != null) orderMap.set(o.id, o);
-      }
-      for (const o of purchaseOrders) {
-        if (o && o.id != null && !orderMap.has(o.id)) orderMap.set(o.id, o);
-      }
+      for (const o of orders) { if (o && o.id != null) orderMap.set(o.id, o); }
+      for (const o of purchaseOrders) { if (o && o.id != null && !orderMap.has(o.id)) orderMap.set(o.id, o); }
       const allOrders = Array.from(orderMap.values());
 
       const reps = getSalesRepsFromStorage();
-      const validRepNames = new Set(reps.map((r: any) => String(r.name || "").toLowerCase().trim()));
-
-      console.log("[getSalesBreakdown] Unique orders:", allOrders.length, "| Valid reps:", validRepNames.size);
 
       let totalToday = 0;
       let totalWeek = 0;
@@ -438,7 +293,7 @@ if (!(dataService as any).salesRep) {
 
       const repSales = reps.map((rep: any) => {
         const repName = rep.name;
-        const repOrders = allOrders.filter((o: any) => getRepNameForSales(o, validRepNames) === repName);
+        const repOrders = allOrders.filter((o: any) => getRepFromOrderCustomer(o) === repName);
 
         const todaySales = repOrders
           .filter((o: any) => {
@@ -470,7 +325,7 @@ if (!(dataService as any).salesRep) {
         return { name: repName, todaySales, weekSales, monthSales };
       });
 
-      console.log("[getSalesBreakdown] Totals — Today:", totalToday, "Week:", totalWeek, "Month:", totalMonth);
+      console.log("[getSalesBreakdown] Unique orders:", allOrders.length, "| Today:", totalToday, "| Week:", totalWeek, "| Month:", totalMonth);
 
       return {
         today: todayStr,
@@ -618,7 +473,6 @@ if (!(dataService as any).collections) {
 }
 
 // ─── 6. SAMPLE REPORT ───
-// CRITICAL FIX: SampleReportsPage.tsx expects structured data, not raw orders.
 function buildSampleItem(order: any, item: any): any {
   const product = dataService.product.getById(item.stockItemId);
   const unitCost = toNum(item.unitPrice || item.price);
@@ -629,15 +483,11 @@ function buildSampleItem(order: any, item: any): any {
   return {
     productCode: product?.productCode || item.productCode || item.code || "N/A",
     productName: product?.name || item.productName || item.name || "Unknown",
-    unitCost,
-    quantity,
-    subtotal,
-    vatAmount,
-    totalCost,
+    unitCost, quantity, subtotal, vatAmount, totalCost,
     date: order.createdAt || new Date().toISOString(),
     customerName: order.customer?.name || order.customerName || "Walk-in",
     sampleNumber: order.sampleNumber || order.orderNumber || `SMP-${order.id || Date.now()}`,
-    repName: getRepNameFromOrder(order),
+    repName: getRepFromOrderCustomer(order),
     status: order.status || "pending",
   };
 }
@@ -647,7 +497,6 @@ function isSampleOrder(o: any): boolean {
   if (o.orderType === "sample" || o.type === "sample" || o.isSample === true) return true;
   const orderNum = String(o.orderNumber || o.sampleNumber || "").toUpperCase();
   if (orderNum.startsWith("SMP-") || orderNum.startsWith("SAMPLE-")) return true;
-  // Check notes/description for "Sample" keyword (used by invoices and some orders)
   const notes = String(o.notes || o.description || o.memo || "").toLowerCase();
   if (notes.includes("sample")) return true;
   return false;
@@ -660,9 +509,7 @@ if (!dataService.order.getSampleReport) {
     const items: any[] = [];
     for (const order of sampleOrders) {
       const lineItems = order.items || order.lineItems || order.products || [];
-      for (const item of lineItems) {
-        items.push(buildSampleItem(order, item));
-      }
+      for (const item of lineItems) items.push(buildSampleItem(order, item));
     }
     const totalCost = items.reduce((sum: number, i: any) => sum + toNum(i.totalCost), 0);
     const totalVAT = items.reduce((sum: number, i: any) => sum + toNum(i.vatAmount), 0);
@@ -670,15 +517,12 @@ if (!dataService.order.getSampleReport) {
   };
 }
 
-// ─── 6b. SAMPLE REPORT MODULE (used by SampleReportsPage.tsx) ───
-// SampleReportsPage.tsx calls trpc.sampleReport.getAll and trpc.sampleReport.getByCustomer
 if (!dataService.sampleReport) {
   dataService.sampleReport = {
     getAll: () => {
       const allOrders = dataService.order.list();
       const allInvoices = dataService.invoice.list();
       const sampleOrders = allOrders.filter(isSampleOrder);
-
       const customerMap = new Map<number, any>();
 
       for (const order of sampleOrders) {
@@ -686,27 +530,14 @@ if (!dataService.sampleReport) {
         const customer = dataService.customer.getById(customerId);
         const customerName = customer?.name || order.customerName || order.customer?.name || "Walk-in";
         const customerCode = customer?.customerCode || order.customerCode || "";
-        const salesRepName = getRepNameFromOrder(order);
-
+        const salesRepName = getRepFromOrderCustomer(order);
         const linkedInvoice = allInvoices.find((inv: any) => inv.orderId == order.id);
         const invoiceNumber = linkedInvoice?.invoiceNumber || linkedInvoice?.invoiceNo || "";
-
         const lineItems = order.items || order.lineItems || order.products || [];
 
         if (!customerMap.has(customerId)) {
-          customerMap.set(customerId, {
-            customerId,
-            customerName,
-            customerCode,
-            salesRepName,
-            sampleCount: 0,
-            items: [],
-            totalSubtotal: 0,
-            totalVat: 0,
-            totalCost: 0,
-          });
+          customerMap.set(customerId, { customerId, customerName, customerCode, salesRepName, sampleCount: 0, items: [], totalSubtotal: 0, totalVat: 0, totalCost: 0 });
         }
-
         const custEntry = customerMap.get(customerId);
         custEntry.sampleCount += 1;
 
@@ -723,14 +554,8 @@ if (!dataService.sampleReport) {
             productName: product?.name || item.productName || item.name || "Unknown",
             dateTaken: order.createdAt || new Date().toISOString(),
             orderNumber: order.orderNumber || order.sampleNumber || `SMP-${order.id || Date.now()}`,
-            invoiceNumber,
-            quantity,
-            unitCost,
-            subtotal,
-            vatAmount,
-            totalCost,
+            invoiceNumber, quantity, unitCost, subtotal, vatAmount, totalCost,
           });
-
           custEntry.totalSubtotal += subtotal;
           custEntry.totalVat += vatAmount;
           custEntry.totalCost += totalCost;
@@ -740,11 +565,9 @@ if (!dataService.sampleReport) {
       const customers = Array.from(customerMap.values()).sort((a: any, b: any) =>
         (a.customerName || "").localeCompare(b.customerName || "")
       );
-
       const grandSubtotal = customers.reduce((sum: number, c: any) => sum + c.totalSubtotal, 0);
       const grandVat = customers.reduce((sum: number, c: any) => sum + c.totalVat, 0);
       const grandTotal = customers.reduce((sum: number, c: any) => sum + c.totalCost, 0);
-
       return { customers, grandSubtotal, grandVat, grandTotal };
     },
 
@@ -752,7 +575,6 @@ if (!dataService.sampleReport) {
       const allOrders = dataService.order.list();
       const allInvoices = dataService.invoice.list();
       const sampleOrders = allOrders.filter((o: any) => isSampleOrder(o) && o.customerId == customerId);
-
       const items: any[] = [];
 
       for (const order of sampleOrders) {
@@ -773,12 +595,7 @@ if (!dataService.sampleReport) {
             productName: product?.name || item.productName || item.name || "Unknown",
             dateTaken: order.createdAt || new Date().toISOString(),
             orderNumber: order.orderNumber || order.sampleNumber || `SMP-${order.id || Date.now()}`,
-            invoiceNumber,
-            quantity,
-            unitCost,
-            subtotal,
-            vatAmount,
-            totalCost,
+            invoiceNumber, quantity, unitCost, subtotal, vatAmount, totalCost,
           });
         }
       }
@@ -786,7 +603,6 @@ if (!dataService.sampleReport) {
       const grandSubtotal = items.reduce((sum: number, i: any) => sum + i.subtotal, 0);
       const grandVat = items.reduce((sum: number, i: any) => sum + i.vatAmount, 0);
       const grandTotal = items.reduce((sum: number, i: any) => sum + i.totalCost, 0);
-
       return { items, grandSubtotal, grandVat, grandTotal };
     },
   };
@@ -1277,7 +1093,4 @@ if (!dataService.followUp.getStats) {
 
 console.log("[dataServiceExtras] All missing properties added successfully.");
 
-// ─── EXPORT: Prevents tree-shaking in production builds ───
-// Vite/Rollup will tree-shake files with no exports. This dummy export
-// ensures dataServiceExtras.ts is ALWAYS included in the bundle.
 export const DATA_SERVICE_EXTRAS_LOADED = true;

@@ -77,6 +77,57 @@ function getRepNameFromOrder(o: any): string {
   ).trim();
 }
 
+/** CRITICAL FIX: For sales attribution, if an order was placed by an admin or
+ *  non-rep user, attribute the sale to the CUSTOMER'S assigned sales rep instead.
+ *  Priority: 1) Order's valid sales rep, 2) Customer's assigned rep, 3) Fallback.
+ */
+function getRepNameForSales(o: any, validRepNames?: Set<string>): string {
+  if (!o || typeof o !== "object") return "";
+
+  const orderRep = getRepNameFromOrder(o);
+
+  // If the order has a valid sales rep directly assigned, use it
+  if (orderRep && validRepNames && validRepNames.size > 0) {
+    if (validRepNames.has(orderRep.toLowerCase())) return orderRep;
+  } else if (orderRep) {
+    // Basic fallback: exclude obvious admin/system names
+    const lower = orderRep.toLowerCase();
+    if (lower !== "admin" && lower !== "system" && lower !== "administrator" && lower !== "") {
+      return orderRep;
+    }
+  }
+
+  // Look up the customer and use THEIR assigned sales rep
+  const customerId = o.customerId ?? o.customer?.id;
+  if (customerId != null) {
+    const customer = dataService.customer.getById(customerId);
+    if (customer) {
+      const custRep = getRepNameFromCustomer(customer);
+      if (custRep) {
+        if (validRepNames && validRepNames.size > 0) {
+          if (validRepNames.has(custRep.toLowerCase())) return custRep;
+        } else {
+          return custRep;
+        }
+      }
+    }
+    const corpCustomer = dataService.corporateCustomer.getById(customerId);
+    if (corpCustomer) {
+      const corpRep = getRepNameFromCustomer(corpCustomer);
+      if (corpRep) {
+        if (validRepNames && validRepNames.size > 0) {
+          if (validRepNames.has(corpRep.toLowerCase())) return corpRep;
+        } else {
+          return corpRep;
+        }
+      }
+    }
+  }
+
+  // Final fallback: return whatever the order has (might be admin, might be empty)
+  return orderRep;
+}
+
 function getSalesRepsFromStorage(): any[] {
   const mergedMap = new Map<string, any>();
 
@@ -322,17 +373,28 @@ if (!(dataService as any).salesRep) {
     // { repStats: [{ name, customerCount, orderCount, totalSales }] }
     getStats: () => {
       const reps = getSalesRepsFromStorage();
+      const validRepNames = new Set(reps.map((r: any) => String(r.name || "").toLowerCase().trim()));
+
       const customers = dataService.customer.list();
       const corpCustomers = dataService.corporateCustomer.list();
       const allCustomers = [...customers, ...corpCustomers];
       const orders = dataService.order.list();
       const purchaseOrders = dataService.purchaseOrder.list();
-      const allOrders = [...orders, ...purchaseOrders];
+
+      // Deduplicate orders by ID
+      const orderMap = new Map<string | number, any>();
+      for (const o of orders) {
+        if (o && o.id != null) orderMap.set(o.id, o);
+      }
+      for (const o of purchaseOrders) {
+        if (o && o.id != null && !orderMap.has(o.id)) orderMap.set(o.id, o);
+      }
+      const allOrders = Array.from(orderMap.values());
 
       const repStats = reps.map((rep: any) => {
         const repName = rep.name;
         const customerCount = allCustomers.filter((c: any) => getRepNameFromCustomer(c) === repName).length;
-        const repOrders = allOrders.filter((o: any) => getRepNameFromOrder(o) === repName);
+        const repOrders = allOrders.filter((o: any) => getRepNameForSales(o, validRepNames) === repName);
         const orderCount = repOrders.length;
         const totalSales = repOrders.reduce((sum: number, o: any) => sum + toNum(o.total), 0);
         return { name: repName, customerCount, orderCount, totalSales };
@@ -365,9 +427,10 @@ if (!(dataService as any).salesRep) {
       }
       const allOrders = Array.from(orderMap.values());
 
-      console.log("[getSalesBreakdown] Total unique orders:", allOrders.length, "(orders:", orders.length, ", POs:", purchaseOrders.length, ")");
-
       const reps = getSalesRepsFromStorage();
+      const validRepNames = new Set(reps.map((r: any) => String(r.name || "").toLowerCase().trim()));
+
+      console.log("[getSalesBreakdown] Unique orders:", allOrders.length, "| Valid reps:", validRepNames.size);
 
       let totalToday = 0;
       let totalWeek = 0;
@@ -375,7 +438,7 @@ if (!(dataService as any).salesRep) {
 
       const repSales = reps.map((rep: any) => {
         const repName = rep.name;
-        const repOrders = allOrders.filter((o: any) => getRepNameFromOrder(o) === repName);
+        const repOrders = allOrders.filter((o: any) => getRepNameForSales(o, validRepNames) === repName);
 
         const todaySales = repOrders
           .filter((o: any) => {

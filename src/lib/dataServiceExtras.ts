@@ -38,21 +38,69 @@ if (!(dataService as any).auth) {
 }
 
 // ─── 3. SALES REP ───
+// CRITICAL FIX: Sales reps are stored as USERS in sgf_users with role "sales_rep"
+// or "sales_manager". The old code read from sgf_salesReps which had only 5
+// hardcoded reps (Adeli, Inhouse, Michael, Nkosana, Tebogo Bila) and did NOT
+// include the actual sales reps like Collin, Aggie, Ronald, etc.
+function getUsersFromStorage(): any[] {
+  try {
+    const raw = localStorage.getItem("sgf_users");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
 function getSalesRepsFromStorage(): any[] {
+  // Read actual users with sales_rep / sales_manager roles from sgf_users
+  const users = getUsersFromStorage();
+  const repUsers = users.filter(
+    (u: any) => u.role === "sales_rep" || u.role === "sales_manager"
+  );
+
+  // Also read legacy sgf_salesReps for any extra metadata (email, phone, region)
+  let legacyReps: any[] = [];
   try {
     const raw = localStorage.getItem("sgf_salesReps");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) legacyReps = parsed;
     }
   } catch { /* ignore */ }
-  // Default reps
+
+  // Merge: user list is source of truth, but enrich with legacy data if available
+  const merged = repUsers.map((user: any) => {
+    const legacy = legacyReps.find(
+      (r: any) => r.name === user.name || r.name === user.fullName
+    );
+    return {
+      id: user.id,
+      name: user.name || user.fullName || "Unnamed",
+      email: user.email || legacy?.email || "",
+      phone: user.phone || legacy?.phone || "",
+      region: user.region || legacy?.region || "",
+      vehicleReg: user.vehicleReg || legacy?.vehicleReg || "",
+      role: user.role || "sales_rep",
+      isActive: user.isActive !== false,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  });
+
+  // If no sales rep users found in sgf_users, fall back to legacy sgf_salesReps
+  if (merged.length > 0) return merged;
+
+  // Fallback: return legacy reps or hardcoded defaults if nothing else
+  if (legacyReps.length > 0) return legacyReps;
+
   return [
-    { name: "Adeli", isActive: true },
-    { name: "Inhouse", isActive: true },
-    { name: "Michael", isActive: true },
-    { name: "Nkosana", isActive: true },
-    { name: "Tebogo Bila", isActive: true },
+    { id: 1, name: "Adeli", isActive: true, role: "sales_rep" },
+    { id: 2, name: "Inhouse", isActive: true, role: "sales_rep" },
+    { id: 3, name: "Michael", isActive: true, role: "sales_rep" },
+    { id: 4, name: "Nkosana", isActive: true, role: "sales_rep" },
+    { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep" },
   ];
 }
 

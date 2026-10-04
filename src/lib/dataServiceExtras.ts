@@ -53,6 +53,14 @@ const BASE_REPS = [
   { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
 ];
 
+// Helper: safely parse a value as a number
+function toNum(v: any): number {
+  if (v === null || v === undefined || v === "" || v === false) return 0;
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  const parsed = parseFloat(String(v).replace(/[\s,]/g, ""));
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 // Helper: extract rep name from customer using multiple field fallbacks
 function getRepNameFromCustomer(c: any): string {
   if (!c || typeof c !== "object") return "";
@@ -326,7 +334,7 @@ if (!(dataService as any).salesRep) {
         const customerCount = allCustomers.filter((c: any) => getRepNameFromCustomer(c) === repName).length;
         const repOrders = allOrders.filter((o: any) => getRepNameFromOrder(o) === repName);
         const orderCount = repOrders.length;
-        const totalSales = repOrders.reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+        const totalSales = repOrders.reduce((sum: number, o: any) => sum + toNum(o.total), 0);
         return { name: repName, customerCount, orderCount, totalSales };
       });
 
@@ -341,12 +349,24 @@ if (!(dataService as any).salesRep) {
       const currentWeek = getWeekNumber(now);
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
-      const weekRange = getWeekRange(currentYear, currentWeek);
+      const weekRange = getWeekRange(getISOWeekYear(now), currentWeek);
       const monthName = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
       const orders = dataService.order.list();
       const purchaseOrders = dataService.purchaseOrder.list();
-      const allOrders = [...orders, ...purchaseOrders];
+
+      // Deduplicate: if the same order ID exists in both arrays, only keep one
+      const orderMap = new Map<string | number, any>();
+      for (const o of orders) {
+        if (o && o.id != null) orderMap.set(o.id, o);
+      }
+      for (const o of purchaseOrders) {
+        if (o && o.id != null && !orderMap.has(o.id)) orderMap.set(o.id, o);
+      }
+      const allOrders = Array.from(orderMap.values());
+
+      console.log("[getSalesBreakdown] Total unique orders:", allOrders.length, "(orders:", orders.length, ", POs:", purchaseOrders.length, ")");
+
       const reps = getSalesRepsFromStorage();
 
       let totalToday = 0;
@@ -358,22 +378,27 @@ if (!(dataService as any).salesRep) {
         const repOrders = allOrders.filter((o: any) => getRepNameFromOrder(o) === repName);
 
         const todaySales = repOrders
-          .filter((o: any) => new Date(o.createdAt).toDateString() === todayStr)
-          .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+          .filter((o: any) => {
+            const d = new Date(o.createdAt);
+            return !isNaN(d.getTime()) && d.toDateString() === todayStr;
+          })
+          .reduce((sum: number, o: any) => sum + toNum(o.total), 0);
 
         const weekSales = repOrders
           .filter((o: any) => {
             const d = new Date(o.createdAt);
+            if (isNaN(d.getTime())) return false;
             return getISOWeekYear(d) === getISOWeekYear(now) && getWeekNumber(d) === currentWeek;
           })
-          .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+          .reduce((sum: number, o: any) => sum + toNum(o.total), 0);
 
         const monthSales = repOrders
           .filter((o: any) => {
             const d = new Date(o.createdAt);
+            if (isNaN(d.getTime())) return false;
             return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
           })
-          .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+          .reduce((sum: number, o: any) => sum + toNum(o.total), 0);
 
         totalToday += todaySales;
         totalWeek += weekSales;
@@ -381,6 +406,8 @@ if (!(dataService as any).salesRep) {
 
         return { name: repName, todaySales, weekSales, monthSales };
       });
+
+      console.log("[getSalesBreakdown] Totals — Today:", totalToday, "Week:", totalWeek, "Month:", totalMonth);
 
       return {
         today: todayStr,
@@ -449,13 +476,13 @@ if (!(dataService as any).dashboard) {
       const products = dataService.product.list();
       const today = new Date().toDateString();
 
-      const totalRevenue = invoices.reduce((sum: number, i: any) => sum + (i.total || 0), 0);
+      const totalRevenue = invoices.reduce((sum: number, i: any) => sum + toNum(i.total), 0);
       const todayRevenue = invoices
         .filter((i: any) => new Date(i.createdAt).toDateString() === today)
-        .reduce((sum: number, i: any) => sum + (i.total || 0), 0);
+        .reduce((sum: number, i: any) => sum + toNum(i.total), 0);
       const outstanding = invoices
-        .filter((i: any) => (i.balanceDue || 0) > 0)
-        .reduce((sum: number, i: any) => sum + (i.balanceDue || 0), 0);
+        .filter((i: any) => toNum(i.balanceDue) > 0)
+        .reduce((sum: number, i: any) => sum + toNum(i.balanceDue), 0);
 
       return {
         totalOrders: allOrders.length,
@@ -465,7 +492,7 @@ if (!(dataService as any).dashboard) {
         totalRevenue,
         todayRevenue,
         outstanding,
-        lowStock: products.filter((p: any) => (p.quantity || 0) <= (p.minStock || 10)).length,
+        lowStock: products.filter((p: any) => toNum(p.quantity) <= toNum(p.minStock || 10)).length,
       };
     },
   };
@@ -477,7 +504,7 @@ if (!(dataService as any).collections) {
     getOverdueInvoices: () => {
       const now = new Date().toISOString();
       return dataService.invoice.list().filter((i: any) =>
-        (i.balanceDue || 0) > 0 && i.dueDate && i.dueDate < now
+        toNum(i.balanceDue) > 0 && i.dueDate && i.dueDate < now
       );
     },
     getDailyReport: () => {
@@ -490,8 +517,8 @@ if (!(dataService as any).collections) {
     getStats: () => {
       const invoices = dataService.invoice.list();
       const totalOutstanding = invoices
-        .filter((i: any) => (i.balanceDue || 0) > 0)
-        .reduce((sum: number, i: any) => sum + (i.balanceDue || 0), 0);
+        .filter((i: any) => toNum(i.balanceDue) > 0)
+        .reduce((sum: number, i: any) => sum + toNum(i.balanceDue), 0);
       return { totalOutstanding, overdueCount: invoices.filter((i: any) => i.dueDate < new Date().toISOString()).length };
     },
     getCustomerPaymentHistory: (customerId: number) => {
@@ -531,8 +558,8 @@ if (!(dataService as any).collections) {
 // CRITICAL FIX: SampleReportsPage.tsx expects structured data, not raw orders.
 function buildSampleItem(order: any, item: any): any {
   const product = dataService.product.getById(item.stockItemId);
-  const unitCost = item.unitPrice || item.price || 0;
-  const quantity = item.quantity || 0;
+  const unitCost = toNum(item.unitPrice || item.price);
+  const quantity = toNum(item.quantity);
   const subtotal = unitCost * quantity;
   const vatAmount = subtotal * 0.15;
   const totalCost = subtotal + vatAmount;
@@ -574,8 +601,8 @@ if (!dataService.order.getSampleReport) {
         items.push(buildSampleItem(order, item));
       }
     }
-    const totalCost = items.reduce((sum: number, i: any) => sum + (i.totalCost || 0), 0);
-    const totalVAT = items.reduce((sum: number, i: any) => sum + (i.vatAmount || 0), 0);
+    const totalCost = items.reduce((sum: number, i: any) => sum + toNum(i.totalCost), 0);
+    const totalVAT = items.reduce((sum: number, i: any) => sum + toNum(i.vatAmount), 0);
     return { items, totalCost, totalVAT };
   };
 }
@@ -622,8 +649,8 @@ if (!dataService.sampleReport) {
 
         for (const item of lineItems) {
           const product = dataService.product.getById(item.stockItemId);
-          const unitCost = item.unitPrice || item.price || 0;
-          const quantity = item.quantity || 0;
+          const unitCost = toNum(item.unitPrice || item.price);
+          const quantity = toNum(item.quantity);
           const subtotal = unitCost * quantity;
           const vatAmount = subtotal * 0.15;
           const totalCost = subtotal + vatAmount;
@@ -672,8 +699,8 @@ if (!dataService.sampleReport) {
 
         for (const item of lineItems) {
           const product = dataService.product.getById(item.stockItemId);
-          const unitCost = item.unitPrice || item.price || 0;
-          const quantity = item.quantity || 0;
+          const unitCost = toNum(item.unitPrice || item.price);
+          const quantity = toNum(item.quantity);
           const subtotal = unitCost * quantity;
           const vatAmount = subtotal * 0.15;
           const totalCost = subtotal + vatAmount;
@@ -705,7 +732,7 @@ if (!dataService.sampleReport) {
 // ─── 7. INVENTORY ───
 if (!dataService.product.getLowStock) {
   dataService.product.getLowStock = () => {
-    return dataService.product.list().filter((p: any) => (p.quantity || 0) <= (p.minStock || 10));
+    return dataService.product.list().filter((p: any) => toNum(p.quantity) <= toNum(p.minStock || 10));
   };
 }
 
@@ -770,7 +797,7 @@ if (!dataService.order.getSalesReport) {
     const orders = (dataService.order as any).list();
     return {
       totalOrders: orders.length,
-      totalValue: orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
+      totalValue: orders.reduce((sum: number, o: any) => sum + toNum(o.total), 0),
     };
   };
 }
@@ -796,7 +823,7 @@ dataService.order.getStats = () => {
   const allOrders = [...orders, ...purchaseOrders];
   return {
     total: allOrders.length,
-    totalValue: allOrders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
+    totalValue: allOrders.reduce((sum: number, o: any) => sum + toNum(o.total), 0),
     pending: allOrders.filter((o: any) => o.status === "pending").length,
     picking: allOrders.filter((o: any) => o.status === "picking").length,
     ready: allOrders.filter((o: any) => o.status === "ready").length,
@@ -834,8 +861,8 @@ if (!dataService.invoice.recordPayment) {
     const idx = invoices.findIndex((i: any) => i.id == invoiceId);
     if (idx >= 0) {
       const inv = invoices[idx];
-      inv.amountPaid = (inv.amountPaid || 0) + amount;
-      inv.balanceDue = Math.max(0, (inv.total || 0) - inv.amountPaid);
+      inv.amountPaid = toNum(inv.amountPaid) + amount;
+      inv.balanceDue = Math.max(0, toNum(inv.total) - inv.amountPaid);
       inv.status = inv.balanceDue <= 0 ? "paid" : (inv.amountPaid > 0 ? "partial" : inv.status);
       if (!inv.payments) inv.payments = [];
       inv.payments.push({ amount, date, method, reference, createdAt: new Date().toISOString() });
@@ -856,8 +883,8 @@ if (!dataService.invoice.editPayment) {
       const inv = invoices[idx];
       const oldAmount = inv.payments[paymentIndex].amount;
       inv.payments[paymentIndex] = { ...inv.payments[paymentIndex], amount, date, method, reference };
-      inv.amountPaid = (inv.amountPaid || 0) - oldAmount + amount;
-      inv.balanceDue = Math.max(0, (inv.total || 0) - inv.amountPaid);
+      inv.amountPaid = toNum(inv.amountPaid) - oldAmount + amount;
+      inv.balanceDue = Math.max(0, toNum(inv.total) - inv.amountPaid);
       inv.status = inv.balanceDue <= 0 ? "paid" : (inv.amountPaid > 0 ? "partial" : "unpaid");
       inv.updatedAt = new Date().toISOString();
       localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
@@ -876,8 +903,8 @@ if (!dataService.invoice.deletePayment) {
       const inv = invoices[idx];
       const oldAmount = inv.payments[paymentIndex].amount;
       inv.payments.splice(paymentIndex, 1);
-      inv.amountPaid = Math.max(0, (inv.amountPaid || 0) - oldAmount);
-      inv.balanceDue = Math.max(0, (inv.total || 0) - inv.amountPaid);
+      inv.amountPaid = Math.max(0, toNum(inv.amountPaid) - oldAmount);
+      inv.balanceDue = Math.max(0, toNum(inv.total) - inv.amountPaid);
       inv.status = inv.balanceDue <= 0 ? "paid" : (inv.amountPaid > 0 ? "partial" : "unpaid");
       inv.updatedAt = new Date().toISOString();
       localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
@@ -978,7 +1005,7 @@ if (!dataService.invoice.getCustomerCreditBalance) {
     const notes = JSON.parse(localStorage.getItem("sgf_creditNotes") || "[]");
     return notes
       .filter((n: any) => n.customerId == customerId && n.status !== "voided")
-      .reduce((sum: number, n: any) => sum + (n.amount || 0), 0);
+      .reduce((sum: number, n: any) => sum + toNum(n.amount), 0);
   };
 }
 
@@ -998,7 +1025,7 @@ if (!dataService.invoice.allocateCredit) {
     const notes = JSON.parse(localStorage.getItem("sgf_creditNotes") || "[]");
     const idx = notes.findIndex((n: any) => n.id == creditNoteId);
     if (idx >= 0) {
-      notes[idx].allocatedAmount = (notes[idx].allocatedAmount || 0) + amount;
+      notes[idx].allocatedAmount = toNum(notes[idx].allocatedAmount) + amount;
       notes[idx].allocatedToInvoiceId = invoiceId;
       notes[idx].updatedAt = new Date().toISOString();
       localStorage.setItem("sgf_creditNotes", JSON.stringify(notes));

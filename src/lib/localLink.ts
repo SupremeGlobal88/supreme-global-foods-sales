@@ -1,5 +1,8 @@
 import { dataService, reloadFromStorage, fixDraftInvoicesForDeliveredOrders, fixSageInvoiceDates, parseBankStatement, matchBankPayments, allocateBankPayments, getAARate, setAARate } from "./dataService";
-import "./dataServiceExtras"; // Side-effect: adds missing properties (stock, auth, salesRep, dashboard, audit, etc.)
+import { DATA_SERVICE_EXTRAS_LOADED } from "./dataServiceExtras";
+if (!DATA_SERVICE_EXTRAS_LOADED) {
+  console.error("[localLink] CRITICAL: dataServiceExtras was tree-shaken!");
+}
 import { getStorageItem, setStorageItem } from "./compressedStorage";
 import { observable } from "@trpc/server/observable";
 import {

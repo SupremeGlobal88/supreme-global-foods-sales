@@ -41,82 +41,142 @@ if (!(dataService as any).auth) {
 // ─── 3. SALES REP ───
 // Sales reps are stored in Firebase under "salesReps" path → localStorage "sgf_salesReps".
 // CRITICAL: They are NOT app users. Users (sgf_users) are for login/auth only.
-// If sgf_salesReps is empty/missing reps, we derive from customer/order salesRepName data.
+// If sgf_salesReps is empty/missing reps, we derive from customer/order data using
+// multiple field fallbacks, and from users array (role === "sales_rep").
+
+// The 5 base hardcoded reps — ALWAYS present as foundation
+const BASE_REPS = [
+  { id: 1, name: "Adeli", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
+  { id: 2, name: "Inhouse", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
+  { id: 3, name: "Michael", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
+  { id: 4, name: "Nkosana", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
+  { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep", email: "", phone: "", region: "", vehicleReg: "" },
+];
+
+// Helper: extract rep name from customer using multiple field fallbacks
+function getRepNameFromCustomer(c: any): string {
+  if (!c || typeof c !== "object") return "";
+  return String(
+    c.salesRepName || c.salesRep || c.rep || c.repName || c.assignedTo || c.assignedRep || ""
+  ).trim();
+}
+
+// Helper: extract rep name from order using multiple field fallbacks
+function getRepNameFromOrder(o: any): string {
+  if (!o || typeof o !== "object") return "";
+  return String(
+    o.salesRepName || o.salesRep || o.rep || o.repName || o.createdBy || o.userName || o.assignedTo || ""
+  ).trim();
+}
 
 function getSalesRepsFromStorage(): any[] {
-  // 1. Read from sgf_salesReps (Firebase salesReps path) using getStorageItem
-  //    because compressedStorage.ts compresses data — localStorage.getItem() fails.
-  let reps: any[] = [];
+  const mergedMap = new Map<string, any>();
+
+  // 1. ALWAYS start with base hardcoded reps
+  for (const rep of BASE_REPS) {
+    mergedMap.set(rep.name, { ...rep });
+  }
+
+  // 2. Read from sgf_salesReps (Firebase salesReps path) — with null safety
   try {
     const raw = getStorageItem("sgf_salesReps");
     if (raw) {
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (Array.isArray(parsed)) reps = parsed;
+      if (Array.isArray(parsed)) {
+        for (const rep of parsed) {
+          if (!rep || typeof rep !== "object") continue;
+          const name = String(rep.name || "").trim();
+          if (!name) continue;
+          mergedMap.set(name, { ...rep, name });
+        }
+      }
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading sgf_salesReps:", e);
+  }
 
-  // 2. Build a set of all unique sales rep names from customers and orders.
-  //    Use dataService.customer.list() and dataService.order.list() which are
-  //    already populated in memory by reloadFromStorage().
-  const repNamesFromData = new Set<string>();
+  // 3. Derive from users array (role === "sales_rep") — these ARE sales reps even if stored in users table
+  try {
+    const users = dataService.user.list();
+    if (Array.isArray(users)) {
+      for (const user of users) {
+        if (!user || user.role !== "sales_rep") continue;
+        const name = String(user.name || "").trim();
+        if (!name) continue;
+        if (!mergedMap.has(name)) {
+          mergedMap.set(name, {
+            id: user.id || name,
+            name,
+            email: user.email || "",
+            phone: user.phone || "",
+            region: user.region || "",
+            vehicleReg: user.vehicleReg || "",
+            isActive: user.isActive !== false,
+            role: "sales_rep",
+            createdAt: user.createdAt || new Date().toISOString(),
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading users:", e);
+  }
 
+  // 4. Derive from customers using multiple field names
   try {
     const customers = dataService.customer.list();
     if (Array.isArray(customers)) {
-      customers.forEach((c: any) => {
-        if (c.salesRepName) repNamesFromData.add(String(c.salesRepName).trim());
-      });
+      for (const c of customers) {
+        const name = getRepNameFromCustomer(c);
+        if (!name) continue;
+        if (!mergedMap.has(name)) {
+          mergedMap.set(name, {
+            id: name,
+            name,
+            email: "",
+            phone: "",
+            region: "",
+            vehicleReg: "",
+            isActive: true,
+            role: "sales_rep",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading customers:", e);
+  }
 
+  // 5. Derive from orders using multiple field names
   try {
     const orders = dataService.order.list();
     if (Array.isArray(orders)) {
-      orders.forEach((o: any) => {
-        if (o.salesRepName) repNamesFromData.add(String(o.salesRepName).trim());
-      });
+      for (const o of orders) {
+        const name = getRepNameFromOrder(o);
+        if (!name) continue;
+        if (!mergedMap.has(name)) {
+          mergedMap.set(name, {
+            id: name,
+            name,
+            email: "",
+            phone: "",
+            region: "",
+            vehicleReg: "",
+            isActive: true,
+            role: "sales_rep",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
     }
-  } catch { /* ignore */ }
-
-  // 3. Merge: sgf_salesReps provides rich data (email, phone, etc.), but
-  //    we ensure ALL reps from customer/order data are present.
-  const mergedMap = new Map<string, any>();
-
-  // Add reps from sgf_salesReps first (rich data)
-  for (const rep of reps) {
-    const name = (rep.name || "").trim();
-    if (name) mergedMap.set(name, { ...rep, name });
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading orders:", e);
   }
 
-  // Add reps from customer/order data that are missing from sgf_salesReps
-  for (const name of repNamesFromData) {
-    if (!mergedMap.has(name)) {
-      mergedMap.set(name, {
-        id: name, // use name as ID since legacy reps use name as key
-        name,
-        email: "",
-        phone: "",
-        region: "",
-        vehicleReg: "",
-        role: "sales_rep",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      });
-    }
-  }
-
-  // 4. If we still have nothing, return the hardcoded defaults as last resort
-  if (mergedMap.size === 0) {
-    return [
-      { id: 1, name: "Adeli", isActive: true, role: "sales_rep" },
-      { id: 2, name: "Inhouse", isActive: true, role: "sales_rep" },
-      { id: 3, name: "Michael", isActive: true, role: "sales_rep" },
-      { id: 4, name: "Nkosana", isActive: true, role: "sales_rep" },
-      { id: 5, name: "Tebogo Bila", isActive: true, role: "sales_rep" },
-    ];
-  }
-
-  return Array.from(mergedMap.values());
+  const result = Array.from(mergedMap.values());
+  console.log("[getSalesRepsFromStorage] Found", result.length, "sales reps");
+  return result;
 }
 
 function saveSalesReps(reps: any[]) {
@@ -169,8 +229,8 @@ if (!(dataService as any).salesRep) {
 
       const repStats = reps.map((rep: any) => {
         const repName = rep.name;
-        const customerCount = customers.filter((c: any) => c.salesRepName === repName).length;
-        const repOrders = orders.filter((o: any) => o.salesRepName === repName);
+        const customerCount = customers.filter((c: any) => getRepNameFromCustomer(c) === repName).length;
+        const repOrders = orders.filter((o: any) => getRepNameFromOrder(o) === repName);
         const orderCount = repOrders.length;
         const totalSales = repOrders.reduce((sum: number, o: any) => sum + (o.total || 0), 0);
         return { name: repName, customerCount, orderCount, totalSales };
@@ -199,7 +259,7 @@ if (!(dataService as any).salesRep) {
 
       const repSales = reps.map((rep: any) => {
         const repName = rep.name;
-        const repOrders = orders.filter((o: any) => o.salesRepName === repName);
+        const repOrders = orders.filter((o: any) => getRepNameFromOrder(o) === repName);
 
         const todaySales = repOrders
           .filter((o: any) => new Date(o.createdAt).toDateString() === todayStr)
@@ -390,11 +450,20 @@ function buildSampleItem(order: any, item: any): any {
   };
 }
 
+// Helper: detect if an order is a sample using multiple field fallbacks
+function isSampleOrder(o: any): boolean {
+  if (!o || typeof o !== "object") return false;
+  if (o.orderType === "sample" || o.isSample === true || o.type === "sample") return true;
+  const orderNum = String(o.orderNumber || "").toUpperCase();
+  if (orderNum.startsWith("SMP-") || orderNum.startsWith("SAMPLE-")) return true;
+  return false;
+}
+
 if (!(dataService as any).sampleReport) {
   (dataService as any).sampleReport = {
     getByCustomer: (customerId: number) => {
       const sampleOrders = dataService.order.list().filter((o: any) =>
-        o.customerId == customerId && o.orderType === "sample"
+        o.customerId == customerId && isSampleOrder(o)
       );
 
       const items: any[] = [];
@@ -416,7 +485,7 @@ if (!(dataService as any).sampleReport) {
     },
 
     getAll: () => {
-      const sampleOrders = dataService.order.list().filter((o: any) => o.orderType === "sample");
+      const sampleOrders = dataService.order.list().filter((o: any) => isSampleOrder(o));
 
       const customersMap = new Map<number, any>();
       let grandSubtotal = 0;
@@ -431,7 +500,7 @@ if (!(dataService as any).sampleReport) {
             customerId,
             customerName: customer?.name || order.customerName || "Unknown",
             customerCode: customer?.customerCode || "",
-            salesRepName: customer?.salesRepName || order.salesRepName || "",
+            salesRepName: customer?.salesRepName || order.salesRepName || getRepNameFromOrder(order) || "",
             items: [],
             sampleCount: 0,
             totalSubtotal: 0,
@@ -480,7 +549,8 @@ if (!dataService.customer.getSalesReps) {
     const customers = dataService.customer.list();
     const reps = new Set<string>();
     customers.forEach((c: any) => {
-      if (c.salesRepName) reps.add(c.salesRepName);
+      const name = getRepNameFromCustomer(c);
+      if (name) reps.add(name);
     });
     return Array.from(reps);
   };
@@ -489,7 +559,7 @@ if (!dataService.customer.getSalesReps) {
 // ─── 8. ORDER missing methods ───
 if (!dataService.order.getBySalesRep) {
   dataService.order.getBySalesRep = (salesRepName: string) => {
-    return dataService.order.list().filter((o: any) => o.salesRepName === salesRepName);
+    return dataService.order.list().filter((o: any) => getRepNameFromOrder(o) === salesRepName);
   };
 }
 
@@ -551,7 +621,7 @@ if (!dataService.order.getSalesRepVsOrders) {
     const orders = dataService.order.list();
     const reps = new Map<string, { orders: number; sales: number }>();
     orders.forEach((o: any) => {
-      const name = o.salesRepName || "Unassigned";
+      const name = getRepNameFromOrder(o) || "Unassigned";
       const curr = reps.get(name) || { orders: 0, sales: 0 };
       curr.orders += 1;
       curr.sales += o.total || 0;
@@ -591,7 +661,7 @@ if (!dataService.order.getRevenueBySalesRep) {
     const orders = dataService.order.list();
     const map = new Map<string, number>();
     orders.forEach((o: any) => {
-      const name = o.salesRepName || "Unassigned";
+      const name = getRepNameFromOrder(o) || "Unassigned";
       map.set(name, (map.get(name) || 0) + (o.total || 0));
     });
     return Array.from(map.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total);
@@ -615,7 +685,7 @@ if (!dataService.order.checkExistingSample) {
   dataService.order.checkExistingSample = (input: any) => {
     const { customerId, excludeOrderId } = input || {};
     const samples = dataService.order.list().filter((o: any) =>
-      o.orderType === "sample" &&
+      isSampleOrder(o) &&
       o.customerId == customerId &&
       (!excludeOrderId || o.id != excludeOrderId)
     );
@@ -712,7 +782,7 @@ dataService.order.getStats = () => {
     delivered: orders.filter((o: any) => o.status === "delivered").length,
     cancelled: orders.filter((o: any) => o.status === "cancelled").length,
     quotes: orders.filter((o: any) => o.orderType === "quote").length,
-    samples: orders.filter((o: any) => o.orderType === "sample").length,
+    samples: orders.filter((o: any) => isSampleOrder(o)).length,
   };
 };
 

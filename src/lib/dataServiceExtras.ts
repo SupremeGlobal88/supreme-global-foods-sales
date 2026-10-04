@@ -61,11 +61,11 @@ function getRepNameFromCustomer(c: any): string {
   ).trim();
 }
 
-// Helper: extract rep name from order using multiple field fallbacks
+// Helper: extract rep name from order/purchaseOrder/invoice using multiple field fallbacks
 function getRepNameFromOrder(o: any): string {
   if (!o || typeof o !== "object") return "";
   return String(
-    o.salesRepName || o.salesRep || o.rep || o.repName || o.createdBy || o.userName || o.assignedTo || ""
+    o.salesRepName || o.salesRep || o.rep || o.repName || o.createdBy || o.userName || o.assignedTo || o.placedBy || o.salesPerson || ""
   ).trim();
 }
 
@@ -122,7 +122,7 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading users:", e);
   }
 
-  // 4. Derive from customers using multiple field names
+  // 4. Derive from regular customers using multiple field names
   try {
     const customers = dataService.customer.list();
     if (Array.isArray(customers)) {
@@ -148,7 +148,33 @@ function getSalesRepsFromStorage(): any[] {
     console.warn("[getSalesRepsFromStorage] Error reading customers:", e);
   }
 
-  // 5. Derive from orders using multiple field names
+  // 4b. Derive from corporate customers too
+  try {
+    const corpCustomers = dataService.corporateCustomer.list();
+    if (Array.isArray(corpCustomers)) {
+      for (const c of corpCustomers) {
+        const name = getRepNameFromCustomer(c);
+        if (!name) continue;
+        if (!mergedMap.has(name)) {
+          mergedMap.set(name, {
+            id: name,
+            name,
+            email: "",
+            phone: "",
+            region: "",
+            vehicleReg: "",
+            isActive: true,
+            role: "sales_rep",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading corporate customers:", e);
+  }
+
+  // 5. Derive from regular orders using multiple field names
   try {
     const orders = dataService.order.list();
     if (Array.isArray(orders)) {
@@ -172,6 +198,32 @@ function getSalesRepsFromStorage(): any[] {
     }
   } catch (e) {
     console.warn("[getSalesRepsFromStorage] Error reading orders:", e);
+  }
+
+  // 5b. Derive from purchase orders (corporate orders) too
+  try {
+    const purchaseOrders = dataService.purchaseOrder.list();
+    if (Array.isArray(purchaseOrders)) {
+      for (const o of purchaseOrders) {
+        const name = getRepNameFromOrder(o);
+        if (!name) continue;
+        if (!mergedMap.has(name)) {
+          mergedMap.set(name, {
+            id: name,
+            name,
+            email: "",
+            phone: "",
+            region: "",
+            vehicleReg: "",
+            isActive: true,
+            role: "sales_rep",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[getSalesRepsFromStorage] Error reading purchase orders:", e);
   }
 
   // 6. Derive from invoices using multiple field names
@@ -251,12 +303,16 @@ if (!(dataService as any).salesRep) {
     getStats: () => {
       const reps = getSalesRepsFromStorage();
       const customers = dataService.customer.list();
+      const corpCustomers = dataService.corporateCustomer.list();
+      const allCustomers = [...customers, ...corpCustomers];
       const orders = dataService.order.list();
+      const purchaseOrders = dataService.purchaseOrder.list();
+      const allOrders = [...orders, ...purchaseOrders];
 
       const repStats = reps.map((rep: any) => {
         const repName = rep.name;
-        const customerCount = customers.filter((c: any) => getRepNameFromCustomer(c) === repName).length;
-        const repOrders = orders.filter((o: any) => getRepNameFromOrder(o) === repName);
+        const customerCount = allCustomers.filter((c: any) => getRepNameFromCustomer(c) === repName).length;
+        const repOrders = allOrders.filter((o: any) => getRepNameFromOrder(o) === repName);
         const orderCount = repOrders.length;
         const totalSales = repOrders.reduce((sum: number, o: any) => sum + (o.total || 0), 0);
         return { name: repName, customerCount, orderCount, totalSales };
@@ -277,6 +333,8 @@ if (!(dataService as any).salesRep) {
       const monthName = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
       const orders = dataService.order.list();
+      const purchaseOrders = dataService.purchaseOrder.list();
+      const allOrders = [...orders, ...purchaseOrders];
       const reps = getSalesRepsFromStorage();
 
       let totalToday = 0;
@@ -285,7 +343,7 @@ if (!(dataService as any).salesRep) {
 
       const repSales = reps.map((rep: any) => {
         const repName = rep.name;
-        const repOrders = orders.filter((o: any) => getRepNameFromOrder(o) === repName);
+        const repOrders = allOrders.filter((o: any) => getRepNameFromOrder(o) === repName);
 
         const todaySales = repOrders
           .filter((o: any) => new Date(o.createdAt).toDateString() === todayStr)
@@ -370,8 +428,12 @@ if (!(dataService as any).dashboard) {
   (dataService as any).dashboard = {
     stats: () => {
       const orders = dataService.order.list();
+      const purchaseOrders = dataService.purchaseOrder.list();
+      const allOrders = [...orders, ...purchaseOrders];
       const invoices = dataService.invoice.list();
       const customers = dataService.customer.list();
+      const corpCustomers = dataService.corporateCustomer.list();
+      const allCustomers = [...customers, ...corpCustomers];
       const products = dataService.product.list();
       const today = new Date().toDateString();
 
@@ -384,9 +446,9 @@ if (!(dataService as any).dashboard) {
         .reduce((sum: number, i: any) => sum + (i.balanceDue || 0), 0);
 
       return {
-        totalOrders: orders.length,
+        totalOrders: allOrders.length,
         totalInvoices: invoices.length,
-        totalCustomers: customers.length,
+        totalCustomers: allCustomers.length,
         totalProducts: products.length,
         totalRevenue,
         todayRevenue,
@@ -718,16 +780,18 @@ if (!dataService.order.getOpenOrders) {
 // ─── ORDER GET STATS — ALWAYS OVERRIDE because base version is incomplete ───
 dataService.order.getStats = () => {
   const orders = (dataService.order as any).list();
+  const purchaseOrders = dataService.purchaseOrder.list();
+  const allOrders = [...orders, ...purchaseOrders];
   return {
-    total: orders.length,
-    totalValue: orders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
-    pending: orders.filter((o: any) => o.status === "pending").length,
-    picking: orders.filter((o: any) => o.status === "picking").length,
-    ready: orders.filter((o: any) => o.status === "ready").length,
-    delivered: orders.filter((o: any) => o.status === "delivered").length,
-    cancelled: orders.filter((o: any) => o.status === "cancelled").length,
-    quotes: orders.filter((o: any) => o.orderType === "quote").length,
-    samples: orders.filter((o: any) => isSampleOrder(o)).length,
+    total: allOrders.length,
+    totalValue: allOrders.reduce((sum: number, o: any) => sum + (o.total || 0), 0),
+    pending: allOrders.filter((o: any) => o.status === "pending").length,
+    picking: allOrders.filter((o: any) => o.status === "picking").length,
+    ready: allOrders.filter((o: any) => o.status === "ready").length,
+    delivered: allOrders.filter((o: any) => o.status === "delivered").length,
+    cancelled: allOrders.filter((o: any) => o.status === "cancelled").length,
+    quotes: allOrders.filter((o: any) => o.orderType === "quote").length,
+    samples: allOrders.filter((o: any) => isSampleOrder(o)).length,
   };
 };
 

@@ -23,7 +23,7 @@ import {
  *  EVERY query handler awaits this to ensure users see LIVE cloud data FIRST.
  *  This is the golden rule: cloud-first always. */
 const lastSyncTimes: Record<string, number> = {};
-const SYNC_COOLDOWN_MS = 3000; // 3 second cooldown between explicit syncs
+const SYNC_COOLDOWN_MS = 1000; // 1 second cooldown between explicit syncs
 
 /** Smart sync: ALWAYS await Firebase read. This is cloud-first.
  *  We wait for Firebase data to arrive before returning ANY data to the UI.
@@ -40,7 +40,7 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     return;
   }
 
-  // Rate limit: don't sync same type more than every 3 seconds
+  // Rate limit: don't sync same type more than every 1 second
   const now = Date.now();
   const lastSync = lastSyncTimes[type] || 0;
   if (now - lastSync < SYNC_COOLDOWN_MS) {
@@ -300,16 +300,16 @@ export function createLocalLink() {
               case "specialPrice.listByCustomer": await smartSync("specialPrices", "sgf_specialPrices"); result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
-              case "salesRep.list": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.list(); break;
-              case "salesRep.search": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.search(input || { query: "" }); break;
-              case "salesRep.getById": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.getById(input); break;
-              case "salesRep.getStats": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.getStats(); break;
-              case "salesRep.getSalesBreakdown": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.getSalesBreakdown(); break;
+              case "salesRep.list": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("corporateCustomers", "sgf_corporateCustomers"); await smartSync("orders", "sgf_orders"); await smartSync("purchaseOrders", "sgf_purchaseOrders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.list(); break;
+              case "salesRep.search": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("corporateCustomers", "sgf_corporateCustomers"); await smartSync("orders", "sgf_orders"); await smartSync("purchaseOrders", "sgf_purchaseOrders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.search(input || { query: "" }); break;
+              case "salesRep.getById": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("corporateCustomers", "sgf_corporateCustomers"); await smartSync("orders", "sgf_orders"); await smartSync("purchaseOrders", "sgf_purchaseOrders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.getById(input); break;
+              case "salesRep.getStats": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("corporateCustomers", "sgf_corporateCustomers"); await smartSync("orders", "sgf_orders"); await smartSync("purchaseOrders", "sgf_purchaseOrders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.getStats(); break;
+              case "salesRep.getSalesBreakdown": await smartSync("salesReps", "sgf_salesReps"); await smartSync("customers", "sgf_customers"); await smartSync("corporateCustomers", "sgf_corporateCustomers"); await smartSync("orders", "sgf_orders"); await smartSync("purchaseOrders", "sgf_purchaseOrders"); await smartSync("invoices", "sgf_invoices"); result = dataService.salesRep.getSalesBreakdown(); break;
               case "salesRep.create": result = dataService.salesRep.create(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); if (result) { if (result.oldName && result.oldName !== result.name) await removeSalesRep(result.oldName); await pushSalesRep(result); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break; }
               case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               case "salesRep.delete": result = dataService.salesRep.delete(input); if (result) await removeSalesRep(result.deletedName || input.id); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
-              case "dashboard.stats": await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); await smartSync("customers", "sgf_customers"); await smartSync("products", "sgf_products"); result = dataService.dashboard.stats(); break;
+              case "dashboard.stats": await smartSync("orders", "sgf_orders"); await smartSync("purchaseOrders", "sgf_purchaseOrders"); await smartSync("invoices", "sgf_invoices"); await smartSync("customers", "sgf_customers"); await smartSync("corporateCustomers", "sgf_corporateCustomers"); await smartSync("products", "sgf_products"); result = dataService.dashboard.stats(); break;
               case "audit.list": await smartSync("auditLogs", "sgf_auditLogs"); result = dataService.audit.list(); break;
               case "audit.getCustomerDeletions": await smartSync("auditLogs", "sgf_auditLogs"); result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": await smartSync("auditLogs", "sgf_auditLogs"); result = dataService.audit.getAddressChanges(); break;

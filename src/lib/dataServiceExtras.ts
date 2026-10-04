@@ -271,10 +271,22 @@ function getWeekNumber(d: Date): number {
   return Math.ceil((((+date - +yearStart) / 86400000) + 1) / 7);
 }
 
+/** ISO week year: the year that the ISO week belongs to.
+ *  e.g. Dec 30 2025 is in ISO week 1 of 2026, so getISOWeekYear returns 2026. */
+function getISOWeekYear(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  return date.getUTCFullYear();
+}
+
+/** ISO week range: Monday-Sunday of the given ISO week.
+ *  ISO week 1 is the week with the first Thursday of the year. */
 function getWeekRange(year: number, week: number): string {
-  const d = new Date(year, 0, 1);
-  const dayOffset = (d.getDay() || 7) - 1;
-  const firstMonday = new Date(year, 0, 1 + (dayOffset > 0 ? 7 - dayOffset : 0));
+  // Jan 4 is always in ISO week 1. Find its Monday.
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = jan4.getDay() || 7; // 1=Mon, 7=Sun
+  const firstMonday = new Date(year, 0, 4 - jan4Day + 1);
   const start = new Date(firstMonday);
   start.setDate(start.getDate() + (week - 1) * 7);
   const end = new Date(start);
@@ -352,7 +364,7 @@ if (!(dataService as any).salesRep) {
         const weekSales = repOrders
           .filter((o: any) => {
             const d = new Date(o.createdAt);
-            return d.getFullYear() === currentYear && getWeekNumber(d) === currentWeek;
+            return getISOWeekYear(d) === getISOWeekYear(now) && getWeekNumber(d) === currentWeek;
           })
           .reduce((sum: number, o: any) => sum + (o.total || 0), 0);
 
@@ -1067,11 +1079,11 @@ if (!dataService.checkIn.getDailyReport) {
 if (!dataService.checkIn.getWeeklyReport) {
   dataService.checkIn.getWeeklyReport = (year?: number, week?: number) => {
     const now = new Date();
-    const targetYear = year || now.getFullYear();
+    const targetYear = year || getISOWeekYear(now);
     const targetWeek = week || getWeekNumber(now);
     return dataService.checkIn.list().filter((c: any) => {
       const d = new Date(c.createdAt);
-      return d.getFullYear() === targetYear && getWeekNumber(d) === targetWeek;
+      return getISOWeekYear(d) === targetYear && getWeekNumber(d) === targetWeek;
     });
   };
 }

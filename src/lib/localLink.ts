@@ -341,9 +341,11 @@ export function createLocalLink() {
               case "specialPrice.listByCustomer": await smartSync("specialPrices", "sgf_specialPrices"); result = dataService.specialPrice.listByCustomer(input); break;
               case "specialPrice.set": result = dataService.specialPrice.set(input); break;
               case "specialPrice.delete": result = dataService.specialPrice.delete(input); break;
-              case "salesRep.list": await smartSync("salesReps", "sgf_salesReps"); result = dataService.salesRep.list(); break;
-              case "salesRep.getStats": await smartSync("salesReps", "sgf_salesReps"); result = dataService.salesRep.getStats(); break;
-              case "salesRep.getSalesBreakdown": await smartSync("salesReps", "sgf_salesReps"); result = dataService.salesRep.getSalesBreakdown(); break;
+              // CRITICAL FIX: salesRep.list now reads from sgf_users (users with sales_rep role).
+              // We must sync "users" / "sgf_users" instead of "salesReps" / "sgf_salesReps".
+              case "salesRep.list": await smartSync("users", "sgf_users"); result = dataService.salesRep.list(); break;
+              case "salesRep.getStats": await smartSync("users", "sgf_users"); result = dataService.salesRep.getStats(); break;
+              case "salesRep.getSalesBreakdown": await smartSync("orders", "sgf_orders"); result = dataService.salesRep.getSalesBreakdown(); break;
               case "salesRep.create": result = dataService.salesRep.create(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;
               case "salesRep.update": { const { id, data } = input; result = dataService.salesRep.update({ id, data }); if (result) { if (result.oldName && result.oldName !== result.name) await removeSalesRep(result.oldName); await pushSalesRep(result); } window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break; }
               case "salesRep.toggleActive": result = dataService.salesRep.toggleActive(input); if (result) await pushSalesRep(result); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } })); break;

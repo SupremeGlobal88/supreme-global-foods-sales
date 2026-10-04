@@ -1,4 +1,5 @@
 import { dataService } from "./dataService";
+import { getStorageItem, setStorageItem } from "./compressedStorage";
 
 // ═══════════════════════════════════════════════════════════════
 //  DATA SERVICE EXTRAS — adds missing properties & aliases
@@ -40,44 +41,40 @@ if (!(dataService as any).auth) {
 // ─── 3. SALES REP ───
 // Sales reps are stored in Firebase under "salesReps" path → localStorage "sgf_salesReps".
 // CRITICAL: They are NOT app users. Users (sgf_users) are for login/auth only.
-// If sgf_salesReps is empty/missing reps, we derive from customer.order salesRepName data.
+// If sgf_salesReps is empty/missing reps, we derive from customer/order salesRepName data.
 
 function getSalesRepsFromStorage(): any[] {
-  // 1. Read from sgf_salesReps (Firebase salesReps path)
+  // 1. Read from sgf_salesReps (Firebase salesReps path) using getStorageItem
+  //    because compressedStorage.ts compresses data — localStorage.getItem() fails.
   let reps: any[] = [];
   try {
-    const raw = localStorage.getItem("sgf_salesReps");
+    const raw = getStorageItem("sgf_salesReps");
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
       if (Array.isArray(parsed)) reps = parsed;
     }
   } catch { /* ignore */ }
 
-  // 2. Build a set of all unique sales rep names from customers and orders
-  //    (this is the SOURCE OF TRUTH for which reps actually exist in the business)
+  // 2. Build a set of all unique sales rep names from customers and orders.
+  //    Use dataService.customer.list() and dataService.order.list() which are
+  //    already populated in memory by reloadFromStorage().
   const repNamesFromData = new Set<string>();
 
   try {
-    const customersRaw = localStorage.getItem("sgf_customers");
-    if (customersRaw) {
-      const customers = JSON.parse(customersRaw);
-      if (Array.isArray(customers)) {
-        customers.forEach((c: any) => {
-          if (c.salesRepName) repNamesFromData.add(String(c.salesRepName).trim());
-        });
-      }
+    const customers = dataService.customer.list();
+    if (Array.isArray(customers)) {
+      customers.forEach((c: any) => {
+        if (c.salesRepName) repNamesFromData.add(String(c.salesRepName).trim());
+      });
     }
   } catch { /* ignore */ }
 
   try {
-    const ordersRaw = localStorage.getItem("sgf_orders");
-    if (ordersRaw) {
-      const orders = JSON.parse(ordersRaw);
-      if (Array.isArray(orders)) {
-        orders.forEach((o: any) => {
-          if (o.salesRepName) repNamesFromData.add(String(o.salesRepName).trim());
-        });
-      }
+    const orders = dataService.order.list();
+    if (Array.isArray(orders)) {
+      orders.forEach((o: any) => {
+        if (o.salesRepName) repNamesFromData.add(String(o.salesRepName).trim());
+      });
     }
   } catch { /* ignore */ }
 
@@ -123,7 +120,9 @@ function getSalesRepsFromStorage(): any[] {
 }
 
 function saveSalesReps(reps: any[]) {
-  try { localStorage.setItem("sgf_salesReps", JSON.stringify(reps)); } catch { /* ignore */ }
+  try {
+    setStorageItem("sgf_salesReps", JSON.stringify(reps));
+  } catch { /* ignore */ }
 }
 
 function getWeekNumber(d: Date): number {
@@ -445,11 +444,10 @@ if (!(dataService as any).sampleReport) {
         for (const item of (order.items || [])) {
           const built = buildSampleItem(order, item);
           cust.items.push(built);
-          cust.sampleCount += built.quantity;
+          cust.sampleCount += 1;
           cust.totalSubtotal += built.subtotal;
           cust.totalVat += built.vatAmount;
           cust.totalCost += built.totalCost;
-
           grandSubtotal += built.subtotal;
           grandVat += built.vatAmount;
           grandTotal += built.totalCost;
@@ -466,68 +464,186 @@ if (!(dataService as any).sampleReport) {
   };
 }
 
-// ─── 7. CUSTOMER FOLLOW-UP ───
-if (!(dataService as any).customerFollowUp) {
-  (dataService as any).customerFollowUp = {
-    getAllFollowUps: (input: any) => {
-      const status = input?.status || "all";
-      const followUps = dataService.followUp.list();
-      if (status === "all") return followUps;
-      return followUps.filter((f: any) => f.status === status);
-    },
+// ─── 7. CUSTOMER missing methods ───
+if (!dataService.customer.getStats) {
+  dataService.customer.getStats = () => {
+    const customers = dataService.customer.list();
+    return {
+      total: customers.length,
+      active: customers.filter((c: any) => c.isActive !== false).length,
+    };
+  };
+}
+
+if (!dataService.customer.getSalesReps) {
+  dataService.customer.getSalesReps = () => {
+    const customers = dataService.customer.list();
+    const reps = new Set<string>();
+    customers.forEach((c: any) => {
+      if (c.salesRepName) reps.add(c.salesRepName);
+    });
+    return Array.from(reps);
   };
 }
 
 // ─── 8. ORDER missing methods ───
-if (!dataService.order.updateStatus) {
-  dataService.order.updateStatus = (input: any) => {
-    const { id, status } = input;
-    const idx = (dataService.order as any).list().findIndex((o: any) => o.id == id);
-    if (idx >= 0) {
-      const orders = (dataService.order as any).list();
-      orders[idx].status = status;
-      orders[idx].updatedAt = new Date().toISOString();
-      localStorage.setItem("sgf_orders", JSON.stringify(orders));
-      return { order: orders[idx], cancelledInvoice: null };
-    }
-    return null;
+if (!dataService.order.getBySalesRep) {
+  dataService.order.getBySalesRep = (salesRepName: string) => {
+    return dataService.order.list().filter((o: any) => o.salesRepName === salesRepName);
+  };
+}
+
+if (!dataService.order.getMonthlySales) {
+  dataService.order.getMonthlySales = () => {
+    const orders = dataService.order.list();
+    const map = new Map<string, number>();
+    orders.forEach((o: any) => {
+      const d = new Date(o.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      map.set(key, (map.get(key) || 0) + (o.total || 0));
+    });
+    return Array.from(map.entries()).map(([month, total]) => ({ month, total })).sort((a, b) => a.month.localeCompare(b.month));
+  };
+}
+
+if (!dataService.order.getProductSales) {
+  dataService.order.getProductSales = () => {
+    const orders = dataService.order.list();
+    const map = new Map<number, { name: string; quantity: number; total: number }>();
+    orders.forEach((o: any) => {
+      (o.items || []).forEach((it: any) => {
+        const id = it.stockItemId || it.id;
+        const existing = map.get(id);
+        if (existing) {
+          existing.quantity += it.quantity || 0;
+          existing.total += (it.quantity || 0) * (it.unitPrice || it.price || 0);
+        } else {
+          map.set(id, {
+            name: it.name || "Unknown",
+            quantity: it.quantity || 0,
+            total: (it.quantity || 0) * (it.unitPrice || it.price || 0),
+          });
+        }
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  };
+}
+
+if (!dataService.order.getSalesBreakdown) {
+  dataService.order.getSalesBreakdown = () => {
+    const orders = dataService.order.list();
+    const today = new Date().toDateString();
+    const thisWeekStart = new Date();
+    thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
+    const thisMonth = new Date().getMonth();
+
+    return {
+      today: orders.filter((o: any) => new Date(o.createdAt).toDateString() === today).reduce((s: number, o: any) => s + (o.total || 0), 0),
+      week: orders.filter((o: any) => new Date(o.createdAt) >= thisWeekStart).reduce((s: number, o: any) => s + (o.total || 0), 0),
+      month: orders.filter((o: any) => new Date(o.createdAt).getMonth() === thisMonth).reduce((s: number, o: any) => s + (o.total || 0), 0),
+    };
+  };
+}
+
+if (!dataService.order.getSalesRepVsOrders) {
+  dataService.order.getSalesRepVsOrders = () => {
+    const orders = dataService.order.list();
+    const reps = new Map<string, { orders: number; sales: number }>();
+    orders.forEach((o: any) => {
+      const name = o.salesRepName || "Unassigned";
+      const curr = reps.get(name) || { orders: 0, sales: 0 };
+      curr.orders += 1;
+      curr.sales += o.total || 0;
+      reps.set(name, curr);
+    });
+    return Array.from(reps.entries()).map(([name, data]) => ({ name, ...data }));
+  };
+}
+
+if (!dataService.order.getDailyReport) {
+  dataService.order.getDailyReport = () => {
+    const today = new Date().toDateString();
+    return dataService.order.list().filter((o: any) => new Date(o.createdAt).toDateString() === today);
+  };
+}
+
+if (!dataService.order.getWeeklyReport) {
+  dataService.order.getWeeklyReport = () => {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    return dataService.order.list().filter((o: any) => new Date(o.createdAt) >= weekStart);
+  };
+}
+
+if (!dataService.order.getMonthlyReport) {
+  dataService.order.getMonthlyReport = () => {
+    const now = new Date();
+    return dataService.order.list().filter((o: any) => {
+      const d = new Date(o.createdAt);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+  };
+}
+
+if (!dataService.order.getRevenueBySalesRep) {
+  dataService.order.getRevenueBySalesRep = () => {
+    const orders = dataService.order.list();
+    const map = new Map<string, number>();
+    orders.forEach((o: any) => {
+      const name = o.salesRepName || "Unassigned";
+      map.set(name, (map.get(name) || 0) + (o.total || 0));
+    });
+    return Array.from(map.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total);
+  };
+}
+
+if (!dataService.order.getSalesByMonth) {
+  dataService.order.getSalesByMonth = () => {
+    const orders = dataService.order.list();
+    const map = new Map<string, number>();
+    orders.forEach((o: any) => {
+      const d = new Date(o.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      map.set(key, (map.get(key) || 0) + (o.total || 0));
+    });
+    return Array.from(map.entries()).map(([month, total]) => ({ month, total })).sort((a, b) => a.month.localeCompare(b.month));
   };
 }
 
 if (!dataService.order.checkExistingSample) {
   dataService.order.checkExistingSample = (input: any) => {
-    const { customerId, stockItemId } = input;
-    const existing = (dataService.order as any).list().find((o: any) =>
-      o.customerId == customerId && o.orderType === "sample" &&
-      o.items?.some((item: any) => item.stockItemId == stockItemId)
+    const { customerId, excludeOrderId } = input || {};
+    const samples = dataService.order.list().filter((o: any) =>
+      o.orderType === "sample" &&
+      o.customerId == customerId &&
+      (!excludeOrderId || o.id != excludeOrderId)
     );
-    return { exists: !!existing, order: existing || null };
+    return { hasExisting: samples.length > 0, samples };
+  };
+}
+
+if (!dataService.order.getOpenOrders) {
+  dataService.order.getOpenOrders = () => {
+    return dataService.order.list().filter((o: any) =>
+      o.status !== "delivered" && o.status !== "cancelled"
+    );
   };
 }
 
 if (!dataService.order.generateMissingInvoices) {
   dataService.order.generateMissingInvoices = () => {
-    const orders = (dataService.order as any).list();
-    const invoices = dataService.invoice.list();
-    const generated: any[] = [];
-    for (const order of orders) {
-      if (order.orderType === "quote") continue;
-      const hasInvoice = invoices.some((i: any) => i.orderId == order.id);
-      if (!hasInvoice) {
-        // Generate invoice logic would go here
-      }
-    }
-    return generated;
+    return [];
   };
 }
 
 if (!dataService.order.convertQuoteToOrder) {
-  dataService.order.convertQuoteToOrder = (quoteId: number) => {
+  dataService.order.convertQuoteToOrder = (id: number) => {
     const orders = (dataService.order as any).list();
-    const idx = orders.findIndex((o: any) => o.id == quoteId && o.orderType === "quote");
+    const idx = orders.findIndex((o: any) => o.id == id);
     if (idx >= 0) {
-      orders[idx].orderType = "regular";
-      orders[idx].status = "confirmed";
+      orders[idx].orderType = "order";
+      orders[idx].status = "pending";
       orders[idx].updatedAt = new Date().toISOString();
       localStorage.setItem("sgf_orders", JSON.stringify(orders));
       return orders[idx];
@@ -537,16 +653,21 @@ if (!dataService.order.convertQuoteToOrder) {
 }
 
 if (!dataService.order.createFromInvoice) {
-  dataService.order.createFromInvoice = (invoiceId: number) => {
-    const invoice = dataService.invoice.list().find((i: any) => i.id == invoiceId);
-    if (!invoice) return null;
+  dataService.order.createFromInvoice = (input: any) => {
+    const { invoiceId, items } = input || {};
+    const invoices = dataService.invoice.list();
+    const inv = invoices.find((i: any) => i.id == invoiceId);
+    if (!inv) throw new Error("Invoice not found");
     const newOrder = {
-      ...invoice,
       id: Date.now(),
-      orderType: "regular",
-      status: "confirmed",
+      customerId: inv.customerId,
+      customerName: inv.customer?.name || "",
+      items: items || inv.items || [],
+      total: inv.total || 0,
+      status: "pending",
+      orderType: "order",
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      invoiceId,
     };
     const orders = (dataService.order as any).list();
     orders.push(newOrder);

@@ -1,10 +1,10 @@
 import { Routes, Route, Navigate, useLocation } from "react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
 import { reloadFromStorage, repairInvoiceCompanies } from "@/lib/dataService";
-import { queryClient } from "@/providers/trpc";
+import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/Layout";
@@ -82,6 +82,7 @@ function checkUrlForFirebaseConfig() {
 export default function App() {
   const [isCloudReady, setIsCloudReady] = useState(false);
   const { isAuthenticated } = useAuth();
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     checkUrlForFirebaseConfig();
@@ -124,9 +125,10 @@ export default function App() {
     }
   }, [isAuthenticated, isCloudReady]);
 
-  // CRITICAL FIX: Use FLAT query keys (not nested arrays) for tRPC React Query.
-  // tRPC stores queries as ["order","list"] not [["order","list"]].
-  // Nested arrays were preventing invalidation — queries never refetched.
+  // CRITICAL FIX: Use tRPC utils.invalidate() instead of queryClient.invalidateQueries().
+  // tRPC React Query wraps query keys internally — manual queryClient.invalidateQueries
+  // with flat keys like ["order","list"] does NOT match tRPC's internal key format.
+  // utils.invalidate() knows the exact keys and always works.
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingTypes = new Set<string>();
@@ -142,58 +144,59 @@ export default function App() {
         for (const t of pendingTypes) {
           switch (t) {
             case "invoices":
-              queryClient.invalidateQueries({ queryKey: ["invoice","list"], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: ["invoice","getStats"], refetchType: "active" });
+              utils.invoice.list.invalidate();
+              utils.invoice.getStats.invalidate();
               break;
             case "orders":
-              queryClient.invalidateQueries({ queryKey: ["order","list"], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: ["order","getStats"], refetchType: "active" });
+              utils.order.list.invalidate();
+              utils.order.getStats.invalidate();
               break;
             case "customers":
-              queryClient.invalidateQueries({ queryKey: ["customer","search"], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: ["customer","list"], refetchType: "active" });
+              utils.customer.search.invalidate();
+              utils.customer.list.invalidate();
+              utils.customer.getStats.invalidate();
               break;
             case "appointments":
-              queryClient.invalidateQueries({ queryKey: ["appointment","list"], refetchType: "active" });
+              utils.appointment.list.invalidate();
               break;
-            case "checkins":
-              queryClient.invalidateQueries({ queryKey: ["checkIn","list"], refetchType: "active" });
+            case "checkIns":
+              utils.checkIn.list.invalidate();
               break;
             case "stock":
-              queryClient.invalidateQueries({ queryKey: ["stock","list"], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: ["stock","search"], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: ["stock","getStats"], refetchType: "active" });
+              utils.stock.list.invalidate();
+              utils.stock.search.invalidate();
+              utils.stock.getStats.invalidate();
               break;
             case "creditNotes":
-              queryClient.invalidateQueries({ queryKey: ["invoice","getCreditNotes"], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: ["invoice","list"], refetchType: "active" });
+              utils.invoice.getCreditNotes.invalidate();
+              utils.invoice.list.invalidate();
               break;
             case "followUps":
-              queryClient.invalidateQueries({ queryKey: ["followUp","list"], refetchType: "active" });
+              utils.followUp.list.invalidate();
               break;
             case "followUpActions":
-              queryClient.invalidateQueries({ queryKey: ["followUpAction","list"], refetchType: "active" });
+              utils.followUpAction.list.invalidate();
               break;
             case "users":
-              queryClient.invalidateQueries({ queryKey: ["user","list"], refetchType: "active" });
+              utils.user.list.invalidate();
               break;
             case "salesReps":
-              queryClient.invalidateQueries({ queryKey: ["customer","getSalesReps"], refetchType: "active" });
+              utils.customer.getSalesReps.invalidate();
               break;
             case "corporateCustomers":
-              queryClient.invalidateQueries({ queryKey: ["corporateCustomer","list"], refetchType: "active" });
+              utils.corporateCustomer.list.invalidate();
               break;
             case "purchaseOrders":
-              queryClient.invalidateQueries({ queryKey: ["purchaseOrder","list"], refetchType: "active" });
+              utils.purchaseOrder.list.invalidate();
               break;
             case "barrels":
-              queryClient.invalidateQueries({ queryKey: ["barrel","list"], refetchType: "active" });
+              utils.barrel.list.invalidate();
               break;
             case "certificatesOfCompliance":
-              queryClient.invalidateQueries({ queryKey: ["coc","list"], refetchType: "active" });
+              utils.coc.list.invalidate();
               break;
             case "packingListLines":
-              queryClient.invalidateQueries({ queryKey: ["packingList","listByPurchaseOrder"], refetchType: "active" });
+              utils.packingList.listByPurchaseOrder.invalidate();
               break;
             default:
               console.warn("[Sync] Unknown data type in firebaseDataReceived:", t);
@@ -207,7 +210,7 @@ export default function App() {
       window.removeEventListener("firebaseDataReceived", handler);
       if (debounceTimer) clearTimeout(debounceTimer);
     };
-  }, []);
+  }, [utils]);
 
   if (!isCloudReady) {
     return (

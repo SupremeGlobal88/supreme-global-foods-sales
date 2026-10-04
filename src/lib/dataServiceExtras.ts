@@ -483,6 +483,9 @@ function isSampleOrder(o: any): boolean {
   if (o.orderType === "sample" || o.type === "sample" || o.isSample === true) return true;
   const orderNum = String(o.orderNumber || o.sampleNumber || "").toUpperCase();
   if (orderNum.startsWith("SMP-") || orderNum.startsWith("SAMPLE-")) return true;
+  // Check notes/description for "Sample" keyword (used by invoices and some orders)
+  const notes = String(o.notes || o.description || o.memo || "").toLowerCase();
+  if (notes.includes("sample")) return true;
   return false;
 }
 
@@ -500,6 +503,128 @@ if (!dataService.order.getSampleReport) {
     const totalCost = items.reduce((sum: number, i: any) => sum + (i.totalCost || 0), 0);
     const totalVAT = items.reduce((sum: number, i: any) => sum + (i.vatAmount || 0), 0);
     return { items, totalCost, totalVAT };
+  };
+}
+
+// ─── 6b. SAMPLE REPORT MODULE (used by SampleReportsPage.tsx) ───
+// SampleReportsPage.tsx calls trpc.sampleReport.getAll and trpc.sampleReport.getByCustomer
+if (!dataService.sampleReport) {
+  dataService.sampleReport = {
+    getAll: () => {
+      const allOrders = dataService.order.list();
+      const allInvoices = dataService.invoice.list();
+      const sampleOrders = allOrders.filter(isSampleOrder);
+
+      const customerMap = new Map<number, any>();
+
+      for (const order of sampleOrders) {
+        const customerId = order.customerId || 0;
+        const customer = dataService.customer.getById(customerId);
+        const customerName = customer?.name || order.customerName || order.customer?.name || "Walk-in";
+        const customerCode = customer?.customerCode || order.customerCode || "";
+        const salesRepName = getRepNameFromOrder(order);
+
+        const linkedInvoice = allInvoices.find((inv: any) => inv.orderId == order.id);
+        const invoiceNumber = linkedInvoice?.invoiceNumber || linkedInvoice?.invoiceNo || "";
+
+        const lineItems = order.items || order.lineItems || order.products || [];
+
+        if (!customerMap.has(customerId)) {
+          customerMap.set(customerId, {
+            customerId,
+            customerName,
+            customerCode,
+            salesRepName,
+            sampleCount: 0,
+            items: [],
+            totalSubtotal: 0,
+            totalVat: 0,
+            totalCost: 0,
+          });
+        }
+
+        const custEntry = customerMap.get(customerId);
+        custEntry.sampleCount += 1;
+
+        for (const item of lineItems) {
+          const product = dataService.product.getById(item.stockItemId);
+          const unitCost = item.unitPrice || item.price || 0;
+          const quantity = item.quantity || 0;
+          const subtotal = unitCost * quantity;
+          const vatAmount = subtotal * 0.15;
+          const totalCost = subtotal + vatAmount;
+
+          custEntry.items.push({
+            productCode: product?.productCode || item.productCode || item.code || "N/A",
+            productName: product?.name || item.productName || item.name || "Unknown",
+            dateTaken: order.createdAt || new Date().toISOString(),
+            orderNumber: order.orderNumber || order.sampleNumber || `SMP-${order.id || Date.now()}`,
+            invoiceNumber,
+            quantity,
+            unitCost,
+            subtotal,
+            vatAmount,
+            totalCost,
+          });
+
+          custEntry.totalSubtotal += subtotal;
+          custEntry.totalVat += vatAmount;
+          custEntry.totalCost += totalCost;
+        }
+      }
+
+      const customers = Array.from(customerMap.values()).sort((a: any, b: any) =>
+        (a.customerName || "").localeCompare(b.customerName || "")
+      );
+
+      const grandSubtotal = customers.reduce((sum: number, c: any) => sum + c.totalSubtotal, 0);
+      const grandVat = customers.reduce((sum: number, c: any) => sum + c.totalVat, 0);
+      const grandTotal = customers.reduce((sum: number, c: any) => sum + c.totalCost, 0);
+
+      return { customers, grandSubtotal, grandVat, grandTotal };
+    },
+
+    getByCustomer: ({ customerId }: { customerId: number }) => {
+      const allOrders = dataService.order.list();
+      const allInvoices = dataService.invoice.list();
+      const sampleOrders = allOrders.filter((o: any) => isSampleOrder(o) && o.customerId == customerId);
+
+      const items: any[] = [];
+
+      for (const order of sampleOrders) {
+        const linkedInvoice = allInvoices.find((inv: any) => inv.orderId == order.id);
+        const invoiceNumber = linkedInvoice?.invoiceNumber || linkedInvoice?.invoiceNo || "";
+        const lineItems = order.items || order.lineItems || order.products || [];
+
+        for (const item of lineItems) {
+          const product = dataService.product.getById(item.stockItemId);
+          const unitCost = item.unitPrice || item.price || 0;
+          const quantity = item.quantity || 0;
+          const subtotal = unitCost * quantity;
+          const vatAmount = subtotal * 0.15;
+          const totalCost = subtotal + vatAmount;
+
+          items.push({
+            productCode: product?.productCode || item.productCode || item.code || "N/A",
+            productName: product?.name || item.productName || item.name || "Unknown",
+            dateTaken: order.createdAt || new Date().toISOString(),
+            orderNumber: order.orderNumber || order.sampleNumber || `SMP-${order.id || Date.now()}`,
+            invoiceNumber,
+            quantity,
+            unitCost,
+            subtotal,
+            vatAmount,
+            totalCost,
+          });
+        }
+      }
+
+      const grandSubtotal = items.reduce((sum: number, i: any) => sum + i.subtotal, 0);
+      const grandVat = items.reduce((sum: number, i: any) => sum + i.vatAmount, 0);
+      const grandTotal = items.reduce((sum: number, i: any) => sum + i.totalCost, 0);
+
+      return { items, grandSubtotal, grandVat, grandTotal };
+    },
   };
 }
 

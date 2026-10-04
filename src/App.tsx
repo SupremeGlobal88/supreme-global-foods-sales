@@ -1,11 +1,10 @@
 import { Routes, Route, Navigate, useLocation } from "react-router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
 import { reloadFromStorage, repairInvoiceCompanies } from "@/lib/dataService";
-import { getStorageItem } from "@/lib/compressedStorage";
-import { trpc, queryClient } from "@/providers/trpc";
+import { queryClient } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/Layout";
@@ -48,7 +47,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** RoleGuard: redirect to dashboard if user lacks permission for this route */
 function RoleGuard({ children }: { children: React.ReactNode }) {
   const { canAccess } = useRole();
   const location = useLocation();
@@ -64,7 +62,6 @@ function RoleGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Check URL for shared Firebase config (sales rep onboarding)
 function checkUrlForFirebaseConfig() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -87,26 +84,6 @@ export default function App() {
   const { isAuthenticated } = useAuth();
 
   useEffect(() => {
-    // === CLEANUP: Remove corrupted localStorage data from old compression bugs ===
-    // IMPORTANT: Use getStorageItem() which handles LZ-String decompression.
-    // DO NOT use localStorage.getItem() directly — compressed data does NOT
-    // start with [ { or " and would be incorrectly deleted.
-    const COMPRESSED_KEYS = ["sgf_orders","sgf_products","sgf_invoices","sgf_customers","sgf_stock","sgf_checkins","sgf_appointments","sgf_salesReps","sgf_users","sgf_specialPrices","sgf_auditLog","sgf_followUps","sgf_followUpActions","sgf_collectionNotes","sgf_collectionPromises","sgf_accountHolds","sgf_receipts","sgf_creditNotes","sgf_purchaseOrders","sgf_barrels","sgf_cocs","sgf_packingListLines","sgf_corporateCustomers"];
-    for (const key of COMPRESSED_KEYS) {
-      try {
-        const raw = localStorage.getItem(key);
-        if (raw && raw.length > 0) {
-          // Use getStorageItem to properly decompress and validate
-          const data = getStorageItem(key, "");
-          if (data === "" && raw.length > 10) {
-            // getStorageItem returned empty but raw has content — might be corrupted
-            console.warn(`[App] Potentially corrupted localStorage key: ${key}`);
-            // Don't delete — let getStorageItem handle it on next read
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
     checkUrlForFirebaseConfig();
     registerDataServiceRefresh(reloadFromStorage);
     initFirebase();
@@ -116,10 +93,7 @@ export default function App() {
     reloadFromStorage();
     repairInvoiceCompanies();
 
-    // Cloud-first: Pull from cloud in BACKGROUND without blocking UI.
-    // Subscriptions (initAutoSync) already handle real-time sync.
-    // The initial pull is just a safety net to catch missed data.
-    // NEVER block rendering on this — it causes infinite loading screens.
+    // Cloud-first: Pull from cloud in BACKGROUND without blocking UI
     (async () => {
       try {
         if (isFirebaseReady()) {
@@ -133,8 +107,7 @@ export default function App() {
       }
     })();
 
-    // Show loading screen for max 3 seconds to give subscriptions a chance to fire,
-    // then render the app. Real-time sync continues in background.
+    // Show loading screen for max 3 seconds
     const safetyTimer = setTimeout(() => {
       setIsCloudReady(true);
     }, 3000);
@@ -142,7 +115,7 @@ export default function App() {
     return () => { unsub(); clearTimeout(safetyTimer); };
   }, []);
 
-  // POST-LOGIN SYNC: Re-sync after user logs in.
+  // POST-LOGIN SYNC
   useEffect(() => {
     if (isAuthenticated && isCloudReady) {
       console.log("[Sync] Post-login sync triggered");
@@ -151,9 +124,9 @@ export default function App() {
     }
   }, [isAuthenticated, isCloudReady]);
 
-  // When Firebase data changes, invalidate affected queries using queryClient directly.
-  // Using queryClient.invalidateQueries is more reliable than tRPC utils.invalidate()
-  // because it bypasses any reference staleness issues.
+  // CRITICAL FIX: Use FLAT query keys (not nested arrays) for tRPC React Query.
+  // tRPC stores queries as ["order","list"] not [["order","list"]].
+  // Nested arrays were preventing invalidation — queries never refetched.
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingTypes = new Set<string>();
@@ -169,58 +142,58 @@ export default function App() {
         for (const t of pendingTypes) {
           switch (t) {
             case "invoices":
-              queryClient.invalidateQueries({ queryKey: [["invoice","list"]], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: [["invoice","getStats"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["invoice","list"], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["invoice","getStats"], refetchType: "active" });
               break;
             case "orders":
-              queryClient.invalidateQueries({ queryKey: [["order","list"]], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: [["order","getStats"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["order","list"], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["order","getStats"], refetchType: "active" });
               break;
             case "customers":
-              queryClient.invalidateQueries({ queryKey: [["customer","search"]], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: [["customer","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["customer","search"], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["customer","list"], refetchType: "active" });
               break;
             case "appointments":
-              queryClient.invalidateQueries({ queryKey: [["appointment","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["appointment","list"], refetchType: "active" });
               break;
             case "checkins":
-              queryClient.invalidateQueries({ queryKey: [["checkIn","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["checkIn","list"], refetchType: "active" });
               break;
             case "stock":
-              queryClient.invalidateQueries({ queryKey: [["stock","list"]], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: [["stock","search"]], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: [["stock","getStats"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["stock","list"], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["stock","search"], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["stock","getStats"], refetchType: "active" });
               break;
             case "creditNotes":
-              queryClient.invalidateQueries({ queryKey: [["invoice","getCreditNotes"]], refetchType: "active" });
-              queryClient.invalidateQueries({ queryKey: [["invoice","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["invoice","getCreditNotes"], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["invoice","list"], refetchType: "active" });
               break;
             case "followUps":
-              queryClient.invalidateQueries({ queryKey: [["followUp","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["followUp","list"], refetchType: "active" });
               break;
             case "followUpActions":
-              queryClient.invalidateQueries({ queryKey: [["followUpAction","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["followUpAction","list"], refetchType: "active" });
               break;
             case "users":
-              queryClient.invalidateQueries({ queryKey: [["user","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["user","list"], refetchType: "active" });
               break;
             case "salesReps":
-              queryClient.invalidateQueries({ queryKey: [["customer","getSalesReps"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["customer","getSalesReps"], refetchType: "active" });
               break;
             case "corporateCustomers":
-              queryClient.invalidateQueries({ queryKey: [["corporateCustomer","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["corporateCustomer","list"], refetchType: "active" });
               break;
             case "purchaseOrders":
-              queryClient.invalidateQueries({ queryKey: [["purchaseOrder","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["purchaseOrder","list"], refetchType: "active" });
               break;
             case "barrels":
-              queryClient.invalidateQueries({ queryKey: [["barrel","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["barrel","list"], refetchType: "active" });
               break;
             case "certificatesOfCompliance":
-              queryClient.invalidateQueries({ queryKey: [["coc","list"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["coc","list"], refetchType: "active" });
               break;
             case "packingListLines":
-              queryClient.invalidateQueries({ queryKey: [["packingList","listByPurchaseOrder"]], refetchType: "active" });
+              queryClient.invalidateQueries({ queryKey: ["packingList","listByPurchaseOrder"], refetchType: "active" });
               break;
             default:
               console.warn("[Sync] Unknown data type in firebaseDataReceived:", t);
@@ -236,7 +209,6 @@ export default function App() {
     };
   }, []);
 
-  // Show loading screen for max 3 seconds, then render app
   if (!isCloudReady) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>

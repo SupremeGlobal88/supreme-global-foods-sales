@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "sideEffects": [
+    "src/lib/dataServiceExtras.ts",
+    "*.css"
+  ],
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/combine_orders_fix.cjs || true && node scripts/patch_orders_fix.cjs || true",

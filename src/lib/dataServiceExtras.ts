@@ -794,3 +794,8 @@ if (!dataService.followUp.getStats) {
 }
 
 console.log("[dataServiceExtras] All missing properties added successfully.");
+
+// ─── EXPORT: Prevents tree-shaking in production builds ───
+// Vite/Rollup will tree-shake files with no exports. This dummy export
+// ensures dataServiceExtras.ts is ALWAYS included in the bundle.
+export const DATA_SERVICE_EXTRAS_LOADED = true;

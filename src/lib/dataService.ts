@@ -684,19 +684,25 @@ export const dataService = {
             const conversion = item.conversion || 1;
             const qtyInKg = item.quantity * conversion;
             stock.quantity = (stock.quantity || 0) + qtyInKg;
-            // Push stock update to Firebase
             try {
               const { pushStockItem } = require("@/lib/firebaseSync");
               if (pushStockItem) pushStockItem(item.stockItemId, stock.quantity);
-            } catch (e) {
-              // Fallback: ignore if firebaseSync not available
-            }
+            } catch (e) { /* ignore */ }
           }
         }
       }
+      // Also delete any invoices linked to this order
+      const linkedInvoices = invoices.filter((inv) => inv.orderId === id);
+      for (const inv of linkedInvoices) {
+        const invIdx = invoices.findIndex((i) => i.id === inv.id);
+        if (invIdx !== -1) invoices.splice(invIdx, 1);
+      }
+      if (linkedInvoices.length > 0) {
+        saveItem("sgf_invoices", invoices);
+      }
       orders.splice(idx, 1);
       saveItem("sgf_orders", orders);
-      return { success: true, deletedOrder: order };
+      return { success: true, deletedOrder: order, deletedInvoices: linkedInvoices.length };
     },
     getByCustomer: (customerId: number) => orders.filter((o) => o.customerId == customerId),
     getBySalesRep: (salesRepName: string) => orders.filter((o) => o.salesRepName === salesRepName),

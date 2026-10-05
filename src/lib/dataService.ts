@@ -31,9 +31,7 @@ function loadSalesRepsFromStorage(): SalesRep[] {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map((r: any): SalesRep => {
-          // Legacy: stored as plain string
           if (typeof r === "string") return { name: r, isActive: true };
-          // Current: stored as object
           return {
             name: r?.name || String(r || ""),
             email: r?.email || "",
@@ -49,20 +47,15 @@ function loadSalesRepsFromStorage(): SalesRep[] {
   return [...SALES_REPS];
 }
 
-// Initialize from storage on module load
 try {
   const loaded = loadSalesRepsFromStorage();
-  if (loaded.length > 0) {
-    SALES_REPS = loaded;
-  }
+  if (loaded.length > 0) SALES_REPS = loaded;
 } catch { /* keep defaults */ }
 
 function saveSalesReps() {
   try { setStorageItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
 }
 
-/** Read current sales reps from localStorage (includes Firebase-synced reps).
- *  Returns full SalesRep objects. Backward-compatible with legacy string arrays. */
 function getCurrentSalesReps(): SalesRep[] {
   try {
     const raw = getStorageItem("sgf_salesReps");
@@ -83,24 +76,17 @@ function getCurrentSalesReps(): SalesRep[] {
       }
     }
   } catch { /* ignore */ }
-  // Fallback: return in-memory copy
   return SALES_REPS.map((r) => ({ ...r }));
 }
 
-/** Get fresh static customer data */
 function getStaticCustomers() {
-  return [...STATIC_CUSTOMERS.map((c: any) => ({
-    ...c,
-    salesRepName: c.salesRepName || "",
-  }))];
+  return [...STATIC_CUSTOMERS.map((c: any) => ({ ...c, salesRepName: c.salesRepName || "" }))];
 }
 
-/** Get fresh static product data */
 function getStaticProducts() {
   return [...STATIC_PRODUCTS.map((p: any) => ({ ...p }))];
 }
 
-// In-memory storage
 let customers = getStaticCustomers();
 let products = getStaticProducts();
 let orders = [] as any[];
@@ -117,20 +103,14 @@ let accountHolds = [] as any[];
 let receipts = [] as any[];
 let creditNotes = [] as any[];
 let users = [] as any[];
-// ─── CORPORATE MODULE DATA ───
 let corporateCustomers = [] as any[];
 let purchaseOrders = [] as any[];
 let barrels = [] as any[];
 let certificatesOfCompliance = [] as any[];
 let packingListLines = [] as any[];
 
-/** Global lock to prevent concurrent invoice generation.
- *  When two "Generate Invoice" buttons are clicked rapidly,
- *  both reads happen before either push — causing duplicate numbers.
- *  This lock ensures only one invoice is generated at a time. */
 let invoiceGenerationLock = false;
 
-/** Validate array: must be non-empty array with items that have expected shape */
 function isValidArray(data: any, minLength: number, requiredKey?: string): boolean {
   if (!Array.isArray(data)) return false;
   if (data.length < minLength) return false;
@@ -138,25 +118,14 @@ function isValidArray(data: any, minLength: number, requiredKey?: string): boole
   return true;
 }
 
-/** Repair product prices by matching against STATIC_PRODUCTS seed data.
- *  Matches by productCode (exact), then id (exact), then productName (normalized).
- *  Returns { count: number of products repaired, repaired: array of repaired products }. */
 function repairProductPrices(productList: any[]): { count: number; repaired: any[] } {
   let pricesRestored = 0;
   const repairedProducts: any[] = [];
   for (const prod of productList) {
     const hasAnyPrice = Number(prod.wholesalePrice) > 0 || Number(prod.corporatePrice) > 0 || Number(prod.bulkPrice) > 0 || Number(prod.retailPrice) > 0;
     if (hasAnyPrice) continue;
-
     let match: any = null;
-    // 1. Match by productCode (most reliable)
-    if (prod.productCode) {
-      match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
-    }
-    // 1b. Renamed-format match: bulk uploads may store the size+name in productCode
-    // (e.g. productCode "20 MEGA LONG VALUE") and append color to productName
-    // (e.g. "MEGA LONG VALUE Brown"). In that case productCode equals the static
-    // productName and color identifies the variant.
+    if (prod.productCode) match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
     if (!match && prod.productCode) {
       const codeNorm = String(prod.productCode).toLowerCase().trim().replace(/\s+/g, " ");
       const colorNorm = String(prod.color || "").toLowerCase().trim();
@@ -165,28 +134,17 @@ function repairProductPrices(productList: any[]): { count: number; repaired: any
         (!colorNorm || String(s.color || "").toLowerCase().trim() === colorNorm)
       );
     }
-    // 2. Match by id
-    if (!match && prod.id != null) {
-      match = STATIC_PRODUCTS.find((s: any) => s.id == prod.id);
-    }
-    // 3. Match by normalized productName
+    if (!match && prod.id != null) match = STATIC_PRODUCTS.find((s: any) => s.id == prod.id);
     if (!match && prod.productName) {
       const normalizedName = String(prod.productName).toLowerCase().trim().replace(/\s+/g, " ");
-      match = STATIC_PRODUCTS.find((s: any) => {
-        const seedName = String(s.productName || "").toLowerCase().trim().replace(/\s+/g, " ");
-        return seedName === normalizedName;
-      });
+      match = STATIC_PRODUCTS.find((s: any) => String(s.productName || "").toLowerCase().trim().replace(/\s+/g, " ") === normalizedName);
     }
-
     if (match) {
       prod.wholesalePrice = match.wholesalePrice;
       prod.corporatePrice = match.corporatePrice;
       prod.bulkPrice = match.bulkPrice;
       prod.retailPrice = match.retailPrice;
       prod.costPrice = match.costPrice;
-      // CRITICAL: Update timestamp so mergeWithCloudData() treats repaired
-      // product as NEWER than Firebase's stale 0-price version. Without this,
-      // Firebase overwrites the repaired prices back to 0.
       prod.updatedAt = new Date().toISOString();
       pricesRestored++;
       repairedProducts.push(prod);
@@ -195,10 +153,6 @@ function repairProductPrices(productList: any[]): { count: number; repaired: any
   return { count: pricesRestored, repaired: repairedProducts };
 }
 
-/** Auto-repair quotes that were incorrectly changed to orders via Edit.
- *  A broken quote has: QTE- prefix, orderType !== "quote", status !== "converted".
- *  Resets them back to proper quotes so the Convert to Order flow works.
- *  Returns count of repaired quotes. */
 function repairBrokenQuotes(): number {
   let repaired = 0;
   for (const order of orders) {
@@ -206,35 +160,25 @@ function repairBrokenQuotes(): number {
     const isQuotePrefix = orderNum.toUpperCase().startsWith("QTE-");
     const isQuoteType = order.orderType === "quote";
     const isConverted = order.status === "converted";
-
-    // Broken: QTE- prefix but NOT a quote type AND not already converted
     if (isQuotePrefix && !isQuoteType && !isConverted) {
       order.orderType = "quote";
       order.status = "draft";
-      // Restore stock that was incorrectly deducted when changed to "regular"
-      // (quotes never deduct stock, so if it was treated as an order, stock was deducted)
       if (order.items && Array.isArray(order.items)) {
         for (const item of order.items) {
           if (item.stockItemId != null && item.quantity != null) {
             const product = products.find((p) => p.id == item.stockItemId);
-            if (product) {
-              product.quantity = (product.quantity || 0) + item.quantity;
-            }
+            if (product) product.quantity = (product.quantity || 0) + item.quantity;
           }
         }
       }
       repaired++;
-      console.log(`[QuoteRepair] Reset ${orderNum} back to quote (was orderType="${order.orderType}")`);
     }
   }
-  if (repaired > 0) {
-    saveItem("sgf_products", products);
-  }
+  if (repaired > 0) saveItem("sgf_products", products);
   return repaired;
 }
 
 function load() {
-  // Helper: safely load a data array from storage
   function safeLoadArray(key: string): any[] | null {
     try {
       const raw = getStorageItem(key);
@@ -248,44 +192,26 @@ function load() {
   }
 
   try {
-    // CUSTOMERS: load from localStorage if it's a valid array.
-    // NEVER discard synced data due to length checks or missing keys.
-    // Only fall back to static if localStorage is empty or corrupted.
     const c = safeLoadArray("sgf_customers");
-    if (c && c.length > 0) customers = c;
-    else customers = getStaticCustomers();
+    if (c && c.length > 0) customers = c; else customers = getStaticCustomers();
 
-    // PRODUCTS: same approach — trust localStorage if it's a valid array
     const p = safeLoadArray("sgf_products");
     if (p && p.length > 0) {
       products = p;
-      // PRICE REPAIR: If loaded products have 0 prices, restore from STATIC_PRODUCTS seed
       const priceRepair = repairProductPrices(products);
       if (priceRepair.count > 0) {
         saveItem("sgf_products", products);
         console.log(`[PriceRepair] Restored prices for ${priceRepair.count} products from seed data`);
-        // Notify Firebase sync to push repaired products to cloud
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products: priceRepair.repaired, count: priceRepair.count } }));
-        }
       }
     } else products = getStaticProducts();
 
-    // TRANSACTION DATA: always load if present (user-generated, never replace with static)
     const o = safeLoadArray("sgf_orders");
     if (o) orders = o;
 
-    // AUTO-REPAIR: Fix quotes that were incorrectly changed to orders via Edit.
-    // When someone edits a quote and changes orderType from "quote" to "regular",
-    // the record keeps the QTE- prefix and "Draft" status but behaves like an order.
-    // This repair resets them back to proper quotes so they can be converted correctly.
     const repairedQuotes = repairBrokenQuotes();
     if (repairedQuotes > 0) {
       console.log(`[QuoteRepair] Auto-repaired ${repairedQuotes} broken quote(s)`);
       saveItem("sgf_orders", orders);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("sgf:quotesRepaired", { detail: { count: repairedQuotes } }));
-      }
     }
 
     const i = safeLoadArray("sgf_invoices");
@@ -312,7 +238,6 @@ function load() {
     receipts = rc || [];
     const crn = safeLoadArray("sgf_creditNotes");
     creditNotes = crn || [];
-    // USERS: always load and merge with defaults
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
     const DEFAULT_USERS = [
@@ -342,39 +267,20 @@ function load() {
     }
   } catch { /* ignore */ }
 
-  // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
   try { deduplicateAll(); } catch (e) { console.error("[load] deduplicateAll failed:", e); }
 
-  // AUTO-CLEANUP: Remove invoices linked to quotes (quotes should never have invoices).
-  // This fixes the bug where editing a quote and changing orderType to "normal"
-  // generated an invoice that persisted even after the quote was repaired.
   try {
     const beforeCleanup = invoices.length;
     const toRemove: number[] = [];
     for (let idx = 0; idx < invoices.length; idx++) {
       const inv = invoices[idx];
       const linkedOrderNum = String(inv.orderNumber || "");
-      if (linkedOrderNum.toUpperCase().startsWith("QTE-")) {
-        toRemove.push(idx);
-        console.log(`[InvoiceCleanup] Removing invoice ${inv.invoiceNumber} linked to quote ${linkedOrderNum}`);
-      }
+      if (linkedOrderNum.toUpperCase().startsWith("QTE-")) toRemove.push(idx);
     }
-    // Remove in reverse order to keep indices valid
-    for (let i = toRemove.length - 1; i >= 0; i--) {
-      invoices.splice(toRemove[i], 1);
-    }
-    if (toRemove.length > 0) {
-      saveItem("sgf_invoices", invoices);
-      console.log(`[InvoiceCleanup] Removed ${toRemove.length} invoice(s) linked to quotes`);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
-      }
-    }
+    for (let i = toRemove.length - 1; i >= 0; i--) invoices.splice(toRemove[i], 1);
+    if (toRemove.length > 0) saveItem("sgf_invoices", invoices);
   } catch (e) { console.error("[load] invoice cleanup failed:", e); }
 
-  // AUTO-LINK: Match Sage invoices to customers by customerCode.
-  // This runs on every startup so ALL devices get linked Sage invoices
-  // without needing to click "Re-link Sage Invoices".
   try {
     const sageInvoices = invoices.filter((inv) => inv.source === "sage" || inv.isSageInvoice);
     let linkedCount = 0;
@@ -388,13 +294,9 @@ function load() {
         }
       }
     }
-    if (linkedCount > 0) {
-      saveItem("sgf_invoices", invoices);
-      console.log(`[AutoLink] Linked ${linkedCount} Sage invoice(s) to customers`);
-    }
+    if (linkedCount > 0) saveItem("sgf_invoices", invoices);
   } catch (e) { console.error("[load] auto-link failed:", e); }
 
-  // CORPORATE DATA
   try {
     const cc = safeLoadArray("sgf_corporateCustomers");
     if (cc) corporateCustomers = cc;
@@ -418,19 +320,15 @@ function load() {
 }
 
 function deduplicateAll() {
-  // Deduplicate orders by id, keeping the newest updatedAt
   const seenOrders = new Map<number, any>();
   for (const o of orders) {
     const id = Number(o.id);
-    if (!seenOrders.has(id)) {
-      seenOrders.set(id, o);
-    } else {
+    if (!seenOrders.has(id)) seenOrders.set(id, o);
+    else {
       const existing = seenOrders.get(id);
       const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const newTime = new Date(o.updatedAt || o.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenOrders.set(id, o);
-      }
+      if (newTime > existingTime) seenOrders.set(id, o);
     }
   }
   if (seenOrders.size < orders.length) {
@@ -438,19 +336,15 @@ function deduplicateAll() {
     saveItem("sgf_orders", orders);
   }
 
-  // Deduplicate invoices by id, keeping newest
   const seenInvoices = new Map<number, any>();
   for (const i of invoices) {
     const id = Number(i.id);
-    if (!seenInvoices.has(id)) {
-      seenInvoices.set(id, i);
-    } else {
+    if (!seenInvoices.has(id)) seenInvoices.set(id, i);
+    else {
       const existing = seenInvoices.get(id);
       const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const newTime = new Date(i.updatedAt || i.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenInvoices.set(id, i);
-      }
+      if (newTime > existingTime) seenInvoices.set(id, i);
     }
   }
   if (seenInvoices.size < invoices.length) {
@@ -458,19 +352,15 @@ function deduplicateAll() {
     saveItem("sgf_invoices", invoices);
   }
 
-  // Deduplicate appointments by id
   const seenAppointments = new Map<number, any>();
   for (const a of appointments) {
     const id = Number(a.id);
-    if (!seenAppointments.has(id)) {
-      seenAppointments.set(id, a);
-    } else {
+    if (!seenAppointments.has(id)) seenAppointments.set(id, a);
+    else {
       const existing = seenAppointments.get(id);
       const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const newTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenAppointments.set(id, a);
-      }
+      if (newTime > existingTime) seenAppointments.set(id, a);
     }
   }
   if (seenAppointments.size < appointments.length) {
@@ -478,19 +368,15 @@ function deduplicateAll() {
     saveItem("sgf_appointments", appointments);
   }
 
-  // Deduplicate checkins by id
   const seenCheckins = new Map<number, any>();
   for (const c of checkins) {
     const id = Number(c.id);
-    if (!seenCheckins.has(id)) {
-      seenCheckins.set(id, c);
-    } else {
+    if (!seenCheckins.has(id)) seenCheckins.set(id, c);
+    else {
       const existing = seenCheckins.get(id);
       const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const newTime = new Date(c.updatedAt || c.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenCheckins.set(id, c);
-      }
+      if (newTime > existingTime) seenCheckins.set(id, c);
     }
   }
   if (seenCheckins.size < checkins.length) {
@@ -499,11 +385,9 @@ function deduplicateAll() {
   }
 }
 
-/** Save an item to localStorage with cloud sync trigger */
 function saveItem(key: string, value: any) {
   try {
     setStorageItem(key, JSON.stringify(value));
-    // Trigger cloud sync event
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("sgf:dataChanged", { detail: { key } }));
     }
@@ -512,17 +396,11 @@ function saveItem(key: string, value: any) {
   }
 }
 
-/** Reload all data from localStorage into memory */
 export function reloadFromStorage() {
   load();
 }
 
-// Initial load
 load();
-
-// ═══════════════════════════════════════════════════════════════
-//  DATA SERVICE — tRPC router-compatible API
-// ═══════════════════════════════════════════════════════════════
 
 export const dataService = {
   customer: {
@@ -544,12 +422,7 @@ export const dataService = {
     getById: (id: number) => customers.find((c) => c.id == id) || null,
     create: (data: any) => {
       const newId = customers.length > 0 ? Math.max(...customers.map((c) => c.id || 0)) + 1 : 1;
-      const newCustomer = {
-        ...data,
-        id: newId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const newCustomer = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       customers.push(newCustomer);
       saveItem("sgf_customers", customers);
       return newCustomer;
@@ -571,7 +444,6 @@ export const dataService = {
     getSalesReps: () => {
       const reps = new Set<string>();
       customers.forEach((c: any) => { if (c.salesRepName) reps.add(c.salesRepName); });
-      // Also include in-memory sales reps
       SALES_REPS.forEach((r) => { if (r.name) reps.add(r.name); });
       return Array.from(reps).sort();
     },
@@ -634,17 +506,13 @@ export const dataService = {
         (p.description || "").toLowerCase().includes(q)
       );
     },
-    getByCategory: ({ category }: { category: string }) => {
-      return products.filter((p: any) => (p.category || "").toLowerCase() === category.toLowerCase());
-    },
+    getByCategory: ({ category }: { category: string }) => products.filter((p: any) => (p.category || "").toLowerCase() === category.toLowerCase()),
     getCategories: () => {
       const cats = new Set<string>();
       products.forEach((p: any) => { if (p.category) cats.add(p.category); });
       return Array.from(cats).sort();
     },
-    getLowStock: () => {
-      return products.filter((p: any) => p.quantity != null && p.quantity <= (p.minStock || 10));
-    },
+    getLowStock: () => products.filter((p: any) => p.quantity != null && p.quantity <= (p.minStock || 10)),
     getStats: () => {
       const total = products.length;
       const lowStock = products.filter((p: any) => p.quantity != null && p.quantity <= (p.minStock || 10)).length;
@@ -658,7 +526,34 @@ export const dataService = {
     getById: (id: number) => orders.find((o) => o.id == id) || null,
     create: (data: any) => {
       const newId = orders.length > 0 ? Math.max(...orders.map((o) => o.id || 0)) + 1 : 1;
-      const newOrder = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+
+      // CRITICAL FIX: Calculate line totals and order totals.
+      // The frontend payload does NOT include total/subtotal/vatAmount,
+      // so we must compute them here from the items array.
+      const isSample = data.orderType === "sample";
+      const isQuote = data.orderType === "quote";
+      const items = (data.items || []).map((item: any) => ({
+        ...item,
+        lineTotal: (item.unitPrice || 0) * (item.quantity || 0),
+      }));
+
+      const subtotal = isSample || isQuote ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+      const customer = customers.find((c) => c.id == data.customerId);
+      const vatRate = customer?.vatExempt ? 0 : 0.15;
+      const vatAmount = isSample || isQuote ? 0 : subtotal * vatRate;
+      const total = isSample || isQuote ? 0 : subtotal + vatAmount;
+
+      const newOrder = {
+        ...data,
+        id: newId,
+        items,
+        subtotal,
+        vatAmount,
+        total,
+        totalAmount: total,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
       orders.push(newOrder);
       saveItem("sgf_orders", orders);
       return newOrder;
@@ -666,7 +561,23 @@ export const dataService = {
     update: ({ id, data }: { id: number; data: any }) => {
       const idx = orders.findIndex((o) => o.id == id);
       if (idx >= 0) {
-        orders[idx] = { ...orders[idx], ...data, updatedAt: new Date().toISOString() };
+        let updates = { ...data };
+        // CRITICAL FIX: Recalculate totals if items are provided in the update.
+        if (data.items && Array.isArray(data.items)) {
+          const isSample = data.orderType === "sample" || orders[idx].orderType === "sample";
+          const isQuote = data.orderType === "quote" || orders[idx].orderType === "quote";
+          const items = data.items.map((item: any) => ({
+            ...item,
+            lineTotal: (item.unitPrice || 0) * (item.quantity || 0),
+          }));
+          const subtotal = isSample || isQuote ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+          const customer = customers.find((c) => c.id == (data.customerId || orders[idx].customerId));
+          const vatRate = customer?.vatExempt ? 0 : 0.15;
+          const vatAmount = isSample || isQuote ? 0 : subtotal * vatRate;
+          const total = isSample || isQuote ? 0 : subtotal + vatAmount;
+          updates = { ...updates, items, subtotal, vatAmount, total, totalAmount: total };
+        }
+        orders[idx] = { ...orders[idx], ...updates, updatedAt: new Date().toISOString() };
         saveItem("sgf_orders", orders);
         return orders[idx];
       }
@@ -676,19 +587,15 @@ export const dataService = {
       const order = orders.find((o) => o.id === id);
       let deletedInvoiceIds: number[] = [];
       if (order) {
-        // Restore stock
         if (order.items && Array.isArray(order.items)) {
           for (const item of order.items) {
             if (item.stockItemId != null && item.quantity != null) {
               const product = products.find((p) => p.id == item.stockItemId);
-              if (product) {
-                product.quantity = (product.quantity || 0) + item.quantity;
-              }
+              if (product) product.quantity = (product.quantity || 0) + item.quantity;
             }
           }
           saveItem("sgf_products", products);
         }
-        // Delete linked invoices
         const linkedInvoices = invoices.filter((i) => i.orderId == id);
         if (linkedInvoices.length > 0) {
           deletedInvoiceIds = linkedInvoices.map((i) => i.id);
@@ -696,11 +603,10 @@ export const dataService = {
           invoices = invoices.filter((i) => !linkedIds.has(i.id));
           saveItem("sgf_invoices", invoices);
         }
-        // Remove order
         orders = orders.filter((o) => o.id !== id);
         saveItem("sgf_orders", orders);
       }
-      return { success: true, deletedInvoiceIds };
+      return { success: true, deletedInvoiceIds, deletedOrder: order };
     },
     getByCustomer: (customerId: number) => orders.filter((o) => o.customerId == customerId),
     getBySalesRep: (salesRepName: string) => orders.filter((o) => o.salesRepName === salesRepName),
@@ -778,10 +684,7 @@ export const dataService = {
       if (idx >= 0) {
         appointments[idx].status = status;
         appointments[idx].updatedAt = new Date().toISOString();
-        // reset reminder on reschedule so it triggers again
-        if (status === "rescheduled") {
-          appointments[idx].reminderSent = false;
-        }
+        if (status === "rescheduled") appointments[idx].reminderSent = false;
         saveItem("sgf_appointments", appointments);
         return appointments[idx];
       }
@@ -816,8 +719,6 @@ export const dataService = {
       };
       checkins.push(newItem);
       saveItem("sgf_checkins", checkins);
-
-      // If linked to an appointment, update appointment status to in_progress
       if (newItem.appointmentId) {
         const apptIdx = appointments.findIndex((a) => a.id == newItem.appointmentId);
         if (apptIdx >= 0) {
@@ -827,7 +728,6 @@ export const dataService = {
           saveItem("sgf_appointments", appointments);
         }
       }
-
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
@@ -846,7 +746,6 @@ export const dataService = {
         const createdAt = new Date(checkins[idx].createdAt || now);
         const checkedOutAt = new Date(now);
         const durationMinutes = Math.round((checkedOutAt.getTime() - createdAt.getTime()) / (1000 * 60));
-
         checkins[idx].status = "checked_out";
         checkins[idx].checkedOutAt = now;
         checkins[idx].durationMinutes = durationMinutes;
@@ -855,8 +754,6 @@ export const dataService = {
         if (outcomeNotes) checkins[idx].outcomeNotes = outcomeNotes;
         checkins[idx].updatedAt = now;
         saveItem("sgf_checkins", checkins);
-
-        // If linked to an appointment, update appointment status to completed
         if (checkins[idx].appointmentId) {
           const apptIdx = appointments.findIndex((a) => a.id == checkins[idx].appointmentId);
           if (apptIdx >= 0) {
@@ -869,7 +766,6 @@ export const dataService = {
             saveItem("sgf_appointments", appointments);
           }
         }
-
         return checkins[idx];
       }
       return null;
@@ -1114,7 +1010,6 @@ export const dataService = {
     },
   },
 
-  // ─── CORPORATE MODULE ───
   corporateCustomer: {
     list: () => corporateCustomers,
     getById: (id: number) => corporateCustomers.find((c) => c.id == id) || null,
@@ -1220,20 +1115,12 @@ export const dataService = {
     },
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  //  PACKING LIST LINES (factory-filled barrel packing lines)
-  // ═══════════════════════════════════════════════════════════════
   packingList: {
     list: () => packingListLines,
     listByPurchaseOrder: (poId: number) => packingListLines.filter((pl) => pl.purchaseOrderId === poId),
     getById: (id: number) => packingListLines.find((pl) => pl.id == id) || null,
     create: (data: any) => {
-      const newItem = {
-        ...data,
-        id: Date.now(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const newItem = { ...data, id: Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       packingListLines.push(newItem);
       saveItem("sgf_packingListLines", packingListLines);
       return newItem;
@@ -1254,38 +1141,25 @@ export const dataService = {
     },
   },
 
-  /** Generate an invoice from a Purchase Order (corporate customer).
-   *  Exposed on dataService so localLink can call it via dataService.generateInvoiceForPO */
   generateInvoiceForPO: (poId: number) => {
-    // ACQUIRE LOCK: prevent concurrent generation
     if (invoiceGenerationLock) {
       console.warn("[generateInvoiceForPO] LOCKED — another invoice is being generated.");
       return null;
     }
     invoiceGenerationLock = true;
-
     try {
-      load(); // ensure fresh data
+      load();
       const po = purchaseOrders.find((p) => p.id == poId);
       if (!po) return null;
-
-      // Calculate totals from PO line items
       const items = po.lineItems || [];
       const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
-      // Check if corporate customer is VAT exempt
       const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
       const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
       const vatAmount = subtotal * vatRate;
       const total = subtotal + vatAmount;
-
-      // Resolve the main customer ID from the linked corporate customer
       const mainCustomerId = corpCustomer?.linkedCustomerId || po.corporateCustomerId;
       const mainCustomer = customers.find((c) => c.id == mainCustomerId);
-
-      // Check if invoice already exists for this PO
       const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
-
-      // Get corporate customer for payment terms
       const paymentTerms = corpCustomer?.paymentTerms || po.paymentTerms || "30_days";
       const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
 
@@ -1295,20 +1169,13 @@ export const dataService = {
         const newBalanceDue = total - amountPaid;
         invoices[existingIdx] = {
           ...existing,
-          subtotal,
-          vatAmount,
-          vatRate,
-          total,
-          totalAmount: total,
-          balanceDue: newBalanceDue,
-          paymentTerms,
+          subtotal, vatAmount, vatRate, total, totalAmount: total,
+          balanceDue: newBalanceDue, paymentTerms,
           customerId: mainCustomerId,
           customer: mainCustomer || { name: po.corporateCustomerName || "Corporate Customer" },
           items: items.map((item: any) => ({
             description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            lineTotal: item.quantity * item.unitPrice,
+            quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice,
           })),
           updatedAt: new Date().toISOString(),
           notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
@@ -1317,11 +1184,9 @@ export const dataService = {
         return existing.invoiceNumber;
       }
 
-      // Create new invoice
       const now = new Date();
       const dueDate = new Date(now);
       dueDate.setDate(dueDate.getDate() + days);
-
       const invCompany = po.company || "sgf";
       let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
       const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
@@ -1335,38 +1200,20 @@ export const dataService = {
         }
         safetyCounter++;
       }
-
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
 
       invoices.push({
-        id: nextInvId,
-        purchaseOrderId: po.id,
-        poNumber: po.poNumber,
-        orderNumber: po.poNumber,
-        invoiceNumber,
-        company: invCompany,
-        customerId: mainCustomerId,
+        id: nextInvId, purchaseOrderId: po.id, poNumber: po.poNumber, orderNumber: po.poNumber,
+        invoiceNumber, company: invCompany, customerId: mainCustomerId,
         customer: mainCustomer || { name: po.corporateCustomerName || "Corporate Customer" },
-        subtotal,
-        vatAmount,
-        vatRate,
-        total,
-        totalAmount: total,
-        balanceDue: total,
-        amountPaid: 0,
-        status: "draft",
-        paymentTerms,
-        invoiceDate: now.toISOString(),
-        dueDate: dueDate.toISOString(),
+        subtotal, vatAmount, vatRate, total, totalAmount: total, balanceDue: total, amountPaid: 0,
+        status: "draft", paymentTerms, invoiceDate: now.toISOString(), dueDate: dueDate.toISOString(),
         notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
         items: items.map((item: any) => ({
           description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          lineTotal: item.quantity * item.unitPrice,
+          quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice,
         })),
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
+        createdAt: now.toISOString(), updatedAt: now.toISOString(),
       });
       saveItem("sgf_invoices", invoices);
       return invoiceNumber;
@@ -1375,8 +1222,6 @@ export const dataService = {
     }
   },
 
-  /** Generate an invoice from a regular order.
-   *  Exposed on dataService so localLink can call it via dataService.generateInvoiceForOrder */
   generateInvoiceForOrder: (orderId: number): string | null => {
     if (invoiceGenerationLock) {
       console.warn("[generateInvoiceForOrder] LOCKED — another invoice is being generated.");
@@ -1387,21 +1232,16 @@ export const dataService = {
       load();
       const order = orders.find((o) => o.id == orderId);
       if (!order) return null;
-
-      // Check if invoice already exists for this order
       const existing = invoices.find((i) => i.orderId == orderId);
       if (existing) return existing.invoiceNumber;
-
       const items = order.items || [];
       const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
       const vatRate = 0.15;
       const vatAmount = subtotal * vatRate;
       const total = subtotal + vatAmount;
-
       const now = new Date();
       const dueDate = new Date(now);
       dueDate.setDate(dueDate.getDate() + 30);
-
       const invCompany = order.company || "sgf";
       let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
       const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
@@ -1415,38 +1255,19 @@ export const dataService = {
         }
         safetyCounter++;
       }
-
       const customer = customers.find((c) => c.id == order.customerId);
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
-
       invoices.push({
-        id: nextInvId,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        invoiceNumber,
-        company: invCompany,
-        customerId: order.customerId,
-        customer: customer ? { name: customer.name } : order.customer,
-        subtotal,
-        vatAmount,
-        vatRate,
-        total,
-        totalAmount: total,
-        balanceDue: total,
-        amountPaid: 0,
-        status: "draft",
-        paymentTerms: order.paymentTerms || "30_days",
-        invoiceDate: now.toISOString(),
-        dueDate: dueDate.toISOString(),
-        notes: `Invoice for order ${order.orderNumber}`,
+        id: nextInvId, orderId: order.id, orderNumber: order.orderNumber, invoiceNumber, company: invCompany,
+        customerId: order.customerId, customer: customer ? { name: customer.name } : order.customer,
+        subtotal, vatAmount, vatRate, total, totalAmount: total, balanceDue: total, amountPaid: 0,
+        status: "draft", paymentTerms: order.paymentTerms || "30_days", invoiceDate: now.toISOString(),
+        dueDate: dueDate.toISOString(), notes: `Invoice for order ${order.orderNumber}`,
         items: items.map((item: any) => ({
           description: item.description || products.find((p) => p.id == item.stockItemId)?.productName || "",
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          lineTotal: item.quantity * item.unitPrice,
+          quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice,
         })),
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
+        createdAt: now.toISOString(), updatedAt: now.toISOString(),
       });
       saveItem("sgf_invoices", invoices);
       return invoiceNumber;
@@ -1456,67 +1277,41 @@ export const dataService = {
   },
 };
 
-/** Reset all transaction data (orders, invoices, receipts, etc.) but keep users, customers, products, settings */
 export function resetTransactionData(): void {
-  orders = [];
-  invoices = [];
-  receipts = [];
-  creditNotes = [];
-  appointments = [];
-  checkins = [];
-  followUps = [];
-  followUpActions = [];
-  specialPrices = [];
-  collectionNotes = [];
-  collectionPromises = [];
-  accountHolds = [];
-  auditLog = [];
-
+  orders = []; invoices = []; receipts = []; creditNotes = []; appointments = []; checkins = [];
+  followUps = []; followUpActions = []; specialPrices = []; collectionNotes = []; collectionPromises = [];
+  accountHolds = []; auditLog = [];
   const keysToRemove = [
     "sgf_orders", "sgf_invoices", "sgf_receipts", "sgf_creditNotes", "sgf_appointments",
     "sgf_checkins", "sgf_specialPrices", "sgf_auditLog", "sgf_followUps",
-    "sgf_followUpActions", "sgf_collectionNotes", "sgf_collectionPromises",
-    "sgf_accountHolds",
+    "sgf_followUpActions", "sgf_collectionNotes", "sgf_collectionPromises", "sgf_accountHolds",
   ];
   keysToRemove.forEach(k => localStorage.removeItem(k));
 }
 
-/** Clear only appointments and check-ins */
 export function clearAppointmentsAndCheckins(): void {
-  appointments = [];
-  checkins = [];
+  appointments = []; checkins = [];
   removeStorageItem("sgf_appointments");
   removeStorageItem("sgf_checkins");
 }
 
-/** Full factory reset — clears EVERYTHING and reloads defaults */
 export function factoryReset(): void {
-  // Step 1: Disconnect Firebase to prevent re-download
   try {
     const { disconnectFirebase } = require("./firebaseSync");
     if (disconnectFirebase) disconnectFirebase();
-  } catch { /* ignore if firebaseSync not loaded */ }
+  } catch { /* ignore */ }
   localStorage.setItem("sgf_firebase_disconnected", "true");
-  // Step 2: Clear all localStorage
   const allKeys = Object.keys(localStorage).filter(k => k.startsWith("sgf_"));
   allKeys.forEach(k => localStorage.removeItem(k));
-  // Step 3: Keep disconnect flag set (re-add after clearing)
   localStorage.setItem("sgf_firebase_disconnected", "true");
-  // Step 4: Reset ALL in-memory arrays including users
   orders = []; invoices = []; receipts = []; creditNotes = []; appointments = []; checkins = [];
-  followUps = []; followUpActions = []; specialPrices = [];
-  collectionNotes = []; collectionPromises = []; accountHolds = []; auditLog = []; users = [];
-  // Step 5: Reset customers and products back to original static defaults
+  followUps = []; followUpActions = []; specialPrices = []; collectionNotes = []; collectionPromises = [];
+  accountHolds = []; auditLog = []; users = [];
   customers = getStaticCustomers();
   products = getStaticProducts();
-  // Step 6: Re-create default users
   load();
 }
 
-/**
- * DIRECT LOGIN — bypasses tRPC/localLink entirely.
- * Called directly from Login.tsx. Checks hardcoded defaults first.
- */
 export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string; pin?: string } | null {
   const DEFAULT_USERS = [
     { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580" },
@@ -1530,103 +1325,71 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
     { id: 9, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777" },
     { id: 10, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888" },
   ];
-
   const ADMIN_ALIASES = ["admin", "administrator", "superadmin"];
   const typedName = name.toLowerCase().trim();
-  const typedPin = String(pin); // Normalize: Firebase may store PIN as number
+  const typedPin = String(pin);
 
-  // 1. Check stored users FIRST (so User Management additions work without code changes)
   try {
     const raw = getStorageItem("sgf_users");
     if (raw) {
       const stored = JSON.parse(raw);
-      // Exact name match
-      const found = stored.find(
-        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
-      );
+      const found = stored.find((x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false);
       if (found) {
         const hardcoded = DEFAULT_USERS.find((u) => u.id === found.id || u.name.toLowerCase() === found.name?.toLowerCase());
-        const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
-        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
+        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: found.pin != null ? found.pin : hardcoded?.pin };
       }
-      // Admin alias match — check if any stored user has this PIN and is admin
       if (ADMIN_ALIASES.includes(typedName)) {
-        const adminFound = stored.find(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
-        );
+        const adminFound = stored.find((x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false);
         if (adminFound) {
           const hardcoded = DEFAULT_USERS.find((u) => u.id === adminFound.id || u.name.toLowerCase() === adminFound.name?.toLowerCase());
-          const resolvedPin = adminFound.pin != null ? adminFound.pin : hardcoded?.pin;
-          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: resolvedPin };
+          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: adminFound.pin != null ? adminFound.pin : hardcoded?.pin };
         }
       }
     }
   } catch { /* ignore */ }
 
-  // 2. Allow "admin" as a generic alias — match against ANY hardcoded admin/super_admin PIN
   if (ADMIN_ALIASES.includes(typedName)) {
-    // First check stored users for admin alias (new PIN may have been changed)
     let storedAdminFound: any = null;
     try {
       const raw = getStorageItem("sgf_users");
       if (raw) {
         const stored = JSON.parse(raw);
-        storedAdminFound = stored.find(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
-        );
+        storedAdminFound = stored.find((x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false);
       }
     } catch { /* ignore */ }
-    if (storedAdminFound) {
-      return { id: storedAdminFound.id, name: storedAdminFound.name, email: storedAdminFound.email, role: storedAdminFound.role, pin: storedAdminFound.pin };
-    }
+    if (storedAdminFound) return { id: storedAdminFound.id, name: storedAdminFound.name, email: storedAdminFound.email, role: storedAdminFound.role, pin: storedAdminFound.pin };
 
-    // Only fall back to hardcoded if no stored admin with different PIN exists
     let storedAdminWithDifferentPin = false;
     try {
       const raw = getStorageItem("sgf_users");
       if (raw) {
         const stored = JSON.parse(raw);
-        storedAdminWithDifferentPin = stored.some(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) !== typedPin && x.isActive !== false
-        );
+        storedAdminWithDifferentPin = stored.some((x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) !== typedPin && x.isActive !== false);
       }
     } catch { /* ignore */ }
 
     if (!storedAdminWithDifferentPin) {
-      const adminMatch = DEFAULT_USERS.find(
-        (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
-      );
-      if (adminMatch) {
-        return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
-      }
+      const adminMatch = DEFAULT_USERS.find((u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin);
+      if (adminMatch) return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
     }
   }
 
-  // 3. Check hardcoded defaults (fallback — survives data clears)
-  // BUT only if the user does NOT exist in stored data with a different PIN.
-  // This prevents old hardcoded PINs from working after a PIN change.
   let storedUserWithDifferentPin: any = null;
   try {
     const raw = getStorageItem("sgf_users");
     if (raw) {
       const stored = JSON.parse(raw);
-      storedUserWithDifferentPin = stored.find(
-        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) !== typedPin && x.isActive !== false
-      );
+      storedUserWithDifferentPin = stored.find((x: any) => x.name?.toLowerCase() === typedName && String(x.pin) !== typedPin && x.isActive !== false);
     }
   } catch { /* ignore */ }
 
   if (!storedUserWithDifferentPin) {
-    const fromDefaults = DEFAULT_USERS.find(
-      (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
-    );
+    const fromDefaults = DEFAULT_USERS.find((u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin);
     if (fromDefaults) {
-      // Repair stored users if needed
       try {
         const raw = getStorageItem("sgf_users");
         const stored = raw ? JSON.parse(raw) : [];
-        const exists = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase());
-        if (!exists) {
+        if (!stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase())) {
           stored.push({ ...fromDefaults, isActive: true, createdAt: new Date().toISOString() });
           setStorageItem("sgf_users", JSON.stringify(stored));
           users = stored;
@@ -1639,13 +1402,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
   return null;
 }
 
-// NOTE: load() is already called at line 143 after all module-level variables are declared.
-// Do NOT call load() again here — it would overwrite in-memory data with stale localStorage.
-
 function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number, _isSample: boolean = false): number {
-  // CRITICAL: Sample orders must ALWAYS use corporate price.
-  // Do NOT apply special/customer prices to sample orders, even if a
-  // special price exists for this customer+product combination.
   if (!_isSample) {
     const sp = specialPrices.find((p) => p.customerId == customerId && p.stockItemId == stockItemId);
     if (sp) return Number(sp.specialPrice);
@@ -1659,7 +1416,6 @@ function getEffectivePrice(stockItemId: number, priceTier: string, customerId: n
     case "retail": rawPrice = Number(stock.retailPrice); break;
     default: rawPrice = Number(stock.wholesalePrice); break;
   }
-  // Fallback to STATIC_PRODUCTS if loaded price is 0
   if (rawPrice <= 0) {
     const staticProd = STATIC_PRODUCTS.find((p: any) =>
       p.id == stockItemId ||
@@ -1682,45 +1438,20 @@ function getNextInvoiceNumberForCompany(company: string): string {
   const prefix = company.toLowerCase() === "rc" ? "RC" : "SGF";
   const existingNumbers = invoices
     .filter((i) => (i.company || "sgf").toLowerCase() === company.toLowerCase())
-    .map((i) => {
-      const match = i.invoiceNumber?.match(/(\d+)/);
-      return match ? parseInt(match[1]) : 0;
-    })
+    .map((i) => { const match = i.invoiceNumber?.match(/(\d+)/); return match ? parseInt(match[1]) : 0; })
     .filter((n) => n > 0);
-
   const nextNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
-
-  if (company.toLowerCase() === "rc") {
-    return `RC${String(nextNum).padStart(4, "0")}`;
-  }
+  if (company.toLowerCase() === "rc") return `RC${String(nextNum).padStart(4, "0")}`;
   return `SGF${nextNum}`;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  MISSING EXPORTS — required by localLink.ts
-// ═══════════════════════════════════════════════════════════════
-
 let AA_RATE_PER_KM = 5.50;
-
-try {
-  const stored = getStorageItem("sgf_aaRate");
-  if (stored) AA_RATE_PER_KM = parseFloat(stored);
-} catch { /* ignore */ }
+try { const stored = getStorageItem("sgf_aaRate"); if (stored) AA_RATE_PER_KM = parseFloat(stored); } catch { /* ignore */ }
 
 export function getAARate(): number { return AA_RATE_PER_KM; }
+export function setAARate(rate: number): void { AA_RATE_PER_KM = rate; setStorageItem("sgf_aaRate", String(rate)); }
 
-export function setAARate(rate: number): void {
-  AA_RATE_PER_KM = rate;
-  setStorageItem("sgf_aaRate", String(rate));
-}
-
-export interface BankStatementRow {
-  date: string;
-  description: string;
-  amount: number;
-  type: "credit" | "debit";
-  reference?: string;
-}
+export interface BankStatementRow { date: string; description: string; amount: number; type: "credit" | "debit"; reference?: string; }
 
 export function parseBankStatement(rawRows: any[][]): BankStatementRow[] {
   const rows: BankStatementRow[] = [];
@@ -1728,69 +1459,35 @@ export function parseBankStatement(rawRows: any[][]): BankStatementRow[] {
     if (!r || r.length < 3) continue;
     const amount = parseFloat(String(r[2] || "0").replace(/,/g, ""));
     if (isNaN(amount) || amount === 0) continue;
-    rows.push({
-      date: String(r[0] || ""),
-      description: String(r[1] || ""),
-      amount: Math.abs(amount),
-      type: amount > 0 ? "credit" : "debit",
-      reference: r[3] ? String(r[3]) : undefined,
-    });
+    rows.push({ date: String(r[0] || ""), description: String(r[1] || ""), amount: Math.abs(amount), type: amount > 0 ? "credit" : "debit", reference: r[3] ? String(r[3]) : undefined });
   }
   return rows;
 }
 
-export interface PaymentMatchResult {
-  row: BankStatementRow;
-  matchedInvoiceId?: number;
-  matchedInvoiceNumber?: string;
-  matchedCustomerId?: number;
-  matchedCustomerName?: string;
-  confidence: number;
-  matchType: "exact" | "partial" | "none";
-}
+export interface PaymentMatchResult { row: BankStatementRow; matchedInvoiceId?: number; matchedInvoiceNumber?: string; matchedCustomerId?: number; matchedCustomerName?: string; confidence: number; matchType: "exact" | "partial" | "none"; }
 
 export function matchBankPayments(rows: BankStatementRow[]): PaymentMatchResult[] {
   const results: PaymentMatchResult[] = [];
   const invs = dataService.invoice.list();
   const custs = dataService.customer.list();
-
   for (const row of rows) {
     let best: PaymentMatchResult = { row, confidence: 0, matchType: "none" };
-
     const invNumMatch = row.description.match(/(SGF\d+|RC\d{4}|INV[-]?\d+)/i);
     if (invNumMatch) {
       const num = invNumMatch[1].toUpperCase();
       const inv = invs.find((i: any) => i.invoiceNumber?.toUpperCase() === num);
-      if (inv) {
-        best = {
-          row,
-          matchedInvoiceId: inv.id,
-          matchedInvoiceNumber: inv.invoiceNumber,
-          matchedCustomerId: inv.customerId,
-          matchedCustomerName: inv.customer?.name,
-          confidence: 1.0,
-          matchType: "exact",
-        };
-      }
+      if (inv) best = { row, matchedInvoiceId: inv.id, matchedInvoiceNumber: inv.invoiceNumber, matchedCustomerId: inv.customerId, matchedCustomerName: inv.customer?.name, confidence: 1.0, matchType: "exact" };
     }
-
     if (best.matchType === "none") {
       for (const c of custs) {
         const nameParts = (c.name || "").toLowerCase().split(/\s+/);
         const descLower = row.description.toLowerCase();
         if (nameParts.length > 0 && nameParts.every((p: string) => descLower.includes(p))) {
-          best = {
-            row,
-            matchedCustomerId: c.id,
-            matchedCustomerName: c.name,
-            confidence: 0.7,
-            matchType: "partial",
-          };
+          best = { row, matchedCustomerId: c.id, matchedCustomerName: c.name, confidence: 0.7, matchType: "partial" };
           break;
         }
       }
     }
-
     results.push(best);
   }
   return results;
@@ -1801,30 +1498,21 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
   let processed = 0;
   for (const alloc of allocations) {
     try {
-      if (!alloc.invoiceId || !alloc.amount) {
-        errors.push("Missing invoiceId or amount");
-        continue;
-      }
+      if (!alloc.invoiceId || !alloc.amount) { errors.push("Missing invoiceId or amount"); continue; }
       const inv = dataService.invoice.list().find((i: any) => i.id == alloc.invoiceId);
-      if (!inv) {
-        errors.push(`Invoice ${alloc.invoiceId} not found`);
-        continue;
-      }
+      if (!inv) { errors.push(`Invoice ${alloc.invoiceId} not found`); continue; }
       const currentPaid = Number(inv.amountPaid || 0);
       const newPaid = currentPaid + Number(alloc.amount);
       const total = Number(inv.totalAmount || inv.total || 0);
       const balanceDue = Math.max(0, total - newPaid);
       const status = balanceDue <= 0 ? "paid" : (newPaid > 0 ? "partial" : inv.status);
-
       const idx = invoices.findIndex((i: any) => i.id == alloc.invoiceId);
       if (idx >= 0) {
         invoices[idx] = { ...invoices[idx], amountPaid: newPaid, balanceDue, status, updatedAt: new Date().toISOString() };
         saveItem("sgf_invoices", invoices);
         processed++;
       }
-    } catch (e: any) {
-      errors.push(String(e?.message || e));
-    }
+    } catch (e: any) { errors.push(String(e?.message || e)); }
   }
   return { processed, errors };
 }
@@ -1833,7 +1521,6 @@ export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoice
   const changedInvoices: any[] = [];
   const ords = dataService.order.list();
   const invs = dataService.invoice.list();
-
   for (const inv of invs) {
     if (inv.status !== "draft") continue;
     const linkedOrder = ords.find((o: any) => o.id == inv.orderId);
@@ -1845,88 +1532,52 @@ export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoice
       }
     }
   }
-  if (changedInvoices.length > 0) {
-    saveItem("sgf_invoices", invoices);
-  }
+  if (changedInvoices.length > 0) saveItem("sgf_invoices", invoices);
   return { changed: changedInvoices.length, invoices: changedInvoices };
 }
 
 export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
   const changedInvoices: any[] = [];
   const invs = dataService.invoice.list();
-
   for (const inv of invs) {
     if (!inv.isSageInvoice && inv.source !== "sage") continue;
     let changed = false;
     const updates: any = {};
-
-    if (!inv.invoiceDate && inv.createdAt) {
-      updates.invoiceDate = inv.createdAt;
-      changed = true;
-    }
-    if (!inv.dueDate && inv.invoiceDate) {
-      const d = new Date(inv.invoiceDate);
-      d.setDate(d.getDate() + 30);
-      updates.dueDate = d.toISOString();
-      changed = true;
-    }
-
+    if (!inv.invoiceDate && inv.createdAt) { updates.invoiceDate = inv.createdAt; changed = true; }
+    if (!inv.dueDate && inv.invoiceDate) { const d = new Date(inv.invoiceDate); d.setDate(d.getDate() + 30); updates.dueDate = d.toISOString(); changed = true; }
     if (changed) {
       const idx = invoices.findIndex((i: any) => i.id == inv.id);
-      if (idx >= 0) {
-        invoices[idx] = { ...invoices[idx], ...updates, updatedAt: new Date().toISOString() };
-        changedInvoices.push(invoices[idx]);
-      }
+      if (idx >= 0) { invoices[idx] = { ...invoices[idx], ...updates, updatedAt: new Date().toISOString() }; changedInvoices.push(invoices[idx]); }
     }
   }
-  if (changedInvoices.length > 0) {
-    saveItem("sgf_invoices", invoices);
-  }
+  if (changedInvoices.length > 0) saveItem("sgf_invoices", invoices);
   return { changed: changedInvoices.length, invoices: changedInvoices };
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  ADDITIONAL EXPORTS — required by pages and localLink.ts
-// ═══════════════════════════════════════════════════════════════
-
-/** Generate an invoice from a regular order. Standalone export for direct page usage. */
 export function generateInvoiceForOrder(orderId: number): string | null {
   return dataService.generateInvoiceForOrder(orderId);
 }
 
-/** Return banking details for payment reminders and statements. */
 export function getBankingDetails(): { bankName: string; accountNumber: string; branchCode: string } {
   try {
     const stored = getStorageItem("sgf_bankingDetails");
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (parsed && parsed.bankName) {
-        return {
-          bankName: parsed.bankName || "FNB",
-          accountNumber: parsed.accountNumber || "1234567890",
-          branchCode: parsed.branchCode || "250655",
-        };
-      }
+      if (parsed && parsed.bankName) return { bankName: parsed.bankName || "FNB", accountNumber: parsed.accountNumber || "1234567890", branchCode: parsed.branchCode || "250655" };
     }
   } catch { /* ignore */ }
   return { bankName: "FNB", accountNumber: "1234567890", branchCode: "250655" };
 }
 
-/** Find and fix duplicate invoice numbers in the system. */
 export function fixDuplicateInvoiceNumbers(): { changes: any[] } {
   const changes: any[] = [];
   const seenNumbers = new Map<string, number[]>();
-
   for (let i = 0; i < invoices.length; i++) {
     const num = invoices[i].invoiceNumber;
     if (!num) continue;
-    if (!seenNumbers.has(num)) {
-      seenNumbers.set(num, [i]);
-    } else {
-      seenNumbers.get(num)!.push(i);
-    }
+    if (!seenNumbers.has(num)) seenNumbers.set(num, [i]);
+    else seenNumbers.get(num)!.push(i);
   }
-
   for (const [num, indices] of seenNumbers.entries()) {
     if (indices.length > 1) {
       for (let i = 1; i < indices.length; i++) {
@@ -1937,11 +1588,7 @@ export function fixDuplicateInvoiceNumbers(): { changes: any[] } {
         let safety = 0;
         while (existingNumbers.has(newNumber) && safety < 100) {
           const match = newNumber.match(/(SGF|RC)(\d+)/);
-          if (match) {
-            const prefix = match[1];
-            const n = parseInt(match[2]) + 1;
-            newNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
-          }
+          if (match) { const prefix = match[1]; const n = parseInt(match[2]) + 1; newNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`; }
           safety++;
         }
         invoices[idx].invoiceNumber = newNumber;
@@ -1950,36 +1597,18 @@ export function fixDuplicateInvoiceNumbers(): { changes: any[] } {
       }
     }
   }
-
-  if (changes.length > 0) {
-    saveItem("sgf_invoices", invoices);
-  }
+  if (changes.length > 0) saveItem("sgf_invoices", invoices);
   return { changes };
 }
 
-/** Repair missing company fields on invoices so they match invoice number prefix. */
 export function repairInvoiceCompanies(): void {
   let changed = false;
   for (const inv of invoices) {
     const num = String(inv.invoiceNumber || "");
-    if (num.startsWith("RC")) {
-      if (inv.company !== "rc") {
-        inv.company = "rc";
-        inv.updatedAt = new Date().toISOString();
-        changed = true;
-      }
-    } else if (num.startsWith("SGF")) {
-      if (inv.company !== "sgf") {
-        inv.company = "sgf";
-        inv.updatedAt = new Date().toISOString();
-        changed = true;
-      }
-    }
+    if (num.startsWith("RC")) { if (inv.company !== "rc") { inv.company = "rc"; inv.updatedAt = new Date().toISOString(); changed = true; } }
+    else if (num.startsWith("SGF")) { if (inv.company !== "sgf") { inv.company = "sgf"; inv.updatedAt = new Date().toISOString(); changed = true; } }
   }
-  if (changed) {
-    saveItem("sgf_invoices", invoices);
-  }
+  if (changed) saveItem("sgf_invoices", invoices);
 }
 
-// ─── Special exports for router / page direct access ───
 export { customers, products, orders, invoices, appointments, checkins, users, specialPrices, getEffectivePrice, getNextInvoiceNumberForCompany };

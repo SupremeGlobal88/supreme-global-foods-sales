@@ -671,6 +671,163 @@ if (!dataService.order.create) {
   };
 }
 
+if (!dataService.order.update) {
+  dataService.order.update = ({ id, data }: { id: any; data: any }) => {
+    const orders = (dataService.order as any).list();
+    const idx = orders.findIndex((o: any) => o.id == id);
+    if (idx >= 0) {
+      orders[idx] = { ...orders[idx], ...data, updatedAt: new Date().toISOString() };
+      localStorage.setItem("sgf_orders", JSON.stringify(orders));
+      return orders[idx];
+    }
+    return null;
+  };
+}
+
+if (!dataService.order.updateStatus) {
+  dataService.order.updateStatus = (input: any) => {
+    const { id, status } = input;
+    const orders = (dataService.order as any).list();
+    const idx = orders.findIndex((o: any) => o.id == id);
+    if (idx >= 0) {
+      orders[idx] = { ...orders[idx], status, updatedAt: new Date().toISOString() };
+      localStorage.setItem("sgf_orders", JSON.stringify(orders));
+      return { order: orders[idx] };
+    }
+    return null;
+  };
+}
+
+if (!dataService.order.cancel) {
+  dataService.order.cancel = (id: any) => {
+    const orders = (dataService.order as any).list();
+    const idx = orders.findIndex((o: any) => o.id == id);
+    if (idx >= 0) {
+      orders[idx] = { ...orders[idx], status: "cancelled", updatedAt: new Date().toISOString() };
+      localStorage.setItem("sgf_orders", JSON.stringify(orders));
+      return orders[idx];
+    }
+    return null;
+  };
+}
+
+if (!dataService.order.convertQuoteToOrder) {
+  dataService.order.convertQuoteToOrder = (id: any) => {
+    const orders = (dataService.order as any).list();
+    const idx = orders.findIndex((o: any) => o.id == id);
+    if (idx >= 0) {
+      orders[idx] = { ...orders[idx], orderType: "order", updatedAt: new Date().toISOString() };
+      localStorage.setItem("sgf_orders", JSON.stringify(orders));
+      return orders[idx];
+    }
+    return null;
+  };
+}
+
+if (!dataService.order.createFromInvoice) {
+  dataService.order.createFromInvoice = (invoiceId: any) => {
+    const invoices = (dataService.invoice as any).list();
+    const inv = invoices.find((i: any) => i.id == invoiceId);
+    if (!inv) return null;
+    const orders = (dataService.order as any).list();
+    const newId = orders.length > 0 ? Math.max(...orders.map((o: any) => o.id || 0)) + 1 : 1;
+    const newOrder = {
+      id: newId,
+      customerId: inv.customerId,
+      customer: inv.customer,
+      items: inv.items || [],
+      total: inv.total || 0,
+      status: "pending",
+      orderType: "invoice",
+      invoiceId: inv.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    orders.push(newOrder);
+    localStorage.setItem("sgf_orders", JSON.stringify(orders));
+    return newOrder;
+  };
+}
+
+if (!dataService.order.checkExistingSample) {
+  dataService.order.checkExistingSample = (input: any) => {
+    const { customerId, productId } = input;
+    const orders = (dataService.order as any).list();
+    return orders.find((o: any) =>
+      o.orderType === "sample" &&
+      o.customerId == customerId &&
+      o.items?.some((item: any) => item.stockItemId == productId)
+    ) || null;
+  };
+}
+
+if (!dataService.order.generateMissingInvoices) {
+  dataService.order.generateMissingInvoices = () => {
+    const orders = (dataService.order as any).list();
+    const invoices = (dataService.invoice as any).list();
+    const missing = orders.filter((o: any) =>
+      o.status !== "cancelled" &&
+      o.status !== "quote" &&
+      !invoices.some((i: any) => i.orderId == o.id)
+    );
+    const created = [];
+    for (const order of missing) {
+      const newId = invoices.length > 0 ? Math.max(...invoices.map((i: any) => i.id || 0)) + 1 : 1;
+      const inv = {
+        id: newId,
+        orderId: order.id,
+        customerId: order.customerId,
+        customer: order.customer,
+        items: order.items || [],
+        total: order.total || 0,
+        status: "unpaid",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      invoices.push(inv);
+      created.push(inv);
+    }
+    localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
+    return created;
+  };
+}
+
+if (!dataService.order.getMonthlySales) {
+  dataService.order.getMonthlySales = () => [];
+}
+
+if (!dataService.order.getProductSales) {
+  dataService.order.getProductSales = () => [];
+}
+
+if (!dataService.order.getSalesBreakdown) {
+  dataService.order.getSalesBreakdown = () => [];
+}
+
+if (!dataService.order.getSalesRepVsOrders) {
+  dataService.order.getSalesRepVsOrders = () => [];
+}
+
+if (!dataService.order.getDailyReport) {
+  dataService.order.getDailyReport = () => [];
+}
+
+if (!dataService.order.getWeeklyReport) {
+  dataService.order.getWeeklyReport = () => [];
+}
+
+if (!dataService.order.getMonthlyReport) {
+  dataService.order.getMonthlyReport = () => [];
+}
+
+if (!dataService.order.getRevenueBySalesRep) {
+  dataService.order.getRevenueBySalesRep = () => [];
+}
+
+if (!dataService.order.getSalesByMonth) {
+  dataService.order.getSalesByMonth = () => [];
+}
+
 if (!dataService.order.getSalesReport) {
   dataService.order.getSalesReport = () => {
     const orders = (dataService.order as any).list();

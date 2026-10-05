@@ -411,7 +411,9 @@ export default function OrdersPage() {
   });
   const deleteOrder = trpc.order.delete.useMutation({
     onSuccess: async () => {
-      reloadFromStorage();
+      // NOTE: Do NOT call reloadFromStorage() here.
+      // dataService.order.delete() already updated the in-memory array.
+      // reloadFromStorage() would race with Firebase onValue and restore old data.
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
       await utils.stock.search.invalidate();

@@ -702,7 +702,7 @@ export const dataService = {
       }
       orders.splice(idx, 1);
       saveItem("sgf_orders", orders);
-      return { success: true, deletedOrder: order, deletedInvoices: linkedInvoices.length };
+      return { success: true, deletedOrder: order, deletedInvoiceIds: linkedInvoices.map((inv) => inv.id) };
     },
     getByCustomer: (customerId: number) => orders.filter((o) => o.customerId == customerId),
     getBySalesRep: (salesRepName: string) => orders.filter((o) => o.salesRepName === salesRepName),

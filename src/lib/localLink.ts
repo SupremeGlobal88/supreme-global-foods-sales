@@ -20,17 +20,11 @@ import {
   isFirebaseReady, readFromFirebase, mergeWithCloudData, isAutoSyncInitialized,
 } from "./firebaseSync";
 
-/** CLOUD-FIRST SYNC: Read latest data from Firebase, MERGE with local, save, reload.
- *  EVERY query handler awaits this to ensure users see LIVE cloud data FIRST.
- *  This is the golden rule: cloud-first always. */
+/** CLOUD-FIRST SYNC: Read latest data from Firebase, MERGE with local, save, reload. */
 const lastSyncTimes: Record<string, number> = {};
-const SYNC_COOLDOWN_MS = 1000; // 1 second cooldown between explicit syncs
+const SYNC_COOLDOWN_MS = 1000;
 
-/** Smart sync: ALWAYS await Firebase read. This is cloud-first.
- *  We wait for Firebase data to arrive before returning ANY data to the UI.
- *  If Firebase is not ready, we fall back to localStorage immediately. */
 async function smartSync(type: string, storageKey: string): Promise<void> {
-  // ALWAYS wait for cloud data. Fire-and-forget was causing empty pages.
   await syncFromCloud(type, storageKey);
 }
 
@@ -41,7 +35,6 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     return;
   }
 
-  // Rate limit: don't sync same type more than every 1 second
   const now = Date.now();
   const lastSync = lastSyncTimes[type] || 0;
   if (now - lastSync < SYNC_COOLDOWN_MS) {
@@ -56,19 +49,32 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     const cloudData = await readFromFirebase(type);
     console.log("[syncFromCloud] Firebase returned", cloudData.length, type);
 
-    // Re-read localStorage AFTER readFromFirebase returns (subscriptions may have updated it)
     const currentLocal = JSON.parse(getStorageItem(storageKey) || "[]");
     const before = currentLocal.length;
 
-    // SAFETY: If Firebase returned 0 items but localStorage already has data,
-    // this is likely a timeout — DON'T overwrite local data.
     if (cloudData.length === 0 && before > 0) {
       console.warn(`[syncFromCloud] SAFETY: Firebase returned 0 ${type} but local has ${before} items. Skipping overwrite.`);
       reloadFromStorage([storageKey]);
       return;
     }
 
-    const merged = mergeWithCloudData(storageKey, cloudData);
+    let merged = mergeWithCloudData(storageKey, cloudData);
+
+    // SAFETY: Ensure we don't lose recently created local items during sync.
+    // This prevents race conditions where Firebase hasn't received a push yet.
+    if (storageKey === "sgf_orders" || storageKey === "sgf_invoices") {
+      const mergedIds = new Set(merged.map((item: any) => item.id));
+      const missingLocal = currentLocal.filter((item: any) => {
+        if (mergedIds.has(item.id)) return false;
+        const createdAt = new Date(item.createdAt || 0).getTime();
+        return now - createdAt < 60000; // within last 60 seconds
+      });
+      if (missingLocal.length > 0) {
+        console.warn(`[syncFromCloud] SAFETY: Adding ${missingLocal.length} recently created local ${type} items missing from merged result`);
+        merged.push(...missingLocal);
+      }
+    }
+
     const after = merged.length;
     setStorageItem(storageKey, JSON.stringify(merged));
     reloadFromStorage([storageKey]);
@@ -80,12 +86,10 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
     }
   } catch (e: any) {
     console.error("[syncFromCloud] FAILED for", type, ":", e.message || e);
-    // On error, still reload from localStorage so we show cached data
     reloadFromStorage([storageKey]);
   }
 }
 
-/** Push data to Firebase after local write. */
 async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "customer" | "user" | "userDeleted", item: any) {
   try {
     switch (type) {

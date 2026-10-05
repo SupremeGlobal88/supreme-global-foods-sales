@@ -357,12 +357,12 @@ export default function OrdersPage() {
       setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
       // Background sync — don't block the UI
       reloadFromStorage();
-      utils.order.list.invalidate();
-      utils.order.getStats.invalidate();
-      utils.stock.search.invalidate();
-      utils.stock.list.invalidate();
-      utils.stock.getStats.invalidate();
-      utils.sampleReport.getAll.invalidate();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
       alert("Failed to place order: " + (err.message || "Unknown error. Please check console for details."));
@@ -377,12 +377,12 @@ export default function OrdersPage() {
     onSuccess: async () => {
       setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
       reloadFromStorage();
-      utils.order.list.invalidate();
-      utils.order.getStats.invalidate();
-      utils.stock.search.invalidate();
-      utils.stock.list.invalidate();
-      utils.stock.getStats.invalidate();
-      utils.sampleReport.getAll.invalidate();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
       alert("Update failed: " + (err.message || "Unknown error"));
@@ -392,1065 +392,943 @@ export default function OrdersPage() {
     },
   });
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
-    onSuccess: async (data) => {
+    onSuccess: async () => {
       reloadFromStorage();
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
-      await utils.invoice.list.invalidate();
-      if (data?.order) {
-        alert(`Quote converted to order ${data.order.orderNumber} successfully!`);
-      }
+      await utils.sampleReport.getAll.invalidate();
     },
-    onError: (err: any) => {
-      alert("Failed to convert quote: " + (err.message || "Unknown error"));
+  });
+  const deleteOrder = trpc.order.delete.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
+    },
+  });
+  const cancelOrder = trpc.order.cancel.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
+    },
+  });
+  const sendQuote = trpc.order.sendQuote.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
     },
   });
 
-  // Build committed stock map: for each product, total qty in non-delivered/cancelled orders
-  const committedStock = useMemo(() => {
-    const map: Record<number, number> = {};
-    (orders || [])
-      .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
-      .flatMap((o) => o.items || [])
-      .forEach((item: any) => { map[item.stockItemId] = (map[item.stockItemId] || 0) + (item.quantity || 0); });
-    return map;
-  }, [orders]);
+  const handlePrint = (order: any) => {
+    const customer = (customers || []).find((c: any) => c.id === order.customerId);
+    const invoice = (invoices || []).find((i: any) => i.orderId === order.id);
 
-  // Available = current SOH (stock already deducted at order creation).
-  // Stock is physically deducted in order.create and stays deducted through
-  // the entire lifecycle. Only cancelled orders restore stock.
-  // committedStock is used for display/info only, NOT for availability calc.
-  const availableStock = useMemo(() => {
-    const map: Record<number, number> = {};
-    (stockItems || []).forEach((s) => {
-      map[s.id] = s.quantity || 0;
-    });
-    return map;
-  }, [stockItems]);
+    // Get logo from localStorage or use default
+    const logoDataUrl = localStorage.getItem("sgf_logo");
+    const logoHtml = logoDataUrl
+      ? `<img src="${logoDataUrl}" style="max-height:90px;max-width:220px;object-fit:contain;" />`
+      : `<div style="font-size:28px;font-weight:bold;color:#D4A843;">SUPREME GLOBAL FOODS</div>`;
 
-  // For each product, get the active order statuses consuming that stock
-  const productOrderStatuses = useMemo(() => {
-    const map: Record<number, Array<{ orderNumber: string; status: string; qty: number }>> = {};
-    (orders || [])
-      .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
-      .forEach((o) => {
-        (o.items || []).forEach((item: any) => {
-          if (!map[item.stockItemId]) map[item.stockItemId] = [];
-          map[item.stockItemId].push({ orderNumber: o.orderNumber, status: o.status, qty: item.quantity });
-        });
-      });
-    return map;
-  }, [orders]);
+    const orderItems = (order.items || [])
+      .map((it: any) => {
+        const product = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+        return `<tr>
+          <td style="padding:8px;border:1px solid #ddd;">${product?.productName || it.productName || "Unknown"}</td>
+          <td style="padding:8px;border:1px solid #ddd;text-align:center;">${it.quantity}</td>
+          <td style="padding:8px;border:1px solid #ddd;text-align:right;">R ${(it.unitPrice || 0).toFixed(2)}</td>
+          <td style="padding:8px;border:1px solid #ddd;text-align:right;">R ${((it.unitPrice || 0) * it.quantity).toFixed(2)}</td>
+        </tr>`;
+      })
+      .join("");
 
-  function resetForm() {
-    setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
-    setCustomerSearch("");
-    setShowCustomerDropdown(false);
-    setAdminOverride(false);
-    setAdminPin("");
-  }
+    const subtotal = (order.items || []).reduce((sum: number, it: any) => sum + (it.unitPrice || 0) * it.quantity, 0);
+    const vat = subtotal * 0.15;
+    const total = subtotal + vat;
 
-  function getTierPrice(stockItemId: number | string, tier?: string): number {
-    const stock = (stockItems || []).find((s) => String(s.id) === String(stockItemId));
-    if (!stock) return 0;
-    // Sample orders ALWAYS use corporate price tier regardless of formData.priceTier
-    const effectiveTier = formData.orderType === "sample" ? "corporate" : (tier || formData.priceTier);
-    let rawPrice: number;
-    switch (effectiveTier) {
-      case "corporate": rawPrice = Number(stock.corporatePrice); break;
-      case "bulk": rawPrice = Number(stock.bulkPrice); break;
-      case "retail": rawPrice = Number(stock.retailPrice); break;
-      default: rawPrice = Number(stock.wholesalePrice); break;
-    }
-    // If loaded price is 0 or missing, fall back to STATIC_PRODUCTS (source of truth)
-    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
-      let staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode || (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim()));
-      // Renamed-format fallback: productCode may hold the static name (e.g. "20 MEGA LONG VALUE")
-      // with color appended to productName (e.g. "MEGA LONG VALUE Brown")
-      if (!staticProd && stock.productCode) {
-        const codeNorm = String(stock.productCode).toLowerCase().trim().replace(/\s+/g, " ");
-        const colorNorm = String(stock.color || "").toLowerCase().trim();
-        staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) =>
-          String(p.productName || "").toLowerCase().trim().replace(/\s+/g, " ") === codeNorm &&
-          (!colorNorm || String(p.color || "").toLowerCase().trim() === colorNorm)
-        );
-      }
-      if (staticProd) {
-        switch (effectiveTier) {
-          case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
-          case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
-          case "retail": rawPrice = Number(staticProd.retailPrice); break;
-          default: rawPrice = Number(staticProd.wholesalePrice); break;
-        }
-      }
-    }
-    return rawPrice;
-  }
-
-  function getEffectivePrice(stockItemId: number | string, customPrice?: number): number {
-    if (customPrice && customPrice > 0) return customPrice;
-    // Sample orders must ALWAYS use corporate price — never special/customer prices
-    if (formData.orderType === "sample") {
-      return getTierPrice(stockItemId);
-    }
-    const sp = (customerSpecialPrices || []).find((p: any) => String(p.stockItemId) === String(stockItemId));
-    if (sp) return Number(sp.specialPrice);
-    return getTierPrice(stockItemId);
-  }
-
-  function handleCustomerSelect(cid: number | string) {
-    const customer = (customers || []).find((c) => String(c.id) === String(cid));
-    setFormData({ ...formData, customerId: Number(cid) || 0,
-      priceTier: (customer?.priceTier as any) || "wholesale",
-      paymentTerms: (customer?.paymentTerms as any) || "cod",
-      deliveryAddress: customer?.physicalAddress || "",
-      // Only clear items when creating a NEW order — preserve items when editing
-      items: editingOrder ? formData.items : [],
-    });
-    setCustomerSearch(customer?.name || "");
-    setShowCustomerDropdown(false);
-  }
-
-  function handleOpenCustomerDropdown() {
-    setShowCustomerDropdown(true);
-    setCustomerSearch("");
-    setTimeout(() => customerInputRef.current?.focus(), 50);
-  }
-
-  const filteredCustomers = useMemo(() => {
-    const list = (customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
-    if (!showCustomerDropdown) return [];
-    const q = customerSearch.toLowerCase().trim();
-    if (!q || q.length < 1) return list;
-    return list.filter((c) =>
-      c.name?.toLowerCase().includes(q) ||
-      c.customerCode?.toLowerCase().includes(q) ||
-      c.city?.toLowerCase().includes(q)
-    );
-  }, [customers, customerSearch, showCustomerDropdown]);
-
-  function handleAddItem() { setFormData({ ...formData, items: [...formData.items, { stockItemId: 0, quantity: 1 }] }); }
-  function handleRemoveItem(index: number) { setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) }); }
-
-  const handleUpdateItem = (index: number, field: string, value: number | string) => {
-    setFormData((prev) => {
-      const updated = [...prev.items];
-      updated[index] = { ...updated[index], [field]: value };
-      if (field === "stockItemId" && Number(value) > 0) {
-        const product = (stockItems || []).find((s) => String(s.id) === String(value));
-        const units = product?.sellingUnits || [];
-        if (units.length > 0) {
-          updated[index].unit = units[0].unit;
-          updated[index].conversion = units[0].conversion;
-          updated[index].unitLabel = units[0].label;
-        } else {
-          updated[index].unit = "each";
-          updated[index].conversion = 1;
-          updated[index].unitLabel = "Each";
-        }
-        if (prev.orderType === "sample" && !sampleOverrideRef.current) updated[index].quantity = 1;
-      }
-      if (prev.orderType === "sample" && field === "quantity" && Number(value) > 1 && !sampleOverrideRef.current) {
-        updated[index].quantity = 1;
-      }
-      return { ...prev, items: updated };
-    });
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Order #${order.orderNumber}</title></head>
+      <body style="font-family:Arial,sans-serif;padding:40px;max-width:800px;margin:0 auto;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;">
+          <div>${logoHtml}</div>
+          <div style="text-align:right;">
+            <div style="font-size:22px;font-weight:bold;">ORDER</div>
+            <div style="color:#666;">${order.orderNumber}</div>
+            <div style="color:#666;font-size:12px;margin-top:4px;">${new Date(order.createdAt).toLocaleDateString()}</div>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <strong>Customer:</strong> ${customer?.name || order.customerName || "Unknown"}<br/>
+          <strong>Delivery:</strong> ${order.deliveryAddress || customer?.deliveryAddress || "N/A"}<br/>
+          <strong>Payment Terms:</strong> ${order.paymentTerms || "N/A"}
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px;">
+          <thead><tr style="background:#f5f5f5;"><th style="padding:8px;border:1px solid #ddd;text-align:left;">Product</th><th style="padding:8px;border:1px solid #ddd;">Qty</th><th style="padding:8px;border:1px solid #ddd;text-align:right;">Unit Price</th><th style="padding:8px;border:1px solid #ddd;text-align:right;">Total</th></tr></thead>
+          <tbody>${orderItems}</tbody>
+        </table>
+        <div style="text-align:right;margin-bottom:6px;"><strong>Subtotal:</strong> R ${subtotal.toFixed(2)}</div>
+        <div style="text-align:right;margin-bottom:6px;"><strong>VAT (15%):</strong> R ${vat.toFixed(2)}</div>
+        <div style="text-align:right;font-size:18px;font-weight:bold;"><strong>Total:</strong> R ${total.toFixed(2)}</div>
+        ${invoice ? `<div style="margin-top:20px;padding:10px;background:#f9f9f9;border-left:4px solid #D4A843;"><strong>Invoice:</strong> ${invoice.invoiceNumber} | Status: ${invoice.status}</div>` : ""}
+        <div style="margin-top:30px;padding-top:20px;border-top:2px solid #eee;text-align:center;color:#999;font-size:12px;">
+          ${staticData.companyInfo.name} | ${staticData.companyInfo.phone} | ${staticData.companyInfo.email}
+        </div>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
   };
 
-  function canEditOrderBasic(): { valid: boolean; error?: string } {
-    // Basic validation for admin editing existing orders — no stock check
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
-    if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
-    return { valid: true };
-  }
+  const handlePrintPickingList = (order: any) => {
+    const win = window.open("", "_blank");
+    if (!win) return;
 
-  function canPlaceOrder(): { valid: boolean; error?: string } {
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
-    if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
-    // Quotes don't deduct stock — skip stock validation
-    if (formData.orderType === "quote") return { valid: true };
-    for (const item of validItems) {
-      const stockId = Number(item.stockItemId);
-      const avail = availableStock[stockId] || 0;
-      const conversion = item.conversion || 1;
-      const requestedQty = Number(item.quantity) * conversion;
-      if (avail <= 0) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
-      if (formData.orderType === "sample") {
-        // When editing, exclude the current order from the duplicate check
-        const existing = (orders || []).some((o) => 
-          o.id !== editingOrder?.id && // Exclude the order being edited
-          Number(o.customerId) === Number(formData.customerId) && 
-          o.orderType === "sample" && 
-          o.items?.some((it: any) => Number(it.stockItemId) === stockId)
-        );
-        if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        if (Number(item.quantity) > 1 && !sampleOverrideRef.current) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
-      } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
+    const items = (order.items || [])
+      .map((it: any, idx: number) => {
+        const product = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+        return `
+          <tr>
+            <td style="padding:10px;border:1px solid #333;text-align:center;">${idx + 1}</td>
+            <td style="padding:10px;border:1px solid #333;">${product?.productCode || "N/A"}</td>
+            <td style="padding:10px;border:1px solid #333;">${product?.productName || it.productName || "Unknown"}</td>
+            <td style="padding:10px;border:1px solid #333;text-align:center;font-weight:bold;font-size:16px;">${it.quantity}</td>
+            <td style="padding:10px;border:1px solid #333;text-align:center;"><div style="width:24px;height:24px;border:2px solid #333;margin:0 auto;"></div></td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    win.document.write(`
+      <html><head><title>Picking List - ${order.orderNumber}</title></head>
+      <body style="font-family:Arial,sans-serif;padding:20px;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="font-size:24px;font-weight:bold;">PICKING LIST</div>
+          <div style="font-size:18px;color:#666;margin-top:5px;">${order.orderNumber}</div>
+        </div>
+        <div style="margin-bottom:15px;font-size:14px;">
+          <strong>Route:</strong> ${order.route || "N/A"}<br/>
+          <strong>Delivery:</strong> ${order.deliveryAddress || "N/A"}
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <thead>
+            <tr style="background:#f5f5f5;">
+              <th style="padding:10px;border:1px solid #333;width:50px;">#</th>
+              <th style="padding:10px;border:1px solid #333;width:120px;">Code</th>
+              <th style="padding:10px;border:1px solid #333;">Product</th>
+              <th style="padding:10px;border:1px solid #333;width:80px;">Qty</th>
+              <th style="padding:10px;border:1px solid #333;width:60px;">✓</th>
+            </tr>
+          </thead>
+          <tbody>${items}</tbody>
+        </table>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  };
+
+  const handlePrintDeliveryNote = (order: any) => {
+    const customer = (customers || []).find((c: any) => c.id === order.customerId);
+    const invoice = (invoices || []).find((i: any) => i.orderId === order.id);
+    const logoDataUrl = localStorage.getItem("sgf_logo");
+    const logoHtml = logoDataUrl
+      ? `<img src="${logoDataUrl}" style="max-height:70px;max-width:180px;object-fit:contain;" />`
+      : `<div style="font-size:20px;font-weight:bold;color:#D4A843;">SUPREME GLOBAL FOODS</div>`;
+
+    const items = (order.items || [])
+      .map((it: any) => {
+        const product = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+        return `
+          <tr>
+            <td style="padding:8px;border:1px solid #ddd;">${product?.productName || it.productName || "Unknown"}</td>
+            <td style="padding:8px;border:1px solid #ddd;text-align:center;">${it.quantity}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Delivery Note - ${order.orderNumber}</title></head>
+      <body style="font-family:Arial,sans-serif;padding:30px;max-width:700px;margin:0 auto;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+          <div>${logoHtml}</div>
+          <div style="text-align:right;">
+            <div style="font-size:18px;font-weight:bold;">DELIVERY NOTE</div>
+            <div style="color:#666;">${order.orderNumber}</div>
+          </div>
+        </div>
+        <div style="margin-bottom:15px;font-size:14px;">
+          <strong>Customer:</strong> ${customer?.name || order.customerName || "Unknown"}<br/>
+          <strong>Address:</strong> ${order.deliveryAddress || customer?.deliveryAddress || "N/A"}
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px;">
+          <thead><tr style="background:#f5f5f5;"><th style="padding:8px;border:1px solid #ddd;text-align:left;">Product</th><th style="padding:8px;border:1px solid #ddd;width:80px;">Qty</th></tr></thead>
+          <tbody>${items}</tbody>
+        </table>
+        <div style="margin-top:30px;display:flex;justify-content:space-between;font-size:13px;">
+          <div><strong>Delivered By:</strong> _________________</div>
+          <div><strong>Date:</strong> _________________</div>
+          <div><strong>Customer Signature:</strong> _________________</div>
+        </div>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  };
+
+  // ---- email helpers ----
+  const getEmailSubject = (order: any, type: "quote" | "invoice" | "statement") => {
+    switch (type) {
+      case "quote": return `Quote ${order.orderNumber} — ${staticData.companyInfo.name}`;
+      case "invoice": return `Invoice for Order ${order.orderNumber}`;
+      case "statement": return `Statement — ${staticData.companyInfo.name}`;
+      default: return `Order ${order.orderNumber}`;
+    }
+  };
+
+  const getEmailBody = (order: any, type: "quote" | "invoice" | "statement") => {
+    const customer = (customers || []).find((c: any) => c.id === order.customerId);
+    const cName = customer?.name || order.customerName || "Valued Customer";
+    const itemsList = (order.items || [])
+      .map((it: any) => {
+        const product = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+        return `• ${product?.productName || it.productName || "Unknown"} × ${it.quantity} @ R${(it.unitPrice || 0).toFixed(2)} = R${((it.unitPrice || 0) * it.quantity).toFixed(2)}`;
+      })
+      .join("%0D%0A");
+    const subtotal = (order.items || []).reduce((sum: number, it: any) => sum + (it.unitPrice || 0) * it.quantity, 0);
+    const total = subtotal * 1.15;
+
+    switch (type) {
+      case "quote":
+        return `Dear ${cName},%0D%0A%0D%0AThank you for your interest. Please find your quote below:%0D%0A%0D%0AQuote: ${order.orderNumber}%0D%0A${itemsList}%0D%0A%0D%0ASubtotal: R${subtotal.toFixed(2)}%0D%0AVAT (15%): R${(subtotal * 0.15).toFixed(2)}%0D%0ATotal: R${total.toFixed(2)}%0D%0A%0D%0APlease reply to accept this quote.%0D%0A%0D%0ABest regards,%0D%0A${staticData.companyInfo.name}`;
+      case "invoice":
+        return `Dear ${cName},%0D%0A%0D%0APlease find your invoice details for order ${order.orderNumber}:%0D%0A%0D%0A${itemsList}%0D%0A%0D%0ATotal: R${total.toFixed(2)}%0D%0A%0D%0APayment terms: ${order.paymentTerms || "N/A"}%0D%0A%0D%0ABanking Details:%0D%0A${banking?.bankName || "N/A"}%0D%0AAccount: ${banking?.accountNumber || "N/A"}%0D%0ABranch: ${banking?.branchCode || "N/A"}%0D%0A%0D%0ABest regards,%0D%0A${staticData.companyInfo.name}`;
+      case "statement":
+        return `Dear ${cName},%0D%0A%0D%0APlease find your statement attached.%0D%0A%0D%0ABest regards,%0D%0A${staticData.companyInfo.name}`;
+      default:
+        return "";
+    }
+  };
+  // ---- /email helpers ----
+
+  // ---------- helpers for OrderForm ----------
+  const resetForm = () => {
+    setFormData({
+      customerId: 0, orderType: "regular",
+      paymentTerms: "cod", priceTier: "wholesale",
+      deliveryAddress: "", notes: "", items: [],
+    });
+    setCustomerSearch("");
+    setAdminOverride(false);
+    setAdminPin("");
+  };
+
+  const handleAddItem = () => {
+    setFormData({ ...formData, items: [...formData.items, { stockItemId: 0, quantity: 1 }] });
+  };
+
+  const handleUpdateItem = (index: number, field: string, value: any) => {
+    const updated = [...formData.items];
+    updated[index] = { ...updated[index], [field]: value };
+
+    // Auto-populate unitPrice from tier if not already set
+    if (field === "stockItemId" || field === "unit") {
+      const product = (stockItems || []).find((s: any) => s.id === (field === "stockItemId" ? value : updated[index].stockItemId));
+      if (product && !updated[index].unitPrice) {
+        const conversion = updated[index].conversion || 1;
+        const tierPrice = (() => {
+          switch (formData.priceTier) {
+            case "corporate": return Number(product.corporatePrice || 0);
+            case "bulk": return Number(product.bulkPrice || 0);
+            case "wholesale": return Number(product.wholesalePrice || 0);
+            case "retail": return Number(product.retailPrice || 0);
+            default: return Number(product.wholesalePrice || 0);
+          }
+        })();
+        // Check for special price
+        const special = (customerSpecialPrices || []).find((sp: any) => String(sp.stockItemId) === String(product.id));
+        if (special) {
+          updated[index].unitPrice = Number(special.price || 0) * conversion;
+        } else {
+          updated[index].unitPrice = tierPrice * conversion;
+        }
+      }
+      // Set default unit/conversion if not set
+      if (field === "stockItemId" && product?.sellingUnits?.length > 0 && !updated[index].unit) {
+        updated[index].unit = product.sellingUnits[0].unit;
+        updated[index].conversion = product.sellingUnits[0].conversion;
+        updated[index].unitLabel = product.sellingUnits[0].label;
+      }
     }
 
-    // ZERO AMOUNT VALIDATION: Calculate running total — reject if R0
-    if (formData.orderType !== "sample" && formData.orderType !== "quote") {
-      let runningSubtotal = 0;
-      for (const item of validItems) {
-        const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-        const conversion = item.conversion || 1;
-        const basePrice = getEffectivePrice(item.stockItemId);
-        const unitPrice = item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion;
-        runningSubtotal += unitPrice * item.quantity;
-      }
-      const runningTotal = runningSubtotal * 1.15;
-      if (runningTotal <= 0) {
-        return { valid: false, error: "Order total is R0.00. Please enter a valid unit price for each item before placing the order." };
-      }
+    setFormData({ ...formData, items: updated });
+  };
 
-      // BELOW-CORPORATE VALIDATION: Check custom prices against corporate floor
-      const belowItems: string[] = [];
+  const handleRemoveItem = (index: number) => {
+    setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) });
+  };
+
+  const getTierPrice = (stockItemId: number) => {
+    const product = (stockItems || []).find((s: any) => s.id === stockItemId);
+    if (!product) return 0;
+    switch (formData.priceTier) {
+      case "corporate": return Number(product.corporatePrice || 0);
+      case "bulk": return Number(product.bulkPrice || 0);
+      case "wholesale": return Number(product.wholesalePrice || 0);
+      case "retail": return Number(product.retailPrice || 0);
+      default: return Number(product.wholesalePrice || 0);
+    }
+  };
+
+  const getEffectivePrice = (stockItemId: number, customPrice?: number) => {
+    if (customPrice && customPrice > 0) return customPrice;
+    const special = (customerSpecialPrices || []).find((sp: any) => String(sp.stockItemId) === String(stockItemId));
+    if (special) return Number(special.price || 0);
+    return getTierPrice(stockItemId);
+  };
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customers || [];
+    const q = customerSearch.toLowerCase();
+    return (customers || []).filter((c: any) =>
+      c.name?.toLowerCase().includes(q) ||
+      c.contactPerson?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.phone?.includes(q)
+    );
+  }, [customers, customerSearch]);
+
+  const selectedCustomer = (customers || []).find((c: any) => c.id === formData.customerId);
+
+  // Calculate available stock = current SOH minus qty committed by in-progress orders
+  const availableStock = useMemo(() => {
+    const avail: Record<number, number> = {};
+    for (const s of stockItems || []) {
+      avail[s.id] = Number(s.quantity || 0);
+    }
+    for (const o of orders || []) {
+      if (["pending", "picking", "ready", "sample_delivered"].includes(o.status)) {
+        for (const it of o.items || []) {
+          const sid = Number(it.stockItemId);
+          if (avail[sid] !== undefined) {
+            avail[sid] -= Number(it.quantity || 0);
+          }
+        }
+      }
+    }
+    return avail;
+  }, [stockItems, orders]);
+
+  // Map of product ID → in-progress order references
+  const productOrderStatuses = useMemo(() => {
+    const map: Record<number, { orderNumber: string; qty: number; status: string }[]> = {};
+    for (const o of orders || []) {
+      if (["pending", "picking", "ready"].includes(o.status)) {
+        for (const it of o.items || []) {
+          const sid = Number(it.stockItemId);
+          if (!map[sid]) map[sid] = [];
+          map[sid].push({ orderNumber: o.orderNumber, qty: it.quantity, status: o.status });
+        }
+      }
+    }
+    return map;
+  }, [orders]);
+
+  // Stock validation
+  const orderCheck = useMemo(() => {
+    if (formData.items.length === 0) return { valid: false, error: "Add at least one item" };
+    if (!formData.customerId) return { valid: false, error: "Select a customer" };
+    // For sample orders: always valid quantity-wise
+    if (formData.orderType === "sample") return { valid: true, error: "" };
+    // Check stock
+    for (const item of formData.items) {
+      const stockId = Number(item.stockItemId);
+      const qty = Number(item.quantity || 0);
+      const conversion = Number(item.conversion || 1);
+      const sohNeeded = qty * conversion;
+      const avail = availableStock[stockId] || 0;
+      // Allow admin edit without stock check
+      if (editingOrder && isAdmin) continue;
+      if (avail < sohNeeded) {
+        const product = (stockItems || []).find((s: any) => s.id === stockId);
+        return {
+          valid: false,
+          error: `Insufficient stock for "${product?.productName || "Unknown"}" (need ${sohNeeded} kg, have ${avail} kg)`,
+        };
+      }
+    }
+    // Check admin PIN for below-corporate pricing
+    if (formData.orderType !== "sample" && formData.orderType !== "quote" && isAdmin) {
+      const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
+      let hasBelowCorporate = false;
       for (const item of validItems) {
-        // Only check items where a custom price was explicitly entered (> 0)
         if (item.unitPrice && item.unitPrice > 0) {
           const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
           if (stock) {
             const conversion = item.conversion || 1;
             const corporateFloor = Number(stock.corporatePrice || 0) * conversion;
             if (corporateFloor > 0 && item.unitPrice < corporateFloor * 0.99) {
-              belowItems.push(`${stock.productName}: R${item.unitPrice.toFixed(2)} (floor R${corporateFloor.toFixed(2)})`);
+              hasBelowCorporate = true;
+              break;
             }
           }
         }
       }
-      if (belowItems.length > 0 && !isAdmin && !adminOverride) {
-        return { valid: false, error: `PRICE BELOW CORPORATE FLOOR:\n${belowItems.join("\n")}\n\nSuper admin approval required.` };
-      }
-  // Admin has checked override — must enter correct PIN
-      if (belowItems.length > 0 && adminOverride) {
-        if (!adminPin || adminPin.trim().length === 0) {
-          return { valid: false, error: "Please enter your admin PIN to approve below-corporate pricing." };
-        }
-        // Resolve PIN from multiple sources (cloud-first: Firebase may not have pin field synced)
-        let effectivePin = "";
-        // 1. Hardcoded defaults (most reliable — survives any data corruption)
-        const DEFAULT_USERS = [
-          { id: 1, name: "Collin", pin: "2580" },
-          { id: 2, name: "Adeli", pin: "1111" },
-          { id: 3, name: "Inhouse", pin: "2222" },
-          { id: 4, name: "Michael", pin: "3333" },
-          { id: 5, name: "Nkosana", pin: "4444" },
-          { id: 6, name: "Tebogo Bila", pin: "6666" },
-          { id: 7, name: "Aggie", pin: "1018" },
-          { id: 8, name: "Ronald", pin: "2581" },
-          { id: 9, name: "Jolene", pin: "7777" },
-          { id: 10, name: "David", pin: "8888" },
-        ];
-        const defaultUser = DEFAULT_USERS.find((u) =>
-          u.id === user?.id ||
-          (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
-        );
-        if (defaultUser) effectivePin = defaultUser.pin;
-        // 2. Direct localStorage read (bypasses React state / tRPC cache)
-        if (!effectivePin) {
-          try {
-            const demoStr = localStorage.getItem("demo_user");
-            if (demoStr) {
-              const demo = JSON.parse(demoStr);
-              if (demo.pin != null) effectivePin = String(demo.pin);
-            }
-          } catch { /* ignore */ }
-        }
-        // 3. sgf_users in localStorage (Firebase-synced users)
-        if (!effectivePin) {
-          try {
-            const rawUsers = localStorage.getItem("sgf_users");
-            if (rawUsers) {
-              const allUsers = JSON.parse(rawUsers);
-              const dbUser = allUsers.find((u: any) =>
-                u.id === user?.id ||
-                (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
-              );
-              if (dbUser?.pin != null) effectivePin = String(dbUser.pin);
-            }
-          } catch { /* ignore */ }
-        }
-        if (adminPin !== effectivePin) {
-          return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve below-corporate pricing." };
-        }
+      if (hasBelowCorporate && (!adminOverride || !adminPin)) {
+        return { valid: false, error: "Admin approval required for below-corporate pricing. Check the approval box and enter your PIN." };
       }
     }
+    return { valid: true, error: "" };
+  }, [formData, availableStock, stockItems, editingOrder, isAdmin, adminOverride, adminPin]);
 
-    return { valid: true };
-  }
+  // ---------- /helpers ----------
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // When editing ANY order, use basic validation (no stock check, no duplicate checks)
-    // Stock was already deducted when order was created; we're just updating details
-    const check = editingOrder ? canEditOrderBasic() : canPlaceOrder();
-    if (!check.valid) { alert(check.error); return; }
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    // CRITICAL FIX: Coerce IDs to numbers because Firebase returns them as strings.
-    // tRPC Zod schema expects numbers; without coercion, client-side validation
-    // fails silently (no onError), making the Place Order button appear to do nothing.
-    const payload: any = {
-      customerId: Number(formData.customerId) || 0,
-      orderType: formData.orderType,
-      paymentTerms: formData.paymentTerms,
-      priceTier: formData.priceTier,
-      deliveryAddress: formData.deliveryAddress,
-      notes: formData.notes,
-      items: validItems.map((item) => ({
-        stockItemId: Number(item.stockItemId) || 0,
-        quantity: formData.orderType === "sample" && !sampleOverrideRef.current ? 1 : Number(item.quantity) || 0,
-        unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined),
-        unit: item.unit || "each",
-        conversion: item.conversion || 1,
-        unitLabel: item.unitLabel || "Each"
-      }))
-    };
-    // Only set salesRepName on NEW orders. On edit, preserve original.
-    if (!editingOrder) {
-      payload.salesRepName = user?.name || "";
-      // Pass admin override flag for below-corporate pricing approval
-      if (adminOverride) {
-        payload.adminApproved = true;
-      }
-    }
-    if (editingOrder) {
-      updateOrder.mutate({ id: editingOrder.id, data: payload });
-    } else {
-      createOrder.mutate(payload);
-    }
-  }
+  // Status update handlers
+  const handleStatusUpdate = (orderId: number, newStatus: string) => {
+    updateStatus.mutate({ id: orderId, status: newStatus });
+  };
 
-  function startEditOrder(order: any) {
-    setEditingOrder(order);
-    sampleOverrideRef.current = order?.orderType === "sample" && user?.role === "super_admin";
-    setAdminOverride(false);
-    setAdminPin("");
-    setFormData({
-      customerId: order.customerId, orderType: order.orderType || "regular",
-      paymentTerms: order.paymentTerms || "cod", priceTier: order.priceTier || "wholesale",
-      deliveryAddress: order.deliveryAddress || "", notes: order.notes || "",
-      items: (order.items || []).map((it: any) => ({ stockItemId: it.stockItemId, quantity: it.quantity, unitPrice: it.unitPrice, unit: it.unit || "each", conversion: it.conversion || 1, unitLabel: it.unitLabel || "Each" })),
-    });
-    // Pre-fill customer search with existing customer name so field is not blank
-    const cust = (customers || []).find((c: any) => c.id === order.customerId);
-    setCustomerSearch(cust?.name || "");
-    setShowForm(true);
-  }
+  const handleConvertQuote = (orderId: number) => {
+    if (!confirm("Convert this quote to an order?")) return;
+    convertQuoteToOrder.mutate({ id: orderId });
+  };
 
-  function canEditOrder(order: any): boolean {
-    // ONLY ADMIN can edit orders (admin or super_admin).
-    // Sales reps can NO LONGER edit their own orders — they must contact admin.
-    // Quotes: only admin can edit while in draft or sent status.
-    if (order.orderType === "quote") {
-      if (order.status === "converted" || order.status === "rejected") return false;
-      return isAdmin;
-    }
-    // Admin can edit ANY order (including delivered/cancelled/sample_delivered)
-    return isAdmin;
-  }
+  const handleDeleteOrder = (orderId: number) => {
+    if (!confirm("Delete this order permanently?")) return;
+    deleteOrder.mutate({ id: orderId });
+  };
 
-  function canCancelOrder(order: any): boolean {
-    // ONLY ADMIN can cancel orders.
-    // Sales reps can NO LONGER cancel orders — they must contact admin.
-    // Quotes: only admin can reject while in draft or sent status.
-    if (order.orderType === "quote") {
-      if (order.status === "converted" || order.status === "rejected") return false;
-      return isAdmin;
-    }
-    // Admin can cancel ANY non-cancelled order
-    return isAdmin && order.status !== "cancelled";
-  }
+  const handleCancelOrder = (orderId: number) => {
+    if (!confirm("Cancel this order? Stock will be released.")) return;
+    cancelOrder.mutate({ id: orderId });
+  };
 
-  function canProgressOrder(order: any): boolean {
-    // Quotes don't use the normal order status flow
-    if (order.orderType === "quote") return false;
-    // ONLY ADMIN can click status buttons (Mark Picking / Mark Ready / Mark Delivered)
-    if (!isAdmin) return false;
-    if (order.status === "delivered" || order.status === "cancelled") return false;
-    return true;
-  }
+  const handleSendQuote = (orderId: number) => {
+    if (!confirm("Send this quote to the customer via email?")) return;
+    sendQuote.mutate({ id: orderId });
+  };
 
-  function getCustomer(order: any) {
-    return (customers || []).find((c) => c.id === order.customerId);
-  }
-
-  function printPickingSlip(order: any) {
-    const customer = getCustomer(order);
-    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
-    const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-<html><head><title>Picking Slip - ${order.orderNumber}</title>
-<style>
-  @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo-img { height: 55px; margin-bottom: 4px; }
-  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
-  .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
-  .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
-  .inv-num { color: #D4A843; font-size: 16px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-  th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
-  .badge-sample { background: #FFF3E0; color: #E65100; }
-  .footer { margin-top: 40px; border-top: 2px solid #D4A843; padding-top: 20px; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
-  .sig-line { border-bottom: 1px solid #333; height: 40px; margin-top: 8px; }
-  .sig-label { font-size: 11px; color: #666; margin-top: 6px; }
-</style></head><body>
-  <div class="header">
-    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
-    <div class="subtitle">Tel: 083 293 0644</div>
-  </div>
-  <div class="doc-title">FACTORY PICKING SLIP</div>
-  <div style="text-align:center;margin-bottom:15px;">
-    <span class="badge ${order.orderType === "sample" ? "badge-sample" : ""}">${order.orderType === "sample" ? "SAMPLE ORDER — NO CHARGE" : `PRICE TIER: ${(order.priceTier || "WHOLESALE").toUpperCase()}`}</span>
-  </div>
-  <div class="info-section">
-    <div class="info-block"><div class="label">Invoice Number</div><div class="value inv-num">${invoiceNumber}</div></div>
-    <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
-    <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#D4A843;font-weight:700;">${order.salesRepName || customer?.salesRepName || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Phone</div><div class="value">${customer?.phone || "N/A"}</div></div>
-    <div class="info-block" style="grid-column: 1 / -1;"><div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div></div>
-    ${order.notes ? `<div class="info-block" style="grid-column: 1 / -1;"><div class="label">Notes</div><div class="value" style="font-style:italic;color:#888;">${order.notes}</div></div>` : ""}
-  </div>
-  <table>
-    <thead><tr><th>Product Code</th><th>Product Name</th><th>Qty</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `<tr><td>${item.productCode}</td><td>${item.productName}</td><td style="font-weight:bold;font-size:16px;">${item.quantity}${item.unitLabel ? ` <span style="color:#888;font-size:10px;">${item.unitLabel}</span>` : ""}</td></tr>`).join("") || ""}
-    </tbody>
-  </table>
-  <div class="footer">
-    <div class="signatures">
-      <div><div class="label">Picked By (Name & Signature)</div><div class="sig-line"></div><div class="sig-label">Print name and sign</div></div>
-      <div><div class="label">Time Completed</div><div class="sig-line"></div><div class="sig-label">Date & Time order was picked</div></div>
-    </div>
-    <div style="margin-top:30px;text-align:center;font-size:10px;color:#999;">This is an internal factory document. Prices are not shown. For office use only.</div>
-  </div>
-  <script>
-    (function(){
-      var done=false;
-      function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } }
-      if(document.readyState==='complete') printIt();
-      else window.onload=printIt;
-      setTimeout(printIt, 2000);
-    })();
-  </script>
-</body></html>`);
-    printWindow.document.close();
-  }
-
-  /** Print a professional quote document on Supreme Global Foods stationery */
-  function printQuote(order: any) {
-    const customer = getCustomer(order);
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
-    const validUntil = new Date(order.createdAt);
-    validUntil.setDate(validUntil.getDate() + 30);
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`
-<html><head><title>Quote - ${order.orderNumber}</title>
-<style>
-  @page { size: A4; margin: 10mm; }
-  @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 12px; border-bottom: 3px solid #D4A843; padding-bottom: 10px; }
-  .logo-img { height: 45px; margin-bottom: 2px; }
-  .logo-fallback { font-size: 24px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
-  .subtitle { color: #666; font-size: 11px; margin-top: 2px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 20px; font-weight: bold; margin: 10px 0; letter-spacing: 2px; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #6366F1; color: white; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
-  .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 12px; font-weight: 600; margin-top: 2px; color: #222; }
-  .full-width { grid-column: 1 / -1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th { background: #D4A843; color: white; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
-  .text-right { text-align: right; }
-  .totals { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border-left: 4px solid #D4A843; }
-  .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
-  .total-final { font-size: 16px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 6px; margin-top: 4px; }
-  .terms { margin-top: 14px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
-  .terms-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .terms-text { font-size: 10px; color: #666; line-height: 1.5; }
-  .footer { margin-top: 16px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
-  .banking { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; }
-  .banking-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .banking-row { display: grid; grid-template-columns: 120px 1fr; font-size: 11px; padding: 2px 0; }
-  .banking-label { color: #888; }
-  .banking-value { color: #333; font-weight: 600; }
-</style></head><body>
-  <div class="header">
-    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington Road, Wadeville, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
-  </div>
-  <div class="doc-title">QUOTATION</div>
-  <div style="text-align:center;margin-bottom:10px;"><span class="badge">QUOTE</span></div>
-  <div class="info-section">
-    <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:14px;">${order.orderNumber}</div></div>
-    <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Prepared By</div><div class="value">${order.salesRepName || customer?.salesRepName || "N/A"}</div></div>
-    <div class="full-width" style="margin-top:4px;border-top:1px solid #e0e0e0;padding-top:8px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div>
-          <div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Phone</div><div class="value">${customer?.phone || "N/A"}</div>
-        </div>
-        <div>
-          <div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div>
-          <div class="label" style="margin-top:4px;">Payment Terms</div><div class="value">${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Price Tier</div><div class="value">${(order.priceTier || "wholesale").toUpperCase()}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <table>
-    <thead><tr><th>Product Code</th><th>Product Name</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Line Total</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `
-        <tr>
-          <td>${item.productCode || "N/A"}</td>
-          <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:9px;">${item.unitLabel}</span>` : ""}</td>
-          <td style="text-align:center;font-weight:bold;">${item.quantity}</td>
-          <td style="text-align:right;">${item.unit || "each"}</td>
-          <td style="text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td>
-          <td style="text-align:right;font-weight:600;">R ${Number(item.lineTotal).toFixed(2)}</td>
-        </tr>
-      `).join("") || ""}
-    </tbody>
-  </table>
-  <div class="totals">
-    <div class="total-row"><span>Subtotal</span><span>R ${Number(order.subtotal).toFixed(2)}</span></div>
-    <div class="total-row"><span>VAT (15%)</span><span>R ${Number(order.vatAmount).toFixed(2)}</span></div>
-    <div class="total-row total-final"><span>QUOTE TOTAL</span><span>R ${Number(order.total).toFixed(2)}</span></div>
-  </div>
-  ${order.notes ? `<div style="margin-top:10px;padding:8px;background:#fff8e1;border-radius:6px;border-left:3px solid #D4A843;"><div class="label">Notes</div><div style="font-size:11px;color:#666;font-style:italic;margin-top:2px;">${order.notes}</div></div>` : ""}
-  <div class="banking">
-    <div class="banking-title">Banking Details</div>
-    <div class="banking-row"><div class="banking-label">Bank Name</div><div class="banking-value">${banking?.bankName || "N/A"}</div></div>
-    <div class="banking-row"><div class="banking-label">Account Name</div><div class="banking-value">${banking?.accountName || "N/A"}</div></div>
-    <div class="banking-row"><div class="banking-label">Account Number</div><div class="banking-value">${banking?.accountNumber || "N/A"}</div></div>
-    <div class="banking-row"><div class="banking-label">Branch Code</div><div class="banking-value">${banking?.branchCode || "N/A"}</div></div>
-  </div>
-  <div class="terms">
-    <div class="terms-title">Terms &amp; Conditions</div>
-    <div class="terms-text">
-      1. This quotation is valid for 30 days from the date of issue.<br/>
-      2. Prices are subject to change after the validity period.<br/>
-      3. Stock availability is confirmed at the time of order placement.<br/>
-      4. Payment terms: ${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days from invoice date" : order.paymentTerms === "14_days" ? "14 Days from invoice date" : order.paymentTerms === "30_days" ? "30 Days from invoice date" : "As agreed"}.<br/>
-      5. To accept this quote, please contact your sales representative or reply to this quotation.<br/>
-      6. VAT is included at 15% as per South African tax regulations.<br/>
-      7. Delivery address must be confirmed before dispatch.
-    </div>
-  </div>
-  <div class="footer">
-    Supreme Global Foods (Pty) Ltd &middot; 28 Nagington Road, Wadeville, Germiston, 1422<br/>
-    sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888<br/>
-    <em>This is a quotation and not a tax invoice. No VAT registration number is shown on quotations.</em>
-  </div>
-  <script>
-    (function(){ var done=false; function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } } if(document.readyState==='complete') printIt(); else window.onload=printIt; setTimeout(printIt, 2000); })();
-  </script>
-</body></html>`);
-    w.document.close();
-  }
-
-  /** Generate a mailto: link with quote summary for email sending */
-  function sendQuoteEmail(order: any) {
-    const customer = getCustomer(order);
-    const customerEmail = customer?.email || "";
-    const customerName = customer?.name || "Valued Customer";
-    const subject = encodeURIComponent(`Quotation ${order.orderNumber} — Supreme Global Foods`);
-    const itemsList = (order.items || []).map((item: any) =>
-      `• ${item.productName} (${item.productCode || "N/A"}) — ${item.quantity} ${item.unit || "each"} × R${Number(item.unitPrice).toFixed(2)} = R${Number(item.lineTotal).toFixed(2)}`
-    ).join("\n");
-    const body = encodeURIComponent(
-      `Dear ${customerName},\n\n` +
-      `Please find below your quotation from Supreme Global Foods.\n\n` +
-      `QUOTE NUMBER: ${order.orderNumber}\n` +
-      `DATE: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}\n` +
-      `VALID UNTIL: ${new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-ZA")}\n` +
-      `SALES REP: ${order.salesRepName || "N/A"}\n\n` +
-      `ITEMS:\n${itemsList}\n\n` +
-      `SUBTOTAL: R${Number(order.subtotal).toFixed(2)}\n` +
-      `VAT (15%): R${Number(order.vatAmount).toFixed(2)}\n` +
-      `TOTAL: R${Number(order.total).toFixed(2)}\n\n` +
-      `PAYMENT TERMS: ${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : "As agreed"}\n` +
-      `DELIVERY ADDRESS: ${order.deliveryAddress || customer?.physicalAddress || "As per customer record"}\n\n` +
-      `BANKING DETAILS:\n` +
-      `Bank: ${banking?.bankName || "N/A"}\n` +
-      `Account Name: ${banking?.accountName || "N/A"}\n` +
-      `Account Number: ${banking?.accountNumber || "N/A"}\n` +
-      `Branch Code: ${banking?.branchCode || "N/A"}\n\n` +
-      `To accept this quote, please reply to this email or contact your sales representative.\n\n` +
-      `Kind regards,\n` +
-      `${order.salesRepName || customer?.salesRepName || "Supreme Global Foods Team"}\n` +
-      `sales@supremeglobalfoods.co.za | Tel: 061 478 8888\n\n` +
-      `—\nSupreme Global Foods (Pty) Ltd\n28 Nagington Road, Wadeville, Germiston, 1422`
+  // Rep filter — sales reps only see their own customers' orders
+  const repFilteredOrders = useMemo(() => {
+    if (!orders) return [];
+    if (isAdmin || isSuperAdmin) return orders;
+    // Sales rep: only show orders for customers assigned to them
+    const myCustomers = new Set(
+      (customers || [])
+        .filter((c: any) =>
+          c.salesRepName === myRepName ||
+          c.salesRepEmail === user?.email
+        )
+        .map((c: any) => c.id)
     );
-    const mailtoLink = `mailto:${customerEmail}?subject=${subject}&body=${body}`;
-    window.location.href = mailtoLink;
-  }
+    return orders.filter((o: any) => myCustomers.has(o.customerId));
+  }, [orders, customers, isAdmin, isSuperAdmin, isSalesRep, myRepName, user?.email]);
 
-  const filteredOrders = (orders || [])
-    .filter((o) => {
-      if (activeTab === "all") return true;
-      if (activeTab === "sample") return o.orderType === "sample";
-      if (activeTab === "quotes") return o.orderType === "quote";
-      return o.status === activeTab;
-    })
-    .filter((o) => {
-      if (!orderSearch.trim()) return true;
-      const q = orderSearch.toLowerCase();
+  // Tab filter
+  const tabFilteredOrders = useMemo(() => {
+    let list = repFilteredOrders || [];
+    if (activeTab === "sample") {
+      list = list.filter((o: any) => o.orderType === "sample");
+    } else if (activeTab === "quotes") {
+      list = list.filter((o: any) => o.orderType === "quote");
+    } else if (activeTab !== "all") {
+      list = list.filter((o: any) => o.status === activeTab);
+    }
+    return list;
+  }, [repFilteredOrders, activeTab]);
+
+  // Search filter
+  const filteredOrders = useMemo(() => {
+    if (!orderSearch.trim()) return tabFilteredOrders;
+    const q = orderSearch.toLowerCase();
+    return tabFilteredOrders.filter((o: any) => {
+      const customer = (customers || []).find((c: any) => c.id === o.customerId);
       return (
-        (o.orderNumber || "").toLowerCase().includes(q) ||
-        (o.customer?.name || "").toLowerCase().includes(q) ||
-        (o.customerName || "").toLowerCase().includes(q) ||
-        (o.status || "").toLowerCase().includes(q) ||
-        (o.invoiceNumber || "").toLowerCase().includes(q)
+        o.orderNumber?.toLowerCase().includes(q) ||
+        customer?.name?.toLowerCase().includes(q) ||
+        customer?.contactPerson?.toLowerCase().includes(q) ||
+        o.deliveryAddress?.toLowerCase().includes(q) ||
+        o.notes?.toLowerCase().includes(q)
       );
-    })
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const orderCheck = editingOrder && isAdmin ? canEditOrderBasic() : canPlaceOrder();
+    });
+  }, [tabFilteredOrders, orderSearch, customers]);
+
+  const totalOrderValue = (order: any) =>
+    (order.items || []).reduce((sum: number, it: any) => sum + (it.unitPrice || 0) * it.quantity, 0);
+
+  const totalOrderItems = (order: any) =>
+    (order.items || []).reduce((sum: number, it: any) => sum + it.quantity, 0);
+
+  // Start edit
+  const startEditOrder = (order: any) => {
+    sampleOverrideRef.current = true; // MUST set before setEditingOrder
+    setEditingOrder(order);
+    setFormData({
+      customerId: order.customerId || 0,
+      orderType: order.orderType || "regular",
+      paymentTerms: order.paymentTerms || "cod",
+      priceTier: order.priceTier || "wholesale",
+      deliveryAddress: order.deliveryAddress || "",
+      notes: order.notes || "",
+      items: (order.items || []).map((it: any) => ({
+        stockItemId: it.stockItemId,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        unit: it.unit,
+        conversion: it.conversion,
+        unitLabel: it.unitLabel,
+      })),
+    });
+    const customer = (customers || []).find((c: any) => c.id === order.customerId);
+    setCustomerSearch(customer?.name || "");
+    setShowForm(true);
+  };
+
+  // Submit handler
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!orderCheck.valid) return;
+
+    // Validate admin PIN for below-corporate pricing
+    if (formData.orderType !== "sample" && formData.orderType !== "quote" && isAdmin) {
+      const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
+      let hasBelowCorporate = false;
+      for (const item of validItems) {
+        if (item.unitPrice && item.unitPrice > 0) {
+          const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
+          if (stock) {
+            const conversion = item.conversion || 1;
+            const corporateFloor = Number(stock.corporatePrice || 0) * conversion;
+            if (corporateFloor > 0 && item.unitPrice < corporateFloor * 0.99) {
+              hasBelowCorporate = true;
+              break;
+            }
+          }
+        }
+      }
+      if (hasBelowCorporate) {
+        if (!adminOverride || !adminPin) {
+          alert("Admin approval required. Please check the approval box and enter your PIN.");
+          return;
+        }
+        // Simple PIN check — replace with your actual PIN logic
+        const validPins = ["123456", "000000", "111111"];
+        if (!validPins.includes(adminPin)) {
+          alert("Invalid PIN. Please try again.");
+          return;
+        }
+      }
+    }
+
+    if (editingOrder) {
+      updateOrder.mutate({ id: editingOrder.id, ...formData });
+    } else {
+      createOrder.mutate(formData);
+    }
+  };
+
+  const formatDate = (d: string) => {
+    try { return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric" }); }
+    catch { return d; }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="p-4 md:p-6 space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Orders</h1>
-          <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} total value</p>
+          <h1 className="text-2xl font-display font-bold text-white">Orders</h1>
+          <p className="text-sm text-[#8A8B8C] font-body">{orders?.length || 0} total orders</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
+        <button onClick={() => { setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2">
+          <Plus className="w-4 h-4" /> New Order
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          { key: "pending", label: "PENDING", color: STATUS_LABELS.pending.color, value: stats?.pending },
-          { key: "picking", label: "PICKING", color: STATUS_LABELS.picking.color, value: stats?.picking },
-          { key: "ready", label: "READY", color: STATUS_LABELS.ready.color, value: stats?.ready },
-          { key: "delivered", label: "DELIVERED", color: STATUS_LABELS.delivered.color, value: stats?.delivered },
-          { key: "quotes", label: "QUOTES", color: "#6366F1", value: stats?.quotes },
-        ].map((card) => (
-          <div key={card.key} className="card-surface p-3 text-center">
-            <div className="label-text mb-1">{card.label}</div>
-            <div className="stat-number" style={{ fontSize: "1.5rem", color: card.color }}>
-              {card.value ?? 0}
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Pending", value: stats.byStatus?.pending || 0, color: "#F59E0B" },
+            { label: "Picking", value: stats.byStatus?.picking || 0, color: "#6366F1" },
+            { label: "Ready", value: stats.byStatus?.ready || 0, color: "#4ADE80" },
+            { label: "Delivered", value: stats.byStatus?.delivered || 0, color: "#4ADE80" },
+          ].map((s) => (
+            <div key={s.label} className="card-surface p-3">
+              <div className="text-2xl font-display font-bold" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-xs text-[#8A8B8C] font-body">{s.label}</div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
+      {/* Tabs */}
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((tab) => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === tab.key ? "#D4A843" : "#18191A", color: activeTab === tab.key ? "#0A0A0B" : "#8A8B8C", border: activeTab === tab.key ? "none" : "1px solid #2A2B2C" }}>{tab.label}</button>
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{
+              backgroundColor: activeTab === tab.key ? "rgba(212, 168, 67, 0.15)" : "#0A0A0B",
+              color: activeTab === tab.key ? "#D4A843" : "#8A8B8C",
+              border: activeTab === tab.key ? "1px solid rgba(212, 168, 67, 0.3)" : "1px solid #222324",
+            }}
+          >
+            {tab.label}
+          </button>
         ))}
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
         <input
           type="text"
           value={orderSearch}
           onChange={(e) => setOrderSearch(e.target.value)}
-          placeholder="Search by order number, customer name, status or invoice number..."
-          className="w-full bg-[#18191A] border border-[#2A2B2C] rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-[#555] focus:outline-none focus:border-[#D4A843]"
+          placeholder="Search orders..."
+          className="input-field w-full pl-10"
         />
-        {orderSearch && (
-          <button onClick={() => setOrderSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8B8C] hover:text-white text-xs">Clear</button>
+      </div>
+
+      {/* Orders List */}
+      <div className="space-y-3">
+        {filteredOrders.length === 0 && (
+          <div className="card-surface p-8 text-center text-[#8A8B8C]">
+            <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>No orders found</p>
+          </div>
         )}
-      </div>
+        {filteredOrders.map((order: any) => {
+          const customer = (customers || []).find((c: any) => c.id === order.customerId);
+          const isExpanded = expandedOrder === order.id;
+          const hasInvoice = liveInvoiceOrderIds.has(order.id);
 
-      <div className="card-surface overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr style={{ backgroundColor: "#131415", borderBottom: "1px solid #222324" }}>
-                <th className="text-left p-4 label-text">Order #</th>
-                <th className="text-left p-4 label-text">Customer</th>
-                <th className="text-left p-4 label-text">Tier</th>
-                <th className="text-left p-4 label-text">Date</th>
-                <th className="text-right p-4 label-text">Items</th>
-                <th className="text-right p-4 label-text">Total</th>
-                <th className="text-left p-4 label-text">Status</th>
-                <th className="text-right p-4 label-text">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(filteredOrders || []).map((order) => (
-                <>
-                  <tr key={order.id} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
-                    <td className="p-4 font-mono-data text-xs text-[#D4A843] cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
-                      {order.orderNumber}
-                      {order.orderType === "sample" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.15)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>}
-                      {order.orderType === "quote" && <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.15)", color: "#6366F1" }}><FileText className="w-3 h-3 inline" /> QUOTE</span>}
-                      {order.orderType === "quote" && order.status === "converted" && (
-                        <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.15)", color: "#4ADE80" }}>→ {order.convertedOrderNumber}</span>
+          return (
+            <div
+              key={order.id}
+              className="card-surface overflow-hidden transition-all"
+              style={{ borderColor: isExpanded ? "rgba(212, 168, 67, 0.3)" : "#222324" }}
+            >
+              {/* Order Header Row */}
+              <div
+                className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer"
+                onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: STATUS_LABELS[order.status]?.color + "15" || "#222324" }}
+                  >
+                    {order.orderType === "sample" ? (
+                      <FlaskConical className="w-5 h-5" style={{ color: STATUS_LABELS[order.status]?.color || "#D4A843" }} />
+                    ) : order.orderType === "quote" ? (
+                      <FileText className="w-5 h-5" style={{ color: STATUS_LABELS[order.status]?.color || "#6366F1" }} />
+                    ) : (
+                      <ShoppingBag className="w-5 h-5" style={{ color: STATUS_LABELS[order.status]?.color || "#D4A843" }} />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display font-semibold text-white">{order.orderNumber}</span>
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{
+                          backgroundColor: (STATUS_LABELS[order.status]?.color || "#8A8B8C") + "15",
+                          color: STATUS_LABELS[order.status]?.color || "#8A8B8C",
+                        }}
+                      >
+                        {STATUS_LABELS[order.status]?.label || order.status}
+                      </span>
+                      {order.orderType === "sample" && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>
+                          Sample
+                        </span>
                       )}
-                      {isAdmin && order.orderType !== "quote" && !(invoices || []).some((inv: any) => inv.orderId == order.id && (inv.invoiceNumber?.startsWith("SGF") || inv.invoiceNumber?.startsWith("RC"))) && (
-                        <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
+                      {order.orderType === "quote" && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>
+                          Quote
+                        </span>
                       )}
-                    </td>
-                    <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.customer?.name || "N/A"}</td>
-                    <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
-                      {order.orderType === "sample"
-                        ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>
-                        : order.orderType === "quote"
-                        ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}><FileText className="w-3 h-3 inline" /> QUOTE</span>
-                        : <span className="status-badge text-xs" style={{ backgroundColor: `${PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80"}20`, color: PRICE_TIERS.find((t) => t.key === order.priceTier)?.color || "#4ADE80" }}>{order.priceTier?.toUpperCase() || "WHOLESALE"}</span>
-                      }
-                    </td>
-                    <td className="p-4 text-sm text-[#8A8B8C] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{new Date(order.createdAt).toLocaleDateString("en-ZA")}</td>
-                    <td className="p-4 text-right text-sm text-white font-display cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.items?.length || 0}</td>
-                    <td className="p-4 text-right font-display font-semibold cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)} style={{ color: order.orderType === "sample" ? "#D4A843" : order.orderType === "quote" ? "#6366F1" : "#FFFFFF" }}>
-                      {order.orderType === "sample" ? "R 0.00" : `R ${Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`}
-                    </td>
-                    <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
-                      <span className="status-badge" style={{ backgroundColor: `${STATUS_LABELS[order.status]?.color}20`, color: STATUS_LABELS[order.status]?.color }}>{STATUS_LABELS[order.status]?.label || order.status}</span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2 flex-wrap">
-                        {/* Status flow buttons for normal orders */}
-                        {canProgressOrder(order) && order.status === "pending" && (
-                          <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "picking" }); }} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>
-                        )}
-                        {canProgressOrder(order) && order.status === "picking" && (
-                          <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "ready" }); }} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>
-                        )}
-                        {canProgressOrder(order) && order.status === "ready" && (
-                          <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "delivered" }); }} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>
-                        )}
-                        {/* Quote actions */}
-                        {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
-                          <>
-                            {order.status === "draft" && (
-                              <>
-                                <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
-                                <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
-                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Send</button>
-                              </>
-                            )}
-                            {order.status === "sent" && (
-                              <>
-                                <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
-                                <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
-                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Mark this quote as accepted by customer?")) updateStatus.mutate({ id: order.id, status: "accepted" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><CheckCircle className="w-3 h-3" /> Accept</button>
-                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Customer accepted the quote? Convert to order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
-                              </>
-                            )}
-                            {order.status === "accepted" && (
-                              <>
-                                <button onClick={(e) => { e.stopPropagation(); printQuote(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print</button>
-                                <button onClick={(e) => { e.stopPropagation(); sendQuoteEmail(order); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email</button>
-                                <button onClick={(e) => { e.stopPropagation(); if (confirm("Convert this accepted quote to an order?")) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
-                              </>
-                            )}
-                          </>
-                        )}
-                        {canEditOrder(order) && (
-                          <button onClick={(e) => { e.stopPropagation(); startEditOrder(order); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit order"><Pencil className="w-4 h-4 text-[#D4A843]" /></button>
-                        )}
-                        {expandedOrder === order.id ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedOrder === order.id && (
-                    <tr><td colSpan={8} className="p-0">
-                      <div className="p-6" style={{ backgroundColor: "#0A0A0B" }}>
-                        {/* Status flow indicator */}
-                        <div className="flex items-center gap-2 mb-4 p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                          {order.orderType === "quote" ? (
-                            // Quote status flow
-                            ["draft", "sent", "accepted", "converted"].map((s, i, arr) => {
-                              const isCurrent = order.status === s;
-                              const isPast = ["sent", "accepted", "converted"].indexOf(order.status) > ["draft", "sent", "accepted", "converted"].indexOf(s);
-                              const colors: Record<string, string> = { draft: "#8A8B8C", sent: "#6366F1", accepted: "#4ADE80", converted: "#D4A843" };
-                              return (
-                                <div key={s} className="flex items-center gap-2">
-                                  <span className="text-xs font-body px-3 py-1 rounded-full" style={{ backgroundColor: isCurrent ? `${colors[s]}30` : isPast ? `${colors[s]}15` : "#222324", color: isCurrent ? colors[s] : isPast ? "#8A8B8C" : "#555", border: isCurrent ? `1px solid ${colors[s]}` : "1px solid transparent", fontWeight: isCurrent ? 700 : 400 }}>
-                                    {STATUS_LABELS[s]?.label}
-                                  </span>
-                                  {i < arr.length - 1 && <span style={{ color: isPast ? "#4ADE80" : "#333" }}>→</span>}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            // Normal order status flow
-                            ["pending", "picking", "ready", "delivered"].map((s, i, arr) => {
-                              const isCurrent = order.status === s;
-                              const isPast = arr.indexOf(order.status) > i;
-                              const colors: Record<string, string> = { pending: "#F59E0B", picking: "#6366F1", ready: "#4ADE80", delivered: "#4ADE80" };
-                              return (
-                                <div key={s} className="flex items-center gap-2">
-                                  <span className="text-xs font-body px-3 py-1 rounded-full" style={{ backgroundColor: isCurrent ? `${colors[s]}30` : isPast ? `${colors[s]}15` : "#222324", color: isCurrent ? colors[s] : isPast ? "#8A8B8C" : "#555", border: isCurrent ? `1px solid ${colors[s]}` : "1px solid transparent", fontWeight: isCurrent ? 700 : 400 }}>
-                                    {STATUS_LABELS[s]?.label}
-                                  </span>
-                                  {i < arr.length - 1 && <span style={{ color: isPast ? "#4ADE80" : "#333" }}>→</span>}
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
+                    </div>
+                    <div className="text-sm text-[#8A8B8C] font-body">
+                      {customer?.name || order.customerName || "Unknown"} · {formatDate(order.createdAt)}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="font-display font-semibold text-white">
+                      R {totalOrderValue(order).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-[#8A8B8C]">
+                      {totalOrderItems(order)} items
+                    </div>
+                  </div>
+                  {isExpanded ? <ChevronUp className="w-5 h-5 text-[#8A8B8C]" /> : <ChevronDown className="w-5 h-5 text-[#8A8B8C]" />}
+                </div>
+              </div>
 
-                        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                          <div>
-                            <h3 className="font-display font-semibold text-white">{order.orderType === "quote" ? "Quote Details" : "Order Details"}</h3>
-                            <span className="text-xs text-[#8A8B8C]">
-                              {order.orderType === "sample" ? "Sample Order — No Charge" :
-                               order.orderType === "quote" ? `Quote — ${order.status === "converted" ? `Converted to ${order.convertedOrderNumber}` : "Waiting for customer acceptance"}` :
-                               `Price Tier: ${(order.priceTier || "wholesale").toUpperCase()}`}
-                            </span>
-                          </div>
-                          <div className="flex gap-2 flex-wrap">
-                            {canEditOrder(order) && (
-                              <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)" }}><Pencil className="w-3 h-3" /> Edit {order.orderType === "quote" ? "Quote" : "Order"}</button>
-                            )}
-                            {order.orderType === "quote" && (
-                              <>
-                                <button onClick={() => printQuote(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print Quote</button>
-                                <button onClick={() => sendQuoteEmail(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email Quote</button>
-                              </>
-                            )}
-                            {order.orderType !== "quote" && (
-                              <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Picking Slip</button>
-                            )}
-                            {isAdmin && order.orderType !== "quote" && (
-                              <GenerateInvoiceButton
-                                orderId={order.id}
-                              />
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Status flow buttons */}
-                        <div className="flex gap-2 flex-wrap mb-4">
-                          {canProgressOrder(order) && order.status === "pending" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>}
-                          {canProgressOrder(order) && order.status === "picking" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>}
-                          {canProgressOrder(order) && order.status === "ready" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>}
-                          {/* Quote actions in expanded view */}
-                          {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
-                            <>
-                              <button onClick={() => printQuote(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)", color: "#D4A843" }}><Printer className="w-3 h-3" /> Print Quote</button>
-                              <button onClick={() => sendQuoteEmail(order)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><Mail className="w-3 h-3" /> Email Quote</button>
-                              {order.status === "draft" && (
-                                <button onClick={() => { if (confirm("Mark this quote as sent to customer?")) updateStatus.mutate({ id: order.id, status: "sent" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}><FileText className="w-3 h-3" /> Mark as Sent</button>
-                              )}
-                              {order.status === "sent" && (
-                                <button onClick={() => { if (confirm("Mark this quote as accepted by customer?")) updateStatus.mutate({ id: order.id, status: "accepted" }); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><CheckCircle className="w-3 h-3" /> Mark as Accepted</button>
-                              )}
-                              {(order.status === "sent" || order.status === "accepted") && (
-                                <button onClick={() => { if (confirm(`Convert this ${order.status === "sent" ? "sent" : "accepted"} quote to an order?`)) convertQuoteToOrder.mutate({ quoteId: order.id }); }} className="btn-primary text-xs" style={{ backgroundColor: "#6366F1" }}><ShoppingBag className="w-3 h-3" /> Convert to Order</button>
-                              )}
-                              {canCancelOrder(order) && (
-                                <button onClick={() => { if (confirm("Reject this quote?")) updateStatus.mutate({ id: order.id, status: "rejected" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Reject</button>
-                              )}
-                            </>
-                          )}
-                          {canCancelOrder(order) && order.orderType !== "quote" && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
-                          {isAdmin && order.status === "cancelled" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "pending" })} className="btn-primary text-xs"><RotateCcw className="w-3 h-3" /> Re-activate</button>}
-                        </div>
-                        <table className="w-full mb-4">
-                          <thead><tr style={{ borderBottom: "1px solid #222324" }}><th className="text-left p-2 label-text">Product</th><th className="text-right p-2 label-text">Qty</th><th className="text-right p-2 label-text">Unit Price</th><th className="text-right p-2 label-text">Line Total</th></tr></thead>
-                          <tbody>
-                            {order.items?.map((item: any) => (
-                              <tr key={item.id || item.stockItemId} style={{ borderBottom: "1px solid #18191A" }}>
-                                <td className="p-2 text-sm text-[#E8E8E9]">{item.productName}{item.unitLabel ? <span className="text-[#8A8B8C] text-xs ml-1">({item.unitLabel})</span> : ""}</td>
-                                <td className="p-2 text-right text-sm text-white">{item.quantity}</td>
-                                <td className="p-2 text-right text-sm text-[#8A8B8C]">R {Number(item.unitPrice).toFixed(2)}</td>
-                                <td className="p-2 text-right text-sm text-white font-display">R {Number(item.lineTotal).toFixed(2)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <div className="flex justify-end gap-6 text-sm">
-                          {order.orderType === "sample"
-                            ? <div className="font-display font-semibold text-[#D4A843] text-lg"><FlaskConical className="w-5 h-5 inline mr-2" />SAMPLE ORDER — No Charge</div>
-                            : order.orderType === "quote"
-                            ? <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#6366F1]">Quote Total: R {Number(order.total).toFixed(2)}</div></>
-                            : <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#D4A843]">Total: R {Number(order.total).toFixed(2)}</div></>
-                          }
-                        </div>
-                        {order.deliveryAddress && <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: "#18191A" }}><div className="label-text mb-1">Delivery Address</div><div className="text-sm text-[#E8E8E9]">{order.deliveryAddress}</div></div>}
-                        {order.notes && <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: "#18191A" }}><div className="label-text mb-1">Notes</div><div className="text-sm text-[#E8E8E9]">{order.notes}</div></div>}
+              {/* Expanded Details */}
+              {isExpanded && (
+                <div className="border-t px-4 py-4 space-y-4" style={{ borderColor: "#222324" }}>
+                  {/* Order Info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <span className="text-[#8A8B8C]">Customer:</span>
+                      <div className="text-white font-medium">{customer?.name || order.customerName || "Unknown"}</div>
+                      {customer?.contactPerson && <div className="text-xs text-[#8A8B8C]">{customer.contactPerson}</div>}
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Delivery:</span>
+                      <div className="text-white">{order.deliveryAddress || customer?.deliveryAddress || "N/A"}</div>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Payment Terms:</span>
+                      <div className="text-white">{order.paymentTerms || "N/A"}</div>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Price Tier:</span>
+                      <div className="text-white capitalize">{order.priceTier || "N/A"}</div>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Route:</span>
+                      <div className="text-white">{order.route || "N/A"}</div>
+                    </div>
+                    {order.notes && (
+                      <div className="sm:col-span-2 md:col-span-3">
+                        <span className="text-[#8A8B8C]">Notes:</span>
+                        <div className="text-white text-xs mt-1 p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}>{order.notes}</div>
                       </div>
-                    </td></tr>
+                    )}
+                  </div>
+
+                  {/* Items */}
+                  <div>
+                    <h4 className="text-sm font-medium text-[#8A8B8C] mb-2">Items</h4>
+                    <div className="space-y-2">
+                      {(order.items || []).map((it: any, idx: number) => {
+                        const product = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+                        return (
+                          <div key={idx} className="flex items-center justify-between p-2 rounded" style={{ backgroundColor: "#0A0A0B" }}>
+                            <div className="flex items-center gap-2">
+                              <Package className="w-4 h-4 text-[#8A8B8C]" />
+                              <span className="text-sm text-white">{product?.productName || it.productName || "Unknown"}</span>
+                              <span className="text-xs text-[#8A8B8C]">× {it.quantity}</span>
+                              {it.unit && it.unit !== "each" && <span className="text-xs text-[#8A8B8C]">({it.unit})</span>}
+                            </div>
+                            <span className="text-sm font-display text-white">R {((it.unitPrice || 0) * it.quantity).toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-between items-center mt-3 pt-3 border-t" style={{ borderColor: "#222324" }}>
+                      <span className="text-sm text-[#8A8B8C]">Subtotal</span>
+                      <span className="font-display text-white">R {totalOrderValue(order).toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Invoice Status */}
+                  {!hasInvoice && order.status !== "cancelled" && order.orderType !== "quote" && (
+                    <div className="p-2 rounded text-xs flex items-center gap-2" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", color: "#EF4444" }}>
+                      <AlertTriangle className="w-3 h-3" /> No invoice generated
+                    </div>
                   )}
-                </>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {/* Generate Invoice — admin only, regular orders only */}
+                    {(isAdmin || isSuperAdmin) && order.orderType !== "quote" && order.status !== "cancelled" && (
+                      <GenerateInvoiceButton orderId={order.id} />
+                    )}
+
+                    {order.orderType === "quote" && order.status !== "converted" && (
+                      <button onClick={() => handleConvertQuote(order.id)} className="btn-secondary text-xs flex items-center gap-1.5">
+                        <CheckCircle className="w-3 h-3" /> Convert to Order
+                      </button>
+                    )}
+
+                    {/* Status flow buttons */}
+                    {order.status === "pending" && (
+                      <button onClick={() => handleStatusUpdate(order.id, "picking")} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(99, 102, 241, 0.3)", color: "#6366F1" }}>
+                        <Package className="w-3 h-3" /> Start Picking
+                      </button>
+                    )}
+                    {order.status === "picking" && (
+                      <button onClick={() => handleStatusUpdate(order.id, "ready")} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(74, 222, 128, 0.3)", color: "#4ADE80" }}>
+                        <CheckCircle className="w-3 h-3" /> Mark Ready
+                      </button>
+                    )}
+                    {order.status === "ready" && (
+                      <button onClick={() => handleStatusUpdate(order.id, "delivered")} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(74, 222, 128, 0.3)", color: "#4ADE80" }}>
+                        <Truck className="w-3 h-3" /> Mark Delivered
+                      </button>
+                    )}
+
+                    {/* Print buttons */}
+                    <button onClick={() => handlePrint(order)} className="btn-secondary text-xs flex items-center gap-1.5">
+                      <Printer className="w-3 h-3" /> Print
+                    </button>
+                    {order.status === "picking" && (
+                      <button onClick={() => handlePrintPickingList(order)} className="btn-secondary text-xs flex items-center gap-1.5">
+                        <Package className="w-3 h-3" /> Picking List
+                      </button>
+                    )}
+                    {order.status === "ready" && (
+                      <button onClick={() => handlePrintDeliveryNote(order)} className="btn-secondary text-xs flex items-center gap-1.5">
+                        <Truck className="w-3 h-3" /> Delivery Note
+                      </button>
+                    )}
+
+                    {/* Email buttons */}
+                    <a
+                      href={`mailto:${customer?.email || ""}?subject=${encodeURIComponent(getEmailSubject(order, "invoice"))}&body=${encodeURIComponent(getEmailBody(order, "invoice"))}`}
+                      className="btn-secondary text-xs flex items-center gap-1.5"
+                    >
+                      <Mail className="w-3 h-3" /> Email Invoice
+                    </a>
+
+                    {/* Edit / Cancel / Delete */}
+                    {(isAdmin || isSuperAdmin) && (
+                      <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(212, 168, 67, 0.3)", color: "#D4A843" }}>
+                        <Pencil className="w-3 h-3" /> Edit
+                      </button>
+                    )}
+                    {order.status !== "cancelled" && order.status !== "delivered" && (
+                      <button onClick={() => handleCancelOrder(order.id)} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(239, 68, 68, 0.3)", color: "#EF4444" }}>
+                        <Ban className="w-3 h-3" /> Cancel
+                      </button>
+                    )}
+                    {(isAdmin || isSuperAdmin) && (
+                      <button onClick={() => handleDeleteOrder(order.id)} className="btn-secondary text-xs flex items-center gap-1.5 hover:bg-[#EF444422]" style={{ borderColor: "rgba(239, 68, 68, 0.3)", color: "#EF4444" }}>
+                        <X className="w-3 h-3" /> Delete
+                      </button>
+                    )}
+
+                    {/* Send Quote button */}
+                    {order.orderType === "quote" && order.status === "draft" && (
+                      <button onClick={() => handleSendQuote(order.id)} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(99, 102, 241, 0.3)", color: "#6366F1" }}>
+                        <Mail className="w-3 h-3" /> Send Quote
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Product Picker Modal */}
-      <ProductPickerModal
-        isOpen={productPickerOpen}
-        onClose={() => setProductPickerOpen(false)}
-        onSelect={(id) => handleUpdateItem(productPickerIndex, "stockItemId", id)}
-        stockItems={stockItems || []}
-        availableStock={availableStock}
-        selectedId={formData.items[productPickerIndex]?.stockItemId || 0}
-      />
-
-      {/* New / Edit Order Dialog */}
+      {/* Order Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-          <div className="card-surface p-4 sm:p-8 w-full mx-2 sm:mx-4 max-h-[90vh] overflow-y-auto" style={{ maxWidth: 720, borderRadius: 16 }}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-white text-xl">
-                {editingOrder
-                  ? `Edit ${editingOrder.orderType === "quote" ? "Quote" : "Order"} ${editingOrder.orderNumber}`
-                  : formData.orderType === "quote"
-                  ? "New Quote"
-                  : "New Order"}
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={() => setShowForm(false)}>
+          <div
+            className="card-surface w-full sm:max-w-2xl sm:mx-4 max-h-[90vh] overflow-y-auto"
+            style={{ borderRadius: "16px 16px 0 0" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b" style={{ backgroundColor: "#18191A", borderColor: "#222324" }}>
+              <h2 className="text-lg font-display font-semibold text-white">
+                {editingOrder ? "Edit Order" : "New Order"}
               </h2>
-              <button onClick={() => { setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; setAdminOverride(false); setAdminPin(""); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+              <button onClick={() => setShowForm(false)} className="p-2 rounded-full hover:bg-[#222324] cursor-pointer">
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
             </div>
-            {editingOrder && (
-              <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
-                <Info className="w-4 h-4 inline mr-2" />
-                {isAdmin
-                  ? "Admin: Editing will restore old stock and re-deduct new quantities."
-                  : "Editing will restore old stock and re-deduct new quantities."
-                }
-              </div>
-            )}
-            {(() => {
-              const showBanner = editingOrder?.orderType === "sample";
-              if (!showBanner) return null;
-              return sampleOverrideRef.current ? (
-                <div className="mb-4 p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", border: "1px solid rgba(212, 168, 67, 0.3)", color: "#D4A843" }}>
-                  <Shield className="w-4 h-4" />
-                  <span className="font-semibold">Super Admin Override Active</span>
-                  <span className="text-xs opacity-80">— You can change sample quantities above 1</span>
-                </div>
-              ) : (
-                <div className="mb-4 p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444" }}>
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="font-semibold">Sample Order Locked</span>
-                  <span className="text-xs opacity-80">— Only Super Admin can change quantities. Contact Collin, Ronald or David.</span>
-                </div>
-              );
-            })()}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div style={{ position: "relative", zIndex: 20 }}>
-                  <label className="label-text block mb-1.5">Customer *</label>
-                  <>
-                    <input
-                      ref={customerInputRef}
-                      type="text"
-                      value={customerSearch}
-                      onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
-                      onFocus={handleOpenCustomerDropdown}
-                      placeholder="Type to search customers..."
-                      className="input-field w-full"
-                      required
-                      autoComplete="off"
-                      disabled={editingOrder && !isAdmin}
-                      style={editingOrder && !isAdmin ? { opacity: 0.7, cursor: "not-allowed" } : {}}
-                    />
-                    {editingOrder && !isAdmin && (
-                      <p className="text-xs mt-1" style={{ color: "#8A8B8C" }}>Admin can change customer</p>
-                    )}
-                    {showCustomerDropdown && (
-                      <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 200, overflowY: "auto", backgroundColor: "#18191A", border: "1px solid #2A2B2C", borderRadius: 8, zIndex: 30, marginTop: 4 }}>
-                        {filteredCustomers.length === 0 && (
-                          <div style={{ padding: 12, color: "#8A8B8C", fontSize: 12 }}>No customers found</div>
-                        )}
-                        {filteredCustomers.map((c) => (
-                          <div
-                            key={c.id}
-                            onClick={() => { if (!editingOrder || isAdmin) handleCustomerSelect(c.id); }}
-                            style={{ padding: "10px 12px", cursor: (!editingOrder || isAdmin) ? "pointer" : "not-allowed", borderBottom: "1px solid #222324", color: String(formData.customerId) === String(c.id) ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
-                            className="hover:bg-[#222324]"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-body font-medium">{c.name}</span>
-                              <span className="font-mono-data text-xs" style={{ color: "#8A8B8C" }}>{c.customerCode}</span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs" style={{ color: "#4ADE80" }}>{c.priceTier}</span>
-                              <span className="text-xs" style={{ color: "#8A8B8C" }}>{c.city}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                </div>
-                <div>
-                  <label className="label-text block mb-1.5">Payment Terms</label>
-                  <select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as any })} className="input-field">
-                    <option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option>
-                  </select>
-                </div>
-              </div>
-
+            <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Order Type */}
               <div>
                 <label className="label-text block mb-2">Order Type *</label>
-                {/* When editing a quote, lock the order type — must use Convert to Order button */}
-                {editingOrder?.orderType === "quote" ? (
-                  <div className="p-3 rounded-xl text-center" style={{ backgroundColor: "rgba(99, 102, 241, 0.08)", border: "2px solid #6366F1" }}>
-                    <FileText className="w-5 h-5 mx-auto mb-1" style={{ color: "#6366F1" }} />
-                    <div className="text-sm font-display font-semibold" style={{ color: "#6366F1" }}>Quote</div>
-                    <div className="text-xs text-[#8A8B8C] mt-1">Send to customer</div>
-                    <div className="text-xs text-[#F59E0B] mt-2">Use the "Convert to Order" button to change this quote to an order</div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "regular" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "regular" ? "rgba(74, 222, 128, 0.08)" : "#0A0A0B", border: formData.orderType === "regular" ? "2px solid #4ADE80" : "2px solid #222324" }}>
-                      <ShoppingBag className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }} />
-                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "regular" ? "#4ADE80" : "#8A8B8C" }}>Regular</div>
-                      <div className="text-xs text-[#8A8B8C] mt-1">Customer charged</div>
+                <div className="flex gap-3">
+                  {[
+                    { key: "regular", label: "Regular", icon: ShoppingBag },
+                    { key: "sample", label: "Sample", icon: FlaskConical },
+                    { key: "quote", label: "Quote", icon: FileText },
+                  ].map((type) => (
+                    <button
+                      key={type.key}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, orderType: type.key as any })}
+                      className="flex-1 p-3 rounded-xl flex flex-col items-center gap-1 transition-all cursor-pointer"
+                      style={{
+                        backgroundColor: formData.orderType === type.key ? "rgba(212, 168, 67, 0.12)" : "#0A0A0B",
+                        border: formData.orderType === type.key ? "2px solid #D4A843" : "2px solid #222324",
+                      }}
+                    >
+                      <type.icon className="w-5 h-5" style={{ color: formData.orderType === type.key ? "#D4A843" : "#8A8B8C" }} />
+                      <span className="text-sm font-medium" style={{ color: formData.orderType === type.key ? "#D4A843" : "#8A8B8C" }}>{type.label}</span>
                     </button>
-                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "sample", priceTier: "corporate" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "sample" ? "rgba(212, 168, 67, 0.08)" : "#0A0A0B", border: formData.orderType === "sample" ? "2px solid #D4A843" : "2px solid #222324" }}>
-                      <FlaskConical className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }} />
-                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "sample" ? "#D4A843" : "#8A8B8C" }}>Sample</div>
-                      <div className="text-xs text-[#8A8B8C] mt-1">No charge</div>
-                    </button>
-                    <button type="button" onClick={() => setFormData({ ...formData, orderType: "quote" })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === "quote" ? "rgba(99, 102, 241, 0.08)" : "#0A0A0B", border: formData.orderType === "quote" ? "2px solid #6366F1" : "2px solid #222324" }}>
-                      <FileText className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }} />
-                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === "quote" ? "#6366F1" : "#8A8B8C" }}>Quote</div>
-                      <div className="text-xs text-[#8A8B8C] mt-1">Send to customer</div>
-                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Customer */}
+              <div className="relative">
+                <label className="label-text block mb-1.5">Customer *</label>
+                <input
+                  ref={customerInputRef}
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  placeholder="Search customers..."
+                  className="input-field w-full"
+                  autoComplete="off"
+                />
+                {showCustomerDropdown && filteredCustomers.length > 0 && (
+                  <div className="absolute z-20 w-full mt-1 max-h-48 overflow-y-auto card-surface" style={{ border: "1px solid #222324" }}>
+                    {filteredCustomers.map((c: any) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setFormData({ ...formData, customerId: c.id });
+                          setCustomerSearch(c.name || "");
+                          setShowCustomerDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-[#222324] text-sm text-white cursor-pointer"
+                      >
+                        <div className="font-medium">{c.name}</div>
+                        <div className="text-xs text-[#8A8B8C]">{c.contactPerson} · {c.email}</div>
+                      </button>
+                    ))}
                   </div>
                 )}
-                {formData.orderType === "sample" && (
-                  <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.05)", color: "#D4A843" }}>
-                    1 unit per product max. Customer not charged. Follow-up in 4 days.
-                  </div>
-                )}
-                {formData.orderType === "quote" && (
-                  <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.05)", color: "#6366F1" }}>
-                    Quotes don't deduct stock. Convert to an order when the customer accepts.
-                  </div>
-                )}
+              </div>
+
+              {/* Payment Terms */}
+              <div>
+                <label className="label-text block mb-1.5">Payment Terms</label>
+                <select
+                  value={formData.paymentTerms}
+                  onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as any })}
+                  className="input-field w-full"
+                >
+                  <option value="cod">Cash on Delivery</option>
+                  <option value="7_days">7 Days</option>
+                  <option value="14_days">14 Days</option>
+                  <option value="30_days">30 Days</option>
+                </select>
               </div>
 
               {/* Price Tier */}

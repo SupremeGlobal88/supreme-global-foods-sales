@@ -221,7 +221,7 @@ export function createLocalLink() {
                 if (updateResult?.cancelledInvoice) { await pushInvoice(updateResult.cancelledInvoice); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); }
                 break;
               }
-              case "order.delete": { requireAdmin(); result = dataService.order.delete(input); if (result.success) { await fbPush("sgf_orders", dataService.order.list()); await fbPush("sgf_products", dataService.stock.list()); } break; }
+              case "order.delete": { requireAdmin(); result = dataService.order.delete(input); if (result.success) { await fbPush("sgf_orders", dataService.order.list()); await fbPush("sgf_products", dataService.stock.list()); if (result.deletedInvoices > 0) await fbPush("sgf_invoices", dataService.invoice.list()); } break; }
               case "order.getBySalesRep": await smartSync("orders", "sgf_orders"); result = dataService.order.getBySalesRep(input); break;
               case "order.getMonthlySales": await smartSync("orders", "sgf_orders"); result = dataService.order.getMonthlySales(); break;
               case "order.getProductSales": await smartSync("orders", "sgf_orders"); result = dataService.order.getProductSales(); break;

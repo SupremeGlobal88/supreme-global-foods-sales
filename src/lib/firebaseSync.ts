@@ -296,6 +296,16 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
   }
 }
 
+export async function removeOrder(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `orders/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+}
+
+export async function removeInvoice(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await set(ref(db, `invoices/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+}
+
 export async function pushFollowUpAction(action: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("followUpAction", action); return; }
   try {

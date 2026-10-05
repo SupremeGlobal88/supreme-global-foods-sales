@@ -10,40 +10,56 @@ import {
   ShoppingBag, Pencil, RotateCcw, Info, Search, FileText, Mail,
   Shield,
 } from "lucide-react";
-const sampleOverrideRef={ current: false };
+
+// Ref for sample quantity override — updated synchronously in startEditOrder
+const sampleOverrideRef = { current: false };
+
 const PRICE_TIERS = [
   { key: "corporate", label: "Corporate", color: "#D4A843" },
   { key: "bulk", label: "Bulk", color: "#6366F1" },
   { key: "wholesale", label: "Wholesale", color: "#4ADE80" },
   { key: "retail", label: "Retail", color: "#F59E0B" },
 ];
-const STATUS_LABELS: Record<string, { label: string; color: string }>={
+
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: "Pending", color: "#F59E0B" },
   picking: { label: "Picking", color: "#6366F1" },
   ready: { label: "Ready", color: "#4ADE80" },
   delivered: { label: "Delivered", color: "#4ADE80" },
   cancelled: { label: "Cancelled", color: "#EF4444" },
   sample_delivered: { label: "Sample", color: "#D4A843" },
+  // Quote statuses
   draft: { label: "Draft", color: "#8A8B8C" },
   sent: { label: "Sent", color: "#6366F1" },
   accepted: { label: "Accepted", color: "#4ADE80" },
   rejected: { label: "Rejected", color: "#EF4444" },
   converted: { label: "Converted", color: "#D4A843" },
 };
+
+/** Dedicated component for Generate Invoice button.
+ *  Uses tRPC useQuery with 5s polling so React auto-re-renders
+ *  when invoices change from other devices. This guarantees the
+ *  button always shows correct state after any admin generates. */
 function GenerateInvoiceButton({
   orderId,
 }: {
   orderId: number;
 }) {
   const [busy, setBusy] = useState(false);
+
+  // Use tRPC useQuery — ALWAYS fetch fresh on mount + poll every 5s
+  // The button only mounts when an order is EXPANDED, so refetchOnMount
+  // guarantees we see the latest invoices from other admins
   const { data: liveInvoices } = trpc.invoice.list.useQuery(undefined, {
     refetchInterval: 5000,
     refetchOnMount: "always",
     staleTime: 0,
   });
+
   const hasInvoice = (liveInvoices || []).some(
     (i: any) => i.orderId == orderId && (i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC"))
   );
+
   return (
     <button
       onClick={async () => {
@@ -52,6 +68,7 @@ function GenerateInvoiceButton({
         reloadFromStorage();
         const invNum = generateInvoiceForOrder(orderId);
         if (invNum) {
+          // Push to Firebase
           try {
             const allInv = dataService.invoice.list();
             const newInv = allInv.find((i: any) => i.orderId == orderId && i.invoiceNumber === invNum);
@@ -62,6 +79,7 @@ function GenerateInvoiceButton({
           } catch (e: any) {
             console.warn("[Invoice] Firebase push:", e?.message);
           }
+          // Force UI refresh — tRPC will auto-re-render with fresh data
           await utils.invoice.list.refetch();
           reloadFromStorage();
           alert("Invoice " + invNum + " created and synced!");
@@ -86,6 +104,8 @@ function GenerateInvoiceButton({
     </button>
   );
 }
+
+// Mobile-friendly product picker modal
 function ProductPickerModal({
   isOpen,
   onClose,
@@ -103,16 +123,20 @@ function ProductPickerModal({
 }) {
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (isOpen) {
       setSearch("");
+      // Only auto-focus on desktop — mobile keyboard pushes modal up
       const isMobile = window.innerWidth < 768 || "ontouchstart" in window;
       if (!isMobile) {
         setTimeout(() => searchRef.current?.focus(), 100);
       }
     }
   }, [isOpen]);
+
   if (!isOpen) return null;
+
   const filtered = (stockItems || [])
     .filter((s) => {
       if (!search.trim()) return true;
@@ -124,12 +148,14 @@ function ProductPickerModal({
       );
     })
     .sort((a, b) => {
+      // Sort by availability first (in-stock first), then alphabetically
       const availA = availableStock[a.id] || 0;
       const availB = availableStock[b.id] || 0;
       if (availA > 0 && availB <= 0) return -1;
       if (availA <= 0 && availB > 0) return 1;
       return (a.productName || "").localeCompare(b.productName || "");
     });
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
       <div
@@ -137,14 +163,15 @@ function ProductPickerModal({
         style={{ borderRadius: "16px 16px 0 0", maxHeight: "85vh" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {}
+        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "#222324" }}>
           <h3 className="font-display font-semibold text-white text-lg">Select Product</h3>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-[#222324] cursor-pointer">
             <X className="w-5 h-5 text-[#8A8B8C]" />
           </button>
         </div>
-        {}
+
+        {/* Search */}
         <div className="p-4 border-b" style={{ borderColor: "#222324" }}>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
@@ -164,7 +191,8 @@ function ProductPickerModal({
             <span className="text-[#8A8B8C]">{filtered.length} products</span>
           </div>
         </div>
-        {}
+
+        {/* Product List */}
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(85vh - 160px)" }}>
           {filtered.length === 0 && (
             <div className="p-8 text-center text-[#8A8B8C] text-sm">No products found</div>
@@ -178,6 +206,7 @@ function ProductPickerModal({
               <div
                 key={s.id}
                 onPointerUp={(e) => {
+                  // Only select if user actually tapped (minimal movement)
                   if (canSelect) {
                     onSelect(s.id);
                     onClose();
@@ -195,7 +224,7 @@ function ProductPickerModal({
                   WebkitTapHighlightColor: "rgba(212,168,67,0.2)",
                 }}
                 role="button"
-                aria-label={`${s.productName},${avail}available`}
+                aria-label={`${s.productName}, ${avail} available`}
               >
                 <div className="flex items-center justify-between pointer-events-none">
                   <div className="flex-1 min-w-0">
@@ -221,7 +250,7 @@ function ProductPickerModal({
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0 ml-3">
-                    <div className={`text-sm font-display font-semibold ${isOutOfStock ? "text-[#EF4444]":"text-[#4ADE80]"}`}>
+                    <div className={`text-sm font-display font-semibold ${isOutOfStock ? "text-[#EF4444]" : "text-[#4ADE80]"}`}>
                       {avail} avail
                     </div>
                     <div className="text-xs text-[#8A8B8C]">SOH: {s.quantity || 0}</div>
@@ -235,6 +264,7 @@ function ProductPickerModal({
     </div>
   );
 }
+
 const statusTabs = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
@@ -245,6 +275,7 @@ const statusTabs = [
   { key: "draft", label: "Quotes" },
   { key: "sample_delivered", label: "Samples" },
 ];
+
 export default function OrdersPage() {
   const { user } = useAuth();
   const { role } = useRole();
@@ -253,24 +284,30 @@ export default function OrdersPage() {
   const isSalesManager = role === "sales_manager";
   const canManageAll = isAdmin || isSalesManager;
   const canCreate = isAdmin || isSalesRep || isSalesManager;
+
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const customerDropdownRef = useRef<HTMLDivElement>(null);
+
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [pickerTargetIndex, setPickerTargetIndex] = useState<number | null>(null);
+
   const [showQuoteConfirm, setShowQuoteConfirm] = useState(false);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [quoteOrder, setQuoteOrder] = useState<any>(null);
   const [quoteViewMode, setQuoteViewMode] = useState<"preview" | "email">("preview");
   const [bankingDetails, setBankingDetails] = useState<any>(null);
+
   const [showPickingModal, setShowPickingModal] = useState(false);
   const [pickingOrder, setPickingOrder] = useState<any>(null);
+
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<{from: string; to: string}>({ from: "", to: "" });
   const [repFilter, setRepFilter] = useState<string>("all");
@@ -279,33 +316,42 @@ export default function OrdersPage() {
   const [printOrder, setPrintOrder] = useState<any>(null);
   const [sortField, setSortField] = useState<string>("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
   const { data: orders, isLoading } = trpc.order.list.useQuery(undefined, {
     refetchInterval: 5000,
     refetchOnMount: "always",
     staleTime: 0,
   });
+
   const { data: customers } = trpc.customer.list.useQuery(undefined, {
     refetchInterval: 10000,
     refetchOnMount: "always",
   });
+
   const { data: stockItems } = trpc.stock.list.useQuery(undefined, {
     refetchInterval: 10000,
     refetchOnMount: "always",
   });
+
   const { data: stockSearch } = trpc.stock.search.useQuery(undefined, {
     refetchInterval: 10000,
     refetchOnMount: "always",
   });
+
   const { data: availableStock } = trpc.stock.getAvailable.useQuery(undefined, {
     refetchInterval: 10000,
     refetchOnMount: "always",
   });
+
   const { data: salesReps } = trpc.salesRep.list.useQuery(undefined, {
     refetchInterval: 30000,
     refetchOnMount: "always",
   });
+
   const { data: currentUser } = trpc.user.me.useQuery();
+
   const utils = trpc.useContext();
+
   const [formData, setFormData] = useState({
     customerId: "",
     items: [{ productId: "", quantity: 1, unitPrice: 0 }],
@@ -318,11 +364,13 @@ export default function OrdersPage() {
     salesRepId: "",
     sampleRequested: false,
   });
+
   useEffect(() => {
     if (isSalesRep && currentUser?.id) {
       setFormData(prev => ({ ...prev, salesRepId: String(currentUser.id) }));
     }
   }, [isSalesRep, currentUser]);
+
   const createOrder = trpc.order.create.useMutation({
     onSuccess: async () => {
       setShowForm(false);
@@ -338,6 +386,7 @@ export default function OrdersPage() {
       await utils.sampleReport.getAll.invalidate();
     },
   });
+
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
       setShowForm(false);
@@ -353,6 +402,7 @@ export default function OrdersPage() {
       await utils.sampleReport.getAll.invalidate();
     },
   });
+
   const updateStatus = trpc.order.updateStatus.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -360,6 +410,7 @@ export default function OrdersPage() {
       await utils.order.getStats.invalidate();
     },
   });
+
   const deleteOrder = trpc.order.delete.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -371,6 +422,7 @@ export default function OrdersPage() {
       await utils.sampleReport.getAll.invalidate();
     },
   });
+
   const cancelOrder = trpc.order.cancel.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -381,6 +433,7 @@ export default function OrdersPage() {
       await utils.stock.getStats.invalidate();
     },
   });
+
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -391,6 +444,7 @@ export default function OrdersPage() {
       await utils.stock.getStats.invalidate();
     },
   });
+
   const sendQuote = trpc.order.sendQuote.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -398,6 +452,7 @@ export default function OrdersPage() {
       await utils.order.getStats.invalidate();
     },
   });
+
   const repCustomers = useMemo(() => {
     if (!customers) return [];
     if (isAdmin || isSalesManager) return customers;
@@ -406,6 +461,7 @@ export default function OrdersPage() {
     }
     return customers;
   }, [customers, isAdmin, isSalesManager, isSalesRep, currentUser]);
+
   const repOrders = useMemo(() => {
     if (!orders) return [];
     if (isAdmin || isSalesManager) return orders;
@@ -414,11 +470,14 @@ export default function OrdersPage() {
     }
     return orders;
   }, [orders, isAdmin, isSalesManager, isSalesRep, currentUser]);
+
   const filteredOrders = useMemo(() => {
     let result = [...(repOrders || [])];
+
     if (statusFilter !== "all" && activeTab === "all") {
       result = result.filter((o: any) => o.status === statusFilter);
     }
+
     if (activeTab !== "all") {
       if (activeTab === "draft") {
         result = result.filter((o: any) => ["draft", "sent", "accepted", "rejected", "converted"].includes(o.status));
@@ -426,6 +485,7 @@ export default function OrdersPage() {
         result = result.filter((o: any) => o.status === activeTab);
       }
     }
+
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       result = result.filter((o: any) =>
@@ -435,6 +495,7 @@ export default function OrdersPage() {
         o.items?.some((i: any) => i.productName?.toLowerCase().includes(q))
       );
     }
+
     if (dateFilter.from || dateFilter.to) {
       result = result.filter((o: any) => {
         const d = new Date(o.createdAt);
@@ -443,20 +504,25 @@ export default function OrdersPage() {
         return true;
       });
     }
+
     if (repFilter !== "all") {
       result = result.filter((o: any) => String(o.salesRepId) === repFilter);
     }
+
     if (tierFilter !== "all") {
       result = result.filter((o: any) => o.priceTier === tierFilter);
     }
+
     result.sort((a: any, b: any) => {
       const aVal = a[sortField] || "";
       const bVal = b[sortField] || "";
       if (sortDir === "asc") return aVal > bVal ? 1 : -1;
       return aVal < bVal ? 1 : -1;
     });
+
     return result;
   }, [repOrders, statusFilter, activeTab, searchTerm, dateFilter, repFilter, tierFilter, sortField, sortDir]);
+
   const stats = useMemo(() => {
     const total = filteredOrders.length;
     const pending = filteredOrders.filter((o: any) => o.status === "pending").length;
@@ -468,6 +534,7 @@ export default function OrdersPage() {
     const totalValue = filteredOrders.reduce((sum: number, o: any) => sum + (Number(o.total) || 0), 0);
     return { total, pending, picking, ready, delivered, cancelled, draft, totalValue };
   }, [filteredOrders]);
+
   function resetForm() {
     setFormData({
       customerId: "",
@@ -484,37 +551,45 @@ export default function OrdersPage() {
     setSelectedCustomerId(null);
     setCustomerSearch("");
   }
+
   function getCustomerName(id: number) {
     const c = customers?.find((x: any) => x.id == id);
     return c?.name || c?.company || "Unknown";
   }
+
   function getCustomerById(id: number) {
     return customers?.find((x: any) => x.id == id);
   }
+
   function getStockItem(id: number) {
     return (stockItems || []).find((s: any) => s.id == id) || (stockSearch || []).find((s: any) => s.id == id);
   }
+
   function getProductName(id: number) {
     const s = getStockItem(id);
     return s?.productName || "Unknown Product";
   }
+
   function getUnitPrice(id: number, tier: string) {
     const s = getStockItem(id);
     if (!s) return 0;
     return s[tier + "Price"] || s.unitPrice || 0;
   }
+
   function addItem() {
     setFormData(prev => ({
       ...prev,
       items: [...prev.items, { productId: "", quantity: 1, unitPrice: 0 }],
     }));
   }
+
   function removeItem(index: number) {
     setFormData(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index),
     }));
   }
+
   function updateItem(index: number, field: string, value: any) {
     setFormData(prev => {
       const newItems = [...prev.items];
@@ -525,6 +600,7 @@ export default function OrdersPage() {
       return { ...prev, items: newItems };
     });
   }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const customerId = Number(formData.customerId);
@@ -565,6 +641,7 @@ export default function OrdersPage() {
       createOrder.mutate(payload);
     }
   }
+
   function startEditOrder(order: any) {
     sampleOverrideRef.current = true;
     setEditingOrder(order);
@@ -588,26 +665,31 @@ export default function OrdersPage() {
     setCustomerSearch(getCustomerName(order.customerId) || "");
     setShowForm(true);
   }
+
   function handlePrint(order: any) {
     setPrintOrder(order);
     setShowPrintModal(true);
   }
+
   function handleSendQuote(order: any) {
     setQuoteOrder(order);
     setShowQuoteModal(true);
     setQuoteViewMode("preview");
     setBankingDetails(getBankingDetails());
   }
+
   function handlePickingSlip(order: any) {
     setPickingOrder(order);
     setShowPickingModal(true);
   }
+
   const allStock = useMemo(() => {
     const map = new Map();
     (stockItems || []).forEach((s: any) => map.set(s.id, s));
     (stockSearch || []).forEach((s: any) => map.set(s.id, s));
     return Array.from(map.values());
   }, [stockItems, stockSearch]);
+
   const filteredCustomers = useMemo(() => {
     if (!customerSearch.trim()) return repCustomers || [];
     const q = customerSearch.toLowerCase();
@@ -617,11 +699,13 @@ export default function OrdersPage() {
       c.email?.toLowerCase().includes(q)
     );
   }, [repCustomers, customerSearch]);
+
   const subtotal = useMemo(() => {
     return formData.items.reduce((sum: number, item: any) => {
       return sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
     }, 0);
   }, [formData.items]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target as Node)) {
@@ -631,6 +715,7 @@ export default function OrdersPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
   return (
     <div className="page-container">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -648,6 +733,7 @@ export default function OrdersPage() {
           </button>
         )}
       </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
         {[
           { label: "Total", value: stats.total, color: "#D4A843" },
@@ -664,6 +750,7 @@ export default function OrdersPage() {
           </div>
         ))}
       </div>
+
       <div className="flex flex-wrap gap-2 mb-4">
         {statusTabs.map((tab) => (
           <button
@@ -679,6 +766,7 @@ export default function OrdersPage() {
           </button>
         ))}
       </div>
+
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
@@ -725,6 +813,7 @@ export default function OrdersPage() {
           className="input-field"
         />
       </div>
+
       {isLoading ? (
         <div className="text-center py-12 text-[#8A8B8C]">Loading orders...</div>
       ) : (
@@ -775,6 +864,7 @@ export default function OrdersPage() {
                     {isExpanded ? <ChevronUp className="w-5 h-5 text-[#8A8B8C]" /> : <ChevronDown className="w-5 h-5 text-[#8A8B8C]" />}
                   </div>
                 </div>
+
                 {isExpanded && (
                   <div className="border-t p-4" style={{ borderColor: "#222324" }}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -809,6 +899,7 @@ export default function OrdersPage() {
                         </div>
                       </div>
                     </div>
+
                     <div className="flex flex-wrap gap-2">
                       {order.status === "draft" && (
                         <>
@@ -880,6 +971,7 @@ export default function OrdersPage() {
           })}
         </div>
       )}
+
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }}>
           <div className="card-surface w-full max-w-4xl max-h-[90vh] overflow-y-auto m-4">
@@ -889,6 +981,7 @@ export default function OrdersPage() {
                 <X className="w-5 h-5 text-[#8A8B8C]" />
               </button>
             </div>
+
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative" ref={customerDropdownRef}>
@@ -947,6 +1040,7 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
+
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-[#E8E8E9]">Items</label>
@@ -995,6 +1089,7 @@ export default function OrdersPage() {
                   </div>
                 ))}
               </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-[#E8E8E9] mb-1">Payment Terms</label>
@@ -1021,6 +1116,7 @@ export default function OrdersPage() {
                   </select>
                 </div>
               </div>
+
               {formData.deliveryMethod === "delivery" && (
                 <div>
                   <label className="block text-sm font-medium text-[#E8E8E9] mb-1">Delivery Address</label>
@@ -1032,6 +1128,7 @@ export default function OrdersPage() {
                   />
                 </div>
               )}
+
               <div>
                 <label className="block text-sm font-medium text-[#E8E8E9] mb-1">Notes</label>
                 <textarea
@@ -1040,6 +1137,7 @@ export default function OrdersPage() {
                   className="input-field w-full h-20"
                 />
               </div>
+
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -1060,6 +1158,7 @@ export default function OrdersPage() {
                   <span className="text-sm text-[#E8E8E9]">Sample Request</span>
                 </label>
               </div>
+
               <div className="flex justify-between items-center pt-4 border-t" style={{ borderColor: "#222324" }}>
                 <div className="text-lg font-display font-bold text-[#D4A843]">
                   Total: R {subtotal.toFixed(2)}
@@ -1085,6 +1184,7 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
+
       {productPickerOpen && (
         <ProductPickerModal
           isOpen={productPickerOpen}

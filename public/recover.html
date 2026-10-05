@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SGF Order Recovery</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  background: #0C0D0E;
+  color: #E8E8E9;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  padding: 16px;
+  margin: 0;
+  line-height: 1.5;
+}
+h1 {
+  color: #D4A843;
+  font-size: 20px;
+  margin: 0 0 8px 0;
+}
+h2 {
+  color: #D4A843;
+  font-size: 16px;
+  margin: 24px 0 8px 0;
+  border-bottom: 1px solid #222324;
+  padding-bottom: 8px;
+}
+.subtitle {
+  color: #8A8B8C;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.card {
+  background: #131415;
+  border: 1px solid #222324;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #1A1A1B;
+  font-size: 14px;
+}
+.stat:last-child { border-bottom: none; }
+.stat .label { color: #8A8B8C; }
+.stat .value { color: #D4A843; font-weight: 700; }
+.order {
+  background: #1A1A1B;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.order-id {
+  color: #D4A843;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+.order-date {
+  color: #8A8B8C;
+  font-size: 11px;
+}
+.order-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.order-meta div { color: #8A8B8C; font-size: 12px; }
+.order-meta div span { color: #E8E8E9; }
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.items-table th {
+  text-align: left;
+  color: #8A8B8C;
+  font-weight: 600;
+  padding: 4px;
+  border-bottom: 1px solid #222324;
+}
+.items-table td {
+  padding: 4px;
+  border-bottom: 1px solid #1A1A1B;
+  color: #E8E8E9;
+}
+.items-table td.num {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+.total-row {
+  font-weight: 700;
+  color: #D4A843;
+}
+.pending-item {
+  background: #1A1A1B;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.pending-type {
+  color: #D4A843;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.pending-id {
+  color: #E8E8E9;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+.pending-ts {
+  color: #8A8B8C;
+  font-size: 11px;
+}
+.empty {
+  color: #4ADE80;
+  text-align: center;
+  padding: 20px;
+  font-size: 14px;
+}
+.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid #F59E0B;
+  border-radius: 8px;
+  padding: 12px;
+  color: #F59E0B;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #EF4444;
+  border-radius: 8px;
+  padding: 12px;
+  color: #EF4444;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 8px 0;
+}
+.btn-gold { background: #D4A843; color: #0A0A0B; }
+.btn-green { background: #22C55E; color: #fff; }
+.btn-blue { background: #3B82F6; color: #fff; }
+.btn-red { background: #EF4444; color: #fff; }
+.hidden { display: none; }
+#exportArea {
+  width: 100%;
+  height: 200px;
+  background: #0C0D0E;
+  border: 1px solid #222324;
+  border-radius: 8px;
+  color: #E8E8E9;
+  padding: 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  margin-top: 12px;
+  white-space: pre;
+  overflow: auto;
+}
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filter-bar select, .filter-bar input {
+  background: #1A1A1B;
+  border: 1px solid #222324;
+  border-radius: 6px;
+  color: #E8E8E9;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+
+<h1>SGF Order Recovery</h1>
+<p class="subtitle">Check orders & pending queue on this device</p>
+
+<div id="messages"></div>
+
+<div class="card">
+  <h2>Summary</h2>
+  <div class="stat">
+    <span class="label">Total Orders in localStorage</span>
+    <span class="value" id="totalOrders">-</span>
+  </div>
+  <div class="stat">
+    <span class="label">Orders Since Friday (Oct 2)</span>
+    <span class="value" id="recentOrders">-</span>
+  </div>
+  <div class="stat">
+    <span class="label">Pending Push Queue</span>
+    <span class="value" id="pendingCount">-</span>
+  </div>
+  <div class="stat">
+    <span class="label">Device ID</span>
+    <span class="value" id="deviceId">-</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Pending Push Queue</h2>
+  <div id="pendingQueue"><p class="empty">Loading...</p></div>
+</div>
+
+<div class="card">
+  <h2>Orders Since Friday (Oct 2, 2026)</h2>
+  <div class="filter-bar">
+    <select id="repFilter">
+      <option value="">All Sales Reps</option>
+    </select>
+    <input type="date" id="dateFilter" />
+  </div>
+  <div id="ordersList"><p class="empty">Loading...</p></div>
+</div>
+
+<div class="card">
+  <button class="btn btn-green" onclick="exportData()">Export All Data as JSON</button>
+  <button class="btn btn-blue" onclick="copyExport()">Copy to Clipboard</button>
+  <button class="btn btn-gold" onclick="goApp()">Open App</button>
+  <textarea id="exportArea" class="hidden" readonly></textarea>
+</div>
+
+<script>
+// ─── helpers ───
+const $ = id => document.getElementById(id);
+const fmtDate = iso => {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-ZA', { weekday:'short', year:'numeric', month:'short', day:'numeric' }) + ' ' +
+         d.toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' });
+};
+const fmtMoney = n => 'R ' + (Number(n)||0).toFixed(2);
+
+// ─── load data ───
+let allOrders = [];
+let pendingQueue = [];
+let deviceId = localStorage.getItem('sgf_deviceId') || 'unknown';
+
+function load() {
+  // Orders
+  try {
+    const raw = localStorage.getItem('sgf_orders');
+    allOrders = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(allOrders)) allOrders = [];
+  } catch (e) {
+    allOrders = [];
+    msg('Error reading sgf_orders: ' + e.message, 'error');
+  }
+
+  // Pending queue
+  try {
+    const raw = localStorage.getItem('sgf_pendingPushQueue');
+    pendingQueue = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(pendingQueue)) pendingQueue = [];
+  } catch (e) {
+    pendingQueue = [];
+    msg('Error reading sgf_pendingPushQueue: ' + e.message, 'error');
+  }
+
+  $('deviceId').textContent = deviceId;
+  $('totalOrders').textContent = allOrders.length;
+
+  const friday = new Date('2026-10-02T00:00:00Z');
+  const recent = allOrders.filter(o => o && o.createdAt && new Date(o.createdAt) >= friday);
+  $('recentOrders').textContent = recent.length;
+  $('pendingCount').textContent = pendingQueue.length;
+
+  renderPending();
+  renderOrders(recent);
+  populateRepFilter(recent);
+}
+
+function msg(text, type='warning') {
+  const div = document.createElement('div');
+  div.className = type;
+  div.textContent = text;
+  $('messages').appendChild(div);
+}
+
+// ─── render pending queue ───
+function renderPending() {
+  const container = $('pendingQueue');
+  if (pendingQueue.length === 0) {
+    container.innerHTML = '<p class="empty">No pending items — queue is empty</p>';
+    return;
+  }
+  container.innerHTML = '';
+  pendingQueue.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'pending-item';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;">
+        <span class="pending-type">${item.type || 'unknown'}</span>
+        <span class="pending-ts">${fmtDate(item.timestamp ? new Date(item.timestamp).toISOString() : null)}</span>
+      </div>
+      <div class="pending-id">ID: ${item.item?.id || item.item?.orderNumber || 'N/A'}</div>
+      <div style="color:#8A8B8C;font-size:11px;margin-top:4px;">
+        ${item.item?.customerName || item.item?.customer || 'No customer'} 
+        ${item.item?.salesRep ? '| Rep: ' + item.item.salesRep : ''}
+        ${item.item?.total ? '| Total: ' + fmtMoney(item.item.total) : ''}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// ─── render orders ───
+function renderOrders(orders) {
+  const container = $('ordersList');
+  const repFilter = $('repFilter').value;
+  const dateFilter = $('dateFilter').value;
+
+  let filtered = orders.filter(o => o && o.createdAt);
+  if (repFilter) filtered = filtered.filter(o => (o.salesRep||'') === repFilter);
+  if (dateFilter) {
+    const d = new Date(dateFilter);
+    filtered = filtered.filter(o => {
+      const od = new Date(o.createdAt);
+      return od.getFullYear() === d.getFullYear() && od.getMonth() === d.getMonth() && od.getDate() === d.getDate();
+    });
+  }
+
+  // Sort by createdAt desc
+  filtered.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<p class="empty">No orders match the filters</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+  filtered.forEach(order => {
+    const items = Array.isArray(order.items) ? order.items : [];
+    const itemsHtml = items.length > 0 ? `
+      <table class="items-table">
+        <thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Subtotal</th></tr></thead>
+        <tbody>
+          ${items.map(it => `
+            <tr>
+              <td>${it.name || it.productName || it.description || 'Unknown'}</td>
+              <td class="num">${it.qty || it.quantity || 0}</td>
+              <td class="num">${fmtMoney(it.price || it.unitPrice || 0)}</td>
+              <td class="num">${fmtMoney((it.qty||it.quantity||0) * (it.price||it.unitPrice||0))}</td>
+            </tr>
+          `).join('')}
+          <tr class="total-row">
+            <td colspan="3" style="text-align:right">Total:</td>
+            <td class="num">${fmtMoney(order.total || order.grandTotal || 0)}</td>
+          </tr>
+        </tbody>
+      </table>
+    ` : '<p style="color:#8A8B8C;font-size:11px;margin:4px 0;">No items</p>';
+
+    const div = document.createElement('div');
+    div.className = 'order';
+    div.innerHTML = `
+      <div class="order-header">
+        <span class="order-id">${order.orderNumber || order.id || 'N/A'}</span>
+        <span class="order-date">${fmtDate(order.createdAt)}</span>
+      </div>
+      <div class="order-meta">
+        <div>Customer: <span>${order.customerName || order.customer || 'N/A'}</span></div>
+        <div>Sales Rep: <span>${order.salesRep || 'N/A'}</span></div>
+        <div>Status: <span>${order.status || 'N/A'}</span></div>
+        <div>Type: <span>${order.orderType || 'N/A'}</span></div>
+      </div>
+      ${itemsHtml}
+      ${order._syncedAt ? '<p style="color:#4ADE80;font-size:11px;margin:4px 0 0 0;">Synced to cloud</p>' : '<p style="color:#F59E0B;font-size:11px;margin:4px 0 0 0;">NOT synced (_syncedAt missing)</p>'}
+    `;
+    container.appendChild(div);
+  });
+}
+
+function populateRepFilter(orders) {
+  const reps = [...new Set(orders.map(o => o.salesRep).filter(Boolean))].sort();
+  const select = $('repFilter');
+  reps.forEach(rep => {
+    const opt = document.createElement('option');
+    opt.value = rep;
+    opt.textContent = rep;
+    select.appendChild(opt);
+  });
+  select.onchange = () => {
+    const friday = new Date('2026-10-02T00:00:00Z');
+    const recent = allOrders.filter(o => o && o.createdAt && new Date(o.createdAt) >= friday);
+    renderOrders(recent);
+  };
+  $('dateFilter').onchange = select.onchange;
+}
+
+// ─── export ───
+function exportData() {
+  const friday = new Date('2026-10-02T00:00:00Z');
+  const recent = allOrders.filter(o => o && o.createdAt && new Date(o.createdAt) >= friday);
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    deviceId: deviceId,
+    totalOrders: allOrders.length,
+    recentOrdersCount: recent.length,
+    pendingQueueCount: pendingQueue.length,
+    recentOrders: recent,
+    pendingQueue: pendingQueue
+  };
+  const json = JSON.stringify(payload, null, 2);
+  $('exportArea').value = json;
+  $('exportArea').classList.remove('hidden');
+}
+
+function copyExport() {
+  const area = $('exportArea');
+  area.classList.remove('hidden');
+  area.select();
+  document.execCommand('copy');
+  alert('Data copied to clipboard! Send this to admin via WhatsApp/email.');
+}
+
+function goApp() {
+  window.location.href = 'index.html?_=' + Date.now();
+}
+
+// ─── init ───
+load();
+</script>
+
+</body>
+</html>

@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { reloadFromStorage } from "@/lib/dataService";
+
 import {
   Search, Upload, Plus, Pencil, Trash2, X, Package, AlertTriangle, CheckCircle,
   FileText, Calendar, Printer, Tag, BarChart3,
@@ -52,16 +52,16 @@ export default function StockPage() {
   const { data: stats } = trpc.stock.getStats.useQuery();
 
   const createStock = trpc.stock.create.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
   const updateStock = trpc.stock.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); setEditingId(null); resetForm(); },
+    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); setEditingId(null); resetForm(); },
   });
   const deleteStock = trpc.stock.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
+    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
   });
   const bulkUpload = trpc.stock.bulkUpload.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowUpload(false); },
+    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowUpload(false); },
   });
 
   function resetForm() {

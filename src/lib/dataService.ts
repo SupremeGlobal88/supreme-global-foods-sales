@@ -2726,6 +2726,75 @@ export const dataService = {
       logAudit("CREATE", "order", newOrder.id, `Order ${orderNumber} recreated from invoice ${inv.invoiceNumber}`);
       return newOrder;
     },
+    repairOrders: () => {
+      let repaired = 0;
+      for (const order of orders) {
+        let needsSave = false;
+        const isSample = order.orderType === "sample";
+        const isQuote = order.orderType === "quote";
+
+        // Repair items: ensure each item has lineTotal, productName, unitPrice
+        if (Array.isArray(order.items)) {
+          for (const item of order.items) {
+            const qty = Number(item.quantity) || 0;
+            const price = Number(item.unitPrice) || 0;
+            const expectedLineTotal = price * qty;
+
+            if (!item.lineTotal || Number.isNaN(item.lineTotal) || item.lineTotal === 0 && expectedLineTotal > 0) {
+              item.lineTotal = expectedLineTotal;
+              needsSave = true;
+            }
+            if (!item.productName || item.productName === "Unknown") {
+              const product = products.find((p) => p.id == item.stockItemId);
+              if (product?.productName) {
+                item.productName = product.productName;
+                item.productCode = product.productCode || "";
+                needsSave = true;
+              }
+            }
+            if (!item.unitPrice || Number.isNaN(item.unitPrice)) {
+              const product = products.find((p) => p.id == item.stockItemId);
+              if (product) {
+                const tier = isSample ? "corporate" : (order.priceTier || "corporate");
+                const conv = Number(item.conversion) || 1;
+                const base = getEffectivePrice(item.stockItemId, tier, order.customerId || 0, isSample);
+                item.unitPrice = base * conv;
+                needsSave = true;
+              }
+            }
+          }
+        }
+
+        // Recalculate order-level totals
+        const items = order.items || [];
+        const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + (Number(item.lineTotal) || 0), 0);
+        const vatAmount = isSample ? 0 : subtotal * 0.15;
+        const total = isSample ? 0 : subtotal + vatAmount;
+
+        if (Number.isNaN(order.subtotal) || order.subtotal === undefined || order.subtotal === null || order.subtotal !== subtotal) {
+          order.subtotal = subtotal;
+          needsSave = true;
+        }
+        if (Number.isNaN(order.vatAmount) || order.vatAmount === undefined || order.vatAmount === null || order.vatAmount !== vatAmount) {
+          order.vatAmount = vatAmount;
+          needsSave = true;
+        }
+        if (Number.isNaN(order.total) || order.total === undefined || order.total === null || order.total !== total) {
+          order.total = total;
+          order.totalAmount = total;
+          needsSave = true;
+        }
+
+        if (needsSave) {
+          repaired++;
+          order.updatedAt = new Date().toISOString();
+        }
+      }
+      if (repaired > 0) {
+        saveItem("sgf_orders", orders);
+      }
+      return { repaired, total: orders.length };
+    },
   },
 
   invoice: {
@@ -5013,4 +5082,11 @@ function getEffectivePrice(stockItemId: number, priceTier: string, customerId: n
     }
   }
   return rawPrice;
+}
+
+// Repair corrupted orders on module load (fixes orders created during the reloadFromStorage bug)
+try {
+  dataService.order.repairOrders();
+} catch (e) {
+  console.error("[dataService] Order repair failed:", e);
 }

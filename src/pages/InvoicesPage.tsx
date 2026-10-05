@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
-import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
+import { getBankingDetails } from "@/lib/dataService";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
@@ -104,7 +104,6 @@ export default function InvoicesPage() {
   /* Mutations */
   const recordPay = trpc.invoice.recordPayment.useMutation({
     onSuccess: async (data: any) => {
-      reloadFromStorage();
       await utils.invoice.list.invalidate();
       await utils.invoice.getReceipts.invalidate();
       closePay();
@@ -114,11 +113,11 @@ export default function InvoicesPage() {
     onError: (err: any) => { alert("Payment failed: " + (err.message || "Unknown error")); },
   });
   const editPay = trpc.invoice.editPayment.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); closePay(); },
+    onSuccess: async () => { await utils.invoice.list.invalidate(); closePay(); },
     onError: (err: any) => { alert("Edit payment failed: " + (err.message || "Unknown error")); closePay(); },
   });
   const delPay = trpc.invoice.deletePayment.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+    onSuccess: async () => { await utils.invoice.list.invalidate(); },
     onError: (err: any) => { alert("Delete payment failed: " + (err.message || "Unknown error")); },
   });
   const createCreditNote = trpc.invoice.createCreditNote.useMutation({
@@ -139,7 +138,7 @@ export default function InvoicesPage() {
     onError: (err: any) => { alert("Credit note failed: " + (err.message || "Unknown error")); },
   });
   const voidCreditNote = trpc.invoice.voidCreditNote.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+    onSuccess: async () => { await utils.invoice.list.invalidate(); },
   });
   const allocateCredit = trpc.invoice.allocateCredit.useMutation({
     onSuccess: async (data: any) => {
@@ -158,11 +157,11 @@ export default function InvoicesPage() {
     onError: (err: any) => { alert("Credit allocation failed: " + (err.message || "Unknown error")); },
   });
   const updateInvoice = trpc.invoice.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowEditInv(false); },
+    onSuccess: async () => { await utils.invoice.list.invalidate(); setShowEditInv(false); },
     onError: (err: any) => { alert("Edit invoice failed: " + (err.message || "Unknown error")); },
   });
   const activateInvoice = trpc.invoice.updateStatus.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+    onSuccess: async () => { await utils.invoice.list.invalidate(); },
   });
   const createOrderFromInvoiceMut = trpc.invoice.createOrderFromInvoice.useMutation({
     onSuccess: async (data: any) => {

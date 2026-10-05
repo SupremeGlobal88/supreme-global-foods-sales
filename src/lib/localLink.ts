@@ -8,6 +8,7 @@ import { observable } from "@trpc/server/observable";
 import {
   pushOrder, pushAppointment, pushCheckin, pushInvoice, pushInvoices,
   pushOneCustomer, removeOneCustomer, pushOneStockItem, removeOneStockItem, pushStock,
+  removeOrder, removeInvoice,
   pushFollowUpAction, pushFollowUp, pushOneReceipt, pushReceipts,
   pushUser, pushUserDelete, pushAppointmentDelete, pushCheckinDelete,
   pushSalesRep, removeSalesRep, pushCreditNote,
@@ -221,7 +222,7 @@ export function createLocalLink() {
                 if (updateResult?.cancelledInvoice) { await pushInvoice(updateResult.cancelledInvoice); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); }
                 break;
               }
-              case "order.delete": { requireAdmin(); result = dataService.order.delete(input); if (result.success) { await fbPush("sgf_orders", dataService.order.list()); await fbPush("sgf_products", dataService.stock.list()); if (result.deletedInvoices > 0) await fbPush("sgf_invoices", dataService.invoice.list()); } break; }
+              case "order.delete": { requireAdmin(); result = dataService.order.delete(input); if (result.success) { await removeOrder(input); for (const invId of result.deletedInvoiceIds || []) { await removeInvoice(invId); } for (const item of result.deletedOrder?.items || []) { if (item.stockItemId) { const prod = dataService.stock.getById(item.stockItemId); if (prod) { try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.delete] pushOneStockItem failed for", item.stockItemId, e); } } } } reloadFromStorage(["sgf_orders", "sgf_products", "sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); } break; }
               case "order.getBySalesRep": await smartSync("orders", "sgf_orders"); result = dataService.order.getBySalesRep(input); break;
               case "order.getMonthlySales": await smartSync("orders", "sgf_orders"); result = dataService.order.getMonthlySales(); break;
               case "order.getProductSales": await smartSync("orders", "sgf_orders"); result = dataService.order.getProductSales(); break;

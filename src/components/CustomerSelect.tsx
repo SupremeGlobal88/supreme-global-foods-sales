@@ -16,10 +16,10 @@ interface Props {
 const CustomerSelect = memo(function CustomerSelect({ customers, selectedId, onSelect }: Props) {
   // Memoize options so the array reference is stable — prevents select re-mounting
   const options = useMemo(() => {
-    return (customers || []).filter(Boolean).map((c) => (
-      <option key={c?.id} value={c?.id}>
-        {c?.name} ({c?.priceTier})
-        {c?.salesRepName ? ` - ${c.salesRepName}` : ""}
+    return customers.map((c) => (
+      <option key={c.id} value={c.id}>
+        {c.name} ({c.priceTier})
+        {c.salesRepName ? ` - ${c.salesRepName}` : ""}
       </option>
     ));
   }, [customers]);
@@ -41,7 +41,7 @@ const CustomerSelect = memo(function CustomerSelect({ customers, selectedId, onS
       </select>
       {selectedId > 0 && (
         <div className="mt-1 text-xs" style={{ color: "#4ADE80" }}>
-          Selected: {(customers || []).find((c) => c?.id === selectedId)?.name || ""}
+          Selected: {customers.find((c) => c.id === selectedId)?.name || ""}
         </div>
       )}
     </>

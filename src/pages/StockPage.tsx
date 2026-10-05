@@ -52,16 +52,16 @@ export default function StockPage() {
   const { data: stats } = trpc.stock.getStats.useQuery();
 
   const createStock = trpc.stock.create.useMutation({
-    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
   const updateStock = trpc.stock.update.useMutation({
-    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); setEditingId(null); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); setEditingId(null); resetForm(); },
   });
   const deleteStock = trpc.stock.delete.useMutation({
-    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
   });
   const bulkUpload = trpc.stock.bulkUpload.useMutation({
-    onSuccess: async () => { await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowUpload(false); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowUpload(false); },
   });
 
   function resetForm() {

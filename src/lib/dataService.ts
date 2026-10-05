@@ -527,15 +527,32 @@ export const dataService = {
     create: (data: any) => {
       const newId = orders.length > 0 ? Math.max(...orders.map((o) => o.id || 0)) + 1 : 1;
 
-      // CRITICAL FIX: Calculate line totals and order totals.
-      // The frontend payload does NOT include total/subtotal/vatAmount,
-      // so we must compute them here from the items array.
+      // CRITICAL FIX: Calculate unit prices, line totals, and order totals.
+      // The frontend payload often does NOT include unitPrice or productName,
+      // so we must compute them here from the stock items and pricing tiers.
       const isSample = data.orderType === "sample";
       const isQuote = data.orderType === "quote";
-      const items = (data.items || []).map((item: any) => ({
-        ...item,
-        lineTotal: (item.unitPrice || 0) * (item.quantity || 0),
-      }));
+      const priceTier = isSample ? "corporate" : (data.priceTier || "wholesale");
+
+      const items = (data.items || []).map((item: any) => {
+        const stock = products.find((p) => p.id == item.stockItemId);
+        const conversion = item.conversion || 1;
+
+        // Calculate unitPrice from stock tier pricing if not provided by frontend
+        let unitPrice = item.unitPrice;
+        if (!unitPrice || Number(unitPrice) <= 0) {
+          const basePrice = getEffectivePrice(Number(item.stockItemId), priceTier, Number(data.customerId), isSample);
+          unitPrice = basePrice * conversion;
+        }
+
+        return {
+          ...item,
+          productName: stock?.productName || item.productName || "Unknown",
+          productCode: stock?.productCode || item.productCode || "",
+          unitPrice,
+          lineTotal: unitPrice * (item.quantity || 0),
+        };
+      });
 
       const subtotal = isSample || isQuote ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
       const customer = customers.find((c) => c.id == data.customerId);
@@ -546,6 +563,7 @@ export const dataService = {
       const newOrder = {
         ...data,
         id: newId,
+        orderNumber: data.orderNumber || `ORD${String(newId).padStart(4, "0")}`,
         items,
         subtotal,
         vatAmount,
@@ -555,6 +573,19 @@ export const dataService = {
         updatedAt: new Date().toISOString(),
       };
       orders.push(newOrder);
+
+      // Deduct stock for non-sample, non-quote orders (account for conversion)
+      if (!isSample && !isQuote) {
+        for (const item of items) {
+          const product = products.find((p) => p.id == item.stockItemId);
+          if (product) {
+            const conversion = item.conversion || 1;
+            product.quantity = (product.quantity || 0) - ((item.quantity || 0) * conversion);
+          }
+        }
+        saveItem("sgf_products", products);
+      }
+
       saveItem("sgf_orders", orders);
       return newOrder;
     },
@@ -562,16 +593,34 @@ export const dataService = {
       const idx = orders.findIndex((o) => o.id == id);
       if (idx >= 0) {
         let updates = { ...data };
-        // CRITICAL FIX: Recalculate totals if items are provided in the update.
+        // CRITICAL FIX: Recalculate unit prices, line totals, and totals if items are provided.
         if (data.items && Array.isArray(data.items)) {
           const isSample = data.orderType === "sample" || orders[idx].orderType === "sample";
           const isQuote = data.orderType === "quote" || orders[idx].orderType === "quote";
-          const items = data.items.map((item: any) => ({
-            ...item,
-            lineTotal: (item.unitPrice || 0) * (item.quantity || 0),
-          }));
+          const priceTier = isSample ? "corporate" : (data.priceTier || orders[idx].priceTier || "wholesale");
+          const customerId = data.customerId || orders[idx].customerId;
+
+          const items = data.items.map((item: any) => {
+            const stock = products.find((p) => p.id == item.stockItemId);
+            const conversion = item.conversion || 1;
+
+            let unitPrice = item.unitPrice;
+            if (!unitPrice || Number(unitPrice) <= 0) {
+              const basePrice = getEffectivePrice(Number(item.stockItemId), priceTier, Number(customerId), isSample);
+              unitPrice = basePrice * conversion;
+            }
+
+            return {
+              ...item,
+              productName: stock?.productName || item.productName || "Unknown",
+              productCode: stock?.productCode || item.productCode || "",
+              unitPrice,
+              lineTotal: unitPrice * (item.quantity || 0),
+            };
+          });
+
           const subtotal = isSample || isQuote ? 0 : items.reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-          const customer = customers.find((c) => c.id == (data.customerId || orders[idx].customerId));
+          const customer = customers.find((c) => c.id == customerId);
           const vatRate = customer?.vatExempt ? 0 : 0.15;
           const vatAmount = isSample || isQuote ? 0 : subtotal * vatRate;
           const total = isSample || isQuote ? 0 : subtotal + vatAmount;
@@ -591,7 +640,10 @@ export const dataService = {
           for (const item of order.items) {
             if (item.stockItemId != null && item.quantity != null) {
               const product = products.find((p) => p.id == item.stockItemId);
-              if (product) product.quantity = (product.quantity || 0) + item.quantity;
+              if (product) {
+                const conversion = item.conversion || 1;
+                product.quantity = (product.quantity || 0) + ((item.quantity || 0) * conversion);
+              }
             }
           }
           saveItem("sgf_products", products);

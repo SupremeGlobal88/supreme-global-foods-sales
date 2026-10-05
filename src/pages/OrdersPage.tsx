@@ -9,7 +9,6 @@ import {
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
   ShoppingBag, Pencil, RotateCcw, Info, Search, FileText, Mail,
   Shield,
-  Trash2,
 } from "lucide-react";
 
 // Ref for sample quantity override — updated synchronously in startEditOrder
@@ -41,12 +40,17 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
  *  Uses tRPC useQuery with 5s polling so React auto-re-renders
  *  when invoices change from other devices. This guarantees the
  *  button always shows correct state after any admin generates. */
+function safeNum(n: any, fallback = 0): number {
+  const val = Number(n);
+  return Number.isFinite(val) ? val : fallback;
+}
 function GenerateInvoiceButton({
   orderId,
 }: {
   orderId: number;
 }) {
   const [busy, setBusy] = useState(false);
+  const utils = trpc.useUtils();
 
   // Use tRPC useQuery — ALWAYS fetch fresh on mount + poll every 5s
   // The button only mounts when an order is EXPANDED, so refetchOnMount
@@ -409,20 +413,6 @@ export default function OrdersPage() {
       alert("Failed to convert quote: " + (err.message || "Unknown error"));
     },
   });
-  const deleteOrder = trpc.order.delete.useMutation({
-    onSuccess: async () => {
-      reloadFromStorage();
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
-      await utils.invoice.list.invalidate();
-    },
-    onError: (err: any) => {
-      alert("Failed to delete order: " + (err.message || "Unknown error"));
-    },
-  });
 
   // Build committed stock map: for each product, total qty in non-delivered/cancelled orders
   const committedStock = useMemo(() => {
@@ -536,7 +526,7 @@ export default function OrdersPage() {
   }
 
   const filteredCustomers = useMemo(() => {
-    const list = (customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
+    const list = (customers || []).filter(Boolean).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
     if (!showCustomerDropdown) return [];
     const q = customerSearch.toLowerCase().trim();
     if (!q || q.length < 1) return list;
@@ -952,16 +942,16 @@ export default function OrdersPage() {
           <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:9px;">${item.unitLabel}</span>` : ""}</td>
           <td style="text-align:center;font-weight:bold;">${item.quantity}</td>
           <td style="text-align:right;">${item.unit || "each"}</td>
-          <td style="text-align:right;">R ${Number(item.unitPrice).toFixed(2)}</td>
-          <td style="text-align:right;font-weight:600;">R ${Number(item.lineTotal).toFixed(2)}</td>
+          <td style="text-align:right;">R ${safeNum(item.unitPrice).toFixed(2)}</td>
+          <td style="text-align:right;font-weight:600;">R ${safeNum(item.lineTotal).toFixed(2)}</td>
         </tr>
       `).join("") || ""}
     </tbody>
   </table>
   <div class="totals">
-    <div class="total-row"><span>Subtotal</span><span>R ${Number(order.subtotal).toFixed(2)}</span></div>
-    <div class="total-row"><span>VAT (15%)</span><span>R ${Number(order.vatAmount).toFixed(2)}</span></div>
-    <div class="total-row total-final"><span>QUOTE TOTAL</span><span>R ${Number(order.total).toFixed(2)}</span></div>
+    <div class="total-row"><span>Subtotal</span><span>R ${safeNum(order.subtotal).toFixed(2)}</span></div>
+    <div class="total-row"><span>VAT (15%)</span><span>R ${safeNum(order.vatAmount).toFixed(2)}</span></div>
+    <div class="total-row total-final"><span>QUOTE TOTAL</span><span>R ${safeNum(order.total).toFixed(2)}</span></div>
   </div>
   ${order.notes ? `<div style="margin-top:10px;padding:8px;background:#fff8e1;border-radius:6px;border-left:3px solid #D4A843;"><div class="label">Notes</div><div style="font-size:11px;color:#666;font-style:italic;margin-top:2px;">${order.notes}</div></div>` : ""}
   <div class="banking">
@@ -1002,7 +992,7 @@ export default function OrdersPage() {
     const customerName = customer?.name || "Valued Customer";
     const subject = encodeURIComponent(`Quotation ${order.orderNumber} — Supreme Global Foods`);
     const itemsList = (order.items || []).map((item: any) =>
-      `• ${item.productName} (${item.productCode || "N/A"}) — ${item.quantity} ${item.unit || "each"} × R${Number(item.unitPrice).toFixed(2)} = R${Number(item.lineTotal).toFixed(2)}`
+      `• ${item.productName} (${item.productCode || "N/A"}) — ${item.quantity} ${item.unit || "each"} × R${safeNum(item.unitPrice).toFixed(2)} = R${safeNum(item.lineTotal).toFixed(2)}`
     ).join("\n");
     const body = encodeURIComponent(
       `Dear ${customerName},\n\n` +
@@ -1012,9 +1002,9 @@ export default function OrdersPage() {
       `VALID UNTIL: ${new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-ZA")}\n` +
       `SALES REP: ${order.salesRepName || "N/A"}\n\n` +
       `ITEMS:\n${itemsList}\n\n` +
-      `SUBTOTAL: R${Number(order.subtotal).toFixed(2)}\n` +
-      `VAT (15%): R${Number(order.vatAmount).toFixed(2)}\n` +
-      `TOTAL: R${Number(order.total).toFixed(2)}\n\n` +
+      `SUBTOTAL: R${safeNum(order.subtotal).toFixed(2)}\n` +
+      `VAT (15%): R${safeNum(order.vatAmount).toFixed(2)}\n` +
+      `TOTAL: R${safeNum(order.total).toFixed(2)}\n\n` +
       `PAYMENT TERMS: ${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : "As agreed"}\n` +
       `DELIVERY ADDRESS: ${order.deliveryAddress || customer?.physicalAddress || "As per customer record"}\n\n` +
       `BANKING DETAILS:\n` +
@@ -1130,7 +1120,7 @@ export default function OrdersPage() {
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
                     </td>
-                    <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.customer?.name || "N/A"}</td>
+                    <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{(getCustomer(order)?.name || order.customerName || "N/A")}</td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderType === "sample"
                         ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>
@@ -1142,7 +1132,7 @@ export default function OrdersPage() {
                     <td className="p-4 text-sm text-[#8A8B8C] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{new Date(order.createdAt).toLocaleDateString("en-ZA")}</td>
                     <td className="p-4 text-right text-sm text-white font-display cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.items?.length || 0}</td>
                     <td className="p-4 text-right font-display font-semibold cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)} style={{ color: order.orderType === "sample" ? "#D4A843" : order.orderType === "quote" ? "#6366F1" : "#FFFFFF" }}>
-                      {order.orderType === "sample" ? "R 0.00" : `R ${Number(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`}
+                      {order.orderType === "sample" ? "R 0.00" : `R ${safeNum(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`}
                     </td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       <span className="status-badge" style={{ backgroundColor: `${STATUS_LABELS[order.status]?.color}20`, color: STATUS_LABELS[order.status]?.color }}>{STATUS_LABELS[order.status]?.label || order.status}</span>
@@ -1188,9 +1178,6 @@ export default function OrdersPage() {
                         )}
                         {canEditOrder(order) && (
                           <button onClick={(e) => { e.stopPropagation(); startEditOrder(order); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit order"><Pencil className="w-4 h-4 text-[#D4A843]" /></button>
-                        )}
-                        {isSuperAdmin && (
-                          <button onClick={(e) => { e.stopPropagation(); if (confirm("PERMANENTLY DELETE this order?\n\nThis will:\n- Remove the order permanently\n- Restore stock for all items\n\nThis action CANNOT be undone.")) deleteOrder.mutate({ id: order.id }); }} className="p-1.5 rounded hover:bg-[#222324]" title="Delete order"><Trash2 className="w-4 h-4 text-[#EF4444]" /></button>
                         )}
                         {expandedOrder === order.id ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
                       </div>
@@ -1290,7 +1277,6 @@ export default function OrdersPage() {
                           )}
                           {canCancelOrder(order) && order.orderType !== "quote" && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
                           {isAdmin && order.status === "cancelled" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "pending" })} className="btn-primary text-xs"><RotateCcw className="w-3 h-3" /> Re-activate</button>}
-                          {isSuperAdmin && <button onClick={() => { if (confirm("PERMANENTLY DELETE this order?\n\nThis will:\n- Remove the order permanently\n- Restore stock for all items\n\nThis action CANNOT be undone.")) deleteOrder.mutate({ id: order.id }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Trash2 className="w-3 h-3" /> Delete</button>}
                         </div>
                         <table className="w-full mb-4">
                           <thead><tr style={{ borderBottom: "1px solid #222324" }}><th className="text-left p-2 label-text">Product</th><th className="text-right p-2 label-text">Qty</th><th className="text-right p-2 label-text">Unit Price</th><th className="text-right p-2 label-text">Line Total</th></tr></thead>
@@ -1299,8 +1285,8 @@ export default function OrdersPage() {
                               <tr key={item.id || item.stockItemId} style={{ borderBottom: "1px solid #18191A" }}>
                                 <td className="p-2 text-sm text-[#E8E8E9]">{item.productName}{item.unitLabel ? <span className="text-[#8A8B8C] text-xs ml-1">({item.unitLabel})</span> : ""}</td>
                                 <td className="p-2 text-right text-sm text-white">{item.quantity}</td>
-                                <td className="p-2 text-right text-sm text-[#8A8B8C]">R {Number(item.unitPrice).toFixed(2)}</td>
-                                <td className="p-2 text-right text-sm text-white font-display">R {Number(item.lineTotal).toFixed(2)}</td>
+                                <td className="p-2 text-right text-sm text-[#8A8B8C]">R {safeNum(item.unitPrice).toFixed(2)}</td>
+                                <td className="p-2 text-right text-sm text-white font-display">R {safeNum(item.lineTotal).toFixed(2)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1309,8 +1295,8 @@ export default function OrdersPage() {
                           {order.orderType === "sample"
                             ? <div className="font-display font-semibold text-[#D4A843] text-lg"><FlaskConical className="w-5 h-5 inline mr-2" />SAMPLE ORDER — No Charge</div>
                             : order.orderType === "quote"
-                            ? <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#6366F1]">Quote Total: R {Number(order.total).toFixed(2)}</div></>
-                            : <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {Number(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {Number(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#D4A843]">Total: R {Number(order.total).toFixed(2)}</div></>
+                            ? <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {safeNum(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {safeNum(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#6366F1]">Quote Total: R {safeNum(order.total).toFixed(2)}</div></>
+                            : <><div className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {safeNum(order.subtotal).toFixed(2)}</span></div><div className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {safeNum(order.vatAmount).toFixed(2)}</span></div><div className="font-display font-semibold text-[#D4A843]">Total: R {safeNum(order.total).toFixed(2)}</div></>
                           }
                         </div>
                         {order.deliveryAddress && <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: "#18191A" }}><div className="label-text mb-1">Delivery Address</div><div className="text-sm text-[#E8E8E9]">{order.deliveryAddress}</div></div>}

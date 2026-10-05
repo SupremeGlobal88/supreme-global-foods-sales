@@ -9,6 +9,7 @@ import {
   Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
   ShoppingBag, Pencil, RotateCcw, Info, Search, FileText, Mail,
   Shield,
+  Trash2,
 } from "lucide-react";
 
 // Ref for sample quantity override — updated synchronously in startEditOrder
@@ -406,6 +407,19 @@ export default function OrdersPage() {
     },
     onError: (err: any) => {
       alert("Failed to convert quote: " + (err.message || "Unknown error"));
+    },
+  });
+  const deleteOrder = trpc.order.delete.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+    },
+    onError: (err: any) => {
+      alert("Failed to delete order: " + (err.message || "Unknown error"));
     },
   });
 
@@ -1174,6 +1188,9 @@ export default function OrdersPage() {
                         {canEditOrder(order) && (
                           <button onClick={(e) => { e.stopPropagation(); startEditOrder(order); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit order"><Pencil className="w-4 h-4 text-[#D4A843]" /></button>
                         )}
+                        {isSuperAdmin && (
+                          <button onClick={(e) => { e.stopPropagation(); if (confirm("PERMANENTLY DELETE this order?\n\nThis will:\n- Remove the order permanently\n- Restore stock for all items\n\nThis action CANNOT be undone.")) deleteOrder.mutate({ id: order.id }); }} className="p-1.5 rounded hover:bg-[#222324]" title="Delete order"><Trash2 className="w-4 h-4 text-[#EF4444]" /></button>
+                        )}
                         {expandedOrder === order.id ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
                       </div>
                     </td>
@@ -1272,6 +1289,7 @@ export default function OrdersPage() {
                           )}
                           {canCancelOrder(order) && order.orderType !== "quote" && <button onClick={() => { if (confirm("Cancel this order? Stock will be restored.")) updateStatus.mutate({ id: order.id, status: "cancelled" }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Ban className="w-3 h-3" /> Cancel</button>}
                           {isAdmin && order.status === "cancelled" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "pending" })} className="btn-primary text-xs"><RotateCcw className="w-3 h-3" /> Re-activate</button>}
+                          {isSuperAdmin && <button onClick={() => { if (confirm("PERMANENTLY DELETE this order?\n\nThis will:\n- Remove the order permanently\n- Restore stock for all items\n\nThis action CANNOT be undone.")) deleteOrder.mutate({ id: order.id }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Trash2 className="w-3 h-3" /> Delete</button>}
                         </div>
                         <table className="w-full mb-4">
                           <thead><tr style={{ borderBottom: "1px solid #222324" }}><th className="text-left p-2 label-text">Product</th><th className="text-right p-2 label-text">Qty</th><th className="text-right p-2 label-text">Unit Price</th><th className="text-right p-2 label-text">Line Total</th></tr></thead>

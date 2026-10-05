@@ -340,7 +340,6 @@ export default function OrdersPage() {
 
   const updateStatus = trpc.order.updateStatus.useMutation({
     onSuccess: async () => {
-      reloadFromStorage(); // Force re-read from localStorage into memory
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
       await utils.stock.search.invalidate();
@@ -355,14 +354,13 @@ export default function OrdersPage() {
       // Previously setShowForm(false) was AFTER await invalidate() calls.
       // If refetching 5000+ items hangs, the popup stays open forever.
       setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
-      // Background sync — don't block the UI
-      reloadFromStorage();
-      utils.order.list.invalidate();
-      utils.order.getStats.invalidate();
-      utils.stock.search.invalidate();
-      utils.stock.list.invalidate();
-      utils.stock.getStats.invalidate();
-      utils.sampleReport.getAll.invalidate();
+      // Background sync — await invalidate to ensure refetch happens
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
       alert("Failed to place order: " + (err.message || "Unknown error. Please check console for details."));
@@ -376,13 +374,13 @@ export default function OrdersPage() {
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
       setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
-      reloadFromStorage();
-      utils.order.list.invalidate();
-      utils.order.getStats.invalidate();
-      utils.stock.search.invalidate();
-      utils.stock.list.invalidate();
-      utils.stock.getStats.invalidate();
-      utils.sampleReport.getAll.invalidate();
+      // Background sync — await invalidate to ensure refetch happens
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
       alert("Update failed: " + (err.message || "Unknown error"));
@@ -393,7 +391,6 @@ export default function OrdersPage() {
   });
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
     onSuccess: async (data) => {
-      reloadFromStorage();
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
       await utils.stock.search.invalidate();
@@ -521,7 +518,9 @@ export default function OrdersPage() {
   }
 
   const filteredCustomers = useMemo(() => {
-    const list = (customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
+    // CRITICAL FIX: filter(Boolean) removes undefined/null entries from Firebase
+    // that would crash when accessing c.name in the dropdown render
+    const list = (customers || []).filter(Boolean).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
     if (!showCustomerDropdown) return [];
     const q = customerSearch.toLowerCase().trim();
     if (!q || q.length < 1) return list;

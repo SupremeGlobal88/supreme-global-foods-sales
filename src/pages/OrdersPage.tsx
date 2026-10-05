@@ -1018,6 +1018,7 @@ export default function OrdersPage() {
   }
 
   const filteredOrders = (orders || [])
+    .filter((o) => o && o.total != null && o.total === o.total) // hide corrupted orders with NaN/null/undefined total
     .filter((o) => {
       if (activeTab === "all") return true;
       if (activeTab === "sample") return o.orderType === "sample";

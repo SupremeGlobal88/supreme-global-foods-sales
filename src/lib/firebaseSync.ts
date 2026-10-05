@@ -215,30 +215,27 @@ export async function flushPendingPushes(): Promise<void> {
   const remaining: PendingPush[] = [];
 
   for (const { type, item } of queue) {
-    let success = false;
     try {
       switch (type) {
-        case "customer": await pushOneCustomer(item); success = true; break;
-        case "order": success = await pushOrder(item); break;
-        case "invoice": success = (await pushInvoice(item)).success; break;
-        case "appointment": await pushAppointment(item); success = true; break;
-        case "checkin": await pushCheckin(item); success = true; break;
-        case "user": await pushUser(item); success = true; break;
-        case "salesRep": await pushSalesRep(item); success = true; break;
-        case "stock": await pushOneStockItem(item); success = true; break;
-        case "corporateCustomer": await pushCorporateCustomer(item); success = true; break;
-        case "purchaseOrder": await pushPurchaseOrder(item); success = true; break;
-        case "barrel": await pushBarrel(item); success = true; break;
-        case "coc": await pushCOC(item); success = true; break;
-        case "followUp": await pushFollowUp(item); success = true; break;
-        case "followUpAction": await pushFollowUpAction(item); success = true; break;
-        case "receipt": await pushOneReceipt(item); success = true; break;
+        case "customer": await pushOneCustomer(item); break;
+        case "order": await pushOrder(item); break;
+        case "invoice": await pushInvoice(item); break;
+        case "appointment": await pushAppointment(item); break;
+        case "checkin": await pushCheckin(item); break;
+        case "user": await pushUser(item); break;
+        case "salesRep": await pushSalesRep(item); break;
+        case "stock": await pushOneStockItem(item); break;
+        case "corporateCustomer": await pushCorporateCustomer(item); break;
+        case "purchaseOrder": await pushPurchaseOrder(item); break;
+        case "barrel": await pushBarrel(item); break;
+        case "coc": await pushCOC(item); break;
+        case "followUp": await pushFollowUp(item); break;
+        case "followUpAction": await pushFollowUpAction(item); break;
+        case "receipt": await pushOneReceipt(item); break;
         default: console.warn("[flushPendingPushes] Unknown type:", type);
       }
     } catch (e: any) {
       console.error(`[flushPendingPushes] FAILED ${type}:`, e.message);
-    }
-    if (!success) {
       remaining.push({ type, item, timestamp: Date.now() });
     }
   }
@@ -258,11 +255,7 @@ export async function pushOrder(order: any): Promise<boolean> {
   try {
     await set(ref(db, `orders/${safeFbKey(order.id)}`), { ...order, _syncedAt: Date.now() });
     return true;
-  } catch (e: any) {
-    console.warn("[FirebaseSync] pushOrder failed:", e.message);
-    addToPendingQueue("order", order);
-    return false;
-  }
+  } catch (e: any) { console.warn("[FirebaseSync] pushOrder failed:", e.message); return false; }
 }
 
 export async function pushCheckin(checkin: any): Promise<void> {
@@ -287,7 +280,6 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
     return { success: true };
   } catch (e: any) {
     console.error("[pushInvoice] FAILED:", invoice.invoiceNumber || invoice.id, e.message);
-    addToPendingQueue("invoice", invoice);
     return { success: false, error: e.message };
   }
 }
@@ -1288,7 +1280,6 @@ export function unsubscribeAll(): void {
 
 let autoSyncInitialized = false;
 let autoSyncCleanup: (() => void) | null = null;
-let periodicFlushTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Returns true if auto-sync subscriptions are already active */
 export function isAutoSyncInitialized(): boolean {
@@ -1370,12 +1361,6 @@ if (typeof window !== "undefined") {
         }
       } catch { /* ignore */ }
     }
-  });
-
-  // Flush pending queue when browser comes back online
-  window.addEventListener("online", () => {
-    console.log("[FirebaseSync] Browser came online — flushing pending queue");
-    flushPendingPushes().catch((e) => console.error("[FirebaseSync] Online flush error:", e));
   });
 }
 
@@ -1493,19 +1478,10 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToCOCs(handleReceived("certificatesOfCompliance", "sgf_cocs")));
   unsubs.push(subscribeToPackingListLines(handleReceived("packingListLines", "sgf_packingListLines")));
 
-  // Start periodic flush of pending queue (every 30 seconds)
-  periodicFlushTimer = setInterval(() => {
-    if (isFirebaseReady() && getPendingQueue().length > 0) {
-      console.log("[FirebaseSync] Periodic flush triggered —", getPendingQueue().length, "items pending");
-      flushPendingPushes().catch((e) => console.error("[FirebaseSync] Periodic flush error:", e));
-    }
-  }, 30000);
-
   autoSyncCleanup = () => {
     autoSyncInitialized = false;
     if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
     if (eventDebounceTimer) { clearTimeout(eventDebounceTimer); eventDebounceTimer = null; }
-    if (periodicFlushTimer) { clearInterval(periodicFlushTimer); periodicFlushTimer = null; }
     pendingEventTypes.clear();
     for (const u of unsubs) u();
   };

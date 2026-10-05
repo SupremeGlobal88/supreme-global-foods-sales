@@ -417,6 +417,7 @@ export default function OrdersPage() {
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
+      await utils.invoice.list.invalidate();
     },
     onError: (err: any) => {
       alert("Failed to delete order: " + (err.message || "Unknown error"));

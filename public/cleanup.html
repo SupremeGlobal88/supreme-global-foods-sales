@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>SGF Order Cleanup</title>
+<style>
+body{background:#0C0D0E;color:#E8E8E9;font-family:Arial;padding:20px}
+h1{color:#D4A843;font-size:20px}
+p,li{color:#8A8B8C;font-size:13px}
+.card{background:#131415;border:1px solid #2A2B2C;border-radius:10px;padding:16px;margin:16px 0;max-width:800px}
+.ok{color:#4ADE80}.err{color:#EF4444}.warn{color:#F59E0B}
+button{background:#D4A843;color:#000;border:none;border-radius:8px;padding:10px 20px;font-weight:bold;cursor:pointer;margin-top:10px}
+table{font-size:12px;width:100%;margin-top:10px}
+th{color:#D4A843;text-align:left;border-bottom:1px solid #333;padding:4px}
+td{padding:4px;border-bottom:1px solid #1A1B1C}
+</style>
+</head>
+<body>
+<h1>SGF Order Cleanup Tool</h1>
+<div id="main" class="card">Loading...</div>
+
+<script>
+const TARGETS = ["Kasi Casing Supplies","Superspar Diepkloof","Helens Casings","Roots - Daveyton"];
+const el = document.getElementById('main');
+
+// Read orders
+let orders;
+try {
+  orders = JSON.parse(localStorage.getItem('sgf_orders') || '[]');
+} catch(e) {
+  el.innerHTML = '<p class="err">ERROR reading localStorage: ' + e.message + '</p>';
+  throw e;
+}
+
+if (!Array.isArray(orders)) {
+  el.innerHTML = '<p class="err">ERROR: orders is not an array. Type: ' + (typeof orders) + '</p>';
+  throw new Error('not array');
+}
+
+// Find ALL Oct 5 orders from target customers (ignore total check for now)
+const matches = [];
+for (let i = 0; i < orders.length; i++) {
+  const o = orders[i];
+  if (!o) continue;
+  const date = String(o.createdAt || '');
+  const isOct5 = date.indexOf('2026-10-05') !== -1 || date.indexOf('2026/10/05') !== -1;
+  const isTarget = TARGETS.indexOf(o.customerName) !== -1;
+  if (isOct5 && isTarget) {
+    matches.push({
+      idx: i,
+      id: o.id,
+      num: o.orderNumber || 'NO INVOICE',
+      name: o.customerName,
+      tier: o.priceTier || '',
+      date: date,
+      total: o.total,
+      status: o.status || '',
+      items: (o.items || []).length
+    });
+  }
+}
+
+// Build UI
+let html = '<p>Total orders in localStorage: <strong>' + orders.length + '</strong></p>';
+
+if (matches.length === 0) {
+  html += '<p class="err">No orders from 2026/10/05 found for the target customers.</p>';
+  html += '<p>Target customers: ' + TARGETS.join(', ') + '</p>';
+  // Show first few orders for debugging
+  html += '<p>First 3 order dates:</p><ul>';
+  for (let i = 0; i < Math.min(3, orders.length); i++) {
+    const o = orders[i];
+    html += '<li>[' + i + '] ' + (o.customerName || '?') + ' | ' + (o.createdAt || 'no date') + ' | total=' + o.total + '</li>';
+  }
+  html += '</ul>';
+  el.innerHTML = html;
+} else {
+  html += '<p class="warn">Found ' + matches.length + ' order(s) from 2026/10/05 matching target customers:</p>';
+  html += '<table><thead><tr><th>#</th><th>Order#</th><th>Customer</th><th>Tier</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody>';
+  matches.forEach((m, i) => {
+    const totalColor = (m.total === undefined || m.total === null || m.total !== m.total) ? 'err' : 'ok';
+    html += '<tr><td>' + (i+1) + '</td><td>' + m.num + '</td><td>' + m.name + '</td><td>' + m.tier + '</td><td>' + m.items + '</td><td class="' + totalColor + '">R ' + m.total + '</td><td>' + (m.status || '-') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<button onclick="doDelete()">DELETE THESE ' + matches.length + ' ORDERS</button>';
+  el.innerHTML = html;
+}
+
+function doDelete() {
+  const idsToDelete = {};
+  matches.forEach(m => idsToDelete[m.id] = true);
+  const before = orders.length;
+  const cleaned = orders.filter(o => !idsToDelete[o.id]);
+  const deleted = before - cleaned.length;
+  localStorage.setItem('sgf_orders', JSON.stringify(cleaned));
+
+  let result = '<p class="ok">DELETED ' + deleted + ' orders.</p>';
+  result += '<p>Before: ' + before + ' | After: ' + cleaned.length + '</p>';
+  result += '<p>Next: Click "Push to Firebase" below to sync the deletion.</p>';
+  result += '<button onclick="pushFirebase()" style="background:#2A2B2C;color:#fff;border:1px solid #444">Push to Firebase</button>';
+  el.innerHTML = result;
+}
+
+function pushFirebase() {
+  const s = document.createElement('script');
+  s.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js';
+  s.onload = function() {
+    const s2 = document.createElement('script');
+    s2.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js';
+    s2.onload = function() {
+      firebase.initializeApp({
+        apiKey:'AIzaSyAj68G-CmO9ImmBB5MgPwlas389gHWqPu8',
+        authDomain:'supreme-global-foods-835b0.firebaseapp.com',
+        databaseURL:'https://supreme-global-foods-835b0-default-rtdb.firebaseio.com',
+        projectId:'supreme-global-foods-835b0'
+      });
+      const data = JSON.parse(localStorage.getItem('sgf_orders') || '[]');
+      firebase.database().ref('sgf_orders').set(data).then(() => {
+        el.innerHTML += '<p class="ok">SUCCESS! Data pushed to Firebase.</p><p>Go back to Orders page and refresh.</p>';
+      }).catch(e => {
+        el.innerHTML += '<p class="err">Push failed: ' + e.message + '</p>';
+      });
+    };
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s);
+}
+</script>
+</body>
+</html>

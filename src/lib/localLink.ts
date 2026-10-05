@@ -186,8 +186,6 @@ export function createLocalLink() {
                   const prod = dataService.stock.getById(stockId);
                   if (prod) { try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.create] pushOneStockItem failed for", stockId, e); } }
                 }
-                reloadFromStorage(["sgf_orders"]);
-                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 if (input?.orderType === "sample" && result?.id) {
                   const fu = dataService.followUp.list().find((f: any) => f.orderId == result.id);
@@ -206,8 +204,6 @@ export function createLocalLink() {
                   const prod = dataService.stock.getById(stockId);
                   if (prod) { try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.update] pushOneStockItem failed for", stockId, e); } }
                 }
-                reloadFromStorage(["sgf_orders"]);
-                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 break;
               }
@@ -221,13 +217,11 @@ export function createLocalLink() {
                   const prod = dataService.stock.getById(stockId);
                   if (prod) { try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.updateStatus] pushOneStockItem failed for", stockId, e); } }
                 }
-                reloadFromStorage(["sgf_orders"]);
-                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 if (updateResult?.cancelledInvoice) { await pushInvoice(updateResult.cancelledInvoice); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); }
                 break;
               }
-              case "order.delete": { requireAdmin(); result = dataService.order.delete(input); await fbPush("order", result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
+              case "order.delete": { requireAdmin(); result = dataService.order.delete(input); await fbPush("order", result); break; }
               case "order.getBySalesRep": await smartSync("orders", "sgf_orders"); result = dataService.order.getBySalesRep(input); break;
               case "order.getMonthlySales": await smartSync("orders", "sgf_orders"); result = dataService.order.getMonthlySales(); break;
               case "order.getProductSales": await smartSync("orders", "sgf_orders"); result = dataService.order.getProductSales(); break;
@@ -238,11 +232,11 @@ export function createLocalLink() {
               case "order.getMonthlyReport": await smartSync("orders", "sgf_orders"); result = dataService.order.getMonthlyReport(); break;
               case "order.getRevenueBySalesRep": await smartSync("orders", "sgf_orders"); result = dataService.order.getRevenueBySalesRep(); break;
               case "order.getSalesByMonth": await smartSync("orders", "sgf_orders"); result = dataService.order.getSalesByMonth(); break;
-              case "order.cancel": { requireAdmin(); result = dataService.order.cancel(input); await fbPush("order", result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
+              case "order.cancel": { requireAdmin(); result = dataService.order.cancel(input); await fbPush("order", result); break; }
               case "order.checkExistingSample": await smartSync("orders", "sgf_orders"); result = dataService.order.checkExistingSample(input); break;
               case "order.generateMissingInvoices": { result = dataService.order.generateMissingInvoices(); await pushInvoices(result || []); break; }
-              case "order.convertQuoteToOrder": { result = dataService.order.convertQuoteToOrder(input); await fbPush("order", result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
-              case "order.createFromInvoice": { result = dataService.order.createFromInvoice(input); await fbPush("order", result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
+              case "order.convertQuoteToOrder": { result = dataService.order.convertQuoteToOrder(input); await fbPush("order", result); break; }
+              case "order.createFromInvoice": { result = dataService.order.createFromInvoice(input); await fbPush("order", result); break; }
               case "order.getSalesReport": await smartSync("orders", "sgf_orders"); result = dataService.order.getSalesReport(); break;
               case "order.getRouteVisits": await smartSync("orders", "sgf_orders"); result = dataService.order.getRouteVisits(); break;
               case "order.getOpenOrders": await smartSync("orders", "sgf_orders"); result = dataService.order.getOpenOrders(); break;
@@ -250,14 +244,14 @@ export function createLocalLink() {
               case "invoice.getById": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getById(input); break;
               case "invoice.getByOrderId": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getByOrderId(input); break;
               case "invoice.getByCustomerId": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getByCustomerId(input); break;
-              case "invoice.create": { result = dataService.invoice.create(input); await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break; }
-              case "invoice.update": { const { id, data } = input; result = dataService.invoice.update({ id, data }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-              case "invoice.updateInvoice": { const { id, data } = input; result = dataService.invoice.updateInvoice({ id, data }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-              case "invoice.updateStatus": { result = dataService.invoice.updateStatus(input); await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break; }
-              case "invoice.delete": { result = dataService.invoice.delete(input); await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break; }
-              case "invoice.recordPayment": { result = dataService.invoice.recordPayment(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-              case "invoice.editPayment": { result = dataService.invoice.editPayment(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-              case "invoice.deletePayment": { result = dataService.invoice.deletePayment(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+              case "invoice.create": { result = dataService.invoice.create(input); await pushInvoice(result); break; }
+              case "invoice.update": { const { id, data } = input; result = dataService.invoice.update({ id, data }); if (result) { await pushInvoice(result); } break; }
+              case "invoice.updateInvoice": { const { id, data } = input; result = dataService.invoice.updateInvoice({ id, data }); if (result) { await pushInvoice(result); } break; }
+              case "invoice.updateStatus": { result = dataService.invoice.updateStatus(input); await pushInvoice(result); break; }
+              case "invoice.delete": { result = dataService.invoice.delete(input); await pushInvoice(result); break; }
+              case "invoice.recordPayment": { result = dataService.invoice.recordPayment(input); if (result) { await pushInvoice(result); } break; }
+              case "invoice.editPayment": { result = dataService.invoice.editPayment(input); if (result) { await pushInvoice(result); } break; }
+              case "invoice.deletePayment": { result = dataService.invoice.deletePayment(input); if (result) { await pushInvoice(result); } break; }
               case "invoice.getCustomerStatement": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getCustomerStatement(input); break;
               case "invoice.getStats": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getStats(); break;
               case "invoice.getCustomerInvoiceSummary": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getCustomerInvoiceSummary(); break;

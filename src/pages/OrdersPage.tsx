@@ -46,6 +46,7 @@ function GenerateInvoiceButton({
   orderId: number;
 }) {
   const [busy, setBusy] = useState(false);
+  const utils = trpc.useUtils();
 
   // Use tRPC useQuery — ALWAYS fetch fresh on mount + poll every 5s
   // The button only mounts when an order is EXPANDED, so refetchOnMount
@@ -521,7 +522,7 @@ export default function OrdersPage() {
   }
 
   const filteredCustomers = useMemo(() => {
-    const list = (customers || []).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
+    const list = (customers || []).filter(Boolean).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
     if (!showCustomerDropdown) return [];
     const q = customerSearch.toLowerCase().trim();
     if (!q || q.length < 1) return list;
@@ -1115,7 +1116,7 @@ export default function OrdersPage() {
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
                     </td>
-                    <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.customer?.name || "N/A"}</td>
+                    <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{(getCustomer(order)?.name || order.customerName || "N/A")}</td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                       {order.orderType === "sample"
                         ? <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><FlaskConical className="w-3 h-3 inline" /> SAMPLE</span>

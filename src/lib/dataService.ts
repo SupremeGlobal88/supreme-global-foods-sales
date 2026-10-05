@@ -673,9 +673,30 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      orders = orders.filter((o) => o.id !== id);
+      const idx = orders.findIndex((o) => o.id === id);
+      if (idx === -1) return { success: false, error: "Order not found" };
+      const order = orders[idx];
+      // Restore stock for each item in the deleted order
+      for (const item of order.items || []) {
+        if (item.stockItemId && item.quantity > 0) {
+          const stock = products.find((p) => p.id === item.stockItemId);
+          if (stock) {
+            const conversion = item.conversion || 1;
+            const qtyInKg = item.quantity * conversion;
+            stock.quantity = (stock.quantity || 0) + qtyInKg;
+            // Push stock update to Firebase
+            try {
+              const { pushStockItem } = require("@/lib/firebaseSync");
+              if (pushStockItem) pushStockItem(item.stockItemId, stock.quantity);
+            } catch (e) {
+              // Fallback: ignore if firebaseSync not available
+            }
+          }
+        }
+      }
+      orders.splice(idx, 1);
       saveItem("sgf_orders", orders);
-      return { success: true };
+      return { success: true, deletedOrder: order };
     },
     getByCustomer: (customerId: number) => orders.filter((o) => o.customerId == customerId),
     getBySalesRep: (salesRepName: string) => orders.filter((o) => o.salesRepName === salesRepName),

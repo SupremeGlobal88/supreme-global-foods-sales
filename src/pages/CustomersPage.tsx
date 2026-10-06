@@ -52,10 +52,12 @@ export default function CustomersPage() {
   );
 
   const createCustomer = trpc.customer.create.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); setImportStatus(""); },
+    onError: (err: any) => { setImportStatus(`Error: ${err.message || "Failed to create customer"}`); },
   });
   const updateCustomer = trpc.customer.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setShowForm(false); setEditingId(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setShowForm(false); setEditingId(null); setImportStatus(""); },
+    onError: (err: any) => { setImportStatus(`Error: ${err.message || "Failed to update customer"}`); },
   });
   const deleteCustomer = trpc.customer.delete.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setSelectedCustomer(null); },
@@ -79,12 +81,23 @@ export default function CustomersPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Name is required
+    if (!formData.name || formData.name.trim() === "") {
+      setImportStatus("Error: Customer name is required");
+      return;
+    }
+    // Sales rep is required for new customers
+    if (!editingId && (!formData.salesRepName || formData.salesRepName.trim() === "")) {
+      setImportStatus("Error: Please select a sales rep");
+      return;
+    }
     // VAT validation: 10 digits only, optional
     if (formData.vatNumber && !/^\d{10}$/.test(formData.vatNumber)) {
       setVatError("VAT number must be exactly 10 digits");
       return;
     }
     setVatError("");
+    setImportStatus("");
     if (editingId) {
       updateCustomer.mutate({ id: editingId, data: formData });
     } else {

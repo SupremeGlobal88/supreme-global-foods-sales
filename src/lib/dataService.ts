@@ -2576,7 +2576,7 @@ export const dataService = {
     },
     getStats: () => ({
       total: orders.length,
-      pending: orders.filter((o) => o.status === "pending").length,
+      pending: orders.filter((o) => (o.status || "pending") === "pending").length,
       picking: orders.filter((o) => o.status === "picking").length,
       ready: orders.filter((o) => o.status === "ready").length,
       delivered: orders.filter((o) => o.status === "delivered").length,
@@ -4286,7 +4286,7 @@ export const dataService = {
       totalOrders: orders.filter((o) => o.orderType !== "sample").length,
       totalCustomers: customers.length,
       lowStockItems: products.filter((p) => p.status === "low_stock" || p.status === "out_of_stock").length,
-      pendingOrders: orders.filter((o) => o.status === "pending").length,
+      pendingOrders: orders.filter((o) => (o.status || "pending") === "pending").length,
       readyForDelivery: orders.filter((o) => o.status === "ready").length,
       overdueInvoices: invoices.filter((i) => i.status === "overdue").length,
       recentOrders: orders.filter((o) => o.orderType !== "sample").slice(-5).reverse(),

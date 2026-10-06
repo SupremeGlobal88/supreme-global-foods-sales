@@ -8,7 +8,7 @@ import { getStorageItem, setStorageItem } from "./compressedStorage";
 
 // ─── 1. SIMPLE ALIASES ───
 if (!(dataService as any).stock) {
-  (dataService as any).stock = dataService.product;
+  (dataService as any).stock = dataService.stock;
 }
 
 if (!(dataService as any).audit) {
@@ -20,7 +20,7 @@ if (!(dataService as any).coc) {
 }
 
 if (!(dataService as any).checkin) {
-  (dataService as any).checkin = dataService.checkIn;
+  (dataService as any).checkin = dataService.checkin;
 }
 
 // ─── 2. AUTH ───
@@ -391,7 +391,7 @@ if (!(dataService as any).dashboard) {
       const customers = dataService.customer.list();
       const corpCustomers = dataService.corporateCustomer.list();
       const allCustomers = [...customers, ...corpCustomers];
-      const products = dataService.product.list();
+      const products = dataService.stock.list();
       const today = new Date().toDateString();
 
       const totalRevenue = invoices.reduce((sum: number, i: any) => sum + toNum(i.total), 0);
@@ -474,7 +474,7 @@ if (!(dataService as any).collections) {
 
 // ─── 6. SAMPLE REPORT ───
 function buildSampleItem(order: any, item: any): any {
-  const product = dataService.product.getById(item.stockItemId);
+  const product = dataService.stock.getById(item.stockItemId);
   const unitCost = toNum(item.unitPrice || item.price);
   const quantity = toNum(item.quantity);
   const subtotal = unitCost * quantity;
@@ -482,7 +482,7 @@ function buildSampleItem(order: any, item: any): any {
   const totalCost = subtotal + vatAmount;
   return {
     productCode: product?.productCode || item.productCode || item.code || "N/A",
-    productName: product?.name || item.productName || item.name || "Unknown",
+    productName: product?.productName || item.productName || item.name || "Unknown",
     unitCost, quantity, subtotal, vatAmount, totalCost,
     date: order.createdAt || new Date().toISOString(),
     customerName: order.customer?.name || order.customerName || "Walk-in",
@@ -542,7 +542,7 @@ if (!dataService.sampleReport) {
         custEntry.sampleCount += 1;
 
         for (const item of lineItems) {
-          const product = dataService.product.getById(item.stockItemId);
+          const product = dataService.stock.getById(item.stockItemId);
           const unitCost = toNum(item.unitPrice || item.price);
           const quantity = toNum(item.quantity);
           const subtotal = unitCost * quantity;
@@ -551,7 +551,7 @@ if (!dataService.sampleReport) {
 
           custEntry.items.push({
             productCode: product?.productCode || item.productCode || item.code || "N/A",
-            productName: product?.name || item.productName || item.name || "Unknown",
+            productName: product?.productName || item.productName || item.name || "Unknown",
             dateTaken: order.createdAt || new Date().toISOString(),
             orderNumber: order.orderNumber || order.sampleNumber || `SMP-${order.id || Date.now()}`,
             invoiceNumber, quantity, unitCost, subtotal, vatAmount, totalCost,
@@ -583,7 +583,7 @@ if (!dataService.sampleReport) {
         const lineItems = order.items || order.lineItems || order.products || [];
 
         for (const item of lineItems) {
-          const product = dataService.product.getById(item.stockItemId);
+          const product = dataService.stock.getById(item.stockItemId);
           const unitCost = toNum(item.unitPrice || item.price);
           const quantity = toNum(item.quantity);
           const subtotal = unitCost * quantity;
@@ -592,7 +592,7 @@ if (!dataService.sampleReport) {
 
           items.push({
             productCode: product?.productCode || item.productCode || item.code || "N/A",
-            productName: product?.name || item.productName || item.name || "Unknown",
+            productName: product?.productName || item.productName || item.name || "Unknown",
             dateTaken: order.createdAt || new Date().toISOString(),
             orderNumber: order.orderNumber || order.sampleNumber || `SMP-${order.id || Date.now()}`,
             invoiceNumber, quantity, unitCost, subtotal, vatAmount, totalCost,
@@ -609,16 +609,16 @@ if (!dataService.sampleReport) {
 }
 
 // ─── 7. INVENTORY ───
-if (!dataService.product.getLowStock) {
-  dataService.product.getLowStock = () => {
-    return dataService.product.list().filter((p: any) => toNum(p.quantity) <= toNum(p.minStock || 10));
+if (!dataService.stock.getLowStock) {
+  dataService.stock.getLowStock = () => {
+    return dataService.stock.list().filter((p: any) => toNum(p.quantity) <= toNum(p.minStock || 10));
   };
 }
 
-if (!dataService.product.updateQuantity) {
-  dataService.product.updateQuantity = (input: any) => {
+if (!dataService.stock.updateQuantity) {
+  dataService.stock.updateQuantity = (input: any) => {
     const { id, quantity } = input;
-    const products = dataService.product.list();
+    const products = dataService.stock.list();
     const idx = products.findIndex((p: any) => p.id == id);
     if (idx >= 0) {
       products[idx].quantity = quantity;
@@ -630,27 +630,27 @@ if (!dataService.product.updateQuantity) {
   };
 }
 
-if (!dataService.product.searchProducts) {
-  dataService.product.searchProducts = (query: string) => {
+if (!dataService.stock.searchProducts) {
+  dataService.stock.searchProducts = (query: string) => {
     const q = (query || "").toLowerCase().trim();
-    if (!q) return dataService.product.list();
-    return dataService.product.list().filter((p: any) =>
-      (p.name || "").toLowerCase().includes(q) ||
+    if (!q) return dataService.stock.list();
+    return dataService.stock.list().filter((p: any) =>
+      (p.productName || "").toLowerCase().includes(q) ||
       (p.productCode || "").toLowerCase().includes(q) ||
       (p.sku || "").toLowerCase().includes(q)
     );
   };
 }
 
-if (!dataService.product.getProductCodes) {
-  dataService.product.getProductCodes = () => {
-    return dataService.product.list().map((p: any) => p.productCode || "").filter(Boolean);
+if (!dataService.stock.getProductCodes) {
+  dataService.stock.getProductCodes = () => {
+    return dataService.stock.list().map((p: any) => p.productCode || "").filter(Boolean);
   };
 }
 
-if (!dataService.product.getBarrelStock) {
-  dataService.product.getBarrelStock = () => {
-    return dataService.product.list().filter((p: any) => (p.name || "").toLowerCase().includes("barrel"));
+if (!dataService.stock.getBarrelStock) {
+  dataService.stock.getBarrelStock = () => {
+    return dataService.stock.list().filter((p: any) => (p.productName || "").toLowerCase().includes("barrel"));
   };
 }
 
@@ -973,33 +973,33 @@ if (!dataService.user.resetPin) {
 }
 
 // ─── 11. CHECK-IN missing methods ───
-if (!dataService.checkIn.getDailyReport) {
-  dataService.checkIn.getDailyReport = () => {
+if (!dataService.checkin.getDailyReport) {
+  dataService.checkin.getDailyReport = () => {
     const today = new Date().toDateString();
-    return dataService.checkIn.list().filter((c: any) =>
+    return dataService.checkin.list().filter((c: any) =>
       new Date(c.createdAt).toDateString() === today
     );
   };
 }
 
-if (!dataService.checkIn.getWeeklyReport) {
-  dataService.checkIn.getWeeklyReport = (year?: number, week?: number) => {
+if (!dataService.checkin.getWeeklyReport) {
+  dataService.checkin.getWeeklyReport = (year?: number, week?: number) => {
     const now = new Date();
     const targetYear = year || getISOWeekYear(now);
     const targetWeek = week || getWeekNumber(now);
-    return dataService.checkIn.list().filter((c: any) => {
+    return dataService.checkin.list().filter((c: any) => {
       const d = new Date(c.createdAt);
       return getISOWeekYear(d) === targetYear && getWeekNumber(d) === targetWeek;
     });
   };
 }
 
-if (!dataService.checkIn.getMonthlyReport) {
-  dataService.checkIn.getMonthlyReport = (year?: number, month?: number) => {
+if (!dataService.checkin.getMonthlyReport) {
+  dataService.checkin.getMonthlyReport = (year?: number, month?: number) => {
     const now = new Date();
     const targetYear = year || now.getFullYear();
     const targetMonth = month != null ? month : now.getMonth();
-    return dataService.checkIn.list().filter((c: any) => {
+    return dataService.checkin.list().filter((c: any) => {
       const d = new Date(c.createdAt);
       return d.getFullYear() === targetYear && d.getMonth() === targetMonth;
     });

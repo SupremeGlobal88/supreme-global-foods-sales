@@ -1,5 +1,4 @@
 import { initTRPC } from "@trpc/server";
-import { z } from "zod";
 
 const t = initTRPC.create();
 
@@ -81,7 +80,7 @@ export const appRouter = t.router({
     voidCreditNoteAllocation: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     voidCreditNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     getCustomerCreditBalance: t.procedure.input((val: unknown) => val as number).query(() => 0 as number),
-    createOrderFromInvoice: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    createOrderFromInvoice: t.procedure.input((val: unknown) => val as number).mutation(({ input }) => dataService.order.createFromInvoice(input)),
     generateForPO: t.procedure.input((val: unknown) => val as number).mutation(() => "" as string),
   }),
   appointment: t.router({

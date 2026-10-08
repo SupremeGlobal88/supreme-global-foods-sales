@@ -146,11 +146,6 @@ export function createLocalLink() {
               case "auth.me": result = dataService.auth.me(); break;
               case "user.list": result = dataService.user.list(); break;
               case "user.authenticate": result = dataService.user.authenticate(input); break;
-              case "user.create": { result = dataService.user.create(input); await pushUser(result); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); break; }
-              case "user.update": { const { id, data } = input; result = dataService.user.update({ id, data }); if (result) { await pushUser(result); } reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); break; }
-              case "user.delete": { result = dataService.user.delete(input); if (result?.success) { await pushUserDelete(input.id); } reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); break; }
-              case "user.toggleActive": { result = dataService.user.toggleActive(input); if (result?.success) { const updatedUser = dataService.user.getById(input.id); if (updatedUser) await pushUser(updatedUser); } reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); break; }
-              case "user.resetPin": { result = dataService.user.resetPin(input); if (result?.success) { const updatedUser = dataService.user.getById(input.id); if (updatedUser) await pushUser(updatedUser); } reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); break; }
               case "stock.list": await smartSync("stock", "sgf_products"); result = dataService.stock.list(); break;
               case "stock.search": await smartSync("stock", "sgf_products"); result = dataService.stock.search(input || { query: "" }); break;
               case "stock.getById": await smartSync("stock", "sgf_products"); result = dataService.stock.getById(input); break;
@@ -250,7 +245,7 @@ export function createLocalLink() {
               case "invoice.getByOrderId": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getByOrderId(input); break;
               case "invoice.getByCustomerId": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getByCustomerId(input); break;
               case "invoice.create": { result = dataService.invoice.create(input); await pushInvoice(result); break; }
-              case "invoice.update": { const { id, data } = input; result = dataService.invoice.update({ id, data }); if (result) { await pushInvoice(result); } break; }
+              case "invoice.update": { const { id, data } = input; result = dataService.invoice.updateInvoice({ id, data }); if (result) { await pushInvoice(result); } break; }
               case "invoice.updateInvoice": { const { id, data } = input; result = dataService.invoice.updateInvoice({ id, data }); if (result) { await pushInvoice(result); } break; }
               case "invoice.updateStatus": { result = dataService.invoice.updateStatus(input); await pushInvoice(result); break; }
               case "invoice.delete": { result = dataService.invoice.delete(input); await pushInvoice(result); break; }

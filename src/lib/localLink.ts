@@ -273,6 +273,7 @@ export function createLocalLink() {
               case "invoice.allocateCredit": { result = dataService.invoice.allocateCredit(input); await pushCreditNote(result); break; }
               case "invoice.voidCreditNoteAllocation": { result = dataService.invoice.voidCreditNoteAllocation(input); await pushCreditNote(result); break; }
               case "invoice.voidCreditNote": { result = dataService.invoice.voidCreditNote(input); await pushCreditNote(result); break; }
+              case "invoice.generateForPO": { result = dataService.generateInvoiceForPO(input); if (result) { const allInv = dataService.invoice.list(); const newInv = allInv.find((i: any) => i.invoiceNumber === result); if (newInv) await pushInvoice(newInv); } reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break; }
               case "appointment.list": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.list(); break;
               case "appointment.getById": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.getById(input); break;
               case "appointment.getByCustomer": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.getByCustomer(input); break;

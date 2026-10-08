@@ -2379,7 +2379,9 @@ export const dataService = {
       });
       
       const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
-      const vatAmount = isSample ? 0 : subtotal * 0.15;
+      const customerForVat = customers.find((c) => c.id == data.customerId);
+      const vatRate = isSample ? 0 : (customerForVat?.vatExempt ? 0 : 0.15);
+      const vatAmount = isSample ? 0 : subtotal * vatRate;
       const total = isSample ? 0 : subtotal + vatAmount;
       
       // ZERO AMOUNT VALIDATION: Reject orders with R0 total (skip for samples/quotes)
@@ -2503,7 +2505,9 @@ export const dataService = {
           return { ...item, productCode: product?.productCode || "", productName: product?.productName || "Unknown", lineTotal: unitPrice * item.quantity, unitPrice, unit: item.unit || "each", conversion, unitLabel: item.unitLabel || "Each" };
         });
         const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
-        const vatAmount = isSample ? 0 : subtotal * 0.15;
+        const customerForVat = customers.find((c) => c.id == data.customerId) || customers.find((c) => c.id == oldOrder.customerId);
+        const vatRate = isSample ? 0 : (customerForVat?.vatExempt ? 0 : 0.15);
+        const vatAmount = isSample ? 0 : subtotal * vatRate;
         const total = isSample ? 0 : subtotal + vatAmount;
         
         // DEDUCT new stock (skip for quotes)
@@ -2576,7 +2580,7 @@ export const dataService = {
     },
     getStats: () => ({
       total: orders.length,
-      pending: orders.filter((o) => (o.status || "pending") === "pending").length,
+      pending: orders.filter((o) => o.status === "pending").length,
       picking: orders.filter((o) => o.status === "picking").length,
       ready: orders.filter((o) => o.status === "ready").length,
       delivered: orders.filter((o) => o.status === "delivered").length,
@@ -2768,7 +2772,9 @@ export const dataService = {
         // Recalculate order-level totals
         const items = order.items || [];
         const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + (Number(item.lineTotal) || 0), 0);
-        const vatAmount = isSample ? 0 : subtotal * 0.15;
+        const orderCustomer = customers.find((c) => c.id == order.customerId);
+        const vatRate = isSample ? 0 : (orderCustomer?.vatExempt ? 0 : 0.15);
+        const vatAmount = isSample ? 0 : subtotal * vatRate;
         const total = isSample ? 0 : subtotal + vatAmount;
 
         if (Number.isNaN(order.subtotal) || order.subtotal === undefined || order.subtotal === null || order.subtotal !== subtotal) {
@@ -3356,7 +3362,19 @@ export const dataService = {
       if (data.notes !== undefined) inv.notes = data.notes;
       if (data.items !== undefined) inv.items = data.items;
       if (data.subtotal !== undefined) inv.subtotal = data.subtotal;
-      if (data.vatRate !== undefined) inv.vatRate = data.vatRate;
+      if (data.vatRate !== undefined) {
+        inv.vatRate = data.vatRate;
+        // Recalculate vatAmount based on current subtotal when VAT rate changes
+        const subtotal = inv.subtotal || (inv.items || []).reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
+        inv.vatAmount = subtotal * data.vatRate;
+        // If total was not explicitly provided, recalculate it from subtotal + new vatAmount
+        if (data.total === undefined) {
+          inv.total = subtotal + inv.vatAmount;
+          inv.balanceDue = inv.total - (inv.amountPaid || 0);
+          if (inv.balanceDue <= 0) inv.status = "paid";
+          else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
+        }
+      }
       if (data.vatAmount !== undefined) inv.vatAmount = data.vatAmount;
       if (data.paymentTerms !== undefined) inv.paymentTerms = data.paymentTerms;
       inv.updatedAt = new Date().toISOString();
@@ -4286,7 +4304,7 @@ export const dataService = {
       totalOrders: orders.filter((o) => o.orderType !== "sample").length,
       totalCustomers: customers.length,
       lowStockItems: products.filter((p) => p.status === "low_stock" || p.status === "out_of_stock").length,
-      pendingOrders: orders.filter((o) => (o.status || "pending") === "pending").length,
+      pendingOrders: orders.filter((o) => o.status === "pending").length,
       readyForDelivery: orders.filter((o) => o.status === "ready").length,
       overdueInvoices: invoices.filter((i) => i.status === "overdue").length,
       recentOrders: orders.filter((o) => o.orderType !== "sample").slice(-5).reverse(),

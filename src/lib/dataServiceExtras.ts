@@ -23,6 +23,11 @@ if (!(dataService as any).checkin) {
   (dataService as any).checkin = dataService.checkin;
 }
 
+// localLink.ts calls dataService.checkIn (capital I) — alias it to checkin
+if (!(dataService as any).checkIn) {
+  (dataService as any).checkIn = dataService.checkin;
+}
+
 // ─── 2. AUTH ───
 if (!(dataService as any).auth) {
   (dataService as any).auth = {
@@ -972,7 +977,36 @@ if (!dataService.user.resetPin) {
   };
 }
 
-// ─── 11. CHECK-IN missing methods ───
+// ─── 11. APPOINTMENT missing methods ───
+if (!dataService.appointment.getById) {
+  dataService.appointment.getById = (id: number) => {
+    const appointments = dataService.appointment.list();
+    return appointments.find((a: any) => a.id == id) || null;
+  };
+}
+
+if (!dataService.appointment.getByCustomer) {
+  dataService.appointment.getByCustomer = (customerId: number) => {
+    const appointments = dataService.appointment.list();
+    return appointments.filter((a: any) => a.customerId == customerId);
+  };
+}
+
+if (!dataService.appointment.getByUser) {
+  dataService.appointment.getByUser = (salesRepName: string) => {
+    const appointments = dataService.appointment.list();
+    return appointments.filter((a: any) => a.salesRepName === salesRepName);
+  };
+}
+
+// ─── 12. CHECK-IN missing methods ───
+if (!dataService.checkin.getById) {
+  dataService.checkin.getById = (id: number) => {
+    const checkins = dataService.checkin.list();
+    return checkins.find((c: any) => c.id == id) || null;
+  };
+}
+
 if (!dataService.checkin.getDailyReport) {
   dataService.checkin.getDailyReport = () => {
     const today = new Date().toDateString();

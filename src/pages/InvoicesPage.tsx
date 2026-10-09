@@ -1313,7 +1313,12 @@ export default function InvoicesPage() {
                             {(() => {
                               const existingCOCs = (allCOCs || []).filter((c: any) => c.invoiceId == inv.id);
                               if (existingCOCs.length > 0) {
-                                return <button onClick={() => printCOC(inv, existingCOCs)} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.4)", color: "#22C55E" }}><FileCheck className="w-3 h-3" /> Print COC{existingCOCs.length > 1 ? "s" : ""}</button>;
+                                return (
+                                  <>
+                                    <button onClick={() => printCOC(inv, existingCOCs)} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.4)", color: "#22C55E" }}><FileCheck className="w-3 h-3" /> Print COC{existingCOCs.length > 1 ? "s" : ""}</button>
+                                    <button onClick={() => { if (confirm(`Regenerate Certificate of Compliance for invoice ${inv.invoiceNumber}? This will replace existing COCs.`)) generateCOC.mutate(inv.id); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.2)", color: "#22C55E", opacity: 0.8 }}><FileCheck className="w-3 h-3" /> Regenerate COC</button>
+                                  </>
+                                );
                               }
                               return <button onClick={() => { if (confirm(`Generate Certificate of Compliance for invoice ${inv.invoiceNumber}?`)) generateCOC.mutate(inv.id); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><FileCheck className="w-3 h-3" /> Generate COC</button>;
                             })()}

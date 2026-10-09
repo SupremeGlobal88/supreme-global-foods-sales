@@ -4651,43 +4651,73 @@ export const dataService = {
     getById: (id: number) => certificatesOfCompliance.find((c) => c.id == id) || null,
     generateForInvoice: (invoiceId: number) => {
       const inv = invoices.find((i) => i.id == invoiceId);
-      if (!inv) return null;
-      // Remove any existing COC for this invoice
+      if (!inv) return [];
+      // Remove any existing COCs for this invoice
       certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.invoiceId !== invoiceId);
       const customerRecord = customers.find((c) => c.id == inv.customerId);
       const now = new Date();
-      const items = (inv.items || []).map((it: any) => ({
-        description: it.description || it.productName || "",
-        quantity: it.quantity || 0,
-        unitPrice: it.unitPrice || 0,
-        lineTotal: it.lineTotal || 0,
-      }));
-      const newCOC = {
-        id: Date.now(),
-        invoiceId,
-        invoiceNumber: inv.invoiceNumber || "",
-        orderNumber: inv.orderNumber || "",
-        poNumber: inv.poNumber || "",
-        customerId: inv.customerId,
-        customerName: customerRecord?.name || inv.customer?.name || "",
-        customerAddress: customerRecord?.physicalAddress || inv.customer?.physicalAddress || "",
-        customerCity: customerRecord?.city || inv.customer?.city || "",
-        customerProvince: customerRecord?.province || inv.customer?.province || "",
-        customerPostalCode: customerRecord?.postalCode || inv.customer?.postalCode || "",
-        customerVat: customerRecord?.vatNumber || inv.customer?.vatNumber || "",
-        company: inv.company || "sgf",
-        items,
-        subtotal: inv.subtotal || 0,
-        vatAmount: inv.vatAmount || 0,
-        total: inv.total || inv.totalAmount || 0,
-        cocDate: now.toISOString(),
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      };
-      certificatesOfCompliance.push(newCOC);
+      const mfgDateStr = now.toLocaleDateString("en-GB");
+      const useByDate = new Date(now.getFullYear() + 2, now.getMonth(), now.getDate());
+      const useByStr = useByDate.toLocaleDateString("en-GB");
+      const batchPrefix = `${String(now.getDate()).padStart(2, "0")}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getFullYear()).slice(-2)}`;
+
+      const newCOCs = (inv.items || []).map((it: any, idx: number) => {
+        const product = products.find((p) => p.id == it.stockItemId);
+        const qtyBundles = it.quantity || 0;
+        const isSheep = (product?.species || product?.category || "").toLowerCase().includes("sheep");
+        const animalName = isSheep ? "sheep" : "hog";
+        const casingType = (product?.category || "").toLowerCase().includes("long") ? "LONG" :
+                           (product?.category || "").toLowerCase().includes("short") ? "SHORT" : "LONG";
+        const size = product?.size || "";
+        const calibration = size || "-";
+        const strands = product?.strands || "";
+        const qtyStrands = strands ? `${strands} strands / bundle` : "13 strands / bundle";
+        const length = strands && strands.includes("90") ? "Minimum 90 to 91m/bundle" :
+                       strands && strands.includes("30") ? "Minimum 30m/bundle" : "Minimum 90 to 91m/bundle";
+        const stuffingCapacity = qtyBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle";
+
+        return {
+          id: Date.now() + idx,
+          invoiceId,
+          invoiceNumber: inv.invoiceNumber || "",
+          orderNumber: inv.orderNumber || "",
+          poNumber: inv.poNumber || "",
+          customerId: inv.customerId,
+          customerName: customerRecord?.name || inv.customer?.name || "",
+          company: inv.company || "sgf",
+          // Corporate-style COC fields
+          recircleProductCode: product?.productCode || it.productCode || "",
+          customerProductCode: "",
+          productDescription: it.description || product?.productName || "",
+          batchNumber: `${batchPrefix}-${String(idx + 1).padStart(3, "0")}`,
+          lotSealNumber: "",
+          manufacturingDate: mfgDateStr,
+          useByDate: useByStr,
+          barrelNumber: `Total: ${qtyBundles} Bundles`,
+          quantityBundles: qtyBundles,
+          calibration,
+          length,
+          qtyStrands,
+          stuffingCapacity,
+          odour: "No off odors to be present",
+          colour: product?.color || "White / Beige color",
+          packing: "Bundles packed in barrels of 150 or 200",
+          countryOfOrigin: "South Africa",
+          status: "Non HALAAL",
+          casingType,
+          animalType: animalName,
+          cleaningProcess: "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
+          handlingStorage: "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
+          cocDate: now.toISOString(),
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        };
+      });
+
+      certificatesOfCompliance.push(...newCOCs);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
       saveItem("sgf_cocs", certificatesOfCompliance);
-      return newCOC;
+      return newCOCs;
     },
     create: (data: any) => {
       let company = data.company;

@@ -6,7 +6,7 @@ import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
   Navigation, User, Filter, ExternalLink, LogIn, LogOut,
   AlertTriangle, Phone, Briefcase, Search, ChevronDown, ChevronUp,
-  Edit, Trash2, Bell, RotateCcw, XCircle, ClipboardList,
+  Edit, Trash2, Bell, RotateCcw, XCircle, ClipboardList, Pencil,
 } from "lucide-react";
 
 // ─── Appointment Type Options ───

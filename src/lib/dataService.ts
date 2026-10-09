@@ -4824,6 +4824,7 @@ export const dataService = {
           paymentTerms,
           customerId: mainCustomerId,
           customer: richCustomer,
+          deliveryNoteNumber: existing.deliveryNoteNumber || `DN-${poRef}`,
           items: items.map((item: any) => ({
             description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
             quantity: item.quantity,

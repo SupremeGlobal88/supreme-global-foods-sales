@@ -4665,24 +4665,40 @@ export const dataService = {
       const batchPrefix = `${String(now.getDate()).padStart(2, "0")}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getFullYear()).slice(-2)}`;
       const lotPrefix = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
 
-      // Helper: find product by stockItemId, productCode, or description match
+      // Helper: extract meaningful keywords from a string
+      function getKeywords(text: string): string[] {
+        return String(text).toLowerCase()
+          .replace(/[^a-z0-9\/\s]/g, " ") // keep slashes for sizes like 26/28
+          .split(/\s+/)
+          .filter((w) => w.length >= 2 && !["of","the","a","an","to","in","for","with","and","or","per","kg","m","mm"].includes(w));
+      }
+
+      // Helper: extract color hint from description (last word if it's a color)
+      function extractColorFromDesc(desc: string): string | null {
+        const colorWords = ["white", "red", "brown", "black", "beige", "green", "blue", "yellow", "pink", "grey", "gray", "natural", "mixed", "calico"];
+        const words = String(desc).toLowerCase().trim().split(/\s+/);
+        const lastWord = words[words.length - 1];
+        if (colorWords.includes(lastWord)) return lastWord.charAt(0).toUpperCase() + lastWord.slice(1);
+        // Also check any word in the description
+        for (const w of words) {
+          if (colorWords.includes(w)) return w.charAt(0).toUpperCase() + w.slice(1);
+        }
+        return null;
+      }
+
+      // Helper: find product by stockItemId, productCode, or fuzzy description match
       function findProductForItem(it: any) {
+        // 1. Exact match by stockItemId
         if (it.stockItemId != null) {
           const byId = products.find((p) => p.id == it.stockItemId);
           if (byId) return byId;
         }
+        // 2. Exact match by productCode
         if (it.productCode) {
           const byCode = products.find((p) => p.productCode === it.productCode);
           if (byCode) return byCode;
         }
-        if (it.description) {
-          const descNorm = String(it.description).toLowerCase().trim();
-          const byDesc = products.find((p) => {
-            const nameNorm = String(p.productName || "").toLowerCase().trim();
-            return nameNorm && descNorm.includes(nameNorm);
-          });
-          if (byDesc) return byDesc;
-        }
+        // 3. Exact match by productName
         if (it.productName) {
           const nameNorm = String(it.productName).toLowerCase().trim();
           const byName = products.find((p) => {
@@ -4690,6 +4706,39 @@ export const dataService = {
             return pNameNorm === nameNorm;
           });
           if (byName) return byName;
+        }
+        // 4. Substring match in both directions
+        if (it.description) {
+          const descNorm = String(it.description).toLowerCase().trim();
+          // Find product whose name is contained in the description
+          const byDescContainsName = products.find((p) => {
+            const nameNorm = String(p.productName || "").toLowerCase().trim();
+            return nameNorm.length > 3 && descNorm.includes(nameNorm);
+          });
+          if (byDescContainsName) return byDescContainsName;
+          // Find product whose name contains the description
+          const byNameContainsDesc = products.find((p) => {
+            const nameNorm = String(p.productName || "").toLowerCase().trim();
+            return descNorm.length > 3 && nameNorm.includes(descNorm);
+          });
+          if (byNameContainsDesc) return byNameContainsDesc;
+        }
+        // 5. Fuzzy word matching - score products by keyword overlap
+        const searchText = it.description || it.productName || "";
+        const searchWords = getKeywords(searchText);
+        if (searchWords.length > 0) {
+          let bestProduct: any = null;
+          let bestScore = 0;
+          for (const p of products) {
+            const prodWords = getKeywords(p.productName || "");
+            const matches = searchWords.filter((sw) => prodWords.some((pw) => pw.includes(sw) || sw.includes(pw)));
+            const score = matches.length / Math.max(searchWords.length, prodWords.length, 1);
+            if (score > bestScore) {
+              bestScore = score;
+              bestProduct = p;
+            }
+          }
+          if (bestScore >= 0.4 && bestProduct) return bestProduct; // at least 40% word overlap
         }
         return null;
       }
@@ -4710,6 +4759,9 @@ export const dataService = {
         const stuffingCapacity = qtyBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle";
         const sgfProductCode = product?.productCode || it.productCode || "";
         const productDesc = it.description || product?.productName || it.productName || "";
+        // Extract color from invoice description if product color doesn't match
+        const descColor = extractColorFromDesc(it.description || "");
+        const cocColour = descColor || product?.color || "White / Beige color";
 
         return {
           id: Date.now() + idx,
@@ -4735,7 +4787,7 @@ export const dataService = {
           qtyStrands,
           stuffingCapacity,
           odour: "No off odors to be present",
-          colour: product?.color || "White / Beige color",
+          colour: cocColour,
           packing: "Bundles packed in barrels of 150 or 200",
           countryOfOrigin: "South Africa",
           status: "Non HALAAL",

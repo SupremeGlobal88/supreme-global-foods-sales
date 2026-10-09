@@ -4743,8 +4743,12 @@ export const dataService = {
         return null;
       }
 
+      // Debug logging
+      console.log("[COC] Generating for invoice", inv.id, "items:", inv.items?.length, inv.items);
+
       const newCOCs = (inv.items || []).map((it: any, idx: number) => {
         const product = findProductForItem(it);
+        console.log("[COC] Item", idx, "desc:", it.description, "stockItemId:", it.stockItemId, "productCode:", it.productCode, "found product:", product?.productName, "productCode:", product?.productCode);
         const qtyBundles = it.quantity || 0;
         const isSheep = (product?.species || product?.category || "").toLowerCase().includes("sheep");
         const animalName = isSheep ? "sheep" : "hog";

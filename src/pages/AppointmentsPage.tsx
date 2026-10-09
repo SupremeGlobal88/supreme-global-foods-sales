@@ -998,6 +998,7 @@ export default function AppointmentsPage() {
                           {canManage(appt.salesRepName || "") && (
                             <>
                               <button onClick={() => openCheckoutFormForAppointment(appt)} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Check Out"><LogOut className="w-4 h-4" /></button>
+                              <button onClick={() => rescheduleAppointment(appt)} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
                             </>
                           )}
                         </div>
@@ -1038,7 +1039,7 @@ export default function AppointmentsPage() {
                           {canManage(appt.salesRepName || "") && (
                             <>
                               <button onClick={() => openCheckinForAppointment(appt)} className="text-[#8A8B8C] hover:text-[#4ADE80] transition-colors" title="Check In"><LogIn className="w-4 h-4" /></button>
-                              <button onClick={() => rescheduleAppointment(appt)} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Reschedule"><RotateCcw className="w-4 h-4" /></button>
+                              <button onClick={() => rescheduleAppointment(appt)} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
                               <button onClick={() => cancelAppointment(appt.id)} className="text-[#8A8B8C] hover:text-[#EF4444] transition-colors" title="Cancel"><XCircle className="w-4 h-4" /></button>
                             </>
                           )}
@@ -1078,6 +1079,9 @@ export default function AppointmentsPage() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74, 222, 128, 0.12)", color: "#4ADE80" }}>Done</span>
+                          {canManage(appt.salesRepName || "") && (
+                            <button onClick={() => rescheduleAppointment(appt)} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
@@ -1114,7 +1118,12 @@ export default function AppointmentsPage() {
                           <h4 className="font-display font-medium text-white mt-1">{appt.title}</h4>
                           <p className="text-sm text-[#E8E8E9] font-body">{appt.customer?.name || "No customer"}</p>
                         </div>
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(138,139,140,0.12)", color: "#8A8B8C" }}>{appt.status}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="status-badge text-xs" style={{ backgroundColor: "rgba(138,139,140,0.12)", color: "#8A8B8C" }}>{appt.status}</span>
+                          {canManage(appt.salesRepName || "") && (
+                            <button onClick={() => rescheduleAppointment(appt)} className="text-[#8A8B8C] hover:text-[#D4A843] transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[#8A8B8C]">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(appt.appointmentDate).toLocaleString("en-ZA")}</span>

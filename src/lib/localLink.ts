@@ -376,6 +376,8 @@ export function createLocalLink() {
               case "coc.list": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.list(); break;
               case "coc.listByBarrel": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.listByBarrel(input); break;
               case "coc.listByPurchaseOrder": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.listByPurchaseOrder(input); break;
+              case "coc.listByInvoice": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.listByInvoice(input); break;
+              case "coc.generateForInvoice": { result = dataService.coc.generateForInvoice(input); if (result) { await pushCOC(result); } reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.getById": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.getById(input); break;
               case "coc.create": { result = dataService.coc.create(input); await pushCOC(result); reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.update": { const { id, data } = input; result = dataService.coc.update({ id, data }); if (result) { await pushCOC(result); } reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }

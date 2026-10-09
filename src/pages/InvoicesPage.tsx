@@ -295,8 +295,9 @@ export default function InvoicesPage() {
 
   /* ── Print Combined Invoice + Delivery Note ── */
   function printDoc(inv: any) {
-    const liveCust = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
-    const cust = liveCust || inv.customer || {};
+    const liveById = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name === inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name === inv.customer.name) : null;
+    const cust = liveById || liveByName || inv.customer || {};
     const invCompany: CompanyKey = inv.company || "sgf";
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
@@ -338,7 +339,7 @@ export default function InvoicesPage() {
             <td style="vertical-align:top; text-align:right; width:45%;">
               <table style="font-size:11px; width:100%; text-align:right; border-collapse:collapse;">
                 <tr><td style="color:#888; padding:2px 0;">Invoice Number</td><td style="font-weight:800; font-size:14px; color:${cfg.documentColor}; padding:2px 0; padding-left:12px;">${inv.invoiceNumber}</td></tr>
-                <tr><td style="color:#888; padding:2px 0;">Delivery Note</td><td style="padding:2px 0; padding-left:12px;">${inv.deliveryNoteNumber || `DN-${inv.orderNumber}`}</td></tr>
+                <tr><td style="color:#888; padding:2px 0;">Delivery Note</td><td style="padding:2px 0; padding-left:12px;">${inv.deliveryNoteNumber || `DN-${inv.poNumber || inv.orderNumber || ""}`}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Order Number</td><td style="padding:2px 0; padding-left:12px;">${inv.poNumber || inv.orderNumber || ""}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Invoice Date</td><td style="padding:2px 0; padding-left:12px;">${invDate.toLocaleDateString("en-ZA")}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Payment Terms</td><td style="padding:2px 0; padding-left:12px;">${(inv.paymentTerms || "cod").replace("_", " ").toUpperCase()}</td></tr>
@@ -811,8 +812,9 @@ export default function InvoicesPage() {
 
   /* ─── Email invoice via mailto ─── */
   function sendEmail(inv: any) {
-    const liveCust = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
-    const cust = liveCust || inv.customer || {};
+    const liveById = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name === inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name === inv.customer.name) : null;
+    const cust = liveById || liveByName || inv.customer || {};
     if (!cust?.email) { alert("Customer has no email address."); return; }
     const subject = encodeURIComponent(`Tax Invoice ${inv.invoiceNumber} - ${cust.name || ""}`);
     const body = encodeURIComponent(

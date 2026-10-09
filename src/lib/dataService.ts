@@ -4647,7 +4647,48 @@ export const dataService = {
     list: () => certificatesOfCompliance,
     listByBarrel: (barrelId: number) => certificatesOfCompliance.filter((c) => c.barrelId === barrelId),
     listByPurchaseOrder: (poId: number) => certificatesOfCompliance.filter((c) => c.purchaseOrderId === poId),
+    listByInvoice: (invoiceId: number) => certificatesOfCompliance.filter((c) => c.invoiceId === invoiceId || c.invoiceNumber === invoiceId),
     getById: (id: number) => certificatesOfCompliance.find((c) => c.id == id) || null,
+    generateForInvoice: (invoiceId: number) => {
+      const inv = invoices.find((i) => i.id == invoiceId);
+      if (!inv) return null;
+      // Remove any existing COC for this invoice
+      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.invoiceId !== invoiceId);
+      const customerRecord = customers.find((c) => c.id == inv.customerId);
+      const now = new Date();
+      const items = (inv.items || []).map((it: any) => ({
+        description: it.description || it.productName || "",
+        quantity: it.quantity || 0,
+        unitPrice: it.unitPrice || 0,
+        lineTotal: it.lineTotal || 0,
+      }));
+      const newCOC = {
+        id: Date.now(),
+        invoiceId,
+        invoiceNumber: inv.invoiceNumber || "",
+        orderNumber: inv.orderNumber || "",
+        poNumber: inv.poNumber || "",
+        customerId: inv.customerId,
+        customerName: customerRecord?.name || inv.customer?.name || "",
+        customerAddress: customerRecord?.physicalAddress || inv.customer?.physicalAddress || "",
+        customerCity: customerRecord?.city || inv.customer?.city || "",
+        customerProvince: customerRecord?.province || inv.customer?.province || "",
+        customerPostalCode: customerRecord?.postalCode || inv.customer?.postalCode || "",
+        customerVat: customerRecord?.vatNumber || inv.customer?.vatNumber || "",
+        company: inv.company || "sgf",
+        items,
+        subtotal: inv.subtotal || 0,
+        vatAmount: inv.vatAmount || 0,
+        total: inv.total || inv.totalAmount || 0,
+        cocDate: now.toISOString(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+      certificatesOfCompliance.push(newCOC);
+      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      saveItem("sgf_cocs", certificatesOfCompliance);
+      return newCOC;
+    },
     create: (data: any) => {
       let company = data.company;
       if (!company && data.barrelId) {

@@ -7,7 +7,7 @@ import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
-  Database, Zap, ShoppingCart, Globe,
+  Database, Zap, ShoppingCart, Globe, FileCheck,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -87,6 +87,7 @@ export default function InvoicesPage() {
   const { data: stats } = trpc.invoice.getStats.useQuery();
   const { data: allReceipts } = trpc.invoice.getReceipts.useQuery();
   const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
+  const { data: allCOCs, refetch: refetchCOCs } = trpc.coc.list.useQuery();
 
   /* Mutations */
   const recordPay = trpc.invoice.recordPayment.useMutation({
@@ -161,6 +162,10 @@ export default function InvoicesPage() {
       }
     },
     onError: (err: any) => alert("Failed: " + (err.message || "Unknown error")),
+  });
+  const generateCOC = trpc.coc.generateForInvoice.useMutation({
+    onSuccess: async () => { reloadFromStorage(); await refetchCOCs(); await utils.coc.list.invalidate(); alert("COC generated successfully."); },
+    onError: (err: any) => alert("COC generation failed: " + (err.message || "Unknown error")),
   });
   const deleteInvoice = trpc.invoice.delete.useMutation({
     onSuccess: async () => {
@@ -424,6 +429,96 @@ export default function InvoicesPage() {
           setTimeout(printIt, 2000);
         })();
       </script></body></html>`);
+    w.document.close();
+  }
+
+  /* ── Print COC for Invoice ── */
+  function printCOC(inv: any, cocData: any) {
+    const invCompany: CompanyKey = inv.company || "sgf";
+    const cfg = getCompanyConfig(invCompany);
+    const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
+    const cocDate = new Date(cocData.cocDate || new Date());
+    const invDate = new Date(inv.invoiceDate || inv.createdAt || new Date());
+    const items = (cocData.items || []).map((it: any, idx: number) => `
+      <tr>
+        <td style="border:1px solid #ccc;padding:10px;text-align:center;">${idx + 1}</td>
+        <td style="border:1px solid #ccc;padding:10px;">${it.description || ""}</td>
+        <td style="border:1px solid #ccc;padding:10px;text-align:center;">${it.quantity || 0}</td>
+        <td style="border:1px solid #ccc;padding:10px;text-align:right;">R ${Number(it.unitPrice || 0).toFixed(2)}</td>
+        <td style="border:1px solid #ccc;padding:10px;text-align:right;">R ${Number(it.lineTotal || 0).toFixed(2)}</td>
+      </tr>
+    `).join("");
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>COC - ${inv.invoiceNumber}</title><style>
+      @page { size: A4; margin: 15mm; }
+      body { font-family: Arial, sans-serif; font-size: 13px; color: #333; margin: 0; padding: 20px; }
+      .header { text-align: center; border-bottom: 3px solid ${cfg.primaryColor}; padding-bottom: 15px; margin-bottom: 25px; }
+      .header img { max-height: 60px; }
+      .header h1 { margin: 8px 0 0 0; font-size: 22px; color: ${cfg.primaryColor}; letter-spacing: 2px; text-transform: uppercase; }
+      .header h2 { margin: 4px 0 0 0; font-size: 14px; color: #666; font-weight: normal; }
+      .header .company-info { font-size: 11px; color: #888; margin-top: 8px; }
+      .doc-title { text-align: center; font-size: 18px; font-weight: bold; color: ${cfg.primaryColor}; margin: 20px 0; text-transform: uppercase; letter-spacing: 1px; }
+      .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; }
+      .info-box { width: 48%; }
+      .info-box h4 { margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #888; }
+      .info-box p { margin: 3px 0; font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th { background: ${cfg.primaryColor}; color: #fff; padding: 10px; text-align: left; font-size: 12px; text-transform: uppercase; }
+      .declaration { border: 1px solid #ddd; padding: 15px; background: #f9f9f9; margin: 20px 0; font-size: 12px; line-height: 1.6; }
+      .signature-row { display: flex; justify-content: space-between; margin-top: 40px; }
+      .signature-box { width: 45%; text-align: center; }
+      .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 8px; font-size: 12px; }
+      .footer { text-align: center; font-size: 10px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; margin-top: 30px; }
+    </style></head><body>
+      <div class="header">
+        <img src="${logoUrl}" alt="Logo" />
+        <h1>${cfg.companyName}</h1>
+        <h2>${cfg.tagline || ""}</h2>
+        <div class="company-info">${cfg.address} | ${cfg.email} | ${cfg.phone}<br/>VAT Reg: ${cfg.vatReg} | ${cfg.registration}</div>
+      </div>
+      <div class="doc-title">Certificate of Compliance</div>
+      <div class="info-grid">
+        <div class="info-box">
+          <h4>Bill To</h4>
+          <p><strong>${cocData.customerName || "Customer"}</strong></p>
+          <p>${cocData.customerAddress || ""}</p>
+          <p>${cocData.customerCity || ""} ${cocData.customerProvince || ""} ${cocData.customerPostalCode || ""}</p>
+          <p>VAT: ${cocData.customerVat || "N/A"}</p>
+        </div>
+        <div class="info-box">
+          <h4>Invoice Details</h4>
+          <p><strong>Invoice #:</strong> ${inv.invoiceNumber || ""}</p>
+          <p><strong>Invoice Date:</strong> ${invDate.toLocaleDateString("en-ZA")}</p>
+          <p><strong>COC Date:</strong> ${cocDate.toLocaleDateString("en-ZA")}</p>
+          <p><strong>Order #:</strong> ${inv.orderNumber || inv.poNumber || ""}</p>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th style="width:5%">#</th><th>Description</th><th style="width:12%;text-align:center;">Qty</th><th style="width:15%;text-align:right;">Unit Price</th><th style="width:18%;text-align:right;">Line Total</th></tr></thead>
+        <tbody>${items}</tbody>
+      </table>
+      <div style="text-align:right;margin-bottom:20px;">
+        <p><strong>Subtotal:</strong> R ${Number(cocData.subtotal || 0).toFixed(2)}</p>
+        <p><strong>VAT @ 15%:</strong> R ${Number(cocData.vatAmount || 0).toFixed(2)}</p>
+        <p style="font-size:16px;"><strong>Total:</strong> R ${Number(cocData.total || 0).toFixed(2)}</p>
+      </div>
+      <div class="declaration">
+        <strong>Declaration of Compliance</strong><br/>
+        We hereby certify that the above-mentioned products have been manufactured and handled in accordance with the applicable food safety standards, including Good Manufacturing Practices (GMP) and Hazard Analysis Critical Control Point (HACCP) principles. All products have been inspected and comply with the relevant South African National Standards (SANS) and the Foodstuffs, Cosmetics and Disinfectants Act (Act 54 of 1972). This certificate is issued to confirm that the products meet the quality and safety requirements as specified by the customer and/or regulatory bodies.
+      </div>
+      <div class="signature-row">
+        <div class="signature-box">
+          <div class="signature-line">Authorized Signature<br/>Quality Assurance Manager</div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-line">Date</div>
+        </div>
+      </div>
+      <div class="footer">${cfg.companyName} | ${cfg.address} | ${cfg.email} | ${cfg.phone}<br/>This is a computer-generated certificate and does not require a physical signature unless specified by the customer.</div>
+      <script>(function(){ var done=false; function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } } if(document.readyState==='complete') printIt(); else window.onload=printIt; setTimeout(printIt, 2000); })();</script>
+    </body></html>`);
     w.document.close();
   }
 
@@ -1234,6 +1329,13 @@ export default function InvoicesPage() {
                           {/* Action buttons row */}
                           <div className="flex gap-2 flex-wrap pt-3" style={{ borderTop: "1px solid #222324" }}>
                             <button onClick={() => printDoc(inv)} className="btn-secondary text-xs"><Printer className="w-3 h-3" /> Print Invoice &amp; DN</button>
+                            {(() => {
+                              const existingCOC = (allCOCs || []).find((c: any) => c.invoiceId == inv.id);
+                              if (existingCOC) {
+                                return <button onClick={() => printCOC(inv, existingCOC)} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.4)", color: "#22C55E" }}><FileCheck className="w-3 h-3" /> Print COC</button>;
+                              }
+                              return <button onClick={() => { if (confirm(`Generate Certificate of Compliance for invoice ${inv.invoiceNumber}?`)) generateCOC.mutate(inv.id); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><FileCheck className="w-3 h-3" /> Generate COC</button>;
+                            })()}
                             {isAdmin && bal > 0 && inv.status !== "cancelled" && (
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
                             )}

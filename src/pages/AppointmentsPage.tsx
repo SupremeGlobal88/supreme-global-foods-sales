@@ -111,6 +111,7 @@ export default function AppointmentsPage() {
     outcomeNotes: "",
     currentSupplier: "",
     newCustomerActions: [] as string[],
+    salesRepName: "",
   });
   const [newCustomer, setNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail", paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days" });
 
@@ -292,6 +293,7 @@ export default function AppointmentsPage() {
       outcomeNotes: "",
       currentSupplier: "",
       newCustomerActions: [],
+      salesRepName: myRepName,
     });
     setNewCustomer({ name: "", contactPerson: "", phone: "", address: "", priceTier: "wholesale", paymentTerms: "cod" });
     setCustomerSearch("");
@@ -613,7 +615,7 @@ export default function AppointmentsPage() {
       startTime: formData.startTime,
       location: formData.location,
       appointmentType: formData.appointmentType,
-      salesRepName: myRepName,
+      salesRepName: formData.salesRepName || myRepName,
     };
 
     // Include new-customer fields if in new-customer mode
@@ -647,6 +649,7 @@ export default function AppointmentsPage() {
       outcomeNotes: appt.outcomeNotes || "",
       currentSupplier: appt.currentSupplier || "",
       newCustomerActions: appt.newCustomerActions || [],
+      salesRepName: appt.salesRepName || myRepName,
     });
     const cust = (customers || []).find((c: any) => c.id === appt.customerId);
     setEditCustomerSearch(cust?.name || "");
@@ -1786,6 +1789,24 @@ export default function AppointmentsPage() {
                   </select>
                 </div>
 
+                {/* Sales Rep (admin/manager only) */}
+                {canViewAll && (
+                  <div>
+                    <label className="label-text block mb-1.5">Assign To (Sales Rep) *</label>
+                    <select
+                      value={formData.salesRepName || myRepName}
+                      onChange={(e) => setFormData({ ...formData, salesRepName: e.target.value })}
+                      className="input-field"
+                      required
+                    >
+                      <option value="">Select sales rep...</option>
+                      {(salesReps || []).map((rep: string) => (
+                        <option key={rep} value={rep}>{rep}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Title Dropdown */}
                 <div>
                   <label className="label-text block mb-1.5">Title *</label>
@@ -1904,6 +1925,7 @@ export default function AppointmentsPage() {
                   appointmentType: formData.appointmentType,
                   currentSupplier: formData.currentSupplier,
                   newCustomerActions: formData.newCustomerActions,
+                  salesRepName: formData.salesRepName || editingAppointment.salesRepName || myRepName,
                 },
               });
             }} className="space-y-4">
@@ -1960,6 +1982,24 @@ export default function AppointmentsPage() {
                   ))}
                 </select>
               </div>
+
+              {/* Sales Rep (admin/manager only) */}
+              {canViewAll && (
+                <div>
+                  <label className="label-text block mb-1.5">Assign To (Sales Rep) *</label>
+                  <select
+                    value={formData.salesRepName || editingAppointment?.salesRepName || myRepName}
+                    onChange={(e) => setFormData({ ...formData, salesRepName: e.target.value })}
+                    className="input-field"
+                    required
+                  >
+                    <option value="">Select sales rep...</option>
+                    {(salesReps || []).map((rep: string) => (
+                      <option key={rep} value={rep}>{rep}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Title Dropdown */}
               <div>

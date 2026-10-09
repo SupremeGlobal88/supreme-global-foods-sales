@@ -1710,6 +1710,8 @@ export function generateInvoiceForOrder(orderId: number): string | null {
     if (isSample) newBalanceDue = 0;
     invoices[existingIdx] = {
       ...existing,
+      customerId: order.customerId,
+      customer: customer || existing.customer || null,
       items: items.map((item: any) => ({
         stockItemId: item.stockItemId,
         productName: item.productName,
@@ -4786,6 +4788,20 @@ export const dataService = {
       const mainCustomerId = corpCustomer?.linkedCustomerId || po.corporateCustomerId;
       const mainCustomer = customers.find((c) => c.id == mainCustomerId);
 
+      // Build a rich customer object — prefer linked main customer, fallback to corp customer fields
+      const richCustomer = mainCustomer || {
+        name: po.corporateCustomerName || corpCustomer?.name || "Corporate Customer",
+        contactPerson: corpCustomer?.contactPerson || "",
+        phone: corpCustomer?.phone || "",
+        email: corpCustomer?.email || "",
+        physicalAddress: corpCustomer?.deliveryAddress || corpCustomer?.physicalAddress || "",
+        city: corpCustomer?.city || "",
+        province: corpCustomer?.province || "",
+        postalCode: corpCustomer?.postalCode || "",
+        vatNumber: corpCustomer?.vatNumber || "",
+        salesRepName: corpCustomer?.salesRepName || "",
+      };
+
       // Check if invoice already exists for this PO
       const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
 
@@ -4807,7 +4823,7 @@ export const dataService = {
           balanceDue: newBalanceDue,
           paymentTerms,
           customerId: mainCustomerId,
-          customer: mainCustomer || { name: po.corporateCustomerName || "Corporate Customer" },
+          customer: richCustomer,
           items: items.map((item: any) => ({
             description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
             quantity: item.quantity,
@@ -4841,16 +4857,18 @@ export const dataService = {
       }
 
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+      const poRef = po.poNumber || `PO-${po.id}`;
 
       invoices.push({
         id: nextInvId,
         purchaseOrderId: po.id,
         poNumber: po.poNumber,
-        orderNumber: po.poNumber,
+        orderNumber: poRef,
         invoiceNumber,
+        deliveryNoteNumber: `DN-${poRef}`,
         company: invCompany,
         customerId: mainCustomerId,
-        customer: mainCustomer || { name: po.corporateCustomerName || "Corporate Customer" },
+        customer: richCustomer,
         subtotal,
         vatAmount,
         vatRate,

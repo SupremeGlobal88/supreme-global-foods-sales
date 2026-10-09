@@ -178,10 +178,12 @@ export const appRouter = t.router({
     list: t.procedure.query(() => [] as any[]),
     listByBarrel: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
     listByPurchaseOrder: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    listByInvoice: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
     getById: t.procedure.input((val: unknown) => val as number).query(() => null as any),
     create: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(() => ({} as any)),
     delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
+    generateForInvoice: t.procedure.input((val: unknown) => val as number).mutation(({ input }) => dataService.coc.generateForInvoice(input)),
     bulkGenerateForPO: t.procedure.input((val: unknown) => val as { poId: number; cocDataList: any[]; deleteOrphanIds?: number[] }).mutation(() => [] as any[]),
   }),
   packingList: t.router({

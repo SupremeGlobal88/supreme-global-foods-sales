@@ -1814,6 +1814,9 @@ function updateInvoiceFromOrder(order: any) {
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       lineTotal: item.lineTotal,
+      stockItemId: item.stockItemId || null,
+      productCode: item.productCode || "",
+      productName: item.productName || "",
     })),
     updatedAt: new Date().toISOString(),
   };
@@ -4660,9 +4663,39 @@ export const dataService = {
       const useByDate = new Date(now.getFullYear() + 2, now.getMonth(), now.getDate());
       const useByStr = useByDate.toLocaleDateString("en-GB");
       const batchPrefix = `${String(now.getDate()).padStart(2, "0")}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getFullYear()).slice(-2)}`;
+      const lotPrefix = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+
+      // Helper: find product by stockItemId, productCode, or description match
+      function findProductForItem(it: any) {
+        if (it.stockItemId != null) {
+          const byId = products.find((p) => p.id == it.stockItemId);
+          if (byId) return byId;
+        }
+        if (it.productCode) {
+          const byCode = products.find((p) => p.productCode === it.productCode);
+          if (byCode) return byCode;
+        }
+        if (it.description) {
+          const descNorm = String(it.description).toLowerCase().trim();
+          const byDesc = products.find((p) => {
+            const nameNorm = String(p.productName || "").toLowerCase().trim();
+            return nameNorm && descNorm.includes(nameNorm);
+          });
+          if (byDesc) return byDesc;
+        }
+        if (it.productName) {
+          const nameNorm = String(it.productName).toLowerCase().trim();
+          const byName = products.find((p) => {
+            const pNameNorm = String(p.productName || "").toLowerCase().trim();
+            return pNameNorm === nameNorm;
+          });
+          if (byName) return byName;
+        }
+        return null;
+      }
 
       const newCOCs = (inv.items || []).map((it: any, idx: number) => {
-        const product = products.find((p) => p.id == it.stockItemId);
+        const product = findProductForItem(it);
         const qtyBundles = it.quantity || 0;
         const isSheep = (product?.species || product?.category || "").toLowerCase().includes("sheep");
         const animalName = isSheep ? "sheep" : "hog";
@@ -4675,6 +4708,8 @@ export const dataService = {
         const length = strands && strands.includes("90") ? "Minimum 90 to 91m/bundle" :
                        strands && strands.includes("30") ? "Minimum 30m/bundle" : "Minimum 90 to 91m/bundle";
         const stuffingCapacity = qtyBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle";
+        const sgfProductCode = product?.productCode || it.productCode || "";
+        const productDesc = it.description || product?.productName || it.productName || "";
 
         return {
           id: Date.now() + idx,
@@ -4686,11 +4721,11 @@ export const dataService = {
           customerName: customerRecord?.name || inv.customer?.name || "",
           company: inv.company || "sgf",
           // Corporate-style COC fields
-          recircleProductCode: product?.productCode || it.productCode || "",
-          customerProductCode: "",
-          productDescription: it.description || product?.productName || "",
+          recircleProductCode: sgfProductCode,
+          customerProductCode: sgfProductCode, // regular customers use same SGF code
+          productDescription: productDesc,
           batchNumber: `${batchPrefix}-${String(idx + 1).padStart(3, "0")}`,
-          lotSealNumber: "",
+          lotSealNumber: `${lotPrefix}-${String(idx + 1).padStart(3, "0")}`,
           manufacturingDate: mfgDateStr,
           useByDate: useByStr,
           barrelNumber: `Total: ${qtyBundles} Bundles`,

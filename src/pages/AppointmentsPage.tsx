@@ -328,9 +328,14 @@ export default function AppointmentsPage() {
     ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
     : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
 
-  const myFollowUps = canViewAll
+  const myFollowUps = (canViewAll
     ? (filterRep === "all" ? (followUpCustomers || []) : (followUpCustomers || []).filter((c: any) => c.salesRepName === filterRep))
-    : (followUpCustomers || []).filter((c: any) => c.salesRepName === myRepName);
+    : (followUpCustomers || []).filter((c: any) => c.salesRepName === myRepName)
+  ).sort((a: any, b: any) => {
+    const aDate = a.lastOrderDate || a.lastVisitDate || a.createdAt || "";
+    const bDate = b.lastOrderDate || b.lastVisitDate || b.createdAt || "";
+    return new Date(bDate).getTime() - new Date(aDate).getTime();
+  });
 
   // ===================== GEO AUDIT CLUSTERING =====================
 
@@ -710,8 +715,8 @@ export default function AppointmentsPage() {
   const cancelled = myAppointments.filter((a: any) => a.status === "cancelled" || a.status === "rescheduled").sort((a: any, b: any) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime());
 
   // Check-in groups
-  const activeCheckins = myCheckins.filter((ci: any) => ci.status === "checked_in");
-  const completedCheckins = myCheckins.filter((ci: any) => ci.status === "checked_out");
+  const activeCheckins = myCheckins.filter((ci: any) => ci.status === "checked_in").sort((a: any, b: any) => new Date(b.checkInTime || b.createdAt || 0).getTime() - new Date(a.checkInTime || a.createdAt || 0).getTime());
+  const completedCheckins = myCheckins.filter((ci: any) => ci.status === "checked_out").sort((a: any, b: any) => new Date(b.checkOutTime || b.checkInTime || b.createdAt || 0).getTime() - new Date(a.checkOutTime || a.checkInTime || a.createdAt || 0).getTime());
 
   // Customer search for check-in
   const filteredCheckinCustomers = useMemo(() => {

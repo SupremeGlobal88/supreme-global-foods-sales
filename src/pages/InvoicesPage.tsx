@@ -88,19 +88,6 @@ export default function InvoicesPage() {
   const { data: allReceipts } = trpc.invoice.getReceipts.useQuery();
   const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
 
-  /* Customer lookup map — fixes N/A when customer object not embedded */
-  const customerMap = useMemo(() => {
-    const map = new Map();
-    for (const c of customers || []) map.set(String(c.id), c);
-    for (const c of corporateCustomers || []) map.set(String(c.id), c);
-    return map;
-  }, [customers, corporateCustomers]);
-  const getCustomerName = (customerId: any) => {
-    if (!customerId) return "N/A";
-    const c = customerMap.get(String(customerId));
-    return c?.name || "N/A";
-  };
-
   /* Mutations */
   const recordPay = trpc.invoice.recordPayment.useMutation({
     onSuccess: async (data: any) => {
@@ -193,7 +180,7 @@ export default function InvoicesPage() {
     const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setPayInvId(inv.id);
     setPayInvNumber(inv.invoiceNumber);
-    setPayCustName(getCustomerName(inv.customerId));
+    setPayCustName(inv.customer?.name || "N/A");
     setPayAmt(bal > 0 ? String(bal) : "");
     setEditPayId(0);
     setShowPayForm(true);
@@ -235,7 +222,7 @@ export default function InvoicesPage() {
     setAllocInvId(inv.id);
     setAllocInvNumber(inv.invoiceNumber);
     setAllocCustId(custId);
-    setAllocCustName(getCustomerName(custId));
+    setAllocCustName(inv.customer?.name || "Customer");
     const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setAllocBal(bal);
     setAllocAmt("");
@@ -264,7 +251,8 @@ export default function InvoicesPage() {
     if (q) {
       list = list.filter((i: any) =>
         (i.invoiceNumber || "").toLowerCase().includes(q) ||
-        getCustomerName(i.customerId).toLowerCase().includes(q) ||
+        (i.customer?.name || "").toLowerCase().includes(q) ||
+        (i.customer?.customerCode || "").toLowerCase().includes(q) ||
         (i.orderNumber || "").toLowerCase().includes(q)
       );
     }
@@ -289,7 +277,7 @@ export default function InvoicesPage() {
       // Fallback: sort by created date
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
-  }, [invoices, search, statusFilter, sourceFilter, companyFilter, sortBy, customerMap]);
+  }, [invoices, search, statusFilter, sourceFilter, companyFilter, sortBy]);
 
   /* Status badge */
   const badge = (s: string) => {
@@ -307,7 +295,8 @@ export default function InvoicesPage() {
 
   /* ── Print Combined Invoice + Delivery Note ── */
   function printDoc(inv: any) {
-    const cust = inv.customer || customerMap.get(String(inv.customerId)) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const liveCust = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const cust = liveCust || inv.customer || {};
     const invCompany: CompanyKey = inv.company || "sgf";
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
@@ -822,7 +811,8 @@ export default function InvoicesPage() {
 
   /* ─── Email invoice via mailto ─── */
   function sendEmail(inv: any) {
-    const cust = inv.customer || customerMap.get(String(inv.customerId)) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const liveCust = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const cust = liveCust || inv.customer || {};
     if (!cust?.email) { alert("Customer has no email address."); return; }
     const subject = encodeURIComponent(`Tax Invoice ${inv.invoiceNumber} - ${cust.name || ""}`);
     const body = encodeURIComponent(
@@ -991,7 +981,7 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{getCustomerName(inv.customerId)}</td>
+                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.poNumber || inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>
@@ -1162,7 +1152,7 @@ export default function InvoicesPage() {
                                     </div>
                                     {isAdmin && (
                                       <div className="flex gap-1">
-                                        <button onClick={() => openEditPay(inv.id, inv.invoiceNumber, getCustomerName(inv.customerId), p)} className="p-1.5 rounded hover:bg-[#222324]" title="Edit"><Pencil className="w-3 h-3 text-[#D4A843]" /></button>
+                                        <button onClick={() => openEditPay(inv.id, inv.invoiceNumber, inv.customer?.name, p)} className="p-1.5 rounded hover:bg-[#222324]" title="Edit"><Pencil className="w-3 h-3 text-[#D4A843]" /></button>
                                         <button onClick={() => { if (confirm("Delete this payment?")) delPay.mutate({ invoiceId: inv.id, paymentId: p.id }); }} className="p-1.5 rounded hover:bg-[#222324]" title="Delete"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
                                       </div>
                                     )}

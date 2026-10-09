@@ -377,7 +377,24 @@ export function createLocalLink() {
               case "coc.listByBarrel": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.listByBarrel(input); break;
               case "coc.listByPurchaseOrder": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.listByPurchaseOrder(input); break;
               case "coc.listByInvoice": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.listByInvoice(input); break;
-              case "coc.generateForInvoice": { result = dataService.coc.generateForInvoice(input); if (Array.isArray(result) && result.length > 0) { for (const c of result) { await pushCOC(c); } } reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: Array.isArray(result) ? result.length : 0 } })); break; }
+              case "coc.generateForInvoice": {
+                // 1. Find existing COC IDs for this invoice BEFORE generating (so we can delete from Firebase)
+                const existingCOCs = dataService.coc.listByInvoice(input);
+                const existingIds = (existingCOCs || []).map((c: any) => c.id);
+                // 2. Generate new COCs (this removes old ones from local storage)
+                result = dataService.coc.generateForInvoice(input);
+                // 3. Remove old COCs from Firebase first
+                if (existingIds.length > 0) {
+                  for (const oldId of existingIds) { await removeCOC(oldId); }
+                }
+                // 4. Push new COCs to Firebase
+                if (Array.isArray(result) && result.length > 0) {
+                  for (const c of result) { await pushCOC(c); }
+                }
+                reloadFromStorage(["sgf_cocs"]);
+                window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: Array.isArray(result) ? result.length : 0 } }));
+                break;
+              }
               case "coc.getById": await smartSync("certificatesOfCompliance", "sgf_cocs"); result = dataService.coc.getById(input); break;
               case "coc.create": { result = dataService.coc.create(input); await pushCOC(result); reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.update": { const { id, data } = input; result = dataService.coc.update({ id, data }); if (result) { await pushCOC(result); } reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }

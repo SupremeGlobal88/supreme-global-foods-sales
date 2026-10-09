@@ -171,6 +171,8 @@ export default function AppointmentsPage() {
   const [actionNotes, setActionNotes] = useState("");
   const [actionTitle, setActionTitle] = useState("");
   const [actionScheduleFollowUp, setActionScheduleFollowUp] = useState(false);
+  const [actionFollowUpDate, setActionFollowUpDate] = useState("");
+  const [actionFollowUpTime, setActionFollowUpTime] = useState("09:00");
   const [expandedCustomerActions, setExpandedCustomerActions] = useState<number | null>(null);
 
   // ===================== DATA =====================
@@ -271,7 +273,7 @@ export default function AppointmentsPage() {
     onSuccess: async () => {
       reloadFromStorage();
       await utils.followUpAction.list.invalidate();
-      setShowActionForm(false); setActionCustomerId(0); setActionNotes(""); setActionType("phone_call");
+      setShowActionForm(false); setActionCustomerId(0); setActionNotes(""); setActionType("phone_call"); setActionScheduleFollowUp(false); setActionFollowUpDate(""); setActionFollowUpTime("09:00");
     },
   });
 
@@ -559,6 +561,8 @@ export default function AppointmentsPage() {
     setActionTitle("");
     setActionNotes("");
     setActionScheduleFollowUp(false);
+    setActionFollowUpDate("");
+    setActionFollowUpTime("09:00");
     setShowActionForm(true);
   }
 
@@ -569,7 +573,7 @@ export default function AppointmentsPage() {
     const notesParts = [];
     if (actionTitle) notesParts.push(`Title: ${actionTitle}`);
     if (actionNotes) notesParts.push(actionNotes);
-    if (actionScheduleFollowUp) notesParts.push("Follow-up appointment scheduled");
+    if (actionScheduleFollowUp && actionFollowUpDate) notesParts.push(`Follow-up appointment scheduled for ${actionFollowUpDate} at ${actionFollowUpTime}`);
 
     createFollowUpAction.mutate({
       customerId: actionCustomerId,
@@ -578,16 +582,14 @@ export default function AppointmentsPage() {
       salesRepName: myRepName,
     });
 
-    // If follow-up appointment requested, auto-create one
-    if (actionScheduleFollowUp) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
+    // If follow-up appointment requested with date, auto-create one
+    if (actionScheduleFollowUp && actionFollowUpDate) {
       createAppointment.mutate({
         customerId: actionCustomerId,
         title: actionTitle || "Follow-up",
         notes: actionNotes || "Follow-up from action log",
-        appointmentDate: tomorrow.toISOString().slice(0, 10) + "T09:00",
-        startTime: "09:00",
+        appointmentDate: actionFollowUpDate + "T" + actionFollowUpTime,
+        startTime: actionFollowUpTime,
         location: "",
         appointmentType: actionType as any,
         salesRepName: myRepName,
@@ -2110,16 +2112,39 @@ export default function AppointmentsPage() {
                 />
               </div>
 
-              {/* Schedule follow-up checkbox */}
-              <label className="flex items-center gap-2 cursor-pointer">
+              {/* Schedule follow-up date/time */}
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
                 <input
                   type="checkbox"
                   checked={actionScheduleFollowUp}
                   onChange={(e) => setActionScheduleFollowUp(e.target.checked)}
                   className="w-4 h-4 accent-[#D4A843]"
                 />
-                <span className="text-sm text-[#E8E8E9] font-body">Schedule follow-up appointment for tomorrow</span>
+                <span className="text-sm text-[#E8E8E9] font-body">Schedule follow-up appointment</span>
               </label>
+              {actionScheduleFollowUp && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label-text block mb-1.5">Date *</label>
+                    <input
+                      type="date"
+                      value={actionFollowUpDate}
+                      onChange={(e) => setActionFollowUpDate(e.target.value)}
+                      className="input-field"
+                      min={new Date().toISOString().slice(0, 10)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label-text block mb-1.5">Time *</label>
+                    <input
+                      type="time"
+                      value={actionFollowUpTime}
+                      onChange={(e) => setActionFollowUpTime(e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+              )}
 
               <button onClick={submitActionForm} className="btn-primary w-full justify-center">
                 <CheckCircle className="w-4 h-4" /> Log Action

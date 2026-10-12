@@ -124,7 +124,8 @@ export default function CustomerStatementPage() {
 
     for (const inv of uniqueInvoices) {
       const group: any[] = [];
-      const debit = Number(inv.total || 0);
+      const isSampleOrder = (inv.notes || "").toLowerCase().includes("sample order") || (inv.notes || "").toLowerCase().includes("no charge");
+      const debit = isSampleOrder ? 0 : Number(inv.total || 0);
       const invRef = inv.invoiceNumber || inv.orderNumber || "-";
 
       // Invoice row

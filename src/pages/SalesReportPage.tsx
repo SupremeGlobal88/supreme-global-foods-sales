@@ -291,6 +291,7 @@ export default function SalesReportPage() {
     setIsExporting(true);
     try {
       const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
       const reportDate = new Date().toLocaleDateString("en-ZA");
       const groupLabel = groupFilter || "All Customers";
 

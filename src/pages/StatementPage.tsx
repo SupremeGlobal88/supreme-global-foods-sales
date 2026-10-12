@@ -35,7 +35,8 @@ function openPrintWindow(
   const invoiceGroups: any[] = [];
   for (const inv of invoices) {
     const group: any[] = [];
-    const debit = Number(inv.total || 0);
+    const isSampleOrder = (inv.notes || "").toLowerCase().includes("sample order") || (inv.notes || "").toLowerCase().includes("no charge");
+    const debit = isSampleOrder ? 0 : Number(inv.total || 0);
     const invRef = inv.invoiceNumber || inv.orderNumber || "-";
     group.push({
       date: inv.invoiceDate || inv.createdAt,

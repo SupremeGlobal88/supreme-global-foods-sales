@@ -64,7 +64,7 @@ function getReminderTemplates(): Record<string, { subject: string; body: string 
 
 export default function CollectionsPage() {
   const utils = trpc.useUtils();
-  const [activeTab, setActiveTab] = useState<"pipeline" | "daily" | "history">("pipeline");
+  const [activeTab, setActiveTab] = useState<"pipeline" | "followups" | "daily" | "history">("pipeline");
   const [selectedBucket, setSelectedBucket] = useState<string>("all");
   const [selectedSalesRep, setSelectedSalesRep] = useState<string>("");
   const [expandedInvoice, setExpandedInvoice] = useState<number | null>(null);
@@ -76,6 +76,7 @@ export default function CollectionsPage() {
   const { data: overdueInvoices } = trpc.collections.getOverdueInvoices.useQuery();
   const { data: dailyReport } = trpc.collections.getDailyReport.useQuery();
   const { data: stats } = trpc.collections.getStats.useQuery();
+  const { data: followUpsDue } = trpc.collections.getFollowUpsDue.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
   const { data: customerHistory } = trpc.collections.getCustomerPaymentHistory.useQuery(historyCustomerId, { enabled: historyCustomerId > 0 });
@@ -165,6 +166,12 @@ export default function CollectionsPage() {
       {/* Tabs */}
       <div className="flex gap-2">
         <button onClick={() => setActiveTab("pipeline")} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === "pipeline" ? "#D4A843" : "#18191A", color: activeTab === "pipeline" ? "#0A0A0B" : "#8A8B8C" }}>Collection Pipeline</button>
+        <button onClick={() => setActiveTab("followups")} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer relative" style={{ backgroundColor: activeTab === "followups" ? "#D4A843" : "#18191A", color: activeTab === "followups" ? "#0A0A0B" : "#8A8B8C" }}>
+          Follow-ups Due
+          {followUpsDue && followUpsDue.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{followUpsDue.length}</span>
+          )}
+        </button>
         <button onClick={() => setActiveTab("daily")} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === "daily" ? "#D4A843" : "#18191A", color: activeTab === "daily" ? "#0A0A0B" : "#8A8B8C" }}>Daily Report</button>
         <button onClick={() => setActiveTab("history")} className="px-4 py-2 rounded-full text-sm font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: activeTab === "history" ? "#D4A843" : "#18191A", color: activeTab === "history" ? "#0A0A0B" : "#8A8B8C" }}>Customer History</button>
       </div>
@@ -325,6 +332,82 @@ export default function CollectionsPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FOLLOW-UPS DUE */}
+      {activeTab === "followups" && (
+        <div className="space-y-4">
+          <div className="card-surface p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display font-semibold text-white">Follow-ups Due</h3>
+                <p className="text-xs text-[#8A8B8C] font-body">Customers needing follow-up after 3-day action cycle</p>
+              </div>
+              <span className="stat-number" style={{ color: "#EF4444" }}>{followUpsDue?.length || 0}</span>
+            </div>
+
+            {followUpsDue && followUpsDue.length > 0 ? (
+              <div className="space-y-3">
+                {(followUpsDue || []).map((fu: any, idx: number) => {
+                  const isOverdue = fu.daysSinceFollowUp && fu.daysSinceFollowUp > 0;
+                  return (
+                    <div key={idx} className="p-4 rounded-lg" style={{ backgroundColor: "#0A0A0B", borderLeft: isOverdue ? "3px solid #EF4444" : "3px solid #F59E0B" }}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h4 className="text-white font-body font-medium">{fu.customer?.name || "Unknown"}</h4>
+                            {isOverdue && (
+                              <span className="status-badge text-xs" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
+                                <AlertTriangle className="w-3 h-3 inline mr-1" />{fu.daysSinceFollowUp} days overdue
+                              </span>
+                            )}
+                            {!isOverdue && (
+                              <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>
+                                <Clock className="w-3 h-3 inline mr-1" />Due today
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[#8A8B8C] font-body">
+                            Outstanding: <span className="text-white">R {fu.outstandingBalance?.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}</span>
+                            {" "}&middot;{" "}
+                            Last action: {fu.latestNote ? `${fu.latestNote.type} on ${new Date(fu.latestNote.createdAt).toLocaleDateString("en-ZA")}` : "None"}
+                            {" "}&middot;{" "}
+                            Follow-up date: {fu.latestNote?.followUpDate || "—"}
+                          </p>
+                          {fu.latestNote?.notes && (
+                            <p className="text-xs text-[#8A8B8C] font-body mt-1 italic">"{fu.latestNote.notes.slice(0, 120)}{fu.latestNote.notes.length > 120 ? "..." : ""}"</p>
+                          )}
+                          {/* Invoice list */}
+                          {fu.invoices && fu.invoices.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {fu.invoices.map((inv: any, i: number) => (
+                                <span key={i} className="status-badge text-xs" style={{ backgroundColor: "rgba(212,168,67,0.1)", color: "#D4A843" }}>
+                                  {inv.invoiceNumber} (R {inv.balanceDue?.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"})
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => openAction("call", fu.invoices?.[0])}
+                          className="btn-primary text-xs shrink-0"
+                        >
+                          <Phone className="w-3 h-3" /> Follow Up
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-[#4ADE80] opacity-40" />
+                <p className="text-[#8A8B8C] font-body text-sm">No follow-ups due at this time</p>
+                <p className="text-xs text-[#8A8B8C] mt-1">All customers are within the 3-day follow-up cycle</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -533,31 +616,56 @@ function ActionModal({ action, invoice, onClose, onSubmit, reminderText }: { act
               <ExternalLink className="w-4 h-4" /> Open WhatsApp
             </button>
           )}
-          {action !== "whatsapp" && (
+          {action === "email" && (
+            <button onClick={() => {
+              // Copy to clipboard
+              navigator.clipboard.writeText(notes).catch(() => {});
+              // Build mailto link
+              const subject = encodeURIComponent(`Payment Reminder - Invoice ${invoice.invoiceNumber}`);
+              const body = encodeURIComponent(notes);
+              const to = invoice.customer?.email || "";
+              const mailto = `mailto:${to}?subject=${subject}&body=${body}`;
+              window.open(mailto, "_blank");
+              const data: any = { notes, type: "email", contactMethod: "email" };
+              onSubmit(data);
+            }} className="btn-primary flex-1 justify-center">
+              <Send className="w-4 h-4" /> Send Email
+            </button>
+          )}
+          {action === "sms" && (
+            <button onClick={() => {
+              navigator.clipboard.writeText(notes).catch(() => {});
+              const data: any = { notes, type: "sms", contactMethod: "sms" };
+              onSubmit(data);
+              alert("Message copied to clipboard. Paste into your SMS app.");
+            }} className="btn-primary flex-1 justify-center">
+              <Send className="w-4 h-4" /> Copy & Send SMS
+            </button>
+          )}
+          {action !== "whatsapp" && action !== "email" && action !== "sms" && (
             <button onClick={() => {
               const data: any = { notes };
               if (action === "call") { data.type = "call"; data.contactMethod = "phone"; data.contactPerson = contactPerson; data.followUpDate = followUpDate || undefined; }
-              else if (action === "email") { data.type = "email"; data.contactMethod = "email"; }
-              else if (action === "sms") { data.type = "sms"; data.contactMethod = "sms"; }
               else if (action === "note") { data.type = "note"; data.contactMethod = "manual"; }
               else if (action === "promise") { data.promiseDate = promiseDate; data.promisedAmount = promisedAmount; }
               else if (action === "hold") { data.reason = holdReason; }
               onSubmit(data);
             }} className="btn-primary flex-1 justify-center">
-              {action === "email" && <Send className="w-4 h-4" />}
-              {action === "sms" && <Send className="w-4 h-4" />}
               {action === "promise" && <HandCoins className="w-4 h-4" />}
               {action === "hold" && <Lock className="w-4 h-4" />}
               {action === "call" && <Phone className="w-4 h-4" />}
               {action === "note" && <ClipboardList className="w-4 h-4" />}
-              {action === "email" ? "Copy & Open Email" : action === "sms" ? "Copy Message" : action === "promise" ? "Record Promise" : action === "hold" ? "Place Hold" : "Save"}
+              {action === "promise" ? "Record Promise" : action === "hold" ? "Place Hold" : "Save"}
             </button>
           )}
           <button onClick={onClose} className="btn-secondary">Cancel</button>
         </div>
 
-        {(action === "email" || action === "sms") && (
-          <p className="text-xs text-[#8A8B8C] font-body mt-3">The reminder text is pre-filled based on the overdue stage. Copy it and paste into your email client or SMS app.</p>
+        {action === "email" && (
+          <p className="text-xs text-[#8A8B8C] font-body mt-3">Clicking "Send Email" will open your default email client with the customer email, subject, and message pre-filled. The message is also copied to your clipboard as a backup.</p>
+        )}
+        {action === "sms" && (
+          <p className="text-xs text-[#8A8B8C] font-body mt-3">Clicking "Copy & Send SMS" will copy the message to your clipboard. Paste it into your SMS app to send.</p>
         )}
         {action === "whatsapp" && (
           <p className="text-xs text-[#8A8B8C] font-body mt-3">Clicking "Open WhatsApp" will open WhatsApp Web or the WhatsApp app with this message pre-filled. The customer must have WhatsApp installed.</p>

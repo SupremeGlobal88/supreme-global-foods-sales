@@ -125,6 +125,8 @@ export default function AppointmentsPage() {
   const [checkinAppointmentId, setCheckinAppointmentId] = useState<number | null>(null);
   const [checkinAppointmentType, setCheckinAppointmentType] = useState("site_visit");
   const [checkinTitle, setCheckinTitle] = useState("");
+  const [checkinIsNewCustomer, setCheckinIsNewCustomer] = useState(false);
+  const [checkinNewCustomer, setCheckinNewCustomer] = useState({ name: "", contactPerson: "", phone: "", address: "" });
 
   // Customer type-ahead search state
   const [customerSearch, setCustomerSearch] = useState("");
@@ -197,6 +199,46 @@ export default function AppointmentsPage() {
       await utils.customer.getStats.invalidate();
       if (res?.id) {
         setFormData({ ...formData, customerId: res.id });
+
+        // If we're in check-in mode for a new customer, create the checkin instead of an appointment
+        if (showCheckinForm && checkinIsNewCustomer) {
+          const checkinData = {
+            customerId: res.id,
+            notes: `[${checkinOutcome.toUpperCase()}] ${checkinNotes || checkinNewCustomer.address || ""}`,
+            salesRepName: myRepName,
+            location: checkinNewCustomer.address || res.name,
+            outcome: checkinOutcome,
+            appointmentId: null,
+            appointmentType: checkinAppointmentType,
+            title: checkinTitle || "Unplanned Visit",
+          };
+
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                createCheckin.mutate({
+                  ...checkinData,
+                  latitude: pos.coords.latitude,
+                  longitude: pos.coords.longitude,
+                });
+                setShowCheckinForm(false);
+                setCheckinIsNewCustomer(false);
+                setCheckinNewCustomer({ name: "", contactPerson: "", phone: "", address: "" });
+              },
+              () => {
+                setGeoError("GPS unavailable — confirm location on map");
+                setMapTarget({ lat: -26.2, lng: 28.04, address: checkinNewCustomer.address || res.name });
+              }
+            );
+          } else {
+            createCheckin.mutate(checkinData);
+            setShowCheckinForm(false);
+            setCheckinIsNewCustomer(false);
+            setCheckinNewCustomer({ name: "", contactPerson: "", phone: "", address: "" });
+          }
+          return;
+        }
+
         // Auto-create the appointment for the new customer
         const payload: any = {
           customerId: res.id,
@@ -447,6 +489,8 @@ export default function AppointmentsPage() {
     setCheckinAppointmentId(null);
     setCheckinAppointmentType("site_visit");
     setCheckinTitle("");
+    setCheckinIsNewCustomer(false);
+    setCheckinNewCustomer({ name: "", contactPerson: "", phone: "", address: "" });
   }
 
   function openCheckinForAppointment(appt: any) {
@@ -466,6 +510,35 @@ export default function AppointmentsPage() {
   }
 
   function submitCheckinForm() {
+    // New customer flow: create customer first, then checkin will be created in createCustomer.onSuccess
+    if (checkinIsNewCustomer) {
+      if (!checkinNewCustomer.name.trim()) { alert("Enter customer name"); return; }
+      if (!checkinNewCustomer.address.trim()) { alert("Enter customer address"); return; }
+
+      setGeoError("");
+      setMapTarget(null);
+
+      createCustomer.mutate({
+        name: checkinNewCustomer.name.trim(),
+        physicalAddress: checkinNewCustomer.address.trim(),
+        city: "",
+        province: "",
+        postalCode: "",
+        contactPerson: checkinNewCustomer.contactPerson.trim(),
+        phone: checkinNewCustomer.phone.trim(),
+        email: "",
+        customerGroup: "",
+        salesRepName: myRepName,
+        isActive: "active",
+        creditLimit: 0,
+        taxNumber: "",
+        paymentTerms: "",
+        businessType: "",
+      });
+      return;
+    }
+
+    // Existing customer flow
     if (checkinCustomerId === 0) { alert("Select a customer"); return; }
     const customer = (customers || []).find((c) => c.id === checkinCustomerId);
     if (!customer) return;
@@ -1517,42 +1590,114 @@ export default function AppointmentsPage() {
                   </div>
                 )}
 
-                {/* Customer search */}
-                <div>
-                  <label className="label-text block mb-1.5">Search Customer *</label>
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
-                    <input
-                      type="text"
-                      value={checkinSearch}
-                      onChange={(e) => setCheckinSearch(e.target.value)}
-                      placeholder="Type to search customers..."
-                      className="input-field w-full pl-10"
-                    />
-                  </div>
-                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
-                    {filteredCheckinCustomers.length === 0 && (
-                      <div className="p-3 text-xs text-[#8A8B8C]">No customers found</div>
-                    )}
-                    {filteredCheckinCustomers.map((c: any) => (
-                      <div
-                        key={c.id}
-                        onClick={() => setCheckinCustomerId(c.id)}
-                        className="p-3 cursor-pointer flex items-center justify-between"
-                        style={{
-                          borderBottom: "1px solid #222324",
-                          backgroundColor: checkinCustomerId === c.id ? "rgba(212,168,67,0.1)" : "transparent",
-                        }}
-                      >
-                        <div>
-                          <div className="text-sm font-body" style={{ color: checkinCustomerId === c.id ? "#D4A843" : "#E8E8E9" }}>{c.name}</div>
-                          <div className="text-xs text-[#8A8B8C]">{c.physicalAddress}{c.city ? `, ${c.city}` : ""}</div>
-                        </div>
-                        {checkinCustomerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
-                      </div>
-                    ))}
-                  </div>
+                {/* Existing vs New Customer Toggle */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setCheckinIsNewCustomer(false); setCheckinCustomerId(0); }}
+                    className="flex-1 py-2 rounded-lg text-xs font-body font-medium cursor-pointer"
+                    style={{
+                      backgroundColor: !checkinIsNewCustomer ? "#D4A843" : "#222324",
+                      color: !checkinIsNewCustomer ? "#0A0A0B" : "#8A8B8C",
+                    }}
+                  >
+                    Existing Customer
+                  </button>
+                  <button
+                    onClick={() => { setCheckinIsNewCustomer(true); setCheckinCustomerId(0); }}
+                    className="flex-1 py-2 rounded-lg text-xs font-body font-medium cursor-pointer"
+                    style={{
+                      backgroundColor: checkinIsNewCustomer ? "#D4A843" : "#222324",
+                      color: checkinIsNewCustomer ? "#0A0A0B" : "#8A8B8C",
+                    }}
+                  >
+                    New Customer
+                  </button>
                 </div>
+
+                {/* Existing Customer search */}
+                {!checkinIsNewCustomer && (
+                  <div>
+                    <label className="label-text block mb-1.5">Search Customer *</label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
+                      <input
+                        type="text"
+                        value={checkinSearch}
+                        onChange={(e) => setCheckinSearch(e.target.value)}
+                        placeholder="Type to search customers..."
+                        className="input-field w-full pl-10"
+                      />
+                    </div>
+                    <div className="mt-2 max-h-40 overflow-y-auto rounded-lg" style={{ backgroundColor: "#0A0A0B", border: "1px solid #222324" }}>
+                      {filteredCheckinCustomers.length === 0 && (
+                        <div className="p-3 text-xs text-[#8A8B8C]">No customers found</div>
+                      )}
+                      {filteredCheckinCustomers.map((c: any) => (
+                        <div
+                          key={c.id}
+                          onClick={() => setCheckinCustomerId(c.id)}
+                          className="p-3 cursor-pointer flex items-center justify-between"
+                          style={{
+                            borderBottom: "1px solid #222324",
+                            backgroundColor: checkinCustomerId === c.id ? "rgba(212,168,67,0.1)" : "transparent",
+                          }}
+                        >
+                          <div>
+                            <div className="text-sm font-body" style={{ color: checkinCustomerId === c.id ? "#D4A843" : "#E8E8E9" }}>{c.name}</div>
+                            <div className="text-xs text-[#8A8B8C]">{c.physicalAddress}{c.city ? `, ${c.city}` : ""}</div>
+                          </div>
+                          {checkinCustomerId === c.id && <CheckCircle className="w-4 h-4 text-[#D4A843]" />}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* New Customer Form */}
+                {checkinIsNewCustomer && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="label-text block mb-1.5">Customer Name *</label>
+                      <input
+                        type="text"
+                        value={checkinNewCustomer.name}
+                        onChange={(e) => setCheckinNewCustomer({ ...checkinNewCustomer, name: e.target.value })}
+                        placeholder="e.g. Joe's Butchery"
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="label-text block mb-1.5">Contact Person</label>
+                      <input
+                        type="text"
+                        value={checkinNewCustomer.contactPerson}
+                        onChange={(e) => setCheckinNewCustomer({ ...checkinNewCustomer, contactPerson: e.target.value })}
+                        placeholder="e.g. Joe Smith"
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="label-text block mb-1.5">Phone</label>
+                      <input
+                        type="text"
+                        value={checkinNewCustomer.phone}
+                        onChange={(e) => setCheckinNewCustomer({ ...checkinNewCustomer, phone: e.target.value })}
+                        placeholder="e.g. 083 123 4567"
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="label-text block mb-1.5">Address *</label>
+                      <input
+                        type="text"
+                        value={checkinNewCustomer.address}
+                        onChange={(e) => setCheckinNewCustomer({ ...checkinNewCustomer, address: e.target.value })}
+                        placeholder="Physical address..."
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Appointment Type */}
                 <div>
@@ -1593,7 +1738,10 @@ export default function AppointmentsPage() {
                   <textarea value={checkinNotes} onChange={(e) => setCheckinNotes(e.target.value)} className="input-field" rows={2} placeholder="What did you discuss?" />
                 </div>
                 {geoError && <p className="text-xs text-[#EF4444]">{geoError}</p>}
-                <button onClick={submitCheckinForm} className="btn-primary w-full justify-center"><Navigation className="w-4 h-4" /> Check In Now</button>
+                <button onClick={submitCheckinForm} className="btn-primary w-full justify-center">
+                  <Navigation className="w-4 h-4" />
+                  {checkinIsNewCustomer ? "Create Customer & Check In" : "Check In Now"}
+                </button>
                 <p className="text-xs text-[#8A8B8C] font-body text-center">GPS will be captured automatically. If unavailable, you'll confirm on Google Maps.</p>
               </div>
             ) : (

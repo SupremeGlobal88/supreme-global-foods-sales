@@ -21,32 +21,46 @@ const BUCKET_CONFIG: Record<string, { label: string; color: string; bg: string; 
   days_21_plus: { label: "21+ Days Over", color: "#DC2626", bg: "rgba(220,38,38,0.2)", desc: "Management follow-up" }, 
 };
 
-const REMINDER_TEMPLATES: Record<string, { subject: string; body: string }> = {
-  pre_due: {
-    subject: "Payment Reminder - Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nThis is a friendly reminder that your invoice {invoiceNumber} for R {amount} is due on {dueDate}.\n\nPlease ensure payment is arranged to avoid any inconvenience.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nThank you for your continued business.\n\nSupreme Global Foods`,
-  },
-  days_1_2: {
-    subject: "Friendly Reminder - Outstanding Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nWe noticed that invoice {invoiceNumber} for R {amount} is now {daysOverdue} day(s) overdue.\n\nIf payment has already been made, please disregard this notice and send us proof of payment.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact us if you need to discuss payment arrangements.\n\nSupreme Global Foods`,
-  },
-  days_3_5: {
-    subject: "Urgent: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on 083 293 0644 to discuss.\n\nSupreme Global Foods`,
-  },
-  days_6_10: {
-    subject: "FOLLOW-UP REQUIRED - Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-    body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nTo continue enjoying our services, please arrange payment or contact us to discuss a payment plan.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: 083 293 0644\n\nSupreme Global Foods`,
-  },
-  days_11_20: {
-    subject: "URGENT FOLLOW-UP - Invoice {invoiceNumber}",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have attempted to contact you on several occasions without success.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently to resolve this matter: 083 293 0644\n\nSupreme Global Foods`,
-  },
-  days_21_plus: {
-    subject: "URGENT: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-    body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have been unable to reach you despite several attempts.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: 083 293 0644\n\nSupreme Global Foods`,
-  },
-};
+function getCompanyPhone(): string {
+  try {
+    const raw = localStorage.getItem("sgf_settings_company");
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved.phone) return saved.phone;
+    }
+  } catch { /* ignore */ }
+  return "061 478 8888";
+}
+
+function getReminderTemplates(): Record<string, { subject: string; body: string }> {
+  const phone = getCompanyPhone();
+  return {
+    pre_due: {
+      subject: "Payment Reminder - Invoice {invoiceNumber}",
+      body: `Dear {customerName},\n\nThis is a friendly reminder that your invoice {invoiceNumber} for R {amount} is due on {dueDate}.\n\nPlease ensure payment is arranged to avoid any inconvenience.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nThank you for your continued business.\n\nSupreme Global Foods`,
+    },
+    days_1_2: {
+      subject: "Friendly Reminder - Outstanding Invoice {invoiceNumber}",
+      body: `Dear {customerName},\n\nWe noticed that invoice {invoiceNumber} for R {amount} is now {daysOverdue} day(s) overdue.\n\nIf payment has already been made, please disregard this notice and send us proof of payment.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact us if you need to discuss payment arrangements.\n\nSupreme Global Foods`,
+    },
+    days_3_5: {
+      subject: "Urgent: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
+      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on ${phone} to discuss.\n\nSupreme Global Foods`,
+    },
+    days_6_10: {
+      subject: "FOLLOW-UP REQUIRED - Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
+      body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nTo continue enjoying our services, please arrange payment or contact us to discuss a payment plan.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: ${phone}\n\nSupreme Global Foods`,
+    },
+    days_11_20: {
+      subject: "URGENT FOLLOW-UP - Invoice {invoiceNumber}",
+      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have attempted to contact you on several occasions without success.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently to resolve this matter: ${phone}\n\nSupreme Global Foods`,
+    },
+    days_21_plus: {
+      subject: "URGENT: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
+      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have been unable to reach you despite several attempts.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: ${phone}\n\nSupreme Global Foods`,
+    },
+  };
+}
 
 export default function CollectionsPage() {
   const utils = trpc.useUtils();
@@ -101,7 +115,8 @@ export default function CollectionsPage() {
   function generateReminderText(invoice: any, bucket: string) {
     const banking = getBankingDetails();
     const bankingStr = `${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode}`;
-    const template = REMINDER_TEMPLATES[bucket] || REMINDER_TEMPLATES.days_1_2;
+    const templates = getReminderTemplates();
+    const template = templates[bucket] || templates.days_1_2;
     return template.body
       .replace(/{customerName}/g, invoice.customer?.name || "Valued Customer")
       .replace(/{invoiceNumber}/g, invoice.invoiceNumber)

@@ -76,7 +76,7 @@ export default function SampleReportsPage() {
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Sample Reports</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">
-            {(report?.customers || []).length} customers with samples &middot; Subtotal: R {(report?.grandSubtotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} + VAT (15%): R {(report?.grandVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} = Total: R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+            {(report?.customers || []).length} customers with samples &middot; Subtotal: R {(report?.grandSubtotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + VAT (15%): R {(report?.grandVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = Total: R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
         <button onClick={handleExport} className="btn-secondary"><Download className="w-4 h-4" /> Export All</button>
@@ -90,7 +90,7 @@ export default function SampleReportsPage() {
           </div>
           <div>
             <div className="label-text text-[10px]">SUBTOTAL</div>
-            <div className="font-display font-semibold text-white">R {(report?.grandSubtotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+            <div className="font-display font-semibold text-white">R {(report?.grandSubtotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -99,7 +99,7 @@ export default function SampleReportsPage() {
           </div>
           <div>
             <div className="label-text text-[10px]">VAT (15%)</div>
-            <div className="font-display font-semibold text-white">R {(report?.grandVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+            <div className="font-display font-semibold text-white">R {(report?.grandVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -108,7 +108,7 @@ export default function SampleReportsPage() {
           </div>
           <div>
             <div className="label-text text-[10px]">TOTAL (incl. VAT)</div>
-            <div className="font-display font-semibold" style={{ color: "#4ADE80" }}>R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+            <div className="font-display font-semibold" style={{ color: "#4ADE80" }}>R {(report?.grandTotal || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
       </div>
@@ -170,10 +170,10 @@ export default function SampleReportsPage() {
                   <td className="p-4 text-sm text-[#E8E8E9]">{cust.salesRepName}</td>
                   <td className="p-4 text-right text-sm text-white font-display">{cust.sampleCount}</td>
                   <td className="p-4 text-right text-sm text-white font-display">{cust.items.length}</td>
-                  <td className="p-4 text-right text-sm text-[#8A8B8C] font-display">R {cust.totalSubtotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                  <td className="p-4 text-right text-sm text-[#8B5CF6] font-display">R {cust.totalVat.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                  <td className="p-4 text-right text-sm text-[#8A8B8C] font-display">R {cust.totalSubtotal.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="p-4 text-right text-sm text-[#8B5CF6] font-display">R {cust.totalVat.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="p-4 text-right font-display font-semibold" style={{ color: "#D4A843" }}>
-                    R {cust.totalCost.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                    R {cust.totalCost.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}
@@ -208,9 +208,9 @@ export default function SampleReportsPage() {
               <div className="text-right">
                 <div className="label-text text-[10px]">SUBTOTAL / VAT / TOTAL</div>
                 <div className="font-display font-semibold text-white" style={{ fontSize: "1.3rem" }}>
-                  R {customerReport.grandSubtotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
-                  <span className="text-[#8B5CF6] text-sm"> + R {customerReport.grandVat.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
-                  <span className="text-[#4ADE80] text-lg"> = R {customerReport.grandTotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                  R {customerReport.grandSubtotal.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="text-[#8B5CF6] text-sm"> + R {customerReport.grandVat.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-[#4ADE80] text-lg"> = R {customerReport.grandTotal.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>

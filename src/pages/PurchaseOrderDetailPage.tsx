@@ -816,15 +816,15 @@ export default function PurchaseOrderDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card-glass">
           <div className="text-xs text-[#8A8B8C] mb-1">Total (Excl VAT)</div>
-          <div className="text-lg font-semibold text-white">R {Number(po.totalExclVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          <div className="text-lg font-semibold text-white">R {Number(po.totalExclVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="card-glass">
           <div className="text-xs text-[#8A8B8C] mb-1">VAT (15%)</div>
-          <div className="text-lg font-semibold text-white">R {Number(po.vatAmount || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          <div className="text-lg font-semibold text-white">R {Number(po.vatAmount || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="card-glass">
           <div className="text-xs text-[#8A8B8C] mb-1">Total (Incl VAT)</div>
-          <div className="text-lg font-semibold" style={{ color: "#D4A843" }}>R {Number(po.totalInclVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          <div className="text-lg font-semibold" style={{ color: "#D4A843" }}>R {Number(po.totalInclVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
       </div>
 
@@ -861,7 +861,7 @@ export default function PurchaseOrderDetailPage() {
                   <td className="py-2 text-white text-right">{item.quantity}</td>
                   <td className="py-2 text-[#8A8B8C]">{item.uom}</td>
                   <td className="py-2 text-white text-right">R {Number(item.unitPrice).toFixed(2)}</td>
-                  <td className="py-2 text-white text-right font-medium">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                  <td className="py-2 text-white text-right font-medium">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
               ))}
             </tbody>
@@ -1160,7 +1160,7 @@ export default function PurchaseOrderDetailPage() {
                         </div>
                         <div className="col-span-3 text-right">
                           <span className="text-xs text-[#8A8B8C]">Line Total: </span>
-                          <span className="text-xs font-medium text-white">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                          <span className="text-xs font-medium text-white">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                       </div>
                     </div>

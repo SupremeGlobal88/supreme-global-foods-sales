@@ -8,7 +8,7 @@ import {
   Ban, FileText, Calendar, CheckCircle, Clock, User,
   DollarSign, TrendingUp, ShieldAlert, ClipboardList,
   Printer, X, ChevronDown, ChevronUp, Send, Lock, LockOpen,
-  Users, Filter,
+  Users, Filter, ExternalLink,
 } from "lucide-react";
 
 const BUCKET_CONFIG: Record<string, { label: string; color: string; bg: string; desc: string }> = {
@@ -282,6 +282,7 @@ export default function CollectionsPage() {
                                 <button onClick={() => openAction("call", inv)} className="btn-secondary text-xs"><Phone className="w-3 h-3" /> Log Call</button>
                                 <button onClick={() => openAction("email", inv)} className="btn-secondary text-xs"><Mail className="w-3 h-3" /> Send Reminder</button>
                                 <button onClick={() => openAction("sms", inv)} className="btn-secondary text-xs"><MessageSquare className="w-3 h-3" /> SMS</button>
+                                <button onClick={() => openAction("whatsapp", inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)" }}><MessageSquare className="w-3 h-3" style={{ color: "#4ADE80" }} /> WhatsApp</button>
                                 <button onClick={() => openAction("promise", inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)" }}><HandCoins className="w-3 h-3" /> Promise to Pay</button>
                                 {!inv.accountHold && <button onClick={() => openAction("hold", inv)} className="btn-secondary text-xs hover:text-[#EF4444]" style={{ borderColor: "rgba(239,68,68,0.2)" }}><Lock className="w-3 h-3" /> Place Hold</button>}
                                 {inv.accountHold && <button onClick={() => { releaseHold.mutate({ holdId: inv.accountHold.id }); }} className="btn-secondary text-xs hover:text-[#4ADE80]" style={{ borderColor: "rgba(74,222,128,0.2)" }}><LockOpen className="w-3 h-3" /> Release Hold</button>}
@@ -405,7 +406,7 @@ export default function CollectionsPage() {
           invoice={selectedInvoice}
           onClose={() => setShowActionModal(null)}
           onSubmit={(data: any) => {
-            if (showActionModal === "call" || showActionModal === "note") {
+            if (showActionModal === "call" || showActionModal === "note" || showActionModal === "whatsapp") {
               addNote.mutate({ invoiceId: selectedInvoice.id, customerId: selectedInvoice.customerId, ...data });
             } else if (showActionModal === "email" || showActionModal === "sms") {
               addNote.mutate({ invoiceId: selectedInvoice.id, customerId: selectedInvoice.customerId, type: showActionModal, contactMethod: showActionModal, ...data });
@@ -416,7 +417,7 @@ export default function CollectionsPage() {
             }
             setShowActionModal(null);
           }}
-          reminderText={showActionModal === "email" || showActionModal === "sms" ? generateReminderText(selectedInvoice, selectedInvoice.bucket) : ""}
+          reminderText={showActionModal === "email" || showActionModal === "sms" || showActionModal === "whatsapp" ? generateReminderText(selectedInvoice, selectedInvoice.bucket) : ""}
         />
       )}
     </div>
@@ -441,17 +442,19 @@ function printDailyReport(report: any) {
 }
 
 function ActionModal({ action, invoice, onClose, onSubmit, reminderText }: { action: string; invoice: any; onClose: () => void; onSubmit: (data: any) => void; reminderText: string }) {
-  const [notes, setNotes] = useState(action === "email" || action === "sms" ? reminderText : "");
+  const [notes, setNotes] = useState(action === "email" || action === "sms" || action === "whatsapp" ? reminderText : "");
   const [contactPerson, setContactPerson] = useState("");
   const [promisedAmount, setPromisedAmount] = useState(Number(invoice.balanceDue) || 0);
   const [promiseDate, setPromiseDate] = useState(new Date().toISOString().slice(0, 10));
   const [holdReason, setHoldReason] = useState("Non-payment after multiple reminders");
   const [followUpDate, setFollowUpDate] = useState("");
+  const [whatsappPhone, setWhatsappPhone] = useState(invoice.customer?.phone || "");
 
   const titles: Record<string, string> = {
     call: "Log Phone Call",
     email: "Send Email Reminder",
     sms: "Send SMS Reminder",
+    whatsapp: "Send WhatsApp Reminder",
     promise: "Record Promise to Pay",
     hold: "Place Account on Hold",
     note: "Add Collection Note",
@@ -487,38 +490,62 @@ function ActionModal({ action, invoice, onClose, onSubmit, reminderText }: { act
           </div>
         )}
 
-        {(action === "call" || action === "email" || action === "sms" || action === "note") && (
+        {(action === "call" || action === "email" || action === "sms" || action === "whatsapp" || action === "note") && (
           <div className="space-y-3">
             {action === "call" && <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} className="input-field" placeholder="Who did you speak to?" /></div>}
-            <div><label className="label-text block mb-1.5">{action === "email" || action === "sms" ? "Message" : "Notes"}</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field" rows={action === "email" || action === "sms" ? 8 : 4} /></div>
+            {action === "whatsapp" && (
+              <div>
+                <label className="label-text block mb-1.5">Customer Phone</label>
+                <input type="text" value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} className="input-field" placeholder="e.g. 0833911655 or +27833911655" />
+                <p className="text-xs text-[#8A8B8C] mt-1">Enter number with country code (e.g. +27833911655) or local format (0833911655)</p>
+              </div>
+            )}
+            <div><label className="label-text block mb-1.5">{action === "email" || action === "sms" || action === "whatsapp" ? "Message" : "Notes"}</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field" rows={action === "email" || action === "sms" || action === "whatsapp" ? 8 : 4} /></div>
             {action === "call" && <div><label className="label-text block mb-1.5">Follow-up Date (optional)</label><DatePicker value={followUpDate} onChange={setFollowUpDate} /></div>}
           </div>
         )}
 
         <div className="flex gap-3 mt-4">
-          <button onClick={() => {
-            const data: any = { notes };
-            if (action === "call") { data.type = "call"; data.contactMethod = "phone"; data.contactPerson = contactPerson; data.followUpDate = followUpDate || undefined; }
-            else if (action === "email") { data.type = "email"; data.contactMethod = "email"; }
-            else if (action === "sms") { data.type = "sms"; data.contactMethod = "sms"; }
-            else if (action === "note") { data.type = "note"; data.contactMethod = "manual"; }
-            else if (action === "promise") { data.promiseDate = promiseDate; data.promisedAmount = promisedAmount; }
-            else if (action === "hold") { data.reason = holdReason; }
-            onSubmit(data);
-          }} className="btn-primary flex-1 justify-center">
-            {action === "email" && <Send className="w-4 h-4" />}
-            {action === "sms" && <Send className="w-4 h-4" />}
-            {action === "promise" && <HandCoins className="w-4 h-4" />}
-            {action === "hold" && <Lock className="w-4 h-4" />}
-            {action === "call" && <Phone className="w-4 h-4" />}
-            {action === "note" && <ClipboardList className="w-4 h-4" />}
-            {action === "email" ? "Copy & Open Email" : action === "sms" ? "Copy Message" : action === "promise" ? "Record Promise" : action === "hold" ? "Place Hold" : "Save"}
-          </button>
+          {action === "whatsapp" && (
+            <button onClick={() => {
+              const clean = whatsappPhone.replace(/\s/g, "").replace(/^0/, "+27").replace(/^27/, "+27");
+              if (!clean || clean.length < 10) { alert("Please enter a valid phone number"); return; }
+              const url = `https://wa.me/${clean.replace(/^\+/, "")}?text=${encodeURIComponent(notes)}`;
+              window.open(url, "_blank");
+              const data: any = { notes, type: "whatsapp", contactMethod: "whatsapp" };
+              onSubmit(data);
+            }} className="btn-primary flex-1 justify-center" style={{ backgroundColor: "#25D366" }}>
+              <ExternalLink className="w-4 h-4" /> Open WhatsApp
+            </button>
+          )}
+          {action !== "whatsapp" && (
+            <button onClick={() => {
+              const data: any = { notes };
+              if (action === "call") { data.type = "call"; data.contactMethod = "phone"; data.contactPerson = contactPerson; data.followUpDate = followUpDate || undefined; }
+              else if (action === "email") { data.type = "email"; data.contactMethod = "email"; }
+              else if (action === "sms") { data.type = "sms"; data.contactMethod = "sms"; }
+              else if (action === "note") { data.type = "note"; data.contactMethod = "manual"; }
+              else if (action === "promise") { data.promiseDate = promiseDate; data.promisedAmount = promisedAmount; }
+              else if (action === "hold") { data.reason = holdReason; }
+              onSubmit(data);
+            }} className="btn-primary flex-1 justify-center">
+              {action === "email" && <Send className="w-4 h-4" />}
+              {action === "sms" && <Send className="w-4 h-4" />}
+              {action === "promise" && <HandCoins className="w-4 h-4" />}
+              {action === "hold" && <Lock className="w-4 h-4" />}
+              {action === "call" && <Phone className="w-4 h-4" />}
+              {action === "note" && <ClipboardList className="w-4 h-4" />}
+              {action === "email" ? "Copy & Open Email" : action === "sms" ? "Copy Message" : action === "promise" ? "Record Promise" : action === "hold" ? "Place Hold" : "Save"}
+            </button>
+          )}
           <button onClick={onClose} className="btn-secondary">Cancel</button>
         </div>
 
         {(action === "email" || action === "sms") && (
           <p className="text-xs text-[#8A8B8C] font-body mt-3">The reminder text is pre-filled based on the overdue stage. Copy it and paste into your email client or SMS app.</p>
+        )}
+        {action === "whatsapp" && (
+          <p className="text-xs text-[#8A8B8C] font-body mt-3">Clicking "Open WhatsApp" will open WhatsApp Web or the WhatsApp app with this message pre-filled. The customer must have WhatsApp installed.</p>
         )}
       </div>
     </div>

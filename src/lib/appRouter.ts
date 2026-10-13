@@ -147,6 +147,7 @@ export const appRouter = t.router({
     getDailyReport: t.procedure.query(() => ({} as any)),
     getStats: t.procedure.query(() => ({} as any)),
     getCustomerPaymentHistory: t.procedure.input((val: unknown) => val as number).query(() => [] as any[]),
+    getFollowUpsDue: t.procedure.query(() => [] as any[]),
     addNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     recordPromise: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     placeHold: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),

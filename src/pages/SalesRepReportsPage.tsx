@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
+import { getCompanyConfig } from "@/lib/companyConfig";
 import {
   Calendar, CalendarDays, CalendarRange, MapPin, Navigation,
   DollarSign, Users, TrendingUp, Printer, ChevronDown, ChevronUp,
@@ -154,7 +155,7 @@ export default function SalesRepReportsPage() {
           </div>
         </div>
         <div class="footer">
-          Supreme Global Foods | 28 Nagington road, Wadeville, Germiston | 083 293 0644
+          Supreme Global Foods | 28 Nagington road, Wadeville, Germiston | ${getCompanyConfig("sgf").contact.phone}
         </div>
         <script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},200);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script>
       </body></html>`);

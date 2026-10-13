@@ -916,7 +916,7 @@ export default function InvoicesPage() {
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem,3vw,2.5rem)", letterSpacing: "-0.03em" }}>Invoices</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">
-            Outstanding: R {(stats?.outstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} &middot; {stats?.total || 0} invoices
+            Outstanding: R {(stats?.outstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} &middot; {stats?.total || 0} invoices
           </p>
         </div>
         <button onClick={() => { setShowStmt(true); setStmtCust(0); setStmtFrom("2020-01-01"); setStmtTo(new Date().toISOString().slice(0, 10)); }} className="btn-secondary text-xs">

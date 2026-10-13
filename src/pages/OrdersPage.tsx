@@ -3,6 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDetails } from "@/lib/dataService";
+import { getCompanyConfig } from "@/lib/companyConfig";
 import * as staticData from "@/data/staticData";
 import {
   Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
@@ -819,7 +820,7 @@ export default function OrdersPage() {
     <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
     <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
     <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
-    <div class="subtitle">Tel: 083 293 0644</div>
+    <div class="subtitle">Tel: ${getCompanyConfig((order.company || "sgf") as any).contact.phone}</div>
   </div>
   <div class="doc-title">FACTORY PICKING SLIP</div>
   <div style="text-align:center;margin-bottom:15px;">

@@ -66,13 +66,6 @@ export default function CollectionsPage() {
   const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
   const { data: customerHistory } = trpc.collections.getCustomerPaymentHistory.useQuery(historyCustomerId, { enabled: historyCustomerId > 0 });
 
-  // Helper: resolve customer name from customerId
-  const getCustomerName = (customerId: any) => {
-    if (!customerId) return "N/A";
-    const c = (customers || []).find((c: any) => c.id == customerId);
-    return c?.name || "N/A";
-  };
-
   // Mutations
   const invalidateCollections = async () => {
     reloadFromStorage();
@@ -109,15 +102,14 @@ export default function CollectionsPage() {
     const banking = getBankingDetails();
     const bankingStr = `${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode}`;
     const template = REMINDER_TEMPLATES[bucket] || REMINDER_TEMPLATES.days_1_2;
-    const custName = getCustomerName(invoice.customerId);
     return template.body
-      .replace(/{customerName}/g, custName || "Valued Customer")
+      .replace(/{customerName}/g, invoice.customer?.name || "Valued Customer")
       .replace(/{invoiceNumber}/g, invoice.invoiceNumber)
       .replace(/{amount}/g, Number(invoice.total).toFixed(2))
       .replace(/{balanceDue}/g, Number(invoice.balanceDue).toFixed(2))
       .replace(/{daysOverdue}/g, String(invoice.daysOverdue))
       .replace(/{dueDate}/g, invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-ZA") : "N/A")
-      .replace(/{salesRep}/g, invoice.salesRepName || "")
+      .replace(/{salesRep}/g, invoice.salesRepName || invoice.customer?.salesRepName || "")
       .replace(/{bankingDetails}/g, bankingStr);
   }
 
@@ -135,7 +127,7 @@ export default function CollectionsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="card-surface p-4">
           <div className="label-text mb-1">OUTSTANDING</div>
-          <div className="stat-number" style={{ color: "#F59E0B", fontSize: "1.3rem" }}>R {(stats?.totalOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+          <div className="stat-number" style={{ color: "#F59E0B", fontSize: "1.3rem" }}>R {(stats?.totalOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="card-surface p-4">
           <div className="label-text mb-1">OVERDUE</div>
@@ -200,7 +192,7 @@ export default function CollectionsPage() {
               }}
             >
               <div className="text-[10px] text-[#8A8B8C] uppercase tracking-wide truncate">{rep.name}</div>
-              <div className="text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {rep.total.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="text-sm font-display font-semibold" style={{ color: "#D4A843" }}>R {rep.total.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               <div className="text-[10px] text-[#8A8B8C]">{rep.count} invoice{rep.count !== 1 ? "s" : ""}</div>
             </button>
           ))}
@@ -249,7 +241,6 @@ export default function CollectionsPage() {
                   ) : (
                     filteredInvoices.map((inv: any) => {
                       const cfg = BUCKET_CONFIG[inv.bucket] || BUCKET_CONFIG.days_1_2;
-                      const customerName = getCustomerName(inv.customerId);
                       return (
                         <>
                           <tr key={inv.id} className="transition-colors hover:bg-[#131415]" style={{ borderBottom: "1px solid #18191A" }}>
@@ -261,8 +252,8 @@ export default function CollectionsPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="p-3 text-sm text-[#E8E8E9] font-body">{customerName}</td>
-                            <td className="p-3 text-sm text-[#4ADE80] font-body">{inv.salesRepName || "-"}</td>
+                            <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || "N/A"}</td>
+                            <td className="p-3 text-sm text-[#4ADE80] font-body">{inv.salesRepName || inv.customer?.salesRepName || "-"}</td>
                             <td className="p-3 text-right font-display text-white">R {inv.balanceDue.toFixed(2)}</td>
                             <td className="p-3 text-center">
                               <span className="text-sm font-body font-semibold" style={{ color: inv.daysOverdue > 5 ? "#EF4444" : "#F59E0B" }}>{inv.daysOverdue > 0 ? `+${inv.daysOverdue}` : inv.daysOverdue}</span>
@@ -343,7 +334,7 @@ export default function CollectionsPage() {
                   <div key={key} className="p-3 rounded-lg text-center" style={{ backgroundColor: cfg.bg, border: `1px solid ${cfg.color}30` }}>
                     <div className="text-lg font-display font-bold" style={{ color: cfg.color }}>{count}</div>
                     <div className="text-xs font-body" style={{ color: cfg.color }}>{cfg.label}</div>
-                    {count > 0 && <div className="text-xs font-body mt-1" style={{ color: "#8A8B8C" }}>R {total.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>}
+                    {count > 0 && <div className="text-xs font-body mt-1" style={{ color: "#8A8B8C" }}>R {total.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>}
                   </div>
                 );
               })}
@@ -412,7 +403,6 @@ export default function CollectionsPage() {
         <ActionModal
           action={showActionModal}
           invoice={selectedInvoice}
-          customerName={getCustomerName(selectedInvoice.customerId)}
           onClose={() => setShowActionModal(null)}
           onSubmit={(data: any) => {
             if (showActionModal === "call" || showActionModal === "note") {
@@ -443,14 +433,14 @@ function printDailyReport(report: any) {
     return '<div class="stat"><div class="stat-num" style="color:' + cfg.color + '">' + items.length + '</div><div class="stat-label">' + cfg.label + '</div></div>';
   }).join("");
   const rows = Object.entries(buckets).flatMap(([_, items]: [string, any]) => {
-    return items.map((inv: any) => '<tr><td>' + inv.invoiceNumber + '</td><td>' + (inv.customerName || inv.customer?.name || "") + '</td><td>R ' + inv.balanceDue.toFixed(2) + '</td><td>' + inv.daysOverdue + '</td><td>' + (BUCKET_CONFIG[inv.bucket]?.label || "") + '</td></tr>');
+    return items.map((inv: any) => '<tr><td>' + inv.invoiceNumber + '</td><td>' + (inv.customer?.name || "") + '</td><td>R ' + inv.balanceDue.toFixed(2) + '</td><td>' + inv.daysOverdue + '</td><td>' + (BUCKET_CONFIG[inv.bucket]?.label || "") + '</td></tr>');
   }).join("");
   pw.document.write('<html><head><title>Daily Collections Report</title><style>body{font-family:Arial,sans-serif;padding:40px;max-width:900px;margin:0 auto;color:#333}.header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:20px;margin-bottom:30px}.stat{display:inline-block;padding:15px 25px;margin:10px;background:#f9f9f9;border-radius:8px;text-align:center}.stat-num{font-size:24px;font-weight:bold;color:#D4A843}.stat-label{font-size:12px;color:#666;text-transform:uppercase}table{width:100%;border-collapse:collapse;margin:20px 0}th{background:#f5f5f5;padding:10px;text-align:left;font-size:11px;text-transform:uppercase}td{padding:10px;border-bottom:1px solid #eee;font-size:13px}</style></head><body><div class="header"><h1 style="font-size:28px;color:#D4A843;margin:0">Supreme Global Foods</h1><p>Daily Collections Report - ' + report.today + '</p></div><div style="text-align:center">' + bucketCards + '</div><table><thead><tr><th>Invoice</th><th>Customer</th><th>Balance</th><th>Days Over</th><th>Bucket</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
   pw.document.close();
   pw.print();
 }
 
-function ActionModal({ action, invoice, customerName, onClose, onSubmit, reminderText }: { action: string; invoice: any; customerName: string; onClose: () => void; onSubmit: (data: any) => void; reminderText: string }) {
+function ActionModal({ action, invoice, onClose, onSubmit, reminderText }: { action: string; invoice: any; onClose: () => void; onSubmit: (data: any) => void; reminderText: string }) {
   const [notes, setNotes] = useState(action === "email" || action === "sms" ? reminderText : "");
   const [contactPerson, setContactPerson] = useState("");
   const [promisedAmount, setPromisedAmount] = useState(Number(invoice.balanceDue) || 0);
@@ -476,7 +466,7 @@ function ActionModal({ action, invoice, customerName, onClose, onSubmit, reminde
         </div>
         <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
           <div className="text-xs text-[#8A8B8C]">Invoice: <span className="text-[#D4A843]">{invoice.invoiceNumber}</span></div>
-          <div className="text-xs text-[#8A8B8C]">Customer: <span className="text-white">{customerName}</span></div>
+          <div className="text-xs text-[#8A8B8C]">Customer: <span className="text-white">{invoice.customer?.name}</span></div>
           <div className="text-xs text-[#8A8B8C]">Balance: <span className="text-[#F59E0B]">R {invoice.balanceDue?.toFixed(2)}</span></div>
           <div className="text-xs text-[#8A8B8C]">Days Overdue: <span className="text-[#EF4444]">+{invoice.daysOverdue}</span></div>
         </div>

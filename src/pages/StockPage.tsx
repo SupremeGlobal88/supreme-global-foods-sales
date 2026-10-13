@@ -3,6 +3,7 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { reloadFromStorage } from "@/lib/dataService";
+import { getCompanyConfig } from "@/lib/companyConfig";
 import {
   Search, Upload, Plus, Pencil, Trash2, X, Package, AlertTriangle, CheckCircle,
   FileText, Calendar, Printer, Tag, BarChart3,
@@ -163,7 +164,7 @@ export default function StockPage() {
           <img src="${logoUrl}" onerror="this.style.display='none'" />
           <h1>Daily Invoiced Stock Report</h1>
           <div class="sub">${period} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>
-          <div class="sub">28 Nagington road, Wadeville, Germiston &nbsp;|&nbsp; Tel: 083 293 0644</div>
+          <div class="sub">28 Nagington road, Wadeville, Germiston &nbsp;|&nbsp; Tel: ${getCompanyConfig("sgf").contact.phone}</div>
         </div>
         <div class="summary">
           <div class="summary-box"><div class="label">Total Lines</div><div class="value">${dailyReport.totalLines}</div></div>

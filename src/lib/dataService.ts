@@ -2090,7 +2090,7 @@ export const dataService = {
         to: toDate,
         generatedAt: new Date().toISOString(),
         totalLines: results.length,
-        totalValue: results.reduce((s, r) => s + r.lineTotal, 0),
+        totalValue: Math.round(results.reduce((s, r) => s + r.lineTotal, 0) * 100) / 100,
         items: results.sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()),
       };
     },
@@ -2599,7 +2599,7 @@ export const dataService = {
       delivered: orders.filter((o) => o.status === "delivered").length,
       samples: orders.filter((o) => o.orderType === "sample").length,
       quotes: orders.filter((o) => o.orderType === "quote" && o.status !== "converted").length,
-      totalValue: orders.filter((o) => o.orderType !== "sample" && o.orderType !== "quote").reduce((sum, o) => sum + Number(o.total || 0), 0),
+      totalValue: Math.round(orders.filter((o) => o.orderType !== "sample" && o.orderType !== "quote").reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100,
     }),
     checkExistingSample: ({ customerId, stockItemId }: { customerId: number; stockItemId: number }) => {
       return { exists: hasExistingSample(customerId, stockItemId) };
@@ -3647,15 +3647,15 @@ export const dataService = {
       };
     },
     getStats: () => {
-      const totalValue = invoices.reduce((sum, i) => sum + Number(i.total || i.totalAmount || 0), 0);
-      const totalPaid = invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0);
-      const outstanding = invoices
+      const totalValue = Math.round(invoices.reduce((sum, i) => sum + Number(i.total || i.totalAmount || 0), 0) * 100) / 100;
+      const totalPaid = Math.round(invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0) * 100) / 100;
+      const outstanding = Math.round(invoices
         .filter((i) => i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
-        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0);
+        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0) * 100) / 100;
       const sageCount = invoices.filter((i) => i.source === "sage").length;
-      const sageOutstanding = invoices
+      const sageOutstanding = Math.round(invoices
         .filter((i) => i.source === "sage" && i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
-        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0);
+        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0) * 100) / 100;
       return {
         total: invoices.length,
         draft: invoices.filter((i) => i.status === "draft").length,
@@ -3942,14 +3942,14 @@ export const dataService = {
           const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType === "sample";
         });
-        const totalSales = repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-        const sampleCost = repSamples.reduce((sum, o) => {
+        const totalSales = Math.round(repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
+        const sampleCost = Math.round(repSamples.reduce((sum, o) => {
           const cost = o.items?.reduce((s: number, item: any) => {
             const prod = products.find((p) => p.id == item.stockItemId);
             return s + (Number(prod?.wholesalePrice || 0) * item.quantity);
           }, 0) || 0;
           return sum + cost;
-        }, 0);
+        }, 0) * 100) / 100;
         return { name, customerCount: repCustomers.length, orderCount: repOrders.length, sampleCount: repSamples.length, totalSales, sampleCost };
       });
       const activeCount = reps.filter((r) => r.isActive !== false).length;
@@ -3980,23 +3980,23 @@ export const dataService = {
           return cust?.salesRepName === name && o.orderType !== "sample";
         });
 
-        const todaySales = repOrders
+        const todaySales = Math.round(repOrders
           .filter((o) => (o.createdAt || "").startsWith(todayStr))
-          .reduce((sum, o) => sum + Number(o.total || 0), 0);
+          .reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
 
-        const weekSales = repOrders
+        const weekSales = Math.round(repOrders
           .filter((o) => {
             const ts = new Date(o.createdAt).getTime();
             return ts >= weekStart.getTime() && ts <= weekEnd.getTime();
           })
-          .reduce((sum, o) => sum + Number(o.total || 0), 0);
+          .reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
 
-        const monthSales = repOrders
+        const monthSales = Math.round(repOrders
           .filter((o) => {
             const ts = new Date(o.createdAt).getTime();
             return ts >= monthStart.getTime() && ts <= monthEnd.getTime();
           })
-          .reduce((sum, o) => sum + Number(o.total || 0), 0);
+          .reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
 
         return { name, todaySales, weekSales, monthSales };
       });

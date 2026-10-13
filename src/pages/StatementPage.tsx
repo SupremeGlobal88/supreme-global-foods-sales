@@ -35,7 +35,17 @@ function openPrintWindow(
   const invoiceGroups: any[] = [];
   for (const inv of invoices) {
     const group: any[] = [];
-    const isSampleOrder = (inv.notes || "").toLowerCase().includes("sample order") || (inv.notes || "").toLowerCase().includes("no charge");
+    const notesLC = (inv.notes || "").toLowerCase();
+    const orderNumLC = (inv.orderNumber || "").toLowerCase();
+    const invNumLC = (inv.invoiceNumber || "").toLowerCase();
+    const isSampleOrder =
+      notesLC.includes("sample order") ||
+      notesLC.includes("no charge") ||
+      notesLC.includes("sample") ||
+      orderNumLC.startsWith("smp-") ||
+      orderNumLC.includes("sample") ||
+      invNumLC.includes("sample") ||
+      (inv.balanceDue === 0 && inv.amountPaid === 0 && (inv.total || 0) > 0);
     const debit = isSampleOrder ? 0 : Number(inv.total || 0);
     const invRef = inv.invoiceNumber || inv.orderNumber || "-";
     group.push({

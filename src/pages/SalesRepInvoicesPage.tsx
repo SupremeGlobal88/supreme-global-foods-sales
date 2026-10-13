@@ -81,7 +81,7 @@ export default function SalesRepInvoicesPage() {
         <div className="card-surface p-4">
           <div className="label-text mb-1">TOTAL DUE</div>
           <div className="stat-number" style={{ color: "#EF4444", fontSize: "1.3rem" }}>
-            R {grandTotal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+            R {grandTotal.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -127,7 +127,7 @@ export default function SalesRepInvoicesPage() {
                     <div className="text-right">
                       <div className="text-xs text-[#8A8B8C]">{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</div>
                       <div className="font-display font-bold" style={{ color: "#EF4444" }}>
-                        R {totalDue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                        R {totalDue.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     </div>
                     {isExpanded ? (
@@ -169,13 +169,13 @@ export default function SalesRepInvoicesPage() {
                                 {new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}
                               </td>
                               <td className="p-3 text-right text-white">
-                                R {Number(inv.total || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                                R {Number(inv.total || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className="p-3 text-right" style={{ color: "#4ADE80" }}>
-                                R {Number(inv.amountPaid || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                                R {Number(inv.amountPaid || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className="p-3 text-right font-semibold" style={{ color: "#EF4444" }}>
-                                R {bal.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                                R {bal.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className="p-3 text-center">
                                 <span
@@ -197,7 +197,7 @@ export default function SalesRepInvoicesPage() {
                     <div className="p-3 flex justify-end" style={{ backgroundColor: "#0A0A0B" }}>
                       <div className="text-xs text-[#8A8B8C]">
                         Total for {customer?.name}:&nbsp;
-                        <strong className="text-white">R {totalDue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</strong>
+                        <strong className="text-white">R {totalDue.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                       </div>
                     </div>
                   </div>

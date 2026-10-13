@@ -167,7 +167,7 @@ export default function StockPage() {
         </div>
         <div class="summary">
           <div class="summary-box"><div class="label">Total Lines</div><div class="value">${dailyReport.totalLines}</div></div>
-          <div class="summary-box"><div class="label">Total Value</div><div class="value" style="color:#D4A843;">R ${Number(dailyReport.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div></div>
+          <div class="summary-box"><div class="label">Total Value</div><div class="value" style="color:#D4A843;">R ${Number(dailyReport.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
           <div class="summary-box"><div class="label">Period</div><div class="value" style="font-size:12px;">${period}</div></div>
         </div>
         <table class="ledger">
@@ -334,7 +334,7 @@ export default function StockPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Stock on Hand</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">
             {stats?.totalProducts || 0} products
-            {isAdmin && stats?.totalRetailValue ? ` \u00B7 R ${stats.totalRetailValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })} retail value` : ""}
+            {isAdmin && stats?.totalRetailValue ? ` \u00B7 R ${stats.totalRetailValue.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} retail value` : ""}
           </p>
         </div>
         {isAdmin && (
@@ -347,7 +347,7 @@ export default function StockPage() {
 
       <div className={`grid grid-cols-2 ${isAdmin ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4`}>
         <div className="card-surface p-4"><div className="label-text mb-1">TOTAL PRODUCTS</div><div className="stat-number">{stats?.totalProducts || 0}</div></div>
-        {isAdmin && <div className="card-surface p-4"><div className="label-text mb-1">RETAIL VALUE</div><div className="stat-number" style={{ fontSize: "1.3rem" }}>R {(stats?.totalRetailValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div></div>}
+        {isAdmin && <div className="card-surface p-4"><div className="label-text mb-1">RETAIL VALUE</div><div className="stat-number" style={{ fontSize: "1.3rem" }}>R {(stats?.totalRetailValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>}
         <div className="card-surface p-4"><div className="label-text mb-1">LOW STOCK</div><div className="stat-number" style={{ color: "#F59E0B" }}>{stats?.lowStock || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">OUT OF STOCK</div><div className="stat-number" style={{ color: "#EF4444" }}>{stats?.outOfStock || 0}</div></div>
       </div>
@@ -578,7 +578,7 @@ export default function StockPage() {
                 </div>
                 <div>
                   <div className="label-text mb-1">Total Value</div>
-                  <div className="stat-number" style={{ color: "#D4A843" }}>R {Number(dailyReport.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                  <div className="stat-number" style={{ color: "#D4A843" }}>R {Number(dailyReport.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 </div>
               </div>
 

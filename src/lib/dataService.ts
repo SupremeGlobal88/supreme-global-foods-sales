@@ -4273,7 +4273,15 @@ export const dataService = {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
     addNote: ({ invoiceId, customerId, type, notes, contactMethod, contactPerson, followUpDate }: any) => {
-      const note = { id: Date.now() + Math.random(), invoiceId, customerId, type: type || "note", notes, contactMethod: contactMethod || "manual", contactPerson: contactPerson || "", followUpDate: followUpDate || null, createdAt: new Date().toISOString() };
+      // Auto-set follow-up date to 3 days from now if not provided (for call, email, sms, whatsapp, note)
+      const autoFollowUpTypes = ["call", "email", "sms", "whatsapp", "note"];
+      let finalFollowUpDate = followUpDate || null;
+      if (!finalFollowUpDate && autoFollowUpTypes.includes(type)) {
+        const d = new Date();
+        d.setDate(d.getDate() + 3);
+        finalFollowUpDate = d.toISOString().slice(0, 10);
+      }
+      const note = { id: Date.now() + Math.random(), invoiceId, customerId, type: type || "note", notes, contactMethod: contactMethod || "manual", contactPerson: contactPerson || "", followUpDate: finalFollowUpDate, createdAt: new Date().toISOString() };
       collectionNotes.push(note);
       saveItem("sgf_collectionNotes", collectionNotes);
       logAudit("CREATE", "collectionNote", note.id, `Collection note added for customer #${customerId}${invoiceId ? ` (invoice #${invoiceId})` : ""}: ${notes?.slice(0, 50) || ""}`);
@@ -4308,6 +4316,43 @@ export const dataService = {
         logAudit("UPDATE", "accountHold", holdId, `Account hold released for customer #${accountHolds[idx].customerId}`);
       }
       return { success: true };
+    },
+    getFollowUpsDue: () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const overdueInvoices = dataService.collections.getOverdueInvoices();
+      // Get the latest collection note per customer and check if followUpDate <= today
+      const customerFollowUps = [] as any[];
+      const custIds = new Set<number>();
+      // Get all customers with outstanding balance
+      for (const inv of overdueInvoices) {
+        if (custIds.has(inv.customerId)) continue;
+        custIds.add(inv.customerId);
+        const custNotes = collectionNotes
+          .filter((n) => n.customerId == inv.customerId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const latestNote = custNotes[0] || null;
+        const daysSinceFollowUp = latestNote && latestNote.followUpDate
+          ? Math.ceil((new Date(today).getTime() - new Date(latestNote.followUpDate).getTime()) / 86400000)
+          : null;
+        const needsFollowUp = latestNote && latestNote.followUpDate && latestNote.followUpDate <= today;
+        if (needsFollowUp || !latestNote) {
+          customerFollowUps.push({
+            customer: inv.customer,
+            customerId: inv.customerId,
+            latestNote,
+            daysSinceFollowUp,
+            outstandingBalance: inv.customerOutstanding || inv.balanceDue || 0,
+            invoices: overdueInvoices.filter((i) => i.customerId == inv.customerId),
+            bucket: inv.bucket,
+          });
+        }
+      }
+      // Sort: most overdue follow-up first, then no follow-up at all
+      return customerFollowUps.sort((a, b) => {
+        if (!a.latestNote?.followUpDate) return -1;
+        if (!b.latestNote?.followUpDate) return 1;
+        return a.latestNote.followUpDate.localeCompare(b.latestNote.followUpDate);
+      });
     },
   },
 

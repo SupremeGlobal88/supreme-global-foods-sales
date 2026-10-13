@@ -56,7 +56,7 @@ const SGF_CONFIG: CompanyConfig = {
   },
   vatNumber: "4150254441",
   contact: {
-    phone: "083 293 0644",
+    phone: "061 478 8888",
     email: "sales@supremeglobalfoods.co.za",
   },
   banking: {
@@ -109,10 +109,25 @@ const COMPANY_MAP: Record<CompanyKey, CompanyConfig> = {
   recircle: RECIRCLE_CONFIG,
 };
 
-/** Get config for a company. Defaults to SGF if invalid. */
+/** Get config for a company. Defaults to SGF if invalid.
+ *  Reads user-overridden settings from localStorage (e.g. phone number).
+ */
 export function getCompanyConfig(company?: CompanyKey | string): CompanyConfig {
-  if (company === "recircle") return RECIRCLE_CONFIG;
-  return SGF_CONFIG;
+  const base = company === "recircle" ? { ...RECIRCLE_CONFIG } : { ...SGF_CONFIG };
+  try {
+    const raw = localStorage.getItem("sgf_settings_company");
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved.phone) base.contact.phone = saved.phone;
+      if (saved.email) base.contact.email = saved.email;
+      if (saved.address) base.address.street = saved.address;
+      if (saved.name) base.name = saved.name;
+      if (saved.tradingName) base.legalName = saved.tradingName;
+      if (saved.regNumber) base.regNumber = saved.regNumber;
+      if (saved.vatNumber) base.vatNumber = saved.vatNumber;
+    }
+  } catch { /* ignore */ }
+  return base;
 }
 
 /** Get the other company key */

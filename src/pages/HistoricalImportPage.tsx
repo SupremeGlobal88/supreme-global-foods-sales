@@ -371,11 +371,11 @@ export default function HistoricalImportPage() {
             </div>
             <div className="card-surface p-4 text-center">
               <div className="label-text mb-1">Total Value</div>
-              <div className="stat-number" style={{ color: "#D4A843" }}>R {preview.totalValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="stat-number" style={{ color: "#D4A843" }}>R {preview.totalValue.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
             <div className="card-surface p-4 text-center">
               <div className="label-text mb-1">Outstanding</div>
-              <div className="stat-number" style={{ color: "#EF4444" }}>R {preview.totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="stat-number" style={{ color: "#EF4444" }}>R {preview.totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
           </div>
 
@@ -428,8 +428,8 @@ export default function HistoricalImportPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
-                        {inv.outstanding > 0 && <span className="text-xs text-[#EF4444]">R {inv.outstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })} due</span>}
-                        <span className="text-sm text-white font-display">R {Math.abs(inv.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                        {inv.outstanding > 0 && <span className="text-xs text-[#EF4444]">R {inv.outstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due</span>}
+                        <span className="text-sm text-white font-display">R {Math.abs(inv.total).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         {isExp ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
                       </div>
                     </button>

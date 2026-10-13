@@ -534,7 +534,7 @@ export default function InvoicesPage() {
       <body>
         <div class="header">
           <img src="${logoUrl}" onerror="this.style.display='none'" />
-          <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: 083 293 0644<br/>VAT Reg: 4150254441 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>
+          <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: ${getCompanyConfig(invCompany).contact.phone}<br/>VAT Reg: 4150254441 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>
           <div class="title">Payment Receipt</div>
         </div>
 
@@ -578,7 +578,7 @@ export default function InvoicesPage() {
 
         <div class="footer">
           This receipt is proof of payment received by Supreme Global Foods.<br/>
-          Please retain for your records. Queries: 083 293 0644
+          Please retain for your records. Queries: ${getCompanyConfig(invCompany).contact.phone}
         </div>
       </body></html>`);
     w.document.write(`<script>
@@ -902,7 +902,7 @@ export default function InvoicesPage() {
       `Banking Details:\n${banking.bankName} | Acc: ${banking.accountNumber} | Branch: ${banking.branchCode}\n` +
       `Please quote your invoice number with payment.\n\n` +
       `PLEASE NOTE: NO EXCHANGES OR RETURNS AFTER 7 DAYS FROM INVOICE DATE.\n\n` +
-      `Kind regards,\nSupreme Global Foods Team\nTel: 083 293 0644`
+      `Kind regards,\nSupreme Global Foods Team\nTel: ${getCompanyConfig((inv.company || "sgf") as CompanyKey).contact.phone}`
     );
     window.location.href = `mailto:${cust.email}?subject=${subject}&body=${body}`;
   }

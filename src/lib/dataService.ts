@@ -1466,6 +1466,10 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
         status: "pending",
         reason: null,
         expectedOrderDate: null,
+        salesRepName: order.salesRepName || "",
+        actionType: null,
+        title: null,
+        scheduledAppointmentId: null,
         createdAt: new Date().toISOString(),
       };
       followUps.push(followUp);
@@ -2465,6 +2469,10 @@ export const dataService = {
           status: "pending",
           reason: null,
           expectedOrderDate: null,
+          salesRepName: data.salesRepName || "",
+          actionType: null,
+          title: null,
+          scheduledAppointmentId: null,
           createdAt: new Date().toISOString(),
         };
         followUps.push(followUp);
@@ -4097,11 +4105,91 @@ export const dataService = {
           };
         });
     },
-    update: ({ id, status, reason, expectedOrderDate }: { id: number; status: string; reason?: string; expectedOrderDate?: string }) => {
+    listAll: (days: number = 10) => {
+      // Unified list: sample follow-ups + 10-day no-order follow-ups
+      const now = new Date();
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const cutoffMs = cutoff.getTime();
+
+      // Sample follow-ups
+      const sampleFollowUps = followUps
+        .filter((fu) => fu.status === "pending")
+        .map((fu) => {
+          const order = orders.find((o) => o.id == fu.orderId);
+          const customer = customers.find((c) => c.id == fu.customerId);
+          return {
+            ...fu,
+            followUpKind: "sample",
+            customer: customer || null,
+            order: order ? { ...order, customer: customer || null } : null,
+            daysSince: fu.followUpDate
+              ? Math.floor((now.getTime() - new Date(fu.followUpDate).getTime()) / 86400000)
+              : 0,
+          };
+        });
+
+      // 10-day no-order follow-ups (computed, not stored)
+      const noOrderFollowUps = customers
+        .filter((c) => c.isActive === "active")
+        .map((c) => {
+          const custOrders = orders
+            .filter((o) => o.customerId == c.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          const lastOrder = custOrders[0] || null;
+          const lastOrderDate = lastOrder ? new Date(lastOrder.createdAt).getTime() : 0;
+          const daysSinceLastOrder = lastOrderDate
+            ? Math.floor((Date.now() - lastOrderDate) / 86400000)
+            : 999;
+          return {
+            ...c,
+            lastOrder,
+            lastOrderDate: lastOrder?.createdAt || null,
+            daysSinceLastOrder,
+            totalOrders: custOrders.length,
+            needsFollowUp: !lastOrder || lastOrderDate < cutoffMs,
+          };
+        })
+        .filter((c) => c.needsFollowUp)
+        .map((c) => ({
+          id: `noorder-${c.id}`,
+          orderId: null,
+          customerId: c.id,
+          orderNumber: null,
+          followUpDate: cutoff.toISOString(),
+          status: "pending",
+          reason: null,
+          expectedOrderDate: null,
+          salesRepName: c.salesRepName || "",
+          actionType: null,
+          title: null,
+          scheduledAppointmentId: null,
+          createdAt: c.createdAt,
+          followUpKind: "no_order",
+          customer: c,
+          order: null,
+          daysSince: c.daysSinceLastOrder,
+        }));
+
+      // Combine and sort by days since (most overdue first)
+      return [...sampleFollowUps, ...noOrderFollowUps].sort(
+        (a, b) => (b.daysSince || 0) - (a.daysSince || 0)
+      );
+    },
+    update: ({ id, status, reason, expectedOrderDate, actionType, title, scheduledAppointmentId }: { id: number; status: string; reason?: string; expectedOrderDate?: string; actionType?: string; title?: string; scheduledAppointmentId?: number }) => {
       const idx = followUps.findIndex((fu) => fu.id == id);
       if (idx >= 0) {
         const oldStatus = followUps[idx].status;
-        followUps[idx] = { ...followUps[idx], status, reason, expectedOrderDate, updatedAt: new Date().toISOString() };
+        followUps[idx] = {
+          ...followUps[idx],
+          status,
+          reason: reason !== undefined ? reason : followUps[idx].reason,
+          expectedOrderDate: expectedOrderDate !== undefined ? expectedOrderDate : followUps[idx].expectedOrderDate,
+          actionType: actionType !== undefined ? actionType : followUps[idx].actionType,
+          title: title !== undefined ? title : followUps[idx].title,
+          scheduledAppointmentId: scheduledAppointmentId !== undefined ? scheduledAppointmentId : followUps[idx].scheduledAppointmentId,
+          updatedAt: new Date().toISOString(),
+        };
         saveItem("sgf_followUps", followUps);
         logAudit("UPDATE", "followUp", id, `Follow-up updated: status ${oldStatus} → ${status}${reason ? `, reason: ${reason}` : ""}`);
         return followUps[idx];

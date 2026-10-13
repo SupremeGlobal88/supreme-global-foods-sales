@@ -1027,7 +1027,7 @@ export default function OrdersPage() {
       if (activeTab === "all") return true;
       if (activeTab === "sample") return o.orderType === "sample";
       if (activeTab === "quotes") return o.orderType === "quote";
-      return (o.status || "pending") === activeTab;
+      return o.status === activeTab;
     })
     .filter((o) => {
       if (!orderSearch.trim()) return true;
@@ -1048,7 +1048,7 @@ export default function OrdersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Orders</h1>
-          <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })} total value</p>
+          <p className="text-[#8A8B8C] font-body text-sm mt-1">{stats?.total || 0} orders &middot; R {(stats?.totalValue || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total value</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); if (activeTab === "quotes") setFormData(prev => ({ ...prev, orderType: "quote" })); }} className="btn-primary"><Plus className="w-4 h-4" /> {activeTab === "quotes" ? "New Quote" : "New Order"}</button>
       </div>
@@ -1132,21 +1132,21 @@ export default function OrdersPage() {
                     <td className="p-4 text-sm text-[#8A8B8C] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{new Date(order.createdAt).toLocaleDateString("en-ZA")}</td>
                     <td className="p-4 text-right text-sm text-white font-display cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{order.items?.length || 0}</td>
                     <td className="p-4 text-right font-display font-semibold cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)} style={{ color: order.orderType === "sample" ? "#D4A843" : order.orderType === "quote" ? "#6366F1" : "#FFFFFF" }}>
-                      {order.orderType === "sample" ? "R 0.00" : `R ${safeNum(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}`}
+                      {order.orderType === "sample" ? "R 0.00" : `R ${safeNum(order.total).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     </td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
-                      <span className="status-badge" style={{ backgroundColor: `${STATUS_LABELS[order.status || "pending"]?.color}20`, color: STATUS_LABELS[order.status || "pending"]?.color }}>{STATUS_LABELS[order.status || "pending"]?.label || (order.status || "pending")}</span>
+                      <span className="status-badge" style={{ backgroundColor: `${STATUS_LABELS[order.status]?.color}20`, color: STATUS_LABELS[order.status]?.color }}>{STATUS_LABELS[order.status]?.label || order.status}</span>
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2 flex-wrap">
                         {/* Status flow buttons for normal orders */}
-                        {canProgressOrder(order) && (order.status || "pending") === "pending" && (
+                        {canProgressOrder(order) && order.status === "pending" && (
                           <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "picking" }); }} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>
                         )}
-                        {canProgressOrder(order) && (order.status || "pending") === "picking" && (
+                        {canProgressOrder(order) && order.status === "picking" && (
                           <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "ready" }); }} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>
                         )}
-                        {canProgressOrder(order) && (order.status || "pending") === "ready" && (
+                        {canProgressOrder(order) && order.status === "ready" && (
                           <button onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: "delivered" }); }} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>
                         )}
                         {/* Quote actions */}
@@ -1191,7 +1191,7 @@ export default function OrdersPage() {
                           {order.orderType === "quote" ? (
                             // Quote status flow
                             ["draft", "sent", "accepted", "converted"].map((s, i, arr) => {
-                              const isCurrent = (order.status || "pending") === s;
+                              const isCurrent = order.status === s;
                               const isPast = ["sent", "accepted", "converted"].indexOf(order.status) > ["draft", "sent", "accepted", "converted"].indexOf(s);
                               const colors: Record<string, string> = { draft: "#8A8B8C", sent: "#6366F1", accepted: "#4ADE80", converted: "#D4A843" };
                               return (
@@ -1206,7 +1206,7 @@ export default function OrdersPage() {
                           ) : (
                             // Normal order status flow
                             ["pending", "picking", "ready", "delivered"].map((s, i, arr) => {
-                              const isCurrent = (order.status || "pending") === s;
+                              const isCurrent = order.status === s;
                               const isPast = arr.indexOf(order.status) > i;
                               const colors: Record<string, string> = { pending: "#F59E0B", picking: "#6366F1", ready: "#4ADE80", delivered: "#4ADE80" };
                               return (
@@ -1253,9 +1253,9 @@ export default function OrdersPage() {
 
                         {/* Status flow buttons */}
                         <div className="flex gap-2 flex-wrap mb-4">
-                          {canProgressOrder(order) && (order.status || "pending") === "pending" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>}
-                          {canProgressOrder(order) && (order.status || "pending") === "picking" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>}
-                          {canProgressOrder(order) && (order.status || "pending") === "ready" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>}
+                          {canProgressOrder(order) && order.status === "pending" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-primary text-xs"><Package className="w-3 h-3" /> Mark Picking</button>}
+                          {canProgressOrder(order) && order.status === "picking" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-primary text-xs"><CheckCircle className="w-3 h-3" /> Mark Ready</button>}
+                          {canProgressOrder(order) && order.status === "ready" && <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-primary text-xs"><Truck className="w-3 h-3" /> Mark Delivered</button>}
                           {/* Quote actions in expanded view */}
                           {order.orderType === "quote" && order.status !== "converted" && order.status !== "rejected" && (
                             <>

@@ -304,7 +304,7 @@ export default function PurchaseOrdersPage() {
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right">
-                    <div className="text-sm font-medium text-white">R {Number(po.totalInclVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+                    <div className="text-sm font-medium text-white">R {Number(po.totalInclVat || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     <div className="text-xs text-[#8A8B8C]">incl. VAT</div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-[#8A8B8C] group-hover:text-white transition-colors" />
@@ -426,7 +426,7 @@ export default function PurchaseOrdersPage() {
                         </div>
                         <div className="col-span-3 text-right">
                           <span className="text-xs text-[#8A8B8C]">Line Total: </span>
-                          <span className="text-xs font-medium text-white">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                          <span className="text-xs font-medium text-white">R {(item.quantity * item.unitPrice).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                       </div>
                     </div>
@@ -434,9 +434,9 @@ export default function PurchaseOrdersPage() {
                 </div>
                 {formData.lineItems.length > 0 && (
                   <div className="flex justify-end gap-4 mt-3 text-sm">
-                    <span className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {formData.lineItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span></span>
-                    <span className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {(formData.lineItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0) * 0.15).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span></span>
-                    <span className="font-medium" style={{ color: "#D4A843" }}>Total: R {(formData.lineItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0) * 1.15).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                    <span className="text-[#8A8B8C]">Subtotal: <span className="text-white">R {formData.lineItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                    <span className="text-[#8A8B8C]">VAT (15%): <span className="text-white">R {(formData.lineItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0) * 0.15).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                    <span className="font-medium" style={{ color: "#D4A843" }}>Total: R {(formData.lineItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0) * 1.15).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
               </div>

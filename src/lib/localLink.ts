@@ -332,6 +332,7 @@ export function createLocalLink() {
               case "collections.getDailyReport": await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getDailyReport(); break;
               case "collections.getStats": await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getStats(); break;
               case "collections.getCustomerPaymentHistory": await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getCustomerPaymentHistory(input); break;
+              case "collections.getFollowUpsDue": await smartSync("collectionNotes", "sgf_collectionNotes"); await smartSync("invoices", "sgf_invoices"); result = dataService.collections.getFollowUpsDue(); break;
               case "collections.addNote": result = dataService.collections.addNote(input); break;
               case "collections.recordPromise": result = dataService.collections.recordPromise(input); break;
               case "collections.placeHold": result = dataService.collections.placeHold(input); break;

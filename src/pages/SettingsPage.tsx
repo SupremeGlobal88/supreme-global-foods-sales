@@ -29,7 +29,7 @@ const DEFAULT_COMPANY = {
   tradingName: "Supreme Global Foods",
   regNumber: "2015/123456/07",
   vatNumber: "4150254441",
-  phone: "083 293 0644",
+  phone: "061 478 8888",
   email: "sales@supremeglobalfoods.co.za",
   address: "28 Nagington road, Wadeville, Germiston",
   city: "Germiston",

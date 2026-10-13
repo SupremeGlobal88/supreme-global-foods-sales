@@ -134,6 +134,7 @@ export const appRouter = t.router({
   }),
   followUp: t.router({
     list: t.procedure.query(() => [] as any[]),
+    listAll: t.procedure.input((val: unknown) => val as { days?: number }).query(() => [] as any[]),
     getStats: t.procedure.query(() => ({} as any)),
     update: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
   }),

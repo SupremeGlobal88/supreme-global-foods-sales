@@ -317,6 +317,7 @@ export function createLocalLink() {
               case "audit.getCustomerDeletions": await smartSync("auditLogs", "sgf_auditLogs"); result = dataService.audit.getCustomerDeletions(); break;
               case "audit.getAddressChanges": await smartSync("auditLogs", "sgf_auditLogs"); result = dataService.audit.getAddressChanges(); break;
               case "followUp.list": await smartSync("followUps", "sgf_followUps"); result = dataService.followUp.list(); break;
+              case "followUp.listAll": await smartSync("followUps", "sgf_followUps"); await smartSync("orders", "sgf_orders"); await smartSync("customers", "sgf_customers"); result = dataService.followUp.listAll(input?.days || 10); break;
               case "followUp.update": result = dataService.followUp.update(input); if (result) { await pushFollowUp(result); reloadFromStorage(["sgf_followUps"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); } break;
               case "followUp.getStats": await smartSync("followUps", "sgf_followUps"); result = dataService.followUp.getStats(); break;
               case "sampleReport.getByCustomer": await smartSync("orders", "sgf_orders"); await smartSync("invoices", "sgf_invoices"); result = dataService.sampleReport.getByCustomer(input); break;

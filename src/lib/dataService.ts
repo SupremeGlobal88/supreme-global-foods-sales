@@ -4412,7 +4412,7 @@ export const dataService = {
 
   /* ─── User Management with Roles ─── */
   user: {
-    list: () => users.filter((u) => u.isActive !== false),
+    list: () => users,
     getById: (id: number) => users.find((u) => u.id == id) || null,
     getByName: (name: string) => users.find((u) => u.name?.toLowerCase() === name.toLowerCase() && u.isActive !== false) || null,
     authenticate: ({ name, pin }: { name: string; pin: string }) => {

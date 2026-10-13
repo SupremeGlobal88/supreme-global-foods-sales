@@ -537,10 +537,10 @@ export default function CustomerStatementPage() {
                                 <span className="ml-2 px-1 py-0.5 rounded text-[9px]" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8" }}>SAGE</span>
                               )}
                             </td>
-                            <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
-                            <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2 }) : "-"}</td>
+                            <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</td>
+                            <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</td>
                             <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? "#D4A843" : "#4ADE80" }}>
-                              {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                              {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                           </tr>
                         );
@@ -549,9 +549,9 @@ export default function CustomerStatementPage() {
                     <tfoot>
                       <tr style={{ borderTop: "2px solid #D4A843" }}>
                         <td colSpan={3} className="p-3 font-semibold text-white text-right">TOTALS</td>
-                        <td className="p-3 text-right font-semibold text-white">{totalDebit.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                        <td className="p-3 text-right font-semibold" style={{ color: "#4ADE80" }}>{totalCredit.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                        <td className="p-3 text-right font-bold" style={{ color: "#D4A843" }}>{(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                        <td className="p-3 text-right font-semibold text-white">{totalDebit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="p-3 text-right font-semibold" style={{ color: "#4ADE80" }}>{totalCredit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="p-3 text-right font-bold" style={{ color: "#D4A843" }}>{(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -566,14 +566,14 @@ export default function CustomerStatementPage() {
                   <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px solid #222324" }}>
                     <span className="text-white font-semibold">Balance Due:</span>
                     <span className="font-bold" style={{ color: totalDebit - totalCredit > 0 ? "#D4A843" : "#4ADE80" }}>
-                      R {(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                      R {(totalDebit - totalCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                   {availableCredit > 0 && (
                     <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px dashed rgba(245,158,11,0.3)" }}>
                       <span className="text-[#F59E0B] font-semibold">Available Credit:</span>
                       <span className="font-bold text-[#F59E0B]">
-                        R {availableCredit.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                        R {availableCredit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   )}
@@ -581,7 +581,7 @@ export default function CustomerStatementPage() {
                     <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px solid #4ADE80" }}>
                       <span className="text-[#4ADE80] font-semibold">Net Balance (After Credit):</span>
                       <span className="font-bold text-[#4ADE80]">
-                        R {Math.max(0, (totalDebit - totalCredit) - availableCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                        R {Math.max(0, (totalDebit - totalCredit) - availableCredit).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   )}
@@ -608,12 +608,12 @@ export default function CustomerStatementPage() {
                       </thead>
                       <tbody>
                         <tr style={{ borderTop: "1px solid #222324" }}>
-                          <td className="p-3 text-white font-semibold">R {aging.current.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3 text-right text-white">R {aging.days30.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3 text-right text-white">R {aging.days60.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3 text-right text-white">R {aging.days90.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3 text-right font-semibold" style={{ color: "#EF4444" }}>R {aging.days90plus.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
-                          <td className="p-3 text-right font-bold text-[#D4A843]" style={{ backgroundColor: "rgba(212,168,67,0.08)" }}>R {totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-white font-semibold">R {aging.current.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right text-white">R {aging.days30.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right text-white">R {aging.days60.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right text-white">R {aging.days90.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right font-semibold" style={{ color: "#EF4444" }}>R {aging.days90plus.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right font-bold text-[#D4A843]" style={{ backgroundColor: "rgba(212,168,67,0.08)" }}>R {totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                       </tbody>
                     </table>

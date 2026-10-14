@@ -1597,12 +1597,13 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       safetyCounter++;
     }
 
-    // Status: draft until order is ready for delivery, then sent
-    const status = (order.status === "ready" || order.status === "delivered") ? "sent" : "draft";
+    // Status: draft until order is ready for delivery, then sent. Cancelled orders = cancelled invoice.
+    const status = order.status === "cancelled" ? "cancelled" : (order.status === "ready" || order.status === "delivered") ? "sent" : "draft";
 
     // Use sequential integer ID to avoid decimal/float issues
     const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
 
+    const isCancelledOrder = order.status === "cancelled";
     invoices.push({
       id: nextInvId,
       orderId: order.id,
@@ -1617,13 +1618,15 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       vatRate: vatRate !== undefined ? vatRate : 0.15,
       total: isSample ? total : total,
       totalAmount: isSample ? total : total,
-      balanceDue: isSample ? 0 : total,
+      balanceDue: isSample || isCancelledOrder ? 0 : total,
       amountPaid: isSample ? 0 : 0,
       status: isSample ? "paid" : status,
       paymentTerms: order.paymentTerms || "cod",
       invoiceDate: now.toISOString(),
       dueDate: dueDate.toISOString(),
-      notes: isSample ? `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}` : `Invoice for ${order.orderNumber}`,
+      cancelledAt: isCancelledOrder ? now.toISOString() : undefined,
+      cancellationReason: isCancelledOrder ? "Order cancelled" : undefined,
+      notes: isSample ? `Sample order - ${order.orderNumber} (No Charge) | Subtotal: R ${subtotal.toFixed(2)} + VAT: R ${vatAmount.toFixed(2)} = Total: R ${total.toFixed(2)}` : isCancelledOrder ? `Invoice cancelled — order ${order.orderNumber} was cancelled` : `Invoice for ${order.orderNumber}`,
       items: (order.items || []).map((item: any) => ({
         description: buildInvoiceItemDescription(item),
         quantity: item.quantity,
@@ -1712,6 +1715,11 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       : (existing.balanceDue !== undefined ? existing.balanceDue : newTotal - amountPaid);
     // Sample orders always have R 0 balance due (no charge)
     if (isSample) newBalanceDue = 0;
+    // CANCELLED orders: invoice must also be cancelled with zero balance
+    const isCancelledOrder = order.status === "cancelled";
+    if (isCancelledOrder) {
+      newBalanceDue = 0;
+    }
     invoices[existingIdx] = {
       ...existing,
       customerId: order.customerId,
@@ -1730,9 +1738,12 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       total: newTotal,
       totalAmount: newTotal,
       balanceDue: newBalanceDue,
+      status: isCancelledOrder ? "cancelled" : existing.status,
+      cancelledAt: isCancelledOrder ? (existing.cancelledAt || new Date().toISOString()) : existing.cancelledAt,
+      cancellationReason: isCancelledOrder ? (existing.cancellationReason || "Order cancelled") : existing.cancellationReason,
       paymentTerms: order.paymentTerms || "cod",
       updatedAt: new Date().toISOString(),
-      notes: isSample ? `Sample order ${order.orderNumber || ""}` : `Invoice for ${order.orderNumber || ""}`,
+      notes: isSample ? `Sample order ${order.orderNumber || ""}` : isCancelledOrder ? `Invoice cancelled — order ${order.orderNumber || ""} was cancelled` : `Invoice for ${order.orderNumber || ""}`,
     };
     saveItem("sgf_invoices", invoices);
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
@@ -1803,6 +1814,11 @@ function updateInvoiceFromOrder(order: any) {
   const vatAmount = Number(order.vatAmount || 0);
   const total = Number(order.total || 0);
 
+  // If order is cancelled, invoice must also be cancelled
+  const isCancelledOrder = order.status === "cancelled";
+  const newBalanceDue = isCancelledOrder ? 0 : total - (inv.amountPaid || 0);
+  const newStatus = isCancelledOrder ? "cancelled" : inv.status;
+
   invoices[idx] = {
     ...inv,
     customerId: order.customerId,
@@ -1811,7 +1827,10 @@ function updateInvoiceFromOrder(order: any) {
     vatAmount,
     total,
     totalAmount: total,
-    balanceDue: total - (inv.amountPaid || 0),
+    balanceDue: newBalanceDue,
+    status: newStatus,
+    cancelledAt: isCancelledOrder ? (inv.cancelledAt || new Date().toISOString()) : inv.cancelledAt,
+    cancellationReason: isCancelledOrder ? (inv.cancellationReason || "Order cancelled") : inv.cancellationReason,
     paymentTerms: order.paymentTerms || inv.paymentTerms,
     items: (order.items || []).map((item: any) => ({
       description: buildInvoiceItemDescription(item),

@@ -65,6 +65,7 @@ export default function InvoicesPage() {
   const [allocBal, setAllocBal] = useState(0);
   const [allocAmt, setAllocAmt] = useState("");
   const [allocCnId, setAllocCnId] = useState(0);
+  const [allocOverpaymentFromId, setAllocOverpaymentFromId] = useState(0);
 
   /* Admin edit invoice form */
   const [showEditInv, setShowEditInv] = useState(false);
@@ -135,15 +136,22 @@ export default function InvoicesPage() {
         alert("Credit allocation failed: " + (data?.error || "Unknown error"));
         return;
       }
-      // DO NOT call reloadFromStorage() here. The in-memory arrays are already
-      // updated by dataService.invoice.allocateCredit. reloadFromStorage() would
-      // read from localStorage — if saveItem failed (quota exceeded), it would
-      // REVERT the allocation silently.
       await utils.invoice.list.invalidate();
       await utils.invoice.getCreditNotes.invalidate();
       closeAllocCredit();
     },
     onError: (err: any) => { alert("Credit allocation failed: " + (err.message || "Unknown error")); },
+  });
+  const applyOverpaymentCredit = trpc.invoice.applyOverpaymentCredit.useMutation({
+    onSuccess: async (data: any) => {
+      if (!data || !data.success) {
+        alert("Overpayment credit failed: " + (data?.error || "Unknown error"));
+        return;
+      }
+      await utils.invoice.list.invalidate();
+      closeAllocCredit();
+    },
+    onError: (err: any) => { alert("Overpayment credit failed: " + (err.message || "Unknown error")); },
   });
   const updateInvoice = trpc.invoice.update.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowEditInv(false); },
@@ -244,7 +252,7 @@ export default function InvoicesPage() {
   function closeAllocCredit() {
     setShowAllocCredit(false); setAllocInvId(0); setAllocInvNumber("");
     setAllocCustId(0); setAllocCustName(""); setAllocBal(0);
-    setAllocAmt(""); setAllocCnId(0);
+    setAllocAmt(""); setAllocCnId(0); setAllocOverpaymentFromId(0);
   }
 
   function openEditPay(invId: number, invNumber: string, custName: string, p: any) {
@@ -1635,26 +1643,32 @@ export default function InvoicesPage() {
               <button onClick={closeAllocCredit} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             {(() => {
-              const customerCns = (invoices || [])
-                .filter((inv: any) => inv.customerId == allocCustId)
-                .flatMap((inv: any) => (inv.creditNotes || [])
-                  .map((cnId: any) => {
-                    const cn = (allCreditNotes || []).find((c: any) => c.id == cnId);
-                    return cn;
-                  }).filter(Boolean)
-                );
-              // Also fetch all credit notes for this customer directly
+              // Credit notes
               const allCustCns = (allCreditNotes || []).filter((cn: any) => cn.customerId == allocCustId && !cn.voided);
               const availableCns = allCustCns.filter((cn: any) => {
                 const remaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
                 return remaining > 0.01;
               });
-              const totalAvailable = availableCns.reduce((sum: number, cn: any) => sum + (cn.remainingAmount || 0), 0);
-              if (availableCns.length === 0) {
+              // Overpayment credits from paid invoices with negative balance
+              const overpaymentInvs = (invoices || []).filter((inv: any) => {
+                if (inv.id == allocInvId) return false; // Can't apply from target invoice
+                if (inv.customerId != allocCustId) return false;
+                const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0) - (inv.amountPaid || 0);
+                return bal < -0.01;
+              }).map((inv: any) => {
+                const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0) - (inv.amountPaid || 0);
+                return { ...inv, overpaymentAmount: Math.abs(bal) };
+              });
+              const cnTotal = availableCns.reduce((sum: number, cn: any) => sum + (cn.remainingAmount || 0), 0);
+              const opTotal = overpaymentInvs.reduce((sum: number, inv: any) => sum + inv.overpaymentAmount, 0);
+              const totalAvailable = cnTotal + opTotal;
+              const hasAnyCredit = availableCns.length > 0 || overpaymentInvs.length > 0;
+
+              if (!hasAnyCredit) {
                 return (
                   <div className="p-4 rounded-lg text-center" style={{ backgroundColor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
                     <p className="text-sm text-[#EF4444] font-semibold mb-1">No Available Credits</p>
-                    <p className="text-xs text-[#8A8B8C]">This customer has no unallocated credit notes.</p>
+                    <p className="text-xs text-[#8A8B8C]">This customer has no unallocated credit notes or overpayment credits.</p>
                   </div>
                 );
               }
@@ -1663,12 +1677,15 @@ export default function InvoicesPage() {
                   <div className="p-3 rounded-lg mb-4" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
                     <p className="text-sm text-[#F59E0B] font-semibold">Total Available Credit: R {totalAvailable.toFixed(2)}</p>
                     <p className="text-xs text-[#8A8B8C] mt-0.5">Invoice Balance: R {allocBal.toFixed(2)}</p>
+                    {cnTotal > 0 && <p className="text-xs text-[#8A8B8C]">Credit Notes: R {cnTotal.toFixed(2)}</p>}
+                    {opTotal > 0 && <p className="text-xs text-[#8A8B8C]">Overpayment Credits: R {opTotal.toFixed(2)}</p>}
                   </div>
-                  <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                  <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                    {/* Credit Notes */}
                     {availableCns.map((cn: any) => (
                       <div
                         key={cn.id}
-                        onClick={() => { setAllocCnId(cn.id); const maxAmt = Math.min(cn.remainingAmount || 0, allocBal); setAllocAmt(maxAmt > 0 ? maxAmt.toFixed(2) : ""); }}
+                        onClick={() => { setAllocCnId(cn.id); setAllocOverpaymentFromId(0); const maxAmt = Math.min(cn.remainingAmount || 0, allocBal); setAllocAmt(maxAmt > 0 ? maxAmt.toFixed(2) : ""); }}
                         className={`p-3 rounded-lg cursor-pointer transition-all ${allocCnId == cn.id ? "ring-1 ring-[#D4A843]" : ""}`}
                         style={{ backgroundColor: allocCnId == cn.id ? "rgba(212,168,67,0.08)" : "#0A0A0B", border: "1px solid #222324" }}
                       >
@@ -1684,8 +1701,28 @@ export default function InvoicesPage() {
                         </div>
                       </div>
                     ))}
+                    {/* Overpayment Credits */}
+                    {overpaymentInvs.map((inv: any) => (
+                      <div
+                        key={inv.id}
+                        onClick={() => { setAllocOverpaymentFromId(inv.id); setAllocCnId(0); const maxAmt = Math.min(inv.overpaymentAmount, allocBal); setAllocAmt(maxAmt > 0 ? maxAmt.toFixed(2) : ""); }}
+                        className={`p-3 rounded-lg cursor-pointer transition-all ${allocOverpaymentFromId == inv.id ? "ring-1 ring-[#D4A843]" : ""}`}
+                        style={{ backgroundColor: allocOverpaymentFromId == inv.id ? "rgba(212,168,67,0.08)" : "#0A0A0B", border: "1px solid #222324" }}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-sm font-medium text-white">Overpayment Credit</p>
+                            <p className="text-xs text-[#8A8B8C]">Invoice {inv.invoiceNumber} — {new Date(inv.invoiceDate).toLocaleDateString("en-ZA")}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-[#4ADE80]">R {inv.overpaymentAmount.toFixed(2)} avail</p>
+                            <p className="text-xs text-[#8A8B8C]">Paid: R {(inv.amountPaid || 0).toFixed(2)} / Total: R {(inv.total || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  {!!allocCnId && (
+                  {(!!allocCnId || !!allocOverpaymentFromId) && (
                     <div className="mb-4">
                       <label className="label-text block mb-1.5">Amount to Allocate *</label>
                       <input
@@ -1703,16 +1740,23 @@ export default function InvoicesPage() {
                     onClick={() => {
                       const amount = parseFloat(allocAmt);
                       if (!amount || amount <= 0) { alert("Please enter a valid amount."); return; }
-                      const cn = availableCns.find((c: any) => c.id == allocCnId);
-                      if (!cn) { alert("Please select a credit note."); return; }
-                      if (amount > (cn.remainingAmount || 0) + 0.01) { alert("Amount exceeds available credit."); return; }
                       if (amount > allocBal + 0.01) { alert("Amount exceeds invoice balance."); return; }
-                      allocateCredit.mutate({ creditNoteId: allocCnId, invoiceId: allocInvId, amount });
+                      if (allocCnId) {
+                        const cn = availableCns.find((c: any) => c.id == allocCnId);
+                        if (!cn) { alert("Please select a credit note."); return; }
+                        if (amount > (cn.remainingAmount || 0) + 0.01) { alert("Amount exceeds available credit."); return; }
+                        allocateCredit.mutate({ creditNoteId: allocCnId, invoiceId: allocInvId, amount });
+                      } else if (allocOverpaymentFromId) {
+                        const fromInv = overpaymentInvs.find((i: any) => i.id == allocOverpaymentFromId);
+                        if (!fromInv) { alert("Please select an overpayment credit."); return; }
+                        if (amount > fromInv.overpaymentAmount + 0.01) { alert("Amount exceeds available overpayment."); return; }
+                        applyOverpaymentCredit.mutate({ fromInvoiceId: allocOverpaymentFromId, toInvoiceId: allocInvId, amount });
+                      }
                     }}
-                    disabled={!allocCnId || !allocAmt || allocateCredit.isPending}
+                    disabled={(!allocCnId && !allocOverpaymentFromId) || !allocAmt || allocateCredit.isPending || applyOverpaymentCredit.isPending}
                     className="btn-primary w-full justify-center"
                   >
-                    {allocateCredit.isPending ? "Processing..." : "Apply Credit to Invoice"}
+                    {allocateCredit.isPending || applyOverpaymentCredit.isPending ? "Processing..." : "Apply Credit to Invoice"}
                   </button>
                 </div>
               );

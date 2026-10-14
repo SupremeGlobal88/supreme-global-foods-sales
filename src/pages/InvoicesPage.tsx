@@ -314,8 +314,8 @@ export default function InvoicesPage() {
 
   /* ── Print Combined Invoice + Delivery Note ── */
   function printDoc(inv: any) {
-    const liveById = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
-    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name === inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name === inv.customer.name) : null;
+    const liveById = (customers || []).find((c: any) => c.id == inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name == inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) : null;
     const cust = liveById || liveByName || inv.customer || {};
     const invCompany: CompanyKey = inv.company || "sgf";
     const cfg = getCompanyConfig(invCompany);
@@ -349,7 +349,7 @@ export default function InvoicesPage() {
               <div style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px;">Bill To</div>
               <div style="font-weight:800; font-size:13px; color:#222;">${cust?.name || "N/A"}</div>
               <div style="color:#444;">${cust?.contactPerson || ""}</div>
-              <div style="color:#555;">${cust?.physicalAddress || ""}${cust?.city ? `, ${cust.city}` : ""}${cust?.province ? `, ${cust.province}` : ""}</div>
+              <div style="color:#555;">${cust?.physicalAddress || cust?.deliveryAddress || ""}${cust?.city ? `, ${cust.city}` : ""}${cust?.province ? `, ${cust.province}` : ""}</div>
               <div style="color:#555;">Tel: ${cust?.phone || "N/A"}</div>
               ${cust?.email ? `<div style="color:#555;">${cust.email}</div>` : ""}
               ${cust?.vatNumber ? `<div style="color:#555;">VAT: ${cust.vatNumber}</div>` : ""}
@@ -637,7 +637,7 @@ export default function InvoicesPage() {
             <p style="font-size:10px; color:#888; margin:0 0 4px;">CREDIT TO</p>
             <p style="font-weight:800; margin:0 0 2px;">${cust.name || inv.customerName || "Customer"}</p>
             ${cust.contactPerson ? `<p style="margin:0; font-size:10px;">${cust.contactPerson}</p>` : ""}
-            <p style="margin:0; font-size:10px;">${cust.physicalAddress || ""}</p>
+            <p style="margin:0; font-size:10px;">${cust.physicalAddress || cust.deliveryAddress || ""}</p>
             ${cust.vatNumber ? `<p style="margin:2px 0 0; font-size:10px; color:#666;">VAT: ${cust.vatNumber}</p>` : ""}
           </div>
           <div style="text-align:right;">
@@ -807,7 +807,7 @@ export default function InvoicesPage() {
             <div class="label">Customer</div>
             <div class="value">${cust.name}</div>
             <div>${cust.contactPerson || ""}</div>
-            <div>${cust.physicalAddress || ""}${cust.city ? `, ${cust.city}` : ""}</div>
+            <div>${cust.physicalAddress || cust.deliveryAddress || ""}${cust.city ? `, ${cust.city}` : ""}</div>
             <div>Tel: ${cust.phone || "N/A"}</div>
             ${cust.email ? `<div>${cust.email}</div>` : ""}
           </div>
@@ -896,8 +896,8 @@ export default function InvoicesPage() {
 
   /* ─── Email invoice via mailto ─── */
   function sendEmail(inv: any) {
-    const liveById = (customers || []).find((c: any) => c.id === inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
-    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name === inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name === inv.customer.name) : null;
+    const liveById = (customers || []).find((c: any) => c.id == inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
+    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name == inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) : null;
     const cust = liveById || liveByName || inv.customer || {};
     if (!cust?.email) { alert("Customer has no email address."); return; }
     const subject = encodeURIComponent(`Tax Invoice ${inv.invoiceNumber} - ${cust.name || ""}`);

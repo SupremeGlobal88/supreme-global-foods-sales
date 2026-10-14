@@ -1633,7 +1633,8 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
 
   try {
     const now = new Date();
-    const customer = customers.find((c) => c.id == order.customerId);
+    // Look up customer from BOTH arrays — corporate customers have the full record
+    const customer = customers.find((c) => c.id == order.customerId) || corporateCustomers.find((c) => c.id == order.customerId);
 
     // Calculate due date from payment terms
     const paymentTerms = order.paymentTerms || "cod";
@@ -1754,8 +1755,8 @@ export function generateInvoiceForOrder(orderId: number): string | null {
   if (!order) return null;
   // Detect sample orders
   const isSample = order.orderType === "sample" || (order.orderNumber || "").startsWith("SMP-");
-  // Check if customer is VAT exempt
-  const customer = customers.find((c) => c.id == order.customerId);
+  // Check if customer is VAT exempt (look up from BOTH arrays)
+  const customer = customers.find((c) => c.id == order.customerId) || corporateCustomers.find((c) => c.id == order.customerId);
   const vatRate = customer?.vatExempt ? 0 : 0.15;
   // Calculate totals
   const items = order.items || [];

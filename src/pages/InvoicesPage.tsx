@@ -314,8 +314,10 @@ export default function InvoicesPage() {
 
   /* ── Print Combined Invoice + Delivery Note ── */
   function printDoc(inv: any) {
-    const liveById = (customers || []).find((c: any) => c.id == inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
-    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name == inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) : null;
+    // Corporate customers are source-of-truth for corporate data — try them FIRST.
+    // The customers array may have an incomplete mirrored copy that shadows the full record.
+    const liveById = (corporateCustomers || []).find((c: any) => c.id == inv.customerId) || (customers || []).find((c: any) => c.id == inv.customerId);
+    const liveByName = !liveById && inv.customer?.name ? (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) || (customers || []).find((c: any) => c.name == inv.customer.name) : null;
     const cust = liveById || liveByName || inv.customer || {};
     const invCompany: CompanyKey = inv.company || "sgf";
     const cfg = getCompanyConfig(invCompany);
@@ -896,8 +898,10 @@ export default function InvoicesPage() {
 
   /* ─── Email invoice via mailto ─── */
   function sendEmail(inv: any) {
-    const liveById = (customers || []).find((c: any) => c.id == inv.customerId) || (corporateCustomers || []).find((c: any) => c.id == inv.customerId);
-    const liveByName = !liveById && inv.customer?.name ? (customers || []).find((c: any) => c.name == inv.customer.name) || (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) : null;
+    // Corporate customers are source-of-truth for corporate data — try them FIRST.
+    // The customers array may have an incomplete mirrored copy that shadows the full record.
+    const liveById = (corporateCustomers || []).find((c: any) => c.id == inv.customerId) || (customers || []).find((c: any) => c.id == inv.customerId);
+    const liveByName = !liveById && inv.customer?.name ? (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) || (customers || []).find((c: any) => c.name == inv.customer.name) : null;
     const cust = liveById || liveByName || inv.customer || {};
     if (!cust?.email) { alert("Customer has no email address."); return; }
     const subject = encodeURIComponent(`Tax Invoice ${inv.invoiceNumber} - ${cust.name || ""}`);

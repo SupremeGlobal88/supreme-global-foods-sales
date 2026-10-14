@@ -312,6 +312,13 @@ function load() {
     receipts = rc || [];
     const crn = safeLoadArray("sgf_creditNotes");
     creditNotes = crn || [];
+
+    // AUTO-REPAIR: Fix stale/duplicate credit allocations on invoices
+    const creditRepair = repairCreditAllocations();
+    if (creditRepair > 0) {
+      console.log(`[CreditRepair] Startup repaired ${creditRepair} invoice(s) with stale credit allocations`);
+    }
+
     // USERS: always load and merge with defaults
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
@@ -1097,6 +1104,55 @@ load();
  *  Called after Firebase sync to ensure synced data is loaded.
  *  The isValidArray checks in load() can discard legitimately deduplicated data,
  *  so this function bypasses them and loads directly. */
+/** Repair stale credit allocations on invoices.
+ *  Removes allocations for voided/non-existent credit notes and recalculates balances.
+ *  Returns the number of invoices that were fixed. */
+function repairCreditAllocations(): number {
+  let fixed = 0;
+  if (!invoices || invoices.length === 0) return 0;
+  for (let i = 0; i < invoices.length; i++) {
+    const inv = invoices[i];
+    if (!inv.creditAllocations || inv.creditAllocations.length === 0) continue;
+
+    const beforeCount = inv.creditAllocations.length;
+    // Keep only allocations for valid, non-voided credit notes that actually have a matching allocation
+    const validAllocations = inv.creditAllocations.filter((ca: any) => {
+      const cn = creditNotes.find((c) => c.id == ca.creditNoteId);
+      return cn && !cn.voided;
+    });
+
+    // Also deduplicate: same creditNoteId should only appear once
+    const seen = new Set();
+    const dedupedAllocations = validAllocations.filter((ca: any) => {
+      if (seen.has(ca.creditNoteId)) return false;
+      seen.add(ca.creditNoteId);
+      return true;
+    });
+
+    if (dedupedAllocations.length !== beforeCount) {
+      const totalAlloc = dedupedAllocations.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
+      const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
+      const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
+      let newBalance = Math.max(0, invTotal - amountPaid - totalAlloc);
+      // Round to avoid floating point issues
+      newBalance = Math.round(newBalance * 100) / 100;
+
+      invoices[i] = {
+        ...inv,
+        balanceDue: newBalance,
+        creditAllocations: dedupedAllocations,
+        status: newBalance <= 0.01 ? "paid" : (amountPaid > 0.01 ? "partially_paid" : (inv.status === "paid" ? "sent" : inv.status)),
+        updatedAt: new Date().toISOString(),
+      };
+      fixed++;
+    }
+  }
+  if (fixed > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+  return fixed;
+}
+
 // Debounce reloadFromStorage to prevent UI freeze when multiple Firebase
 // subscriptions fire simultaneously at startup. Each subscription's onValue
 // callback calls reloadFromStorage(), which reads ALL data keys from
@@ -1193,6 +1249,11 @@ function _doReloadFromStorage(keys?: string[]): void {
             if (typeof window !== "undefined") {
               window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
             }
+          }
+          // AUTO-REPAIR: Remove stale credit allocations from voided/non-existent credit notes
+          const repairResult = repairCreditAllocations();
+          if (repairResult > 0) {
+            console.log(`[CreditRepair] Reload repaired ${repairResult} invoice(s) with stale credit allocations`);
           }
         }
       }
@@ -3096,6 +3157,17 @@ export const dataService = {
         company: data.company || "",
         createdAt: new Date().toISOString(),
       };
+      // Prevent duplicate: check if an unvoided credit note already exists for this invoice with same amount
+      const existingCN = creditNotes.find((cn) =>
+        cn.invoiceId == data.invoiceId &&
+        !cn.voided &&
+        Math.abs((cn.amount || 0) - creditTotal) < 0.01
+      );
+      if (existingCN) {
+        // Return existing credit note instead of creating a duplicate
+        return { creditNote: existingCN, updatedInvoice: null, error: `Credit note ${existingCN.creditNoteNumber} already exists for this invoice` };
+      }
+
       creditNotes.push(creditNote);
       saveItem("sgf_creditNotes", creditNotes);
       let updatedInvoice = null;
@@ -3233,7 +3305,9 @@ export const dataService = {
       }
 
       logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} for R${creditTotal} invoice=${data.invoiceId} lines=${lineItems.length} found=${!!updatedInvoice}`);
-      return { creditNote, updatedInvoice };
+      // Return the updated credit note from the array (with allocations), not the original local variable
+      const finalCreditNote = creditNotes.find((cn) => cn.id == creditNote.id) || creditNote;
+      return { creditNote: finalCreditNote, updatedInvoice };
     },
     allocateCredit: ({ creditNoteId, invoiceId, amount }: { creditNoteId: number; invoiceId: number; amount: number }) => {
       const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNoteId);

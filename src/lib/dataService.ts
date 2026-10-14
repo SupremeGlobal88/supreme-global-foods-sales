@@ -3181,6 +3181,42 @@ export const dataService = {
 
       updatedInvoice = findAndUpdateInvoice();
 
+      // AUTO-ALLOCATE: when credit note is created from an invoice, automatically
+      // apply the credit to reduce the invoice balance due. This fixes the bug where
+      // credit notes were created but the invoice still showed full balance.
+      if (updatedInvoice && creditTotal > 0.01 && data.invoiceId) {
+        const invIdx = invoices.findIndex((i) => i.id == data.invoiceId);
+        if (invIdx >= 0) {
+          const inv = invoices[invIdx];
+          const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
+          const allocAmount = Math.min(creditTotal, currentBalance);
+          if (allocAmount > 0.01) {
+            // Deduct from credit note
+            const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNote.id);
+            if (cnIdx >= 0) {
+              creditNotes[cnIdx] = {
+                ...creditNote,
+                remainingAmount: Math.max(0, creditTotal - allocAmount),
+                allocations: [{ invoiceId: data.invoiceId, amount: allocAmount, allocatedAt: new Date().toISOString() }],
+                updatedAt: new Date().toISOString(),
+              };
+            }
+            // Deduct from invoice
+            const newBalance = Math.max(0, currentBalance - allocAmount);
+            invoices[invIdx] = {
+              ...inv,
+              balanceDue: newBalance,
+              creditAllocations: [...(inv.creditAllocations || []), { creditNoteId: creditNote.id, amount: allocAmount, allocatedAt: new Date().toISOString() }],
+              status: newBalance <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+              updatedAt: new Date().toISOString(),
+            };
+            updatedInvoice = invoices[invIdx];
+            saveItem("sgf_creditNotes", creditNotes);
+            saveItem("sgf_invoices", invoices);
+          }
+        }
+      }
+
       // Return stock to inventory for each credited line item
       if (lineItems.length > 0) {
         for (const li of lineItems) {

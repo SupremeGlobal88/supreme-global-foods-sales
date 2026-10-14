@@ -3775,6 +3775,52 @@ export const dataService = {
         lines,
       };
     },
+    /** Transfer overpayment credit from one invoice (negative balance) to another invoice */
+    applyOverpaymentCredit: ({ fromInvoiceId, toInvoiceId, amount }: { fromInvoiceId: number; toInvoiceId: number; amount: number }) => {
+      const fromIdx = invoices.findIndex((i) => i.id == fromInvoiceId);
+      const toIdx = invoices.findIndex((i) => i.id == toInvoiceId);
+      if (fromIdx < 0) return { success: false, error: "Source invoice not found" };
+      if (toIdx < 0) return { success: false, error: "Target invoice not found" };
+
+      const fromInv = invoices[fromIdx];
+      const toInv = invoices[toIdx];
+
+      // Source invoice must have negative balance (overpayment)
+      const fromBalance = typeof fromInv.balanceDue === "number" ? fromInv.balanceDue : (fromInv.total || 0) - (fromInv.amountPaid || 0);
+      const overpaymentAmount = Math.abs(Math.min(0, fromBalance));
+      if (overpaymentAmount < 0.01) return { success: false, error: "Source invoice has no overpayment credit" };
+
+      // Target invoice must have positive balance
+      const toBalance = typeof toInv.balanceDue === "number" ? toInv.balanceDue : (toInv.total || 0) - (toInv.amountPaid || 0);
+      if (toBalance < 0.01) return { success: false, error: "Target invoice has no balance due" };
+
+      // Cap amount at available overpayment and target balance
+      const allocAmount = Math.min(amount, overpaymentAmount, toBalance);
+      if (allocAmount < 0.01) return { success: false, error: "Nothing to allocate" };
+
+      // Reduce overpayment on source invoice (increase its balance toward zero)
+      const newFromBalance = fromBalance + allocAmount;
+      invoices[fromIdx] = {
+        ...fromInv,
+        balanceDue: newFromBalance,
+        status: newFromBalance <= 0.01 ? "paid" : (newFromBalance > 0.01 ? (fromInv.amountPaid > 0.01 ? "partially_paid" : "sent") : fromInv.status),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Reduce balance on target invoice
+      const newToBalance = Math.max(0, toBalance - allocAmount);
+      invoices[toIdx] = {
+        ...toInv,
+        balanceDue: newToBalance,
+        status: newToBalance <= 0.01 ? "paid" : (toInv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+        overpaymentAllocations: [...(toInv.overpaymentAllocations || []), { fromInvoiceId, amount: allocAmount, allocatedAt: new Date().toISOString() }],
+        updatedAt: new Date().toISOString(),
+      };
+
+      saveItem("sgf_invoices", invoices);
+      logAudit("UPDATE", "invoice", toInvoiceId, `Applied R${allocAmount.toFixed(2)} overpayment credit from invoice ${fromInv.invoiceNumber} to invoice ${toInv.invoiceNumber}`);
+      return { success: true, fromInvoice: invoices[fromIdx], toInvoice: invoices[toIdx], amount: allocAmount };
+    },
     getStats: () => {
       const totalValue = Math.round(invoices.reduce((sum, i) => sum + Number(i.total || i.totalAmount || 0), 0) * 100) / 100;
       const totalPaid = Math.round(invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0) * 100) / 100;

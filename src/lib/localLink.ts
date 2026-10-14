@@ -275,10 +275,10 @@ export function createLocalLink() {
               case "invoice.getCreditNotesByInvoice": result = dataService.invoice.getCreditNotesByInvoice(input); break;
               case "invoice.getCreditNotesByCustomer": result = dataService.invoice.getCreditNotesByCustomer(input); break;
               case "invoice.getCustomerCreditBalance": result = dataService.invoice.getCustomerCreditBalance(input); break;
-              case "invoice.createCreditNote": { result = dataService.invoice.createCreditNote(input); await pushCreditNote(result); break; }
-              case "invoice.allocateCredit": { result = dataService.invoice.allocateCredit(input); await pushCreditNote(result); break; }
-              case "invoice.voidCreditNoteAllocation": { result = dataService.invoice.voidCreditNoteAllocation(input); await pushCreditNote(result); break; }
-              case "invoice.voidCreditNote": { result = dataService.invoice.voidCreditNote(input); await pushCreditNote(result); break; }
+              case "invoice.createCreditNote": { result = dataService.invoice.createCreditNote(input); if (result?.creditNote) await pushCreditNote(result.creditNote); if (result?.updatedInvoice) await pushInvoice(result.updatedInvoice); break; }
+              case "invoice.allocateCredit": { result = dataService.invoice.allocateCredit(input); if (result?.creditNote) await pushCreditNote(result.creditNote); if (result?.invoice) await pushInvoice(result.invoice); break; }
+              case "invoice.voidCreditNoteAllocation": { result = dataService.invoice.voidCreditNoteAllocation(input); if (result?.creditNote) await pushCreditNote(result.creditNote); if (result?.invoice) await pushInvoice(result.invoice); break; }
+              case "invoice.voidCreditNote": { result = dataService.invoice.voidCreditNote(input); if (result?.creditNote) await pushCreditNote(result.creditNote); if (result?.invoice) await pushInvoice(result.invoice); break; }
               case "invoice.generateForPO": { result = dataService.generateInvoiceForPO(input); if (result) { const allInv = dataService.invoice.list(); const newInv = allInv.find((i: any) => i.invoiceNumber === result); if (newInv) await pushInvoice(newInv); } reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); break; }
               case "invoice.createOrderFromInvoice": { result = dataService.order.createFromInvoice(input); if (result && !result.error) { await pushOrder(result); } reloadFromStorage(["sgf_orders", "sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
               case "appointment.list": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.list(); break;

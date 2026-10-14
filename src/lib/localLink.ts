@@ -69,6 +69,25 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
 
     const merged = mergeWithCloudData(storageKey, cloudData);
     const after = merged.length;
+
+    // SAFETY: Ensure we don't lose recently created OR updated local items during sync.
+    // This prevents race conditions where Firebase hasn't received a push yet.
+    // Critical for regenerated invoices (old createdAt but new updatedAt).
+    const SAFETY_CHECK_KEYS = ["sgf_orders", "sgf_invoices", "sgf_corporateCustomers"];
+    if (SAFETY_CHECK_KEYS.includes(storageKey)) {
+      const mergedIds = new Set(merged.map((item: any) => item.id));
+      const missingLocal = currentLocal.filter((item: any) => {
+        if (mergedIds.has(item.id)) return false;
+        const createdAt = new Date(item.createdAt || 0).getTime();
+        const updatedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
+        return now - createdAt < 60000 || now - updatedAt < 60000; // within last 60 seconds
+      });
+      if (missingLocal.length > 0) {
+        console.warn(`[syncFromCloud] SAFETY: Adding ${missingLocal.length} recently created/updated local ${type} items missing from merged result`);
+        merged.push(...missingLocal);
+      }
+    }
+
     setStorageItem(storageKey, JSON.stringify(merged));
     reloadFromStorage([storageKey]);
 

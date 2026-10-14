@@ -819,14 +819,17 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // CLOUD-FIRST RULE: If an item was previously synced (_syncedAt exists) but is
     // no longer in Firebase, it was DELETED from the cloud → remove it locally.
     // If an item was NEVER synced (no _syncedAt), it is a local draft → keep it.
+    // RACE-CONDITION SAFETY: If an item was recently updated (within 60s), keep it
+    // even if it has _syncedAt — the push may not have propagated to Firebase yet.
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
-        if (item._syncedAt) {
+        const recentlyUpdated = item.updatedAt && (Date.now() - new Date(item.updatedAt).getTime() < 60000);
+        if (item._syncedAt && !recentlyUpdated) {
           // Previously synced but now deleted from cloud → skip (remove ghost)
           continue;
         }
-        // Never synced → preserve as local draft
+        // Never synced OR recently updated → preserve as local draft
         merged.set(k, item);
       }
     }
@@ -854,11 +857,17 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    // Mark all merged items as synced so future ghost-removal and safety guards work correctly
+    // Mark items that were ACTUALLY in Firebase as synced.
+    // CRITICAL: Only set _syncedAt on items that came from Firebase.
+    // Local drafts that were never synced must NOT get _syncedAt,
+    // otherwise ghost-removal will incorrectly delete them later.
     const result = Array.from(merged.values());
     for (const item of result) {
       if (item && typeof item === "object") {
-        item._syncedAt = item._syncedAt || Date.now();
+        const k = getStableKey(item, key);
+        if (k !== null && incomingMap.has(k)) {
+          item._syncedAt = item._syncedAt || Date.now();
+        }
       }
     }
     return result;

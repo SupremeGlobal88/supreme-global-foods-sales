@@ -1842,13 +1842,11 @@ export function generateInvoiceForOrder(orderId: number): string | null {
     };
     saveItem("sgf_invoices", invoices);
     // Ensure order has invoiceNumber link (critical for OrdersPage display)
-    if (!order.invoiceNumber) {
-      order.invoiceNumber = existing.invoiceNumber;
-      const orderIdx = orders.findIndex((o) => o.id == orderId);
-      if (orderIdx >= 0) {
-        orders[orderIdx].invoiceNumber = existing.invoiceNumber;
-        saveItem("sgf_orders", orders);
-      }
+    const orderIdx = orders.findIndex((o) => o.id == orderId);
+    if (orderIdx >= 0) {
+      orders[orderIdx].invoiceNumber = existing.invoiceNumber;
+      orders[orderIdx].updatedAt = new Date().toISOString();
+      saveItem("sgf_orders", orders);
     }
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;

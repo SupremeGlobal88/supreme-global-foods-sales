@@ -428,15 +428,16 @@ export function createLocalLink() {
               case "coc.update": { const { id, data } = input; result = dataService.coc.update({ id, data }); if (result) { await pushCOC(result); } reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.delete": { result = dataService.coc.delete(input); await removeCOC(input); reloadFromStorage(["sgf_cocs"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } })); break; }
               case "coc.bulkGenerateForPO": { const { poId, cocDataList, deleteOrphanIds } = input;
+                // 1. Remove old COCs for this PO from Firebase
                 const allFirebaseCOCs = await readFromFirebase("certificatesOfCompliance");
                 const firebasePOCOCs = allFirebaseCOCs.filter((c: any) => c.purchaseOrderId == poId);
                 for (const c of firebasePOCOCs) { await removeCOC(c.id); }
-                const localCOCs = dataService.coc.listByPurchaseOrder(poId);
-                for (const c of localCOCs) { dataService.coc.delete(c.id); }
-                setStorageItem("sgf_cocs", "[]");
+                // 2. Remove orphaned COCs from Firebase (other POs)
                 if (deleteOrphanIds && deleteOrphanIds.length > 0) { for (const oid of deleteOrphanIds) { await removeCOC(oid); } }
+                // 3. Let bulkGenerateForPO handle local memory + both storage keys atomically.
+                //    It already deletes existing COCs for this PO and saves to BOTH keys correctly.
                 const created = dataService.coc.bulkGenerateForPO(poId, cocDataList, deleteOrphanIds || []);
-                setStorageItem("sgf_cocs", JSON.stringify(created));
+                // 4. Push new COCs to Firebase
                 for (const c of created) { await pushCOC(c); }
                 reloadFromStorage();
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: created.length } }));

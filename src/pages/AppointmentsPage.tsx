@@ -380,76 +380,86 @@ export default function AppointmentsPage() {
   });
 
   // ===================== EXPORT REPORT =====================
-  function handleExportReport() {
-    const headers = ["Sales Rep", "Category", "Appointment Type", "Title", "Customer", "Date", "Status", "Notes", "Outcome"];
-    const rows: string[][] = [];
+  async function handleExportReport() {
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
 
-    // Visits (checkins)
-    const allCheckins = canViewAll
-      ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
-      : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
-    for (const ci of allCheckins) {
-      rows.push([
-        ci.salesRepName || "",
-        "Visit",
-        ci.appointmentType || "site_visit",
-        ci.title || "",
-        ci.customer?.name || ci.location || "",
-        ci.createdAt ? new Date(ci.createdAt).toLocaleString("en-ZA") : "",
-        ci.status || "",
-        (ci.notes || "").replace(/\n/g, " "),
-        ci.outcome || "",
-      ]);
+      // Sheet 1: Visits (Checkins)
+      const visitRows: any[][] = [["Sales Rep", "Appointment Type", "Title", "Customer", "Date", "Status", "Notes", "Outcome"]];
+      const allCheckins = canViewAll
+        ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
+        : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
+      for (const ci of allCheckins) {
+        visitRows.push([
+          ci.salesRepName || "",
+          ci.appointmentType || "site_visit",
+          ci.title || "",
+          ci.customer?.name || ci.location || "",
+          ci.createdAt ? new Date(ci.createdAt).toLocaleString("en-ZA") : "",
+          ci.status || "",
+          (ci.notes || "").replace(/\n/g, " "),
+          ci.outcome || "",
+        ]);
+      }
+      const wsVisits = XLSX.utils.aoa_to_sheet(visitRows);
+      wsVisits["!cols"] = [{ wch: 18 }, { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 50 }, { wch: 28 }];
+      XLSX.utils.book_append_sheet(wb, wsVisits, "Visits");
+
+      // Sheet 2: Scheduled Appointments
+      const apptRows: any[][] = [["Sales Rep", "Appointment Type", "Title", "Customer", "Date", "Status", "Notes", "Outcome"]];
+      const allAppointments = canViewAll
+        ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
+        : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
+      for (const a of allAppointments) {
+        apptRows.push([
+          a.salesRepName || "",
+          a.appointmentType || "",
+          a.title || "",
+          a.customer?.name || "",
+          a.appointmentDate ? new Date(a.appointmentDate).toLocaleString("en-ZA") : "",
+          a.status || "",
+          (a.notes || "").replace(/\n/g, " "),
+          a.outcome || "",
+        ]);
+      }
+      const wsAppts = XLSX.utils.aoa_to_sheet(apptRows);
+      wsAppts["!cols"] = [{ wch: 18 }, { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 50 }, { wch: 28 }];
+      XLSX.utils.book_append_sheet(wb, wsAppts, "Scheduled");
+
+      // Sheet 3: Follow-ups
+      const fuRows: any[][] = [["Sales Rep", "Action Type", "Title", "Customer", "Date", "Status", "Notes", "Outcome"]];
+      const allFollowUps = canViewAll
+        ? (filterRep === "all" ? (followUpActions || []) : (followUpActions || []).filter((fu: any) => fu.salesRepName === filterRep))
+        : (followUpActions || []).filter((fu: any) => fu.salesRepName === myRepName);
+      for (const fu of allFollowUps) {
+        fuRows.push([
+          fu.salesRepName || "",
+          fu.actionType || "",
+          fu.title || "",
+          fu.customer?.name || "",
+          fu.createdAt ? new Date(fu.createdAt).toLocaleString("en-ZA") : "",
+          fu.status || "",
+          (fu.notes || "").replace(/\n/g, " "),
+          fu.outcome || "",
+        ]);
+      }
+      const wsFu = XLSX.utils.aoa_to_sheet(fuRows);
+      wsFu["!cols"] = [{ wch: 18 }, { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 50 }, { wch: 28 }];
+      XLSX.utils.book_append_sheet(wb, wsFu, "Follow-ups");
+
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Appointments_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Export failed. Please try again.");
     }
-
-    // Scheduled appointments
-    const allAppointments = canViewAll
-      ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
-      : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
-    for (const a of allAppointments) {
-      rows.push([
-        a.salesRepName || "",
-        "Scheduled",
-        a.appointmentType || "",
-        a.title || "",
-        a.customer?.name || "",
-        a.appointmentDate ? new Date(a.appointmentDate).toLocaleString("en-ZA") : "",
-        a.status || "",
-        (a.notes || "").replace(/\n/g, " "),
-        a.outcome || "",
-      ]);
-    }
-
-    // Follow-ups
-    const allFollowUps = canViewAll
-      ? (filterRep === "all" ? (followUpActions || []) : (followUpActions || []).filter((fu: any) => fu.salesRepName === filterRep))
-      : (followUpActions || []).filter((fu: any) => fu.salesRepName === myRepName);
-    for (const fu of allFollowUps) {
-      rows.push([
-        fu.salesRepName || "",
-        "Follow-up",
-        fu.actionType || "",
-        fu.title || "",
-        fu.customer?.name || "",
-        fu.createdAt ? new Date(fu.createdAt).toLocaleString("en-ZA") : "",
-        fu.status || "",
-        (fu.notes || "").replace(/\n/g, " "),
-        fu.outcome || "",
-      ]);
-    }
-
-    // Sort by date descending
-    rows.sort((a, b) => new Date(b[5] || 0).getTime() - new Date(a[5] || 0).getTime());
-
-    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    const csv = [headers.join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Appointments_Report_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   // ===================== GEO AUDIT CLUSTERING =====================

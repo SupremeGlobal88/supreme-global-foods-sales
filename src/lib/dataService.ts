@@ -2680,6 +2680,7 @@ export const dataService = {
         
         // Quote status flow: draft → sent → accepted/rejected → converted
         order.status = status;
+        order.updatedAt = new Date().toISOString();
         let cancelledInvoice: any | null = null;
         
         // RESTORE STOCK only when order is CANCELLED (not delivered).

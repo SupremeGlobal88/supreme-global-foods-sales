@@ -113,10 +113,13 @@ const COMPANY_MAP: Record<CompanyKey, CompanyConfig> = {
  *  Reads user-overridden settings from localStorage (e.g. phone number).
  */
 export function getCompanyConfig(company?: CompanyKey | string): CompanyConfig {
-  const base = company === "recircle" ? { ...RECIRCLE_CONFIG } : { ...SGF_CONFIG };
+  const isRecircle = company === "recircle";
+  const base = isRecircle ? { ...RECIRCLE_CONFIG } : { ...SGF_CONFIG };
   try {
     const raw = localStorage.getItem("sgf_settings_company");
-    if (raw) {
+    if (raw && !isRecircle) {
+      // Only apply user-saved settings to SGF.
+      // Recircle config is hardcoded and must never be overridden by SGF settings.
       const saved = JSON.parse(raw);
       if (saved.phone) base.contact.phone = saved.phone;
       if (saved.email) base.contact.email = saved.email;

@@ -254,8 +254,9 @@ export async function pushOrder(order: any): Promise<boolean> {
   if (!isFirebaseReady()) { addToPendingQueue("order", order); return false; }
   try {
     await set(ref(db, `orders/${safeFbKey(order.id)}`), { ...order, _syncedAt: Date.now() });
+    console.log("[FirebaseSync] pushOrder success:", order.id, order.orderNumber);
     return true;
-  } catch (e: any) { console.warn("[FirebaseSync] pushOrder failed:", e.message); return false; }
+  } catch (e: any) { console.warn("[FirebaseSync] pushOrder failed:", order?.id, e.message); return false; }
 }
 
 export async function pushCheckin(checkin: any): Promise<void> {
@@ -739,6 +740,9 @@ function createSubscription(
   const unsub = onValue(dbRef, (snapshot) => {
     const data = snapshot.val();
     const items = fbToArray(data);
+    if (path === "orders") {
+      console.log(`[FirebaseSync] onValue orders received: ${items.length} items`);
+    }
 
     // Defer expensive work to next tick so onValue returns immediately.
     // This prevents the main thread from freezing when 15+ subscriptions
@@ -746,6 +750,7 @@ function createSubscription(
     setTimeout(() => {
       // Skip if data hasn't changed since last processing
       if (!hasDataChanged(storageKey, items)) {
+        if (path === "orders") console.log("[FirebaseSync] orders skipped — no change");
         if (onData) onData(items);
         return;
       }
@@ -844,15 +849,10 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
         const fbItem = incomingMap.get(k)!;
         const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
-        // SAFETY: If either timestamp is invalid (NaN), treat it as 0 so the
-        // valid timestamp wins. This prevents Firebase timestamp objects from
-        // causing the merge to incorrectly pick stale cloud data.
-        const localValid = !isNaN(localUpdated) ? localUpdated : 0;
-        const fbValid = !isNaN(fbUpdated) ? fbUpdated : 0;
         // Use the newer version as the base
-        const mergedItem = localValid >= fbValid ? { ...item } : { ...fbItem };
+        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
         // Always enrich with local properties that are missing/null in the winner
-        const loser = localValid >= fbValid ? fbItem : item;
+        const loser = localUpdated >= fbUpdated ? fbItem : item;
         for (const prop of Object.keys(loser)) {
           if (loser[prop] != null && mergedItem[prop] == null) {
             mergedItem[prop] = loser[prop];

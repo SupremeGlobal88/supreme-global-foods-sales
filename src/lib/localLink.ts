@@ -53,7 +53,7 @@ async function syncFromCloud(type: string, storageKey: string): Promise<void> {
   try {
     console.log("[syncFromCloud] Reading", type, "from Firebase...");
     const cloudData = await readFromFirebase(type);
-    console.log("[syncFromCloud] Firebase returned", cloudData.length, type);
+    console.log("[syncFromCloud] Firebase returned", cloudData.length, type, cloudData.length > 0 ? "ids:" + cloudData.slice(0,3).map((x:any)=>x.id).join(",") : "empty");
 
     // Re-read localStorage AFTER readFromFirebase returns (subscriptions may have updated it)
     const currentLocal = JSON.parse(getStorageItem(storageKey) || "[]");
@@ -205,6 +205,7 @@ export function createLocalLink() {
               case "order.getStats": await smartSync("orders", "sgf_orders"); result = dataService.order.getStats(); break;
               case "order.create": {
                 result = dataService.order.create(input);
+                console.log("[localLink] order.create:", result?.id, result?.orderNumber);
                 await fbPush("order", result);
                 const changedStockIds = new Set((result?.items || []).map((it: any) => Number(it.stockItemId)));
                 for (const stockId of changedStockIds) {

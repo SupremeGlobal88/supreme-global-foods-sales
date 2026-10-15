@@ -319,7 +319,9 @@ export default function InvoicesPage() {
     const liveById = (corporateCustomers || []).find((c: any) => c.id == inv.customerId) || (customers || []).find((c: any) => c.id == inv.customerId);
     const liveByName = !liveById && inv.customer?.name ? (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) || (customers || []).find((c: any) => c.name == inv.customer.name) : null;
     const cust = liveById || liveByName || inv.customer || {};
-    const invCompany: CompanyKey = inv.company || "sgf";
+    // Derive company from invoice number prefix — this is the source of truth.
+    // The stored inv.company field may be incorrect due to legacy data or sync issues.
+    const invCompany: CompanyKey = inv.invoiceNumber?.startsWith("RC") ? "recircle" : (inv.company || "sgf");
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
     const invDate = new Date(inv.invoiceDate || inv.createdAt);
@@ -450,7 +452,9 @@ export default function InvoicesPage() {
 
   /* ── Print COC for Invoice (corporate style, one per product line) ── */
   function printCOC(inv: any, cocs: any[]) {
-    const invCompany: CompanyKey = inv.company || "sgf";
+    // Derive company from invoice number prefix — this is the source of truth.
+    // The stored inv.company field may be incorrect due to legacy data or sync issues.
+    const invCompany: CompanyKey = inv.invoiceNumber?.startsWith("RC") ? "recircle" : (inv.company || "sgf");
     const cfg = getCompanyConfig(invCompany);
     const cocPages = (cocs || []).map((coc) => {
       const isSheep = coc.animalType === "sheep";

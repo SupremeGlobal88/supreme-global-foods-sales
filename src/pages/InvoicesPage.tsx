@@ -743,6 +743,11 @@ export default function InvoicesPage() {
       if (i.customer && i.customer.customerCode === custCode) return true;
       return false;
     });
+    // Exclude cancelled orders/invoices and drafts from statements
+    list = list.filter((i: any) => {
+      const status = (i.status || "").toLowerCase();
+      return status !== "cancelled" && status !== "draft";
+    });
     if (stmtFrom) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) >= new Date(stmtFrom));
     if (stmtTo) list = list.filter((i: any) => new Date(i.invoiceDate || i.createdAt) <= new Date(stmtTo + "T23:59:59"));
     list = list.sort((a: any, b: any) => new Date(a.invoiceDate || a.createdAt).getTime() - new Date(b.invoiceDate || b.createdAt).getTime());

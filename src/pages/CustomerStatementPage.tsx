@@ -56,6 +56,9 @@ export default function CustomerStatementPage() {
         return false;
       })
       .filter((inv: any) => {
+        // Exclude cancelled orders/invoices and drafts from statements
+        const status = (inv.status || "").toLowerCase();
+        if (status === "cancelled" || status === "draft") return false;
         const d = new Date(inv.invoiceDate || inv.createdAt);
         return d >= new Date(stmtFrom) && d <= new Date(stmtTo + "T23:59:59");
       })

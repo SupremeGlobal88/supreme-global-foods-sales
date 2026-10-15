@@ -3264,14 +3264,16 @@ export const dataService = {
       updatedInvoice = findAndUpdateInvoice();
 
       // AUTO-ALLOCATE: when credit note is created from an invoice, automatically
-      // apply the credit to reduce the invoice balance due. This fixes the bug where
-      // credit notes were created but the invoice still showed full balance.
+      // apply the credit. For unpaid invoices this reduces balance due.
+      // For paid invoices this creates overpayment credit (negative balance)
+      // which can be transferred to other invoices.
       if (updatedInvoice && creditTotal > 0.01 && data.invoiceId) {
         const invIdx = invoices.findIndex((i) => i.id == data.invoiceId);
         if (invIdx >= 0) {
           const inv = invoices[invIdx];
           const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-          const allocAmount = Math.min(creditTotal, currentBalance);
+          // Unpaid: allocate up to balance. Paid: allocate full amount (overpayment).
+          const allocAmount = currentBalance > 0.01 ? Math.min(creditTotal, currentBalance) : creditTotal;
           if (allocAmount > 0.01) {
             // Deduct from credit note
             const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNote.id);
@@ -3283,8 +3285,8 @@ export const dataService = {
                 updatedAt: new Date().toISOString(),
               };
             }
-            // Deduct from invoice
-            const newBalance = Math.max(0, currentBalance - allocAmount);
+            // Deduct from invoice (allow negative balance = overpayment credit)
+            const newBalance = currentBalance - allocAmount;
             invoices[invIdx] = {
               ...inv,
               balanceDue: newBalance,
@@ -3333,7 +3335,8 @@ export const dataService = {
       const inv = invoices[invIdx];
 
       const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-      if (amount > currentBalance + 0.01) return { success: false, error: "Amount exceeds invoice balance" };
+      // ALLOW overpayment: credit notes can be allocated to paid invoices,
+      // creating negative balance (customer credit) that can be used on future invoices.
 
       // Deduct from credit note
       creditNotes[cnIdx] = {
@@ -3343,8 +3346,8 @@ export const dataService = {
         updatedAt: new Date().toISOString(),
       };
 
-      // Add to invoice
-      const newBalance = Math.max(0, currentBalance - amount);
+      // Add to invoice (allow negative balance = overpayment credit)
+      const newBalance = currentBalance - amount;
       invoices[invIdx] = {
         ...inv,
         balanceDue: newBalance,

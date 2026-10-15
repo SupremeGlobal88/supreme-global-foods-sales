@@ -1689,7 +1689,7 @@ export default function InvoicesPage() {
                     {availableCns.map((cn: any) => (
                       <div
                         key={cn.id}
-                        onClick={() => { setAllocCnId(cn.id); setAllocOverpaymentFromId(0); const maxAmt = Math.min(cn.remainingAmount || 0, allocBal); setAllocAmt(maxAmt > 0 ? maxAmt.toFixed(2) : ""); }}
+                        onClick={() => { setAllocCnId(cn.id); setAllocOverpaymentFromId(0); const maxAmt = allocBal > 0.01 ? Math.min(cn.remainingAmount || 0, allocBal) : (cn.remainingAmount || 0); setAllocAmt(maxAmt > 0 ? maxAmt.toFixed(2) : ""); }}
                         className={`p-3 rounded-lg cursor-pointer transition-all ${allocCnId == cn.id ? "ring-1 ring-[#D4A843]" : ""}`}
                         style={{ backgroundColor: allocCnId == cn.id ? "rgba(212,168,67,0.08)" : "#0A0A0B", border: "1px solid #222324" }}
                       >

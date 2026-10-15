@@ -1748,18 +1748,19 @@ export function repairInvoiceCompanies(): { repaired: number } {
 }
 
 /** Repair purchase order company based on linked corporate customer.
- *  Corporate customers have company="recircle"; others default to "sgf". */
+ *  Corporate customers have company="recircle"; others default to "sgf".
+ *  ALWAYS derives from corporate customer — the customer is source of truth. */
 function repairPurchaseOrderCompany(po: any): any {
   if (!po) return po;
-  // Already has a company that looks correct
-  if (po.company === "recircle" || po.company === "sgf") return po;
-  // Try to derive from linked corporate customer
+  // Derive from linked corporate customer (source of truth)
   if (po.corporateCustomerId) {
     const cust = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
-    if (cust?.company) return { ...po, company: cust.company };
+    if (cust?.company) {
+      return po.company === cust.company ? po : { ...po, company: cust.company };
+    }
   }
-  // Default fallback
-  return { ...po, company: "sgf" };
+  // No corporate customer linked — ensure fallback is "sgf"
+  return po.company === "sgf" ? po : { ...po, company: "sgf" };
 }
 
 /** Repair ALL purchase orders on startup. */

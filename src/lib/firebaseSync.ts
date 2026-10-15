@@ -844,10 +844,15 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
         const fbItem = incomingMap.get(k)!;
         const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
+        // SAFETY: If either timestamp is invalid (NaN), treat it as 0 so the
+        // valid timestamp wins. This prevents Firebase timestamp objects from
+        // causing the merge to incorrectly pick stale cloud data.
+        const localValid = !isNaN(localUpdated) ? localUpdated : 0;
+        const fbValid = !isNaN(fbUpdated) ? fbUpdated : 0;
         // Use the newer version as the base
-        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
+        const mergedItem = localValid >= fbValid ? { ...item } : { ...fbItem };
         // Always enrich with local properties that are missing/null in the winner
-        const loser = localUpdated >= fbUpdated ? fbItem : item;
+        const loser = localValid >= fbValid ? fbItem : item;
         for (const prop of Object.keys(loser)) {
           if (loser[prop] != null && mergedItem[prop] == null) {
             mergedItem[prop] = loser[prop];

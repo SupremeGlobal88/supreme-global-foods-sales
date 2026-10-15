@@ -3300,13 +3300,16 @@ export const dataService = {
       // apply the credit. For unpaid invoices this reduces balance due.
       // For paid invoices this creates overpayment credit (negative balance)
       // which can be transferred to other invoices.
+      console.log("[createCreditNote] auto-allocate check:", { updatedInvoice: !!updatedInvoice, creditTotal, invoiceId: data.invoiceId });
       if (updatedInvoice && creditTotal > 0.01 && data.invoiceId) {
         const invIdx = invoices.findIndex((i) => i.id == data.invoiceId);
+        console.log("[createCreditNote] invoice found:", invIdx >= 0, "invoiceId:", data.invoiceId);
         if (invIdx >= 0) {
           const inv = invoices[invIdx];
           const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
           // Unpaid: allocate up to balance. Paid: allocate full amount (overpayment).
           const allocAmount = currentBalance > 0.01 ? Math.min(creditTotal, currentBalance) : creditTotal;
+          console.log("[createCreditNote] balance:", currentBalance, "allocAmount:", allocAmount);
           if (allocAmount > 0.01) {
             // Deduct from credit note
             const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNote.id);
@@ -3330,8 +3333,11 @@ export const dataService = {
             updatedInvoice = invoices[invIdx];
             saveItem("sgf_creditNotes", creditNotes);
             saveItem("sgf_invoices", invoices);
+            console.log("[createCreditNote] auto-allocated:", { allocAmount, newBalance, remainingAmount: creditNotes[cnIdx]?.remainingAmount });
           }
         }
+      } else {
+        console.log("[createCreditNote] auto-allocate SKIPPED:", { hasUpdatedInvoice: !!updatedInvoice, creditTotal, hasInvoiceId: !!data.invoiceId });
       }
 
       // Return stock to inventory for each credited line item
@@ -3355,6 +3361,7 @@ export const dataService = {
       return { creditNote: finalCreditNote, updatedInvoice };
     },
     allocateCredit: ({ creditNoteId, invoiceId, amount }: { creditNoteId: number; invoiceId: number; amount: number }) => {
+      console.log("[allocateCredit] called:", { creditNoteId, invoiceId, amount });
       const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNoteId);
       if (cnIdx < 0) return { success: false, error: "Credit note not found" };
       const cn = creditNotes[cnIdx];
@@ -3392,6 +3399,7 @@ export const dataService = {
       saveItem("sgf_creditNotes", creditNotes);
       saveItem("sgf_invoices", invoices);
 
+      console.log("[allocateCredit] success:", { newBalance, remainingAmount: creditNotes[cnIdx].remainingAmount });
       logAudit("UPDATE", "creditNote", creditNoteId, `Allocated R${amount.toFixed(2)} to invoice ${invoiceId}. Remaining: R${(remaining - amount).toFixed(2)}`);
       return { success: true, creditNote: creditNotes[cnIdx], invoice: invoices[invIdx] };
     },

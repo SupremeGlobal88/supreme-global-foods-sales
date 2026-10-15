@@ -112,12 +112,9 @@ export default function InvoicesPage() {
   });
   const createCreditNote = trpc.invoice.createCreditNote.useMutation({
     onSuccess: async () => {
-      // Do NOT call reloadFromStorage() here — it creates a race condition.
-      // The subscription's handleReceived already calls reloadFromStorage()
-      // after merging Firebase data with localStorage. Calling it again
-      // here can load stale data before the subscription has processed
-      // the pushInvoice update.
-      // Just invalidate the queries — the re-fetch will sync from cloud.
+      // Force reload from localStorage to ensure the UI sees the latest
+      // credit note allocations before Firebase sync propagates.
+      reloadFromStorage();
       await utils.invoice.list.invalidate();
       await utils.invoice.getCreditNotes.invalidate();
       setShowCreditNote(false);
@@ -136,6 +133,7 @@ export default function InvoicesPage() {
         alert("Credit allocation failed: " + (data?.error || "Unknown error"));
         return;
       }
+      reloadFromStorage();
       await utils.invoice.list.invalidate();
       await utils.invoice.getCreditNotes.invalidate();
       closeAllocCredit();
@@ -148,6 +146,7 @@ export default function InvoicesPage() {
         alert("Overpayment credit failed: " + (data?.error || "Unknown error"));
         return;
       }
+      reloadFromStorage();
       await utils.invoice.list.invalidate();
       closeAllocCredit();
     },

@@ -82,7 +82,7 @@ const RECIRCLE_CONFIG: CompanyConfig = {
   address: {
     street: "28 Nagington Road",
     city: "Wadeville",
-    province: "Germiston",
+    province: "Gauteng",
     postalCode: "1428",
     country: "South Africa",
   },

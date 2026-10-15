@@ -1720,12 +1720,12 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
 }
 
 /** Force-correct invoice company based on invoice number prefix.
- *  SGF* -> "sgf", RC-* -> "recircle". Prevents badge/number mismatches. */
+ *  SGF* -> "sgf", RC* -> "recircle". Prevents badge/number mismatches. */
 function repairInvoiceCompany(inv: any): any {
   if (!inv || !inv.invoiceNumber) return inv;
   const num = inv.invoiceNumber;
   if (num.startsWith("SGF")) return { ...inv, company: "sgf" };
-  if (num.startsWith("RC-")) return { ...inv, company: "recircle" };
+  if (num.startsWith("RC")) return { ...inv, company: "recircle" };
   return inv;
 }
 

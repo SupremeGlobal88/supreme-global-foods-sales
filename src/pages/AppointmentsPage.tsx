@@ -6,7 +6,7 @@ import {
   Plus, X, MapPin, Clock, CheckCircle, Calendar,
   Navigation, User, Filter, ExternalLink, LogIn, LogOut,
   AlertTriangle, Phone, Briefcase, Search, ChevronDown, ChevronUp,
-  Edit, Trash2, Bell, RotateCcw, XCircle, ClipboardList, Pencil,
+  Edit, Trash2, Bell, RotateCcw, XCircle, ClipboardList, Pencil, Download,
 } from "lucide-react";
 
 // ─── Appointment Type Options ───
@@ -378,6 +378,79 @@ export default function AppointmentsPage() {
     const bDate = b.lastOrderDate || b.lastVisitDate || b.createdAt || "";
     return new Date(bDate).getTime() - new Date(aDate).getTime();
   });
+
+  // ===================== EXPORT REPORT =====================
+  function handleExportReport() {
+    const headers = ["Sales Rep", "Category", "Appointment Type", "Title", "Customer", "Date", "Status", "Notes", "Outcome"];
+    const rows: string[][] = [];
+
+    // Visits (checkins)
+    const allCheckins = canViewAll
+      ? (filterRep === "all" ? (checkins || []) : (checkins || []).filter((ci: any) => ci.salesRepName === filterRep))
+      : (checkins || []).filter((ci: any) => ci.salesRepName === myRepName);
+    for (const ci of allCheckins) {
+      rows.push([
+        ci.salesRepName || "",
+        "Visit",
+        ci.appointmentType || "site_visit",
+        ci.title || "",
+        ci.customer?.name || ci.location || "",
+        ci.createdAt ? new Date(ci.createdAt).toLocaleString("en-ZA") : "",
+        ci.status || "",
+        (ci.notes || "").replace(/\n/g, " "),
+        ci.outcome || "",
+      ]);
+    }
+
+    // Scheduled appointments
+    const allAppointments = canViewAll
+      ? (filterRep === "all" ? (appointments || []) : (appointments || []).filter((a: any) => a.salesRepName === filterRep))
+      : (appointments || []).filter((a: any) => a.salesRepName === myRepName);
+    for (const a of allAppointments) {
+      rows.push([
+        a.salesRepName || "",
+        "Scheduled",
+        a.appointmentType || "",
+        a.title || "",
+        a.customer?.name || "",
+        a.appointmentDate ? new Date(a.appointmentDate).toLocaleString("en-ZA") : "",
+        a.status || "",
+        (a.notes || "").replace(/\n/g, " "),
+        a.outcome || "",
+      ]);
+    }
+
+    // Follow-ups
+    const allFollowUps = canViewAll
+      ? (filterRep === "all" ? (followUpActions || []) : (followUpActions || []).filter((fu: any) => fu.salesRepName === filterRep))
+      : (followUpActions || []).filter((fu: any) => fu.salesRepName === myRepName);
+    for (const fu of allFollowUps) {
+      rows.push([
+        fu.salesRepName || "",
+        "Follow-up",
+        fu.actionType || "",
+        fu.title || "",
+        fu.customer?.name || "",
+        fu.createdAt ? new Date(fu.createdAt).toLocaleString("en-ZA") : "",
+        fu.status || "",
+        (fu.notes || "").replace(/\n/g, " "),
+        fu.outcome || "",
+      ]);
+    }
+
+    // Sort by date descending
+    rows.sort((a, b) => new Date(b[5] || 0).getTime() - new Date(a[5] || 0).getTime());
+
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = [headers.join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Appointments_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // ===================== GEO AUDIT CLUSTERING =====================
 
@@ -888,17 +961,29 @@ export default function AppointmentsPage() {
         ))}
       </div>
 
-      {/* Sales Rep Filter — Admin/Manager Only */}
+      {/* Sales Rep Filter + Export — Admin/Manager Only */}
       {canViewAll && (
         <div className="card-surface p-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Filter className="w-4 h-4 text-[#8A8B8C]" />
             <label className="label-text">Filter by Sales Rep:</label>
             <select value={filterRep} onChange={(e) => setFilterRep(e.target.value)} className="input-field w-auto">
               <option value="all">All Sales Reps</option>
               {(salesReps || []).map((rep: string) => <option key={rep} value={rep}>{rep}</option>)}
             </select>
+            <div className="flex-1" />
+            <button onClick={handleExportReport} className="btn-gold flex items-center gap-2 text-sm px-3 py-1.5">
+              <Download className="w-4 h-4" /> Export Report
+            </button>
           </div>
+        </div>
+      )}
+      {/* Export for Sales Reps (no filter row shown) */}
+      {!canViewAll && (
+        <div className="flex justify-end">
+          <button onClick={handleExportReport} className="btn-gold flex items-center gap-2 text-sm px-3 py-1.5">
+            <Download className="w-4 h-4" /> Export Report
+          </button>
         </div>
       )}
 

@@ -1205,7 +1205,9 @@ export default function InvoicesPage() {
                               </div>
                               {paid > 0 && <div className="flex justify-between"><span className="text-[#8A8B8C]">Paid:</span><span className="text-[#4ADE80]">R {paid.toFixed(2)}</span></div>}
                               {(() => {
-                                const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+                                const allocCredits = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+                                const lineCredits = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+                                const creditsApplied = allocCredits + lineCredits;
                                 return creditsApplied > 0 ? (
                                   <div className="flex justify-between">
                                     <span className="text-[#8A8B8C]">Credits Applied:</span>

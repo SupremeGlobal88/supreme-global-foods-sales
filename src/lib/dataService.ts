@@ -3296,48 +3296,26 @@ export const dataService = {
 
       updatedInvoice = findAndUpdateInvoice();
 
-      // AUTO-ALLOCATE: when credit note is created from an invoice, automatically
-      // apply the credit. For unpaid invoices this reduces balance due.
-      // For paid invoices this creates overpayment credit (negative balance)
-      // which can be transferred to other invoices.
-      console.log("[createCreditNote] auto-allocate check:", { updatedInvoice: !!updatedInvoice, creditTotal, invoiceId: data.invoiceId });
+      // REDUCE ORIGINAL INVOICE BALANCE: when a credit note is created from an
+      // invoice, reduce that invoice's balance by the credit amount so the
+      // customer owes less. The credit note keeps its FULL remainingAmount so
+      // it can be allocated to OTHER invoices later.
       if (updatedInvoice && creditTotal > 0.01 && data.invoiceId) {
         const invIdx = invoices.findIndex((i) => i.id == data.invoiceId);
-        console.log("[createCreditNote] invoice found:", invIdx >= 0, "invoiceId:", data.invoiceId);
         if (invIdx >= 0) {
           const inv = invoices[invIdx];
           const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
-          // Unpaid: allocate up to balance. Paid: allocate full amount (overpayment).
-          const allocAmount = currentBalance > 0.01 ? Math.min(creditTotal, currentBalance) : creditTotal;
-          console.log("[createCreditNote] balance:", currentBalance, "allocAmount:", allocAmount);
-          if (allocAmount > 0.01) {
-            // Deduct from credit note
-            const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNote.id);
-            if (cnIdx >= 0) {
-              creditNotes[cnIdx] = {
-                ...creditNote,
-                remainingAmount: Math.max(0, creditTotal - allocAmount),
-                allocations: [{ invoiceId: data.invoiceId, amount: allocAmount, allocatedAt: new Date().toISOString() }],
-                updatedAt: new Date().toISOString(),
-              };
-            }
-            // Deduct from invoice (allow negative balance = overpayment credit)
-            const newBalance = currentBalance - allocAmount;
-            invoices[invIdx] = {
-              ...inv,
-              balanceDue: newBalance,
-              creditAllocations: [...(inv.creditAllocations || []), { creditNoteId: creditNote.id, amount: allocAmount, allocatedAt: new Date().toISOString() }],
-              status: newBalance <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
-              updatedAt: new Date().toISOString(),
-            };
-            updatedInvoice = invoices[invIdx];
-            saveItem("sgf_creditNotes", creditNotes);
-            saveItem("sgf_invoices", invoices);
-            console.log("[createCreditNote] auto-allocated:", { allocAmount, newBalance, remainingAmount: creditNotes[cnIdx]?.remainingAmount });
-          }
+          // Reduce invoice balance by full credit amount (allow negative = overpayment)
+          const newBalance = currentBalance - creditTotal;
+          invoices[invIdx] = {
+            ...inv,
+            balanceDue: newBalance,
+            status: newBalance <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+            updatedAt: new Date().toISOString(),
+          };
+          updatedInvoice = invoices[invIdx];
+          saveItem("sgf_invoices", invoices);
         }
-      } else {
-        console.log("[createCreditNote] auto-allocate SKIPPED:", { hasUpdatedInvoice: !!updatedInvoice, creditTotal, hasInvoiceId: !!data.invoiceId });
       }
 
       // Return stock to inventory for each credited line item
@@ -3472,28 +3450,24 @@ export const dataService = {
 
         if (cn.invoiceId) {
           // Use loose equality (==) because Firebase may convert number IDs to strings
-          const inv = invoices.find((i) => i.id == cn.invoiceId);
-          if (inv) {
-            // OLD credit notes (no allocations): restore balance to original invoice
-            if (!hasAllocations) {
-              const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
-              if (!isSampleInvoice) {
-                const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
-                inv.balanceDue = currentBal + (cn.amount || 0);
-                const total = Number(inv.total || inv.totalAmount || 0);
-                const paid = Number(inv.amountPaid || 0);
-                if (inv.balanceDue >= total - 0.01) {
-                  inv.status = "sent";
-                } else if (inv.balanceDue > 0.01) {
-                  inv.status = "partially_paid";
-                } else {
-                  inv.status = "paid";
-                }
-              }
+          const invIdx = invoices.findIndex((i) => i.id == cn.invoiceId);
+          if (invIdx >= 0) {
+            const inv = invoices[invIdx];
+            // ALWAYS restore balance to original invoice when credit note is voided
+            const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+            if (!isSampleInvoice) {
+              const currentBal = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
+              const newBal = currentBal + (cn.amount || 0);
+              invoices[invIdx] = {
+                ...inv,
+                balanceDue: newBal,
+                status: newBal <= 0.01 ? "paid" : (inv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+                updatedAt: new Date().toISOString(),
+              };
             }
             // Remove credit note ID from invoice tracking
-            if (inv.creditNotes) {
-              inv.creditNotes = inv.creditNotes.filter((cnId: any) => cnId != cn.id);
+            if (invoices[invIdx].creditNotes) {
+              invoices[invIdx].creditNotes = invoices[invIdx].creditNotes.filter((cnId: any) => cnId != cn.id);
             }
             // Remove credited lines for this credit note
             if (inv.creditedLines) {

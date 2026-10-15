@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
-import { reloadFromStorage, repairInvoiceCompanies } from "@/lib/dataService";
+import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -93,6 +93,7 @@ export default function App() {
     // Load local data FIRST so the app renders immediately with cached data
     reloadFromStorage();
     repairInvoiceCompanies();
+    repairPurchaseOrderCompanies();
 
     // Cloud-first: Pull from cloud in BACKGROUND without blocking UI
     (async () => {

@@ -1747,6 +1747,38 @@ export function repairInvoiceCompanies(): { repaired: number } {
   return { repaired };
 }
 
+/** Repair purchase order company based on linked corporate customer.
+ *  Corporate customers have company="recircle"; others default to "sgf". */
+function repairPurchaseOrderCompany(po: any): any {
+  if (!po) return po;
+  // Already has a company that looks correct
+  if (po.company === "recircle" || po.company === "sgf") return po;
+  // Try to derive from linked corporate customer
+  if (po.corporateCustomerId) {
+    const cust = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+    if (cust?.company) return { ...po, company: cust.company };
+  }
+  // Default fallback
+  return { ...po, company: "sgf" };
+}
+
+/** Repair ALL purchase orders on startup. */
+export function repairPurchaseOrderCompanies(): { repaired: number } {
+  let repaired = 0;
+  for (let i = 0; i < purchaseOrders.length; i++) {
+    const fixed = repairPurchaseOrderCompany(purchaseOrders[i]);
+    if (fixed.company !== purchaseOrders[i].company) {
+      purchaseOrders[i] = fixed;
+      repaired++;
+    }
+  }
+  if (repaired > 0) {
+    saveItem("sgf_purchaseOrders", purchaseOrders);
+    console.log(`[repairPurchaseOrderCompanies] Fixed ${repaired} purchase orders with mismatched company field`);
+  }
+  return { repaired };
+}
+
 /** Generate an invoice for an existing order that doesn't have one.
  *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {

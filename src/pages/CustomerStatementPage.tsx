@@ -191,6 +191,30 @@ export default function CustomerStatementPage() {
         });
       }
 
+      // Credit note allocation rows attached to this invoice
+      const creditAllocations = inv.creditAllocations || [];
+      if (creditAllocations.length > 0) {
+        for (const ca of creditAllocations) {
+          const allocAmt = Number(ca.amount || 0);
+          if (allocAmt <= 0) continue;
+          // Find the credit note details for the reference
+          const cn = custCreditNotes.find((c: any) => c.id == ca.creditNoteId);
+          const cnRef = cn?.creditNoteNumber || `CN-${ca.creditNoteId}`;
+          group.push({
+            date: ca.allocatedAt || inv.invoiceDate || inv.createdAt,
+            ref: `↳ ${invRef}`,
+            parentRef: invRef,
+            desc: `Credit Note ${cnRef} applied to ${invRef}`,
+            terms: "",
+            debit: 0,
+            credit: allocAmt,
+            source: "app",
+            type: "credit_allocation",
+            sortDate: new Date(ca.allocatedAt || inv.invoiceDate || inv.createdAt).getTime(),
+          });
+        }
+      }
+
       invoiceGroups.push(group);
     }
 
@@ -199,33 +223,35 @@ export default function CustomerStatementPage() {
 
     // Flatten groups and compute running balance
     for (const group of invoiceGroups) {
-      // Sort within group: invoice first, then payments by date
+      // Sort within group: invoice first, then payments/credits by date
       const invoiceRow = group.find((r: any) => r.type === "invoice");
-      const paymentRows = group.filter((r: any) => r.type === "payment").sort((a: any, b: any) => a.sortDate - b.sortDate);
+      const creditRows = group.filter((r: any) => r.type === "payment" || r.type === "credit_allocation").sort((a: any, b: any) => a.sortDate - b.sortDate);
       
       // Add invoice
       bal += invoiceRow.debit;
       result.push({ ...invoiceRow, balance: bal });
       
-      // Add payments under it
-      for (const p of paymentRows) {
+      // Add payments and credit allocations under it
+      for (const p of creditRows) {
         bal -= p.credit;
         result.push({ ...p, balance: bal });
       }
     }
 
-    // Add credit notes at the end (sorted by date)
-    const creditNoteRows = custCreditNotes.map((cn: any) => ({
-      date: cn.createdAt,
-      ref: cn.creditNoteNumber || "CN",
-      desc: `Credit Note — ${cn.reason || "Adjustment"}${(cn.remainingAmount !== undefined && cn.remainingAmount > 0) ? ` (R ${cn.remainingAmount.toFixed(2)} remaining)` : ''}`,
-      terms: "",
-      debit: 0,
-      credit: Number(cn.amount || 0),
-      source: "app",
-      type: "credit_note",
-      sortDate: new Date(cn.createdAt).getTime(),
-    })).sort((a: any, b: any) => a.sortDate - b.sortDate);
+    // Add UNALLOCATED credit notes at the end only (sorted by date)
+    const creditNoteRows = custCreditNotes
+      .filter((cn: any) => (cn.remainingAmount || 0) > 0.01)
+      .map((cn: any) => ({
+        date: cn.createdAt,
+        ref: cn.creditNoteNumber || "CN",
+        desc: `Credit Note — ${cn.reason || "Adjustment"} (R ${(cn.remainingAmount || 0).toFixed(2)} remaining)`,
+        terms: "",
+        debit: 0,
+        credit: Number(cn.remainingAmount || 0),
+        source: "app",
+        type: "credit_note",
+        sortDate: new Date(cn.createdAt).getTime(),
+      })).sort((a: any, b: any) => a.sortDate - b.sortDate);
 
     for (const cn of creditNoteRows) {
       bal -= cn.credit;

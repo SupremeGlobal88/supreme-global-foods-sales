@@ -1361,7 +1361,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("sgf:quotesRepaired", (e: any) => {
     const count = e.detail?.count || 0;
     if (count > 0 && isFirebaseReady()) {
-      console.log(`[FirebaseSync] Pushing repaired quotes to cloud...`);
+      console.log("[FirebaseSync] Pushing repaired quotes to cloud...");
       try {
         const allOrdersRaw = getStorageItem("sgf_orders");
         const allOrders = allOrdersRaw ? JSON.parse(allOrdersRaw) : [];
@@ -1382,7 +1382,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("sgf:invoicesCleaned", (e: any) => {
     const count = e.detail?.removed || 0;
     if (count > 0 && isFirebaseReady()) {
-      console.log(`[FirebaseSync] Pushing cleaned invoices to cloud...`);
+      console.log("[FirebaseSync] Pushing cleaned invoices to cloud...");
       try {
         const allInvoicesRaw = getStorageItem("sgf_invoices");
         const allInvoices = allInvoicesRaw ? JSON.parse(allInvoicesRaw) : [];
@@ -1518,4 +1518,4 @@ export function initAutoSync(): () => void {
 
   return autoSyncCleanup;
 }
-// Built: 2026-07-07T16:33:54Z
+// Built: 2026-10-16T12:00:00Z — Rebuild trigger: credit allocation fixes verified

@@ -377,167 +377,129 @@ function load() {
         window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.error("[load] Invoice cleanup failed:", e);
+  }
+
+  // ─── CORPORATE MODULE DATA ───
+  const cc = safeLoadArray("sgf_corporateCustomers");
+  if (cc) corporateCustomers = cc;
+  const po = safeLoadArray("sgf_purchaseOrders");
+  if (po) purchaseOrders = po;
+  const br = safeLoadArray("sgf_barrels");
+  if (br) barrels = br;
+  const cocs = safeLoadArray("sgf_certificatesOfCompliance");
+  if (cocs) certificatesOfCompliance = cocs;
+  const pl = safeLoadArray("sgf_packingListLines");
+  if (pl) packingListLines = pl;
 }
 
-function saveItem(key: string, data: any) {
+// Forward-declare safeLoadArray at module level so load() can use it for corporate data
+function safeLoadArray(key: string): any[] | null {
   try {
-    setStorageItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error("[saveItem] FAILED:", key, e);
+    const raw = getStorageItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
   }
 }
 
-// ─── HELPERS ─────────────────────────────────────────────────
-
-function generateId(arr: any[]): number {
-  if (!arr || arr.length === 0) return 1;
-  return Math.max(...arr.map((x) => Number(x.id) || 0)) + 1;
+function saveItem(key: string, data: any) {
+  try { setStorageItem(key, JSON.stringify(data)); } catch { /* ignore */ }
 }
 
-function getNextOrderNumber(): string {
-  const prefix = "SGF";
-  const nums = orders
-    .map((o) => {
-      const m = String(o.orderNumber || "").match(/SGF(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 2501;
-  return `${prefix}${next}`;
+/** Reload all data from storage into in-memory arrays and trigger events */
+export function reloadFromStorage(): void {
+  load();
+  // Fire data-ready events so Firebase sync, WebSocket push, and UI pick up the new state
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("sgf:dataReloaded"));
+    window.dispatchEvent(new CustomEvent("sgf:syncReady"));
+    window.dispatchEvent(new CustomEvent("sgf:invoiceUpdated"));
+  }
 }
 
-function getNextQuoteNumber(): string {
-  const prefix = "QTE-";
-  const nums = orders
-    .map((o) => {
-      const m = String(o.orderNumber || "").match(/QTE-(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1001;
-  return `${prefix}${next}`;
+// ─── DEDUPLICATION ENGINE ──────────────────────────────────────
+/**
+ * Deep-dedup helper: compares two objects by all shared primitive keys.
+ * Returns true if every shared key has an identical value (=== for primitives).
+ */
+function deepEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a == null || b == null) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  // Use the smaller key-set for comparison so we don't fail on missing keys
+  const keysToCheck = aKeys.length <= bKeys.length ? aKeys : bKeys;
+  for (const key of keysToCheck) {
+    const aVal = a[key];
+    const bVal = b[key];
+    // If both values are objects, recurse
+    if (typeof aVal === "object" && typeof bVal === "object" && aVal !== null && bVal !== null) {
+      if (!deepEqual(aVal, bVal)) return false;
+    } else if (aVal !== bVal) {
+      return false;
+    }
+  }
+  return true;
 }
 
-function getNextInvoiceNumber(): string {
-  const nums = invoices
-    .map((i) => {
-      const m = String(i.invoiceNumber || "").match(/SGF(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 2501;
-  return `SGF${next}`;
-}
-
-function getNextReceiptNumber(): string {
-  const nums = receipts
-    .map((r) => {
-      const m = String(r.receiptNumber || "").match(/RC(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1001;
-  return `RC${String(next).padStart(4, "0")}`;
-}
-
-function getNextCreditNoteNumber(): string {
-  const nums = creditNotes
-    .map((cn) => {
-      const m = String(cn.creditNoteNumber || "").match(/CN(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1001;
-  return `CN${String(next).padStart(4, "0")}`;
-}
-
-function getNextInvoiceNumberForCompany(company: string): string {
-  const prefix = company === "rc" ? "RC" : "SGF";
-  const nums = invoices
-    .filter((i) => (i.company || "sgf") === company)
-    .map((i) => {
-      const m = String(i.invoiceNumber || "").match(new RegExp(`${prefix}(\\d+)`));
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : company === "rc" ? 1001 : 2501;
-  return `${prefix}${next}`;
-}
-
-function getNextDeliveryNoteNumber(): string {
-  const nums = orders
-    .map((o) => {
-      const m = String(o.deliveryNoteNumber || "").match(/DN-(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1001;
-  return `DN-${next}`;
-}
-
-function getNextPONumber(): string {
-  const nums = purchaseOrders
-    .map((po) => {
-      const m = String(po.poNumber || "").match(/PO-(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1001;
-  return `PO-${next}`;
-}
-
-function deduplicateData<T extends { id?: number | string }>(arr: T[]): T[] {
-  const seen = new Set<string | number>();
+/**
+ * Remove duplicate items from an array using deep equality.
+ * Keeps the first occurrence and discards subsequent duplicates.
+ */
+function deduplicateArray(arr: any[]): any[] {
+  const seen: any[] = [];
   return arr.filter((item) => {
-    if (item.id == null) return true; // keep items without id
-    if (seen.has(item.id)) return false;
-    seen.add(item.id);
+    if (seen.some((s) => deepEqual(s, item))) return false;
+    seen.push(item);
     return true;
   });
 }
 
-function deduplicateAll() {
-  orders = deduplicateData(orders);
-  invoices = deduplicateData(invoices);
-  receipts = deduplicateData(receipts);
-  creditNotes = deduplicateData(creditNotes);
-  appointments = deduplicateData(appointments);
-  checkins = deduplicateData(checkins);
-  followUps = deduplicateData(followUps);
-  followUpActions = deduplicateData(followUpActions);
-  specialPrices = deduplicateData(specialPrices);
-  collectionNotes = deduplicateData(collectionNotes);
-  collectionPromises = deduplicateData(collectionPromises);
-  accountHolds = deduplicateData(accountHolds);
-  auditLog = deduplicateData(auditLog);
-}
-
-/** Remove duplicate receipts for the same invoice — keep the most recent. */
-function deduplicateReceiptsForInvoice(invoiceId: number): void {
-  const invoiceReceipts = receipts.filter((r) => r.invoiceId == invoiceId);
-  if (invoiceReceipts.length <= 1) return;
-
-  // Sort by date descending (most recent first)
-  invoiceReceipts.sort((a, b) =>
-    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-  );
-
-  const keep = invoiceReceipts[0];
-  const toRemove = invoiceReceipts.slice(1);
-
-  for (const dup of toRemove) {
-    const idx = receipts.findIndex((r) => r.id === dup.id);
-    if (idx >= 0) receipts.splice(idx, 1);
+/**
+ * Deduplicate all transaction data arrays.
+ * Called after every data reload and after Firebase sync.
+ */
+function deduplicateAll(): void {
+  const beforeOrders = orders.length;
+  orders = deduplicateArray(orders);
+  if (orders.length !== beforeOrders) {
+    console.log(`[Deduplicate] Removed ${beforeOrders - orders.length} duplicate orders`);
+    saveItem("sgf_orders", orders);
   }
 
-  console.log(`[DedupReceipts] Invoice ${invoiceId}: kept ${keep.receiptNumber}, removed ${toRemove.length} duplicate(s)`);
-  saveItem("sgf_receipts", receipts);
+  const beforeInvoices = invoices.length;
+  invoices = deduplicateArray(invoices);
+  if (invoices.length !== beforeInvoices) {
+    console.log(`[Deduplicate] Removed ${beforeInvoices - invoices.length} duplicate invoices`);
+    saveItem("sgf_invoices", invoices);
+  }
+
+  const beforeReceipts = receipts.length;
+  receipts = deduplicateArray(receipts);
+  if (receipts.length !== beforeReceipts) {
+    console.log(`[Deduplicate] Removed ${beforeReceipts - receipts.length} duplicate receipts`);
+    saveItem("sgf_receipts", receipts);
+  }
+
+  const beforeCreditNotes = creditNotes.length;
+  creditNotes = deduplicateArray(creditNotes);
+  if (creditNotes.length !== beforeCreditNotes) {
+    console.log(`[Deduplicate] Removed ${beforeCreditNotes - creditNotes.length} duplicate credit notes`);
+    saveItem("sgf_creditNotes", creditNotes);
+  }
 }
 
-/** Repair stale/duplicate credit allocations on invoices.
- *  Reconstructs missing creditAllocations from credit note data and fixes balanceDue.
- *  Called at startup and on data reload. */
+// ─── CREDIT NOTE ALLOCATION REPAIR ─────────────────────────────
+/**
+ * Reconstruct invoice.creditAllocations from credit note allocation records.
+ * Fixes invoices that lost their creditAllocations during sync or editing.
+ * Also recalculates balanceDue and status.
+ * Returns count of invoices fixed.
+ */
 function repairCreditAllocations(): number {
   let fixed = 0;
   if (!invoices || invoices.length === 0) return 0;
@@ -546,7 +508,7 @@ function repairCreditAllocations(): number {
     const inv = invoices[i];
     const existingCredits = inv.creditAllocations || [];
 
-    // Reconstruct expected creditAllocations from credit note data
+    // Reconstruct expected allocations from credit note records
     const expectedCredits: any[] = [];
     for (const cn of creditNotes) {
       for (const alloc of (cn.allocations || [])) {
@@ -560,11 +522,13 @@ function repairCreditAllocations(): number {
       }
     }
 
-    // Clean up existing: remove voided credits and deduplicate
+    // Remove allocations for voided credit notes
     const validExisting = existingCredits.filter((ca: any) => {
       const cn = creditNotes.find((c) => c.id == ca.creditNoteId);
       return cn && !cn.voided;
     });
+
+    // Deduplicate by creditNoteId (keep first)
     const seen = new Set();
     const dedupedExisting = validExisting.filter((ca: any) => {
       if (seen.has(ca.creditNoteId)) return false;
@@ -572,14 +536,12 @@ function repairCreditAllocations(): number {
       return true;
     });
 
-    // Check if invoice needs fixing
-    const needsFix =
-      dedupedExisting.length !== expectedCredits.length ||
+    // Check if they match
+    const needsFix = dedupedExisting.length !== expectedCredits.length ||
       !expectedCredits.every((ec: any) =>
-        dedupedExisting.some(
-          (ic: any) =>
-            ic.creditNoteId == ec.creditNoteId &&
-            Math.abs((ic.amount || 0) - (ec.amount || 0)) < 0.01
+        dedupedExisting.some((ic: any) =>
+          ic.creditNoteId == ec.creditNoteId &&
+          Math.abs((ic.amount || 0) - (ec.amount || 0)) < 0.01
         )
       );
 
@@ -587,6 +549,7 @@ function repairCreditAllocations(): number {
       const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
       const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
       const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
+
       let newBalance = invTotal - amountPaid - totalAlloc;
       newBalance = Math.round(newBalance * 100) / 100;
 
@@ -596,170 +559,276 @@ function repairCreditAllocations(): number {
         creditAllocations: expectedCredits,
         status: newBalance <= 0.01
           ? "paid"
-          : amountPaid > 0.01
-            ? "partially_paid"
-            : inv.status === "paid"
-              ? "sent"
-              : inv.status,
+          : (amountPaid > 0.01 ? "partially_paid" : (inv.status === "paid" ? "sent" : inv.status)),
         updatedAt: new Date().toISOString(),
       };
       fixed++;
     }
   }
 
-  if (fixed > 0) saveItem("sgf_invoices", invoices);
+  if (fixed > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
   return fixed;
 }
 
-/** Reload data arrays from localStorage.
- *  Call this after any external write to localStorage (e.g. Firebase sync)
- *  so the in-memory arrays stay in sync with storage. */
-export function reloadFromStorage(keys?: string[]) {
-  try {
-    function safeLoad(key: string): any[] | null {
-      try {
-        const raw = getStorageItem(key);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : null;
-      } catch { return null; }
+// ─── SAGE INVOICE DATE FIX ─────────────────────────────────────
+/**
+ * Fix Sage-exported invoices that have null/invalid dates.
+ * Sets invoiceDate to today and dueDate based on paymentTerms.
+ */
+export function fixSageInvoiceDates(): number {
+  let fixed = 0;
+  const now = new Date();
+  for (let i = 0; i < invoices.length; i++) {
+    const inv = invoices[i];
+    const hasValidDate = inv.invoiceDate && !isNaN(new Date(inv.invoiceDate).getTime());
+    if (!hasValidDate) {
+      const terms = inv.paymentTerms || "30_days";
+      const days = terms === "30_days" ? 30 : terms === "14_days" ? 14 : terms === "7_days" ? 7 : 0;
+      const due = new Date(now);
+      due.setDate(due.getDate() + days);
+
+      invoices[i] = {
+        ...inv,
+        invoiceDate: now.toISOString(),
+        dueDate: due.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+      fixed++;
     }
-
-    const keysToReload = keys || [
-      "sgf_customers", "sgf_products", "sgf_orders", "sgf_invoices",
-      "sgf_appointments", "sgf_checkins", "sgf_specialPrices", "sgf_auditLog",
-      "sgf_followUps", "sgf_followUpActions", "sgf_collectionNotes",
-      "sgf_collectionPromises", "sgf_accountHolds", "sgf_receipts",
-      "sgf_creditNotes", "sgf_users", "sgf_salesReps",
-      "sgf_corporateCustomers", "sgf_purchaseOrders", "sgf_barrels",
-      "sgf_certificatesOfCompliance", "sgf_packingListLines",
-    ];
-
-    for (const key of keysToReload) {
-      const data = safeLoad(key);
-      if (data == null) continue;
-      switch (key) {
-        case "sgf_customers": customers = data; break;
-        case "sgf_products": {
-          products = data;
-          // PRICE REPAIR: If reloaded products have 0 prices, restore from STATIC_PRODUCTS seed
-          const priceRepair = repairProductPrices(products);
-          if (priceRepair.count > 0) {
-            saveItem("sgf_products", products);
-            console.log(`[PriceRepair] Reload restored prices for ${priceRepair.count} products from seed data`);
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products: priceRepair.repaired, count: priceRepair.count } }));
-            }
-          }
-          break;
-        }
-        case "sgf_orders": orders = data; break;
-        case "sgf_invoices": invoices = data; break;
-        case "sgf_appointments": appointments = data; break;
-        case "sgf_checkins": checkins = data; break;
-        case "sgf_specialPrices": specialPrices = data; break;
-        case "sgf_auditLog": auditLog = data; break;
-        case "sgf_followUps": followUps = data; break;
-        case "sgf_followUpActions": followUpActions = data; break;
-        case "sgf_collectionNotes": collectionNotes = data; break;
-        case "sgf_collectionPromises": collectionPromises = data; break;
-        case "sgf_accountHolds": accountHolds = data; break;
-        case "sgf_receipts": receipts = data; break;
-        case "sgf_creditNotes": creditNotes = data; break;
-        case "sgf_users": users = data; break;
-        case "sgf_salesReps": {
-          SALES_REPS = data.map((r: any): SalesRep => {
-            if (typeof r === "string") return { name: r, isActive: true };
-            return {
-              name: r?.name || String(r || ""),
-              email: r?.email || "",
-              phone: r?.phone || "",
-              region: r?.region || "",
-              vehicleReg: r?.vehicleReg || "",
-              isActive: r?.isActive !== false,
-            };
-          }).filter((r: SalesRep) => r.name);
-          break;
-        }
-        case "sgf_corporateCustomers": corporateCustomers = data; break;
-        case "sgf_purchaseOrders": purchaseOrders = data; break;
-        case "sgf_barrels": barrels = data; break;
-        case "sgf_certificatesOfCompliance": certificatesOfCompliance = data; break;
-        case "sgf_packingListLines": packingListLines = data; break;
-      }
-    }
-
-    // AUTO-REPAIR: Fix stale/duplicate credit allocations after reload
-    const creditRepair = repairCreditAllocations();
-    if (creditRepair > 0) {
-      console.log(`[CreditRepair] Reload repaired ${creditRepair} invoice(s) with stale credit allocations`);
-    }
-
-    deduplicateAll();
-  } catch (e) {
-    console.error("[reloadFromStorage] FAILED:", e);
   }
+  if (fixed > 0) {
+    saveItem("sgf_invoices", invoices);
+    console.log(`[fixSageInvoiceDates] Fixed ${fixed} invoice(s) with missing dates`);
+  }
+  return fixed;
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  DATA SERVICE — exported API
+//  BANK STATEMENT PARSING
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Parse a CSV bank statement into structured transactions.
+ * Expected columns: Date, Description, Amount (negative = debit/payment out, positive = credit/payment in)
+ * Returns array of { id, date, description, amount, type: 'debit'|'credit', matched: false }
+ */
+export function parseBankStatement(csvText: string): any[] {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+
+  // Detect delimiter (comma or semicolon)
+  const firstLine = lines[0];
+  const delimiter = firstLine.includes(";") ? ";" : ",";
+
+  const headers = firstLine.split(delimiter).map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ""));
+  const dateIdx = headers.findIndex((h) => h.includes("date"));
+  const descIdx = headers.findIndex((h) => h.includes("description") || h.includes("narrative") || h.includes("details"));
+  const amtIdx = headers.findIndex((h) => h.includes("amount") || h.includes("value"));
+
+  if (dateIdx === -1 || descIdx === -1 || amtIdx === -1) {
+    console.warn("[parseBankStatement] Could not detect required columns. Headers:", headers);
+    return [];
+  }
+
+  const transactions: any[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(delimiter).map((c) => c.trim().replace(/^"|"$/g, ""));
+    if (cols.length < Math.max(dateIdx, descIdx, amtIdx) + 1) continue;
+
+    const rawAmount = parseFloat(cols[amtIdx].replace(/,/g, ""));
+    if (isNaN(rawAmount)) continue;
+
+    const amount = Math.abs(rawAmount);
+    const type = rawAmount < 0 ? "debit" : "credit";
+
+    transactions.push({
+      id: `txn_${i}_${Date.now()}`,
+      date: cols[dateIdx],
+      description: cols[descIdx],
+      rawAmount,
+      amount,
+      type,
+      matched: false,
+      matchedTo: null,
+    });
+  }
+
+  return transactions;
+}
+
+/**
+ * Match bank statement transactions to unpaid invoices.
+ * Returns { matched: [...], unmatched: [...] }
+ */
+export function matchBankPayments(transactions: any[]): { matched: any[]; unmatched: any[] } {
+  const unmatchedInvoices = invoices.filter((inv) =>
+    inv.status !== "paid" && inv.status !== "draft" && (inv.balanceDue || 0) > 0.01
+  );
+
+  const matched: any[] = [];
+  const unmatched: any[] = [];
+
+  for (const txn of transactions) {
+    // Only match credits (money IN) against unpaid invoices
+    if (txn.type !== "credit") {
+      unmatched.push(txn);
+      continue;
+    }
+
+    // Try to match by invoice number in description
+    const invNumMatch = txn.description.match(/(SGF\d+|RC\d+)/i);
+    let bestMatch: any = null;
+
+    if (invNumMatch) {
+      const invNum = invNumMatch[1].toUpperCase();
+      bestMatch = unmatchedInvoices.find((inv) =>
+        String(inv.invoiceNumber || "").toUpperCase() === invNum
+      );
+    }
+
+    // Fallback: match by customer name + approximate amount
+    if (!bestMatch) {
+      const txnDescLower = txn.description.toLowerCase();
+      const candidates = unmatchedInvoices.filter((inv) => {
+        const custName = String(inv.customer?.name || "").toLowerCase();
+        return custName && txnDescLower.includes(custName.split(" ")[0]);
+      });
+      if (candidates.length === 1) {
+        const amtDiff = Math.abs(candidates[0].balanceDue - txn.amount);
+        if (amtDiff < 1) bestMatch = candidates[0];
+      }
+    }
+
+    if (bestMatch) {
+      matched.push({
+        ...txn,
+        matched: true,
+        matchedTo: {
+          invoiceId: bestMatch.id,
+          invoiceNumber: bestMatch.invoiceNumber,
+          customerName: bestMatch.customer?.name || "",
+          balanceDue: bestMatch.balanceDue,
+        },
+      });
+    } else {
+      unmatched.push(txn);
+    }
+  }
+
+  return { matched, unmatched };
+}
+
+/**
+ * Allocate matched bank payments to invoices.
+ * Creates receipt records and updates invoice balances.
+ * Returns { receiptsCreated: number, invoicesUpdated: number }
+ */
+export function allocateBankPayments(matchedTransactions: any[]): { receiptsCreated: number; invoicesUpdated: number } {
+  let receiptsCreated = 0;
+  let invoicesUpdated = 0;
+
+  for (const txn of matchedTransactions) {
+    if (!txn.matchedTo) continue;
+
+    const inv = invoices.find((i) => i.id == txn.matchedTo.invoiceId);
+    if (!inv) continue;
+
+    const receiptId = receipts.length > 0
+      ? Math.max(...receipts.map((r: any) => Number(r.id) || 0)) + 1
+      : 1;
+
+    const receipt = {
+      id: receiptId,
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      customerId: inv.customerId,
+      customerName: inv.customer?.name || "",
+      amount: txn.amount,
+      paymentMethod: "bank_transfer",
+      paymentDate: txn.date,
+      reference: txn.description,
+      bankTransactionId: txn.id,
+      createdAt: new Date().toISOString(),
+      synced: false,
+    };
+
+    receipts.push(receipt);
+    receiptsCreated++;
+
+    // Update invoice
+    const newPaid = (inv.amountPaid || 0) + txn.amount;
+    const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+    const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
+    const newBalance = Math.round((total - newPaid - creditsApplied) * 100) / 100;
+
+    const invIdx = invoices.findIndex((i) => i.id == inv.id);
+    if (invIdx >= 0) {
+      invoices[invIdx] = {
+        ...inv,
+        amountPaid: newPaid,
+        balanceDue: newBalance,
+        status: newBalance <= 0.01 ? "paid" : "partially_paid",
+        updatedAt: new Date().toISOString(),
+      };
+      invoicesUpdated++;
+    }
+  }
+
+  if (receiptsCreated > 0) {
+    saveItem("sgf_receipts", receipts);
+    saveItem("sgf_invoices", invoices);
+  }
+
+  return { receiptsCreated, invoicesUpdated };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AA RATE
+// ═══════════════════════════════════════════════════════════════
+let _aaRate = 1.0;
+export function getAARate(): number { return _aaRate; }
+export function setAARate(rate: number): void { _aaRate = rate; }
+
+// ═══════════════════════════════════════════════════════════════
+//  INVOICE NUMBERING
+// ═══════════════════════════════════════════════════════════════
+
+function getNextInvoiceNumberForCompany(company: string): string {
+  const prefix = company?.toLowerCase() === "rc" ? "RC" : "SGF";
+  const allNumbers = invoices
+    .map((inv) => {
+      const match = String(inv.invoiceNumber || "").match(new RegExp(`^${prefix}(\\d+)$`));
+      return match ? parseInt(match[1]) : 0;
+    })
+    .filter((n) => n > 0);
+
+  const maxNum = allNumbers.length > 0 ? Math.max(...allNumbers) : 0;
+  const nextNum = maxNum + 1;
+
+  return prefix === "RC"
+    ? `RC${String(nextNum).padStart(4, "0")}`
+    : `SGF${nextNum}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN DATA SERVICE API
 // ═══════════════════════════════════════════════════════════════
 
 export const dataService = {
-  // ─── SETTINGS ──────────────────────────────────────────────
-  settings: {
-    get: () => {
-      try {
-        const raw = getStorageItem("sgf_settings");
-        return raw ? JSON.parse(raw) : {};
-      } catch { return {}; }
-    },
-    save: (data: any) => saveItem("sgf_settings", data),
-  },
-
-  // ─── USERS ─────────────────────────────────────────────────
-  user: {
-    getAll: () => [...users],
-    getById: (id: number) => users.find((u) => u.id == id) || null,
-    create: (data: any) => {
-      const newUser = { id: generateId(users), ...data, createdAt: new Date().toISOString() };
-      users.push(newUser);
-      saveItem("sgf_users", users);
-      return newUser;
-    },
-    update: (id: number, data: any) => {
-      const idx = users.findIndex((u) => u.id == id);
-      if (idx >= 0) {
-        users[idx] = { ...users[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_users", users);
-        return users[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      users = users.filter((u) => u.id !== id);
-      saveItem("sgf_users", users);
-      return { success: true };
-    },
-  },
-
-  // ─── CUSTOMERS ─────────────────────────────────────────────
   customer: {
-    getAll: () => [...customers],
-    getById: (id: number) => customers.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newCustomer = {
-        id: generateId(customers),
-        ...data,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+    list: () => [...customers],
+    get: (id: number) => customers.find((c) => c.id === id),
+    add: (c: any) => {
+      const newId = customers.length > 0 ? Math.max(...customers.map((x) => x.id)) + 1 : 1;
+      const newCustomer = { ...c, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       customers.push(newCustomer);
       saveItem("sgf_customers", customers);
       return newCustomer;
     },
     update: (id: number, data: any) => {
-      const idx = customers.findIndex((c) => c.id == id);
+      const idx = customers.findIndex((c) => c.id === id);
       if (idx >= 0) {
         customers[idx] = { ...customers[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_customers", customers);
@@ -774,18 +843,18 @@ export const dataService = {
     },
   },
 
-  // ─── PRODUCTS / STOCK ──────────────────────────────────────
   product: {
-    getAll: () => [...products],
-    getById: (id: number) => products.find((p) => p.id == id) || null,
-    create: (data: any) => {
-      const newProduct = { id: generateId(products), ...data, createdAt: new Date().toISOString() };
+    list: () => [...products],
+    get: (id: number) => products.find((p) => p.id === id),
+    add: (p: any) => {
+      const newId = products.length > 0 ? Math.max(...products.map((x) => x.id || 0)) + 1 : 1;
+      const newProduct = { ...p, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       products.push(newProduct);
       saveItem("sgf_products", products);
       return newProduct;
     },
     update: (id: number, data: any) => {
-      const idx = products.findIndex((p) => p.id == id);
+      const idx = products.findIndex((p) => p.id === id);
       if (idx >= 0) {
         products[idx] = { ...products[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_products", products);
@@ -800,27 +869,18 @@ export const dataService = {
     },
   },
 
-  // ─── ORDERS ────────────────────────────────────────────────
   order: {
-    getAll: () => [...orders],
-    getById: (id: number) => orders.find((o) => o.id == id) || null,
-    create: (data: any) => {
-      load();
-      const newOrder = {
-        id: generateId(orders),
-        orderNumber: getNextOrderNumber(),
-        ...data,
-        status: data.status || "draft",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+    list: () => [...orders],
+    get: (id: number) => orders.find((o) => o.id === id),
+    add: (o: any) => {
+      const newId = orders.length > 0 ? Math.max(...orders.map((x: any) => x.id || 0)) + 1 : 1;
+      const newOrder = { ...o, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       orders.push(newOrder);
       saveItem("sgf_orders", orders);
       return newOrder;
     },
     update: (id: number, data: any) => {
-      load();
-      const idx = orders.findIndex((o) => o.id == id);
+      const idx = orders.findIndex((o) => o.id === id);
       if (idx >= 0) {
         orders[idx] = { ...orders[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_orders", orders);
@@ -829,99 +889,71 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      load();
       orders = orders.filter((o) => o.id !== id);
       saveItem("sgf_orders", orders);
       return { success: true };
     },
-    updateStatus: (id: number, status: string) => {
-      load();
-      const idx = orders.findIndex((o) => o.id == id);
-      if (idx >= 0) {
-        orders[idx] = { ...orders[idx], status, updatedAt: new Date().toISOString() };
-        saveItem("sgf_orders", orders);
-        return orders[idx];
-      }
-      return null;
-    },
-    getNextOrderNumber,
-    getNextQuoteNumber,
-    getNextDeliveryNoteNumber,
-
-    // ─── BULK OPERATIONS ─────────────────────────────────────
-    importOrders: (items: any[]) => {
-      load();
-      let added = 0;
-      for (const item of items) {
-        if (!item.orderNumber) continue;
-        const exists = orders.find((o) => o.orderNumber === item.orderNumber);
-        if (!exists) {
-          orders.push({
-            id: generateId(orders),
-            ...item,
-            createdAt: item.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-          added++;
-        }
-      }
-      if (added > 0) saveItem("sgf_orders", orders);
-      return { added, total: orders.length };
-    },
-
-    // ─── REPAIR: Fix corrupted orders ────────────────────────
+    // ─── ORDER WORKFLOW HELPERS ───
+    /**
+     * Repair orders that were corrupted by a previous reloadFromStorage bug.
+     * Fixes: items array mutated after invoice generation, wrong customer reference,
+     * missing totals, etc.
+     */
     repairOrders: () => {
-      load();
-      let repaired = 0;
-      for (const order of orders) {
-        // Fix 1: Ensure items array exists
-        if (!order.items) {
+      let repairedCount = 0;
+      for (let i = 0; i < orders.length; i++) {
+        const order = orders[i];
+        let modified = false;
+
+        // Ensure items is a valid array
+        if (!order.items || !Array.isArray(order.items)) {
           order.items = [];
-          repaired++;
+          modified = true;
         }
-        // Fix 2: Ensure totals are numbers
-        if (typeof order.subtotal !== "number") {
-          order.subtotal = (order.items || []).reduce((sum: number, item: any) => sum + (item.lineTotal || 0), 0);
-          repaired++;
-        }
+
+        // Ensure total fields are numbers
+        if (typeof order.subtotal !== "number") { order.subtotal = 0; modified = true; }
+        if (typeof order.vatAmount !== "number") { order.vatAmount = 0; modified = true; }
         if (typeof order.total !== "number") {
-          order.total = order.subtotal + (order.vatAmount || 0);
-          repaired++;
+          order.total = order.subtotal + order.vatAmount;
+          modified = true;
         }
-        // Fix 3: Ensure status is valid
-        const validStatuses = ["draft", "confirmed", "ready", "delivered", "cancelled", "converted"];
-        if (!validStatuses.includes(order.status)) {
-          order.status = "draft";
-          repaired++;
+
+        // Rebuild customer object from current customer data if it's just an ID reference
+        if (order.customerId && (!order.customer || typeof order.customer === "number")) {
+          const cust = customers.find((c) => c.id == order.customerId);
+          if (cust) {
+            order.customer = { ...cust };
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          order.updatedAt = new Date().toISOString();
+          orders[i] = order;
+          repairedCount++;
         }
       }
-      if (repaired > 0) saveItem("sgf_orders", orders);
-      return { repaired, total: orders.length };
+      if (repairedCount > 0) {
+        saveItem("sgf_orders", orders);
+        console.log(`[repairOrders] Repaired ${repairedCount} order(s)`);
+      }
+      return repairedCount;
     },
   },
 
-  // ─── INVOICES ──────────────────────────────────────────────
   invoice: {
-    getAll: () => [...invoices],
-    getById: (id: number) => invoices.find((i) => i.id == id) || null,
-    getByNumber: (num: string) => invoices.find((i) => i.invoiceNumber === num) || null,
-    create: (data: any) => {
-      load();
-      const newInvoice = {
-        id: generateId(invoices),
-        invoiceNumber: getNextInvoiceNumber(),
-        ...data,
-        status: data.status || "draft",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+    list: () => [...invoices],
+    get: (id: number) => invoices.find((i) => i.id === id),
+    add: (inv: any) => {
+      const newId = invoices.length > 0 ? Math.max(...invoices.map((x: any) => x.id || 0)) + 1 : 1;
+      const newInvoice = { ...inv, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       invoices.push(newInvoice);
       saveItem("sgf_invoices", invoices);
       return newInvoice;
     },
     update: (id: number, data: any) => {
-      load();
-      const idx = invoices.findIndex((i) => i.id == id);
+      const idx = invoices.findIndex((i) => i.id === id);
       if (idx >= 0) {
         invoices[idx] = { ...invoices[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_invoices", invoices);
@@ -930,330 +962,26 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      load();
       invoices = invoices.filter((i) => i.id !== id);
       saveItem("sgf_invoices", invoices);
       return { success: true };
     },
-    getNextInvoiceNumber,
-    getNextInvoiceNumberForCompany,
-
-    // ─── IMPORT INVOICES (bulk) ──────────────────────────────
-    importInvoices: (items: any[]) => {
-      load();
-      let added = 0;
-      for (const item of items) {
-        if (!item.invoiceNumber) continue;
-        const exists = invoices.find((i) => i.invoiceNumber === item.invoiceNumber);
-        if (!exists) {
-          invoices.push({
-            id: generateId(invoices),
-            ...item,
-            createdAt: item.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-          added++;
-        }
-      }
-      if (added > 0) saveItem("sgf_invoices", invoices);
-      return { added, total: invoices.length };
-    },
-
-    // ─── RECORD PAYMENT ──────────────────────────────────────
-    recordPayment: (invoiceId: number, amount: number, method: string, notes?: string, reference?: string) => {
-      load();
-      const inv = invoices.find((i) => i.id == invoiceId);
-      if (!inv) return { success: false, error: "Invoice not found" };
-
-      const receipt = {
-        id: generateId(receipts),
-        invoiceId,
-        receiptNumber: getNextReceiptNumber(),
-        amount,
-        method,
-        notes: notes || "",
-        reference: reference || "",
-        createdAt: new Date().toISOString(),
-      };
-      receipts.push(receipt);
-      saveItem("sgf_receipts", receipts);
-
-      const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const totalPaid = (inv.amountPaid || 0) + amount;
-      const newPaid = Math.min(totalPaid, total);
-
-      inv.amountPaid = newPaid;
-      const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      inv.balanceDue = total - newPaid - creditsApplied;
-      if (inv.balanceDue <= 0.01) inv.status = "paid";
-      else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-      inv.updatedAt = new Date().toISOString();
-      saveItem("sgf_invoices", invoices);
-
-      return { success: true, receipt };
-    },
-
-    // ─── EDIT PAYMENT ────────────────────────────────────────
-    editPayment: (receiptId: number, newAmount: number, newMethod: string, newNotes?: string, newReference?: string) => {
-      load();
-      const receipt = receipts.find((r) => r.id == receiptId);
-      if (!receipt) return { success: false, error: "Receipt not found" };
-
-      const oldAmount = receipt.amount;
-      const invoiceId = receipt.invoiceId;
-      const inv = invoices.find((i) => i.id == invoiceId);
-      if (!inv) return { success: false, error: "Invoice not found" };
-
-      receipt.amount = newAmount;
-      receipt.method = newMethod;
-      receipt.notes = newNotes || "";
-      receipt.reference = newReference || "";
-      receipt.updatedAt = new Date().toISOString();
-      saveItem("sgf_receipts", receipts);
-
-      const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const totalPaid = (inv.amountPaid || 0) - oldAmount + newAmount;
-      inv.amountPaid = Math.max(0, totalPaid);
-      const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      inv.balanceDue = total - inv.amountPaid - creditsApplied;
-      if (inv.balanceDue <= 0.01) inv.status = "paid";
-      else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-      inv.updatedAt = new Date().toISOString();
-      saveItem("sgf_invoices", invoices);
-
-      return { success: true, receipt };
-    },
-
-    // ─── DELETE PAYMENT ──────────────────────────────────────
-    deletePayment: (receiptId: number) => {
-      load();
-      const receipt = receipts.find((r) => r.id == receiptId);
-      if (!receipt) return { success: false, error: "Receipt not found" };
-
-      const invoiceId = receipt.invoiceId;
-      const inv = invoices.find((i) => i.id == invoiceId);
-      if (!inv) return { success: false, error: "Invoice not found" };
-
-      const amount = receipt.amount;
-      receipts = receipts.filter((r) => r.id !== receiptId);
-      saveItem("sgf_receipts", receipts);
-
-      const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const totalPaid = (inv.amountPaid || 0) - amount;
-      inv.amountPaid = Math.max(0, totalPaid);
-      const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      inv.balanceDue = total - inv.amountPaid - creditsApplied;
-      if (inv.balanceDue <= 0.01) inv.status = "paid";
-      else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-      else inv.status = "sent";
-      inv.updatedAt = new Date().toISOString();
-      saveItem("sgf_invoices", invoices);
-
-      return { success: true };
-    },
-
-    // ─── BANK IMPORT ALLOCATION ──────────────────────────────
-    allocateBankImport: (invoiceId: number, amount: number, bankReference: string) => {
-      load();
-      const inv = invoices.find((i) => i.id == invoiceId);
-      if (!inv) return { success: false, error: "Invoice not found" };
-
-      const receipt = {
-        id: generateId(receipts),
-        invoiceId,
-        receiptNumber: getNextReceiptNumber(),
-        amount,
-        method: "bank_transfer",
-        notes: `Bank import: ${bankReference}`,
-        reference: bankReference,
-        createdAt: new Date().toISOString(),
-      };
-      receipts.push(receipt);
-      saveItem("sgf_receipts", receipts);
-
-      const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const totalPaid = (inv.amountPaid || 0) + amount;
-      const newPaid = Math.min(totalPaid, total);
-
-      inv.amountPaid = newPaid;
-      const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      inv.balanceDue = total - newPaid - creditsApplied;
-      if (inv.balanceDue <= 0.01) inv.status = "paid";
-      else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-      inv.updatedAt = new Date().toISOString();
-      saveItem("sgf_invoices", invoices);
-
-      return { success: true, receipt };
-    },
-
-    // ─── CREDIT NOTES ────────────────────────────────────────
-    createCreditNote: (data: any) => {
-      load();
-      const newCN = {
-        id: generateId(creditNotes),
-        creditNoteNumber: getNextCreditNoteNumber(),
-        ...data,
-        remainingAmount: data.amount,
-        allocations: [],
-        refundHistory: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      creditNotes.push(newCN);
-      saveItem("sgf_creditNotes", creditNotes);
-      return newCN;
-    },
-    getCreditNotes: () => [...creditNotes],
-    getCreditNoteById: (id: number) => creditNotes.find((cn) => cn.id == id) || null,
-    updateCreditNote: (id: number, data: any) => {
-      load();
-      const idx = creditNotes.findIndex((cn) => cn.id == id);
-      if (idx >= 0) {
-        creditNotes[idx] = { ...creditNotes[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_creditNotes", creditNotes);
-        return creditNotes[idx];
-      }
-      return null;
-    },
-    voidCreditNote: (id: number, reason: string) => {
-      load();
-      const idx = creditNotes.findIndex((cn) => cn.id == id);
-      if (idx >= 0) {
-        const cn = creditNotes[idx];
-        // Reverse any allocations
-        if (cn.allocations && cn.allocations.length > 0) {
-          for (const alloc of cn.allocations) {
-            const inv = invoices.find((i) => i.id == alloc.invoiceId);
-            if (inv) {
-              inv.creditAllocations = (inv.creditAllocations || []).filter((a: any) => a.creditNoteId != id);
-              const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-              const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-              const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-              inv.balanceDue = total - amountPaid - creditsApplied;
-              if (inv.balanceDue <= 0.01) inv.status = "paid";
-              else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-              else inv.status = "sent";
-              inv.updatedAt = new Date().toISOString();
-            }
-          }
-          saveItem("sgf_invoices", invoices);
-        }
-        creditNotes[idx] = {
-          ...cn,
-          voided: true,
-          voidReason: reason,
-          voidedAt: new Date().toISOString(),
-          remainingAmount: 0,
-          updatedAt: new Date().toISOString(),
-        };
-        saveItem("sgf_creditNotes", creditNotes);
-        return creditNotes[idx];
-      }
-      return null;
-    },
-    allocateCredit: (invoiceId: number, creditNoteId: number, amount: number) => {
-      load();
-      const inv = invoices.find((i) => i.id == invoiceId);
-      const cn = creditNotes.find((c) => c.id == creditNoteId);
-      if (!inv) return { success: false, error: "Invoice not found" };
-      if (!cn) return { success: false, error: "Credit note not found" };
-      if (cn.voided) return { success: false, error: "Credit note is voided" };
-      if (cn.remainingAmount < amount) return { success: false, error: "Insufficient credit remaining" };
-
-      const alloc = {
-        invoiceId,
-        amount,
-        allocatedAt: new Date().toISOString(),
-      };
-      cn.allocations = [...(cn.allocations || []), alloc];
-      cn.remainingAmount = Math.round((cn.remainingAmount - amount) * 100) / 100;
-      cn.updatedAt = new Date().toISOString();
-      saveItem("sgf_creditNotes", creditNotes);
-
-      inv.creditAllocations = [...(inv.creditAllocations || []), { creditNoteId, amount, allocatedAt: new Date().toISOString() }];
-      const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-      const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      inv.balanceDue = total - amountPaid - creditsApplied;
-      if (inv.balanceDue <= 0.01) inv.status = "paid";
-      else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-      inv.updatedAt = new Date().toISOString();
-      saveItem("sgf_invoices", invoices);
-
-      return { success: true, creditNote: cn, invoice: inv };
-    },
-    removeCreditAllocation: (invoiceId: number, creditNoteId: number) => {
-      load();
-      const inv = invoices.find((i) => i.id == invoiceId);
-      const cn = creditNotes.find((c) => c.id == creditNoteId);
-      if (!inv || !cn) return { success: false, error: "Not found" };
-
-      const alloc = cn.allocations?.find((a: any) => a.invoiceId == invoiceId);
-      if (!alloc) return { success: false, error: "Allocation not found" };
-
-      cn.allocations = cn.allocations.filter((a: any) => a.invoiceId != invoiceId);
-      cn.remainingAmount = Math.round((cn.remainingAmount + alloc.amount) * 100) / 100;
-      cn.updatedAt = new Date().toISOString();
-      saveItem("sgf_creditNotes", creditNotes);
-
-      inv.creditAllocations = (inv.creditAllocations || []).filter((a: any) => a.creditNoteId != creditNoteId);
-      const total = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-      const creditsApplied = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
-      inv.balanceDue = total - amountPaid - creditsApplied;
-      if (inv.balanceDue <= 0.01) inv.status = "paid";
-      else if (inv.amountPaid > 0.01) inv.status = "partially_paid";
-      else inv.status = "sent";
-      inv.updatedAt = new Date().toISOString();
-      saveItem("sgf_invoices", invoices);
-
-      return { success: true };
-    },
-    refundCreditNote: (creditNoteId: number, amount: number, method: string, notes?: string) => {
-      load();
-      const cn = creditNotes.find((c) => c.id == creditNoteId);
-      if (!cn) return { success: false, error: "Credit note not found" };
-      if (cn.voided) return { success: false, error: "Credit note is voided" };
-      if (cn.refunded) return { success: false, error: "Credit note already fully refunded" };
-
-      const alreadyRefunded = (cn.refundHistory || []).reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
-      const remainingForRefund = cn.remainingAmount - alreadyRefunded;
-      if (amount > remainingForRefund) return { success: false, error: `Refund amount exceeds remaining credit (${remainingForRefund})` };
-
-      const refundEntry = {
-        amount,
-        method,
-        notes: notes || "",
-        refundedAt: new Date().toISOString(),
-      };
-      cn.refundHistory = [...(cn.refundHistory || []), refundEntry];
-      const totalRefunded = alreadyRefunded + amount;
-      if (totalRefunded >= cn.amount - 0.01) {
-        cn.refunded = true;
-      }
-      cn.remainingAmount = Math.round((cn.amount - totalRefunded) * 100) / 100;
-      cn.updatedAt = new Date().toISOString();
-      saveItem("sgf_creditNotes", creditNotes);
-
-      return { success: true, creditNote: cn };
-    },
   },
 
-  // ─── RECEIPTS ──────────────────────────────────────────────
   receipt: {
-    getAll: () => [...receipts],
-    getById: (id: number) => receipts.find((r) => r.id == id) || null,
-    getByInvoiceId: (invoiceId: number) => receipts.filter((r) => r.invoiceId == invoiceId),
-    create: (data: any) => {
-      const newReceipt = { id: generateId(receipts), ...data, createdAt: new Date().toISOString() };
+    list: () => [...receipts],
+    get: (id: number) => receipts.find((r) => r.id === id),
+    add: (r: any) => {
+      const newId = receipts.length > 0 ? Math.max(...receipts.map((x: any) => x.id || 0)) + 1 : 1;
+      const newReceipt = { ...r, id: newId, createdAt: new Date().toISOString() };
       receipts.push(newReceipt);
       saveItem("sgf_receipts", receipts);
       return newReceipt;
     },
     update: (id: number, data: any) => {
-      const idx = receipts.findIndex((r) => r.id == id);
+      const idx = receipts.findIndex((r) => r.id === id);
       if (idx >= 0) {
-        receipts[idx] = { ...receipts[idx], ...data, updatedAt: new Date().toISOString() };
+        receipts[idx] = { ...receipts[idx], ...data };
         saveItem("sgf_receipts", receipts);
         return receipts[idx];
       }
@@ -1266,46 +994,46 @@ export const dataService = {
     },
   },
 
-  // ─── SPECIAL PRICES ────────────────────────────────────────
-  specialPrice: {
-    getAll: () => [...specialPrices],
-    getById: (id: number) => specialPrices.find((sp) => sp.id == id) || null,
-    create: (data: any) => {
-      const newSP = { id: generateId(specialPrices), ...data, createdAt: new Date().toISOString() };
-      specialPrices.push(newSP);
-      saveItem("sgf_specialPrices", specialPrices);
-      return newSP;
+  creditNote: {
+    list: () => [...creditNotes],
+    get: (id: number) => creditNotes.find((cn) => cn.id === id),
+    add: (cn: any) => {
+      const newId = creditNotes.length > 0 ? Math.max(...creditNotes.map((x: any) => x.id || 0)) + 1 : 1;
+      const newCN = { ...cn, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      creditNotes.push(newCN);
+      saveItem("sgf_creditNotes", creditNotes);
+      return newCN;
     },
     update: (id: number, data: any) => {
-      const idx = specialPrices.findIndex((sp) => sp.id == id);
+      const idx = creditNotes.findIndex((cn) => cn.id === id);
       if (idx >= 0) {
-        specialPrices[idx] = { ...specialPrices[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_specialPrices", specialPrices);
-        return specialPrices[idx];
+        creditNotes[idx] = { ...creditNotes[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_creditNotes", creditNotes);
+        return creditNotes[idx];
       }
       return null;
     },
     delete: (id: number) => {
-      specialPrices = specialPrices.filter((sp) => sp.id !== id);
-      saveItem("sgf_specialPrices", specialPrices);
+      creditNotes = creditNotes.filter((cn) => cn.id !== id);
+      saveItem("sgf_creditNotes", creditNotes);
       return { success: true };
     },
   },
 
-  // ─── APPOINTMENTS ──────────────────────────────────────────
   appointment: {
-    getAll: () => [...appointments],
-    getById: (id: number) => appointments.find((a) => a.id == id) || null,
-    create: (data: any) => {
-      const newAppt = { id: generateId(appointments), ...data, createdAt: new Date().toISOString() };
+    list: () => [...appointments],
+    get: (id: number) => appointments.find((a) => a.id === id),
+    add: (a: any) => {
+      const newId = appointments.length > 0 ? Math.max(...appointments.map((x: any) => x.id || 0)) + 1 : 1;
+      const newAppt = { ...a, id: newId, createdAt: new Date().toISOString() };
       appointments.push(newAppt);
       saveItem("sgf_appointments", appointments);
       return newAppt;
     },
     update: (id: number, data: any) => {
-      const idx = appointments.findIndex((a) => a.id == id);
+      const idx = appointments.findIndex((a) => a.id === id);
       if (idx >= 0) {
-        appointments[idx] = { ...appointments[idx], ...data, updatedAt: new Date().toISOString() };
+        appointments[idx] = { ...appointments[idx], ...data };
         saveItem("sgf_appointments", appointments);
         return appointments[idx];
       }
@@ -1318,20 +1046,20 @@ export const dataService = {
     },
   },
 
-  // ─── CHECK-INS ─────────────────────────────────────────────
   checkin: {
-    getAll: () => [...checkins],
-    getById: (id: number) => checkins.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newCheckin = { id: generateId(checkins), ...data, createdAt: new Date().toISOString() };
+    list: () => [...checkins],
+    get: (id: number) => checkins.find((c) => c.id === id),
+    add: (c: any) => {
+      const newId = checkins.length > 0 ? Math.max(...checkins.map((x: any) => x.id || 0)) + 1 : 1;
+      const newCheckin = { ...c, id: newId, createdAt: new Date().toISOString() };
       checkins.push(newCheckin);
       saveItem("sgf_checkins", checkins);
       return newCheckin;
     },
     update: (id: number, data: any) => {
-      const idx = checkins.findIndex((c) => c.id == id);
+      const idx = checkins.findIndex((c) => c.id === id);
       if (idx >= 0) {
-        checkins[idx] = { ...checkins[idx], ...data, updatedAt: new Date().toISOString() };
+        checkins[idx] = { ...checkins[idx], ...data };
         saveItem("sgf_checkins", checkins);
         return checkins[idx];
       }
@@ -1344,31 +1072,55 @@ export const dataService = {
     },
   },
 
-  // ─── AUDIT LOG ─────────────────────────────────────────────
-  auditLog: {
-    getAll: () => [...auditLog],
-    create: (data: any) => {
-      const entry = { id: generateId(auditLog), ...data, createdAt: new Date().toISOString() };
-      auditLog.push(entry);
-      saveItem("sgf_auditLog", auditLog);
-      return entry;
+  specialPrice: {
+    list: () => [...specialPrices],
+    get: (id: number) => specialPrices.find((s) => s.id === id),
+    add: (s: any) => {
+      const newId = specialPrices.length > 0 ? Math.max(...specialPrices.map((x: any) => x.id || 0)) + 1 : 1;
+      const newSP = { ...s, id: newId, createdAt: new Date().toISOString() };
+      specialPrices.push(newSP);
+      saveItem("sgf_specialPrices", specialPrices);
+      return newSP;
+    },
+    update: (id: number, data: any) => {
+      const idx = specialPrices.findIndex((s) => s.id === id);
+      if (idx >= 0) {
+        specialPrices[idx] = { ...specialPrices[idx], ...data };
+        saveItem("sgf_specialPrices", specialPrices);
+        return specialPrices[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      specialPrices = specialPrices.filter((s) => s.id !== id);
+      saveItem("sgf_specialPrices", specialPrices);
+      return { success: true };
     },
   },
 
-  // ─── FOLLOW-UPS ────────────────────────────────────────────
+  auditLog: {
+    list: () => [...auditLog],
+    add: (entry: any) => {
+      auditLog.push({ ...entry, id: Date.now(), timestamp: new Date().toISOString() });
+      saveItem("sgf_auditLog", auditLog);
+      return auditLog[auditLog.length - 1];
+    },
+  },
+
   followUp: {
-    getAll: () => [...followUps],
-    getById: (id: number) => followUps.find((f) => f.id == id) || null,
-    create: (data: any) => {
-      const newFU = { id: generateId(followUps), ...data, createdAt: new Date().toISOString() };
+    list: () => [...followUps],
+    get: (id: number) => followUps.find((f) => f.id === id),
+    add: (f: any) => {
+      const newId = followUps.length > 0 ? Math.max(...followUps.map((x: any) => x.id || 0)) + 1 : 1;
+      const newFU = { ...f, id: newId, createdAt: new Date().toISOString() };
       followUps.push(newFU);
       saveItem("sgf_followUps", followUps);
       return newFU;
     },
     update: (id: number, data: any) => {
-      const idx = followUps.findIndex((f) => f.id == id);
+      const idx = followUps.findIndex((f) => f.id === id);
       if (idx >= 0) {
-        followUps[idx] = { ...followUps[idx], ...data, updatedAt: new Date().toISOString() };
+        followUps[idx] = { ...followUps[idx], ...data };
         saveItem("sgf_followUps", followUps);
         return followUps[idx];
       }
@@ -1381,20 +1133,20 @@ export const dataService = {
     },
   },
 
-  // ─── FOLLOW-UP ACTIONS ─────────────────────────────────────
   followUpAction: {
-    getAll: () => [...followUpActions],
-    getById: (id: number) => followUpActions.find((f) => f.id == id) || null,
-    create: (data: any) => {
-      const newFA = { id: generateId(followUpActions), ...data, createdAt: new Date().toISOString() };
+    list: () => [...followUpActions],
+    get: (id: number) => followUpActions.find((f) => f.id === id),
+    add: (f: any) => {
+      const newId = followUpActions.length > 0 ? Math.max(...followUpActions.map((x: any) => x.id || 0)) + 1 : 1;
+      const newFA = { ...f, id: newId, createdAt: new Date().toISOString() };
       followUpActions.push(newFA);
       saveItem("sgf_followUpActions", followUpActions);
       return newFA;
     },
     update: (id: number, data: any) => {
-      const idx = followUpActions.findIndex((f) => f.id == id);
+      const idx = followUpActions.findIndex((f) => f.id === id);
       if (idx >= 0) {
-        followUpActions[idx] = { ...followUpActions[idx], ...data, updatedAt: new Date().toISOString() };
+        followUpActions[idx] = { ...followUpActions[idx], ...data };
         saveItem("sgf_followUpActions", followUpActions);
         return followUpActions[idx];
       }
@@ -1407,20 +1159,20 @@ export const dataService = {
     },
   },
 
-  // ─── COLLECTION NOTES ──────────────────────────────────────
   collectionNote: {
-    getAll: () => [...collectionNotes],
-    getById: (id: number) => collectionNotes.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newCN = { id: generateId(collectionNotes), ...data, createdAt: new Date().toISOString() };
+    list: () => [...collectionNotes],
+    get: (id: number) => collectionNotes.find((c) => c.id === id),
+    add: (c: any) => {
+      const newId = collectionNotes.length > 0 ? Math.max(...collectionNotes.map((x: any) => x.id || 0)) + 1 : 1;
+      const newCN = { ...c, id: newId, createdAt: new Date().toISOString() };
       collectionNotes.push(newCN);
       saveItem("sgf_collectionNotes", collectionNotes);
       return newCN;
     },
     update: (id: number, data: any) => {
-      const idx = collectionNotes.findIndex((c) => c.id == id);
+      const idx = collectionNotes.findIndex((c) => c.id === id);
       if (idx >= 0) {
-        collectionNotes[idx] = { ...collectionNotes[idx], ...data, updatedAt: new Date().toISOString() };
+        collectionNotes[idx] = { ...collectionNotes[idx], ...data };
         saveItem("sgf_collectionNotes", collectionNotes);
         return collectionNotes[idx];
       }
@@ -1433,20 +1185,20 @@ export const dataService = {
     },
   },
 
-  // ─── COLLECTION PROMISES ───────────────────────────────────
   collectionPromise: {
-    getAll: () => [...collectionPromises],
-    getById: (id: number) => collectionPromises.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newCP = { id: generateId(collectionPromises), ...data, createdAt: new Date().toISOString() };
+    list: () => [...collectionPromises],
+    get: (id: number) => collectionPromises.find((c) => c.id === id),
+    add: (c: any) => {
+      const newId = collectionPromises.length > 0 ? Math.max(...collectionPromises.map((x: any) => x.id || 0)) + 1 : 1;
+      const newCP = { ...c, id: newId, createdAt: new Date().toISOString() };
       collectionPromises.push(newCP);
       saveItem("sgf_collectionPromises", collectionPromises);
       return newCP;
     },
     update: (id: number, data: any) => {
-      const idx = collectionPromises.findIndex((c) => c.id == id);
+      const idx = collectionPromises.findIndex((c) => c.id === id);
       if (idx >= 0) {
-        collectionPromises[idx] = { ...collectionPromises[idx], ...data, updatedAt: new Date().toISOString() };
+        collectionPromises[idx] = { ...collectionPromises[idx], ...data };
         saveItem("sgf_collectionPromises", collectionPromises);
         return collectionPromises[idx];
       }
@@ -1459,20 +1211,20 @@ export const dataService = {
     },
   },
 
-  // ─── ACCOUNT HOLDS ─────────────────────────────────────────
   accountHold: {
-    getAll: () => [...accountHolds],
-    getById: (id: number) => accountHolds.find((a) => a.id == id) || null,
-    create: (data: any) => {
-      const newAH = { id: generateId(accountHolds), ...data, createdAt: new Date().toISOString() };
+    list: () => [...accountHolds],
+    get: (id: number) => accountHolds.find((a) => a.id === id),
+    add: (a: any) => {
+      const newId = accountHolds.length > 0 ? Math.max(...accountHolds.map((x: any) => x.id || 0)) + 1 : 1;
+      const newAH = { ...a, id: newId, createdAt: new Date().toISOString() };
       accountHolds.push(newAH);
       saveItem("sgf_accountHolds", accountHolds);
       return newAH;
     },
     update: (id: number, data: any) => {
-      const idx = accountHolds.findIndex((a) => a.id == id);
+      const idx = accountHolds.findIndex((a) => a.id === id);
       if (idx >= 0) {
-        accountHolds[idx] = { ...accountHolds[idx], ...data, updatedAt: new Date().toISOString() };
+        accountHolds[idx] = { ...accountHolds[idx], ...data };
         saveItem("sgf_accountHolds", accountHolds);
         return accountHolds[idx];
       }
@@ -1485,43 +1237,45 @@ export const dataService = {
     },
   },
 
-  // ─── SALES REPS ────────────────────────────────────────────
-  salesRep: {
-    getAll: () => getCurrentSalesReps(),
-    create: (data: any) => {
-      const newRep = { ...data, isActive: data.isActive !== false };
-      SALES_REPS.push(newRep);
-      saveSalesReps();
-      return newRep;
+  user: {
+    list: () => [...users],
+    get: (id: number) => users.find((u) => u.id === id),
+    add: (u: any) => {
+      const newId = users.length > 0 ? Math.max(...users.map((x: any) => x.id || 0)) + 1 : 1;
+      const newUser = { ...u, id: newId, createdAt: new Date().toISOString() };
+      users.push(newUser);
+      saveItem("sgf_users", users);
+      return newUser;
     },
-    update: (name: string, data: any) => {
-      const idx = SALES_REPS.findIndex((r) => r.name === name);
+    update: (id: number, data: any) => {
+      const idx = users.findIndex((u) => u.id === id);
       if (idx >= 0) {
-        SALES_REPS[idx] = { ...SALES_REPS[idx], ...data, isActive: data.isActive !== false };
-        saveSalesReps();
-        return SALES_REPS[idx];
+        users[idx] = { ...users[idx], ...data };
+        saveItem("sgf_users", users);
+        return users[idx];
       }
       return null;
     },
-    delete: (name: string) => {
-      SALES_REPS = SALES_REPS.filter((r) => r.name !== name);
-      saveSalesReps();
+    delete: (id: number) => {
+      users = users.filter((u) => u.id !== id);
+      saveItem("sgf_users", users);
       return { success: true };
     },
   },
 
-  // ─── CORPORATE CUSTOMERS ───────────────────────────────────
+  // ─── CORPORATE MODULE API ───
   corporateCustomer: {
-    getAll: () => [...corporateCustomers],
-    getById: (id: number) => corporateCustomers.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newCC = { id: generateId(corporateCustomers), ...data, createdAt: new Date().toISOString() };
+    list: () => [...corporateCustomers],
+    get: (id: number) => corporateCustomers.find((c: any) => c.id === id),
+    add: (c: any) => {
+      const newId = corporateCustomers.length > 0 ? Math.max(...corporateCustomers.map((x: any) => x.id || 0)) + 1 : 1;
+      const newCC = { ...c, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       corporateCustomers.push(newCC);
       saveItem("sgf_corporateCustomers", corporateCustomers);
       return newCC;
     },
     update: (id: number, data: any) => {
-      const idx = corporateCustomers.findIndex((c) => c.id == id);
+      const idx = corporateCustomers.findIndex((c: any) => c.id === id);
       if (idx >= 0) {
         corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_corporateCustomers", corporateCustomers);
@@ -1530,31 +1284,24 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      corporateCustomers = corporateCustomers.filter((c) => c.id !== id);
+      corporateCustomers = corporateCustomers.filter((c: any) => c.id !== id);
       saveItem("sgf_corporateCustomers", corporateCustomers);
       return { success: true };
     },
   },
 
-  // ─── PURCHASE ORDERS ───────────────────────────────────────
   purchaseOrder: {
-    getAll: () => [...purchaseOrders],
-    getById: (id: number) => purchaseOrders.find((po) => po.id == id) || null,
-    create: (data: any) => {
-      const newPO = {
-        id: generateId(purchaseOrders),
-        poNumber: getNextPONumber(),
-        ...data,
-        status: data.status || "draft",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+    list: () => [...purchaseOrders],
+    get: (id: number) => purchaseOrders.find((p: any) => p.id === id),
+    add: (po: any) => {
+      const newId = purchaseOrders.length > 0 ? Math.max(...purchaseOrders.map((x: any) => x.id || 0)) + 1 : 1;
+      const newPO = { ...po, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       purchaseOrders.push(newPO);
       saveItem("sgf_purchaseOrders", purchaseOrders);
       return newPO;
     },
     update: (id: number, data: any) => {
-      const idx = purchaseOrders.findIndex((po) => po.id == id);
+      const idx = purchaseOrders.findIndex((p: any) => p.id === id);
       if (idx >= 0) {
         purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_purchaseOrders", purchaseOrders);
@@ -1563,76 +1310,76 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      purchaseOrders = purchaseOrders.filter((po) => po.id !== id);
+      purchaseOrders = purchaseOrders.filter((p: any) => p.id !== id);
       saveItem("sgf_purchaseOrders", purchaseOrders);
       return { success: true };
     },
   },
 
-  // ─── BARRELS ───────────────────────────────────────────────
   barrel: {
-    getAll: () => [...barrels],
-    getById: (id: number) => barrels.find((b) => b.id == id) || null,
-    create: (data: any) => {
-      const newBarrel = { id: generateId(barrels), ...data, createdAt: new Date().toISOString() };
+    list: () => [...barrels],
+    get: (id: number) => barrels.find((b: any) => b.id === id),
+    add: (b: any) => {
+      const newId = barrels.length > 0 ? Math.max(...barrels.map((x: any) => x.id || 0)) + 1 : 1;
+      const newBarrel = { ...b, id: newId, createdAt: new Date().toISOString() };
       barrels.push(newBarrel);
       saveItem("sgf_barrels", barrels);
       return newBarrel;
     },
     update: (id: number, data: any) => {
-      const idx = barrels.findIndex((b) => b.id == id);
+      const idx = barrels.findIndex((b: any) => b.id === id);
       if (idx >= 0) {
-        barrels[idx] = { ...barrels[idx], ...data, updatedAt: new Date().toISOString() };
+        barrels[idx] = { ...barrels[idx], ...data };
         saveItem("sgf_barrels", barrels);
         return barrels[idx];
       }
       return null;
     },
     delete: (id: number) => {
-      barrels = barrels.filter((b) => b.id !== id);
+      barrels = barrels.filter((b: any) => b.id !== id);
       saveItem("sgf_barrels", barrels);
       return { success: true };
     },
   },
 
-  // ─── CERTIFICATES OF COMPLIANCE ────────────────────────────
   certificateOfCompliance: {
-    getAll: () => [...certificatesOfCompliance],
-    getById: (id: number) => certificatesOfCompliance.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newCOC = { id: generateId(certificatesOfCompliance), ...data, createdAt: new Date().toISOString() };
+    list: () => [...certificatesOfCompliance],
+    get: (id: number) => certificatesOfCompliance.find((c: any) => c.id === id),
+    add: (c: any) => {
+      const newId = certificatesOfCompliance.length > 0 ? Math.max(...certificatesOfCompliance.map((x: any) => x.id || 0)) + 1 : 1;
+      const newCOC = { ...c, id: newId, createdAt: new Date().toISOString() };
       certificatesOfCompliance.push(newCOC);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
       return newCOC;
     },
     update: (id: number, data: any) => {
-      const idx = certificatesOfCompliance.findIndex((c) => c.id == id);
+      const idx = certificatesOfCompliance.findIndex((c: any) => c.id === id);
       if (idx >= 0) {
-        certificatesOfCompliance[idx] = { ...certificatesOfCompliance[idx], ...data, updatedAt: new Date().toISOString() };
+        certificatesOfCompliance[idx] = { ...certificatesOfCompliance[idx], ...data };
         saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
         return certificatesOfCompliance[idx];
       }
       return null;
     },
     delete: (id: number) => {
-      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id !== id);
+      certificatesOfCompliance = certificatesOfCompliance.filter((c: any) => c.id !== id);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
       return { success: true };
     },
   },
 
-  // ─── PACKING LIST LINES ────────────────────────────────────
   packingListLine: {
-    getAll: () => [...packingListLines],
-    getById: (id: number) => packingListLines.find((pl) => pl.id == id) || null,
-    create: (data: any) => {
-      const newPL = { id: generateId(packingListLines), ...data, createdAt: new Date().toISOString() };
+    list: () => [...packingListLines],
+    get: (id: number) => packingListLines.find((pl: any) => pl.id === id),
+    add: (pl: any) => {
+      const newId = packingListLines.length > 0 ? Math.max(...packingListLines.map((x: any) => x.id || 0)) + 1 : 1;
+      const newPL = { ...pl, id: newId, createdAt: new Date().toISOString() };
       packingListLines.push(newPL);
       saveItem("sgf_packingListLines", packingListLines);
       return newPL;
     },
     update: (id: number, data: any) => {
-      const idx = packingListLines.findIndex((pl) => pl.id == id);
+      const idx = packingListLines.findIndex((pl: any) => pl.id === id);
       if (idx >= 0) {
         packingListLines[idx] = { ...packingListLines[idx], ...data, updatedAt: new Date().toISOString() };
         saveItem("sgf_packingListLines", packingListLines);
@@ -1641,7 +1388,7 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      packingListLines = packingListLines.filter((pl) => pl.id !== id);
+      packingListLines = packingListLines.filter((pl: any) => pl.id !== id);
       saveItem("sgf_packingListLines", packingListLines);
       return { success: true };
     },

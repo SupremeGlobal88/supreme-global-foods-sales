@@ -7,7 +7,7 @@ import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
-  Database, Zap, ShoppingCart, Globe, FileCheck,
+  Database, Zap, ShoppingCart, Globe, FileCheck, Banknote,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -66,6 +66,13 @@ export default function InvoicesPage() {
   const [allocAmt, setAllocAmt] = useState("");
   const [allocCnId, setAllocCnId] = useState(0);
   const [allocOverpaymentFromId, setAllocOverpaymentFromId] = useState(0);
+
+  /* Refund credit note form */
+  const [showRefundCn, setShowRefundCn] = useState(false);
+  const [refundCnId, setRefundCnId] = useState<number | null>(null);
+  const [refundCnMax, setRefundCnMax] = useState(0);
+  const [refundCnAmount, setRefundCnAmount] = useState("");
+  const [refundCnMethod, setRefundCnMethod] = useState("eft");
 
   /* Admin edit invoice form */
   const [showEditInv, setShowEditInv] = useState(false);
@@ -151,6 +158,22 @@ export default function InvoicesPage() {
       closeAllocCredit();
     },
     onError: (err: any) => { alert("Overpayment credit failed: " + (err.message || "Unknown error")); },
+  });
+  const refundCreditNote = trpc.invoice.refundCreditNote.useMutation({
+    onSuccess: async (data: any) => {
+      if (!data || !data.success) {
+        alert("Refund failed: " + (data?.error || "Unknown error"));
+        return;
+      }
+      reloadFromStorage();
+      await utils.invoice.list.invalidate();
+      await utils.invoice.getCreditNotes.invalidate();
+      setShowRefundCn(false);
+      setRefundCnId(null);
+      setRefundCnAmount("");
+      setRefundCnMethod("eft");
+    },
+    onError: (err: any) => { alert("Refund failed: " + (err.message || "Unknown error")); },
   });
   const updateInvoice = trpc.invoice.update.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); setShowEditInv(false); },
@@ -1307,9 +1330,23 @@ export default function InvoicesPage() {
                                           </div>
                                           <div className="flex items-center gap-1">
                                             <button onClick={() => printCreditNote(cn, inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Print Credit Note"><Printer className="w-3 h-3 text-[#D4A843]" /></button>
+                                            {(cn.remainingAmount || 0) > 0.01 && (
+                                              <button onClick={() => { setRefundCnId(cn.id); setRefundCnMax(cn.remainingAmount || 0); setRefundCnAmount(String(cn.remainingAmount || 0)); setShowRefundCn(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Refund Customer"><Banknote className="w-3 h-3 text-[#10B981]" /></button>
+                                            )}
                                             <button onClick={() => { if (confirm("Void this credit note? The invoice balance will be restored.")) voidCreditNote.mutate(cn.id); }} className="p-1.5 rounded hover:bg-[#222324]" title="Void"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
                                           </div>
                                         </div>
+                                        {/* Refund history */}
+                                        {cn.refundHistory && cn.refundHistory.length > 0 && (
+                                          <div className="mt-1.5 pt-1.5 space-y-1" style={{ borderTop: "1px solid rgba(16,185,129,0.2)" }}>
+                                            {cn.refundHistory.map((rh: any, rhIdx: number) => (
+                                              <div key={rhIdx} className="flex items-center justify-between pl-5">
+                                                <span className="text-[#10B981] text-[10px] uppercase tracking-wider">Refunded</span>
+                                                <span className="text-[#10B981] shrink-0 ml-2">R {Number(rh.amount || 0).toFixed(2)} ({rh.method?.toUpperCase()}) — {new Date(rh.refundedAt).toLocaleDateString("en-ZA")}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                         {/* Line item breakdown */}
                                         {cn.lineItems && cn.lineItems.length > 0 && (
                                           <div className="mt-1.5 pt-1.5 space-y-1" style={{ borderTop: "1px solid rgba(245,158,11,0.15)" }}>
@@ -1775,6 +1812,41 @@ export default function InvoicesPage() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ REFUND CREDIT NOTE MODAL ═══════ */}
+      {showRefundCn && refundCnId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-6 max-w-md w-full mx-4" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
+                <Banknote className="w-5 h-5 text-[#10B981]" /> Refund Customer Credit
+              </h2>
+              <button onClick={() => { setShowRefundCn(false); setRefundCnId(null); setRefundCnAmount(""); setRefundCnMethod("eft"); }} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                <div className="text-xs text-[#8A8B8C]">Available to refund</div>
+                <div className="text-xl font-display font-bold text-[#10B981]">R {refundCnMax.toFixed(2)}</div>
+              </div>
+              <div>
+                <label className="label-text mb-1 block">Refund Amount</label>
+                <input type="number" value={refundCnAmount} onChange={(e) => setRefundCnAmount(e.target.value)} className="form-input w-full" placeholder="Enter amount" min="0.01" max={refundCnMax} step="0.01" />
+              </div>
+              <div>
+                <label className="label-text mb-1 block">Refund Method</label>
+                <select value={refundCnMethod} onChange={(e) => setRefundCnMethod(e.target.value)} className="form-select w-full">
+                  <option value="eft">EFT</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => { setShowRefundCn(false); setRefundCnId(null); setRefundCnAmount(""); setRefundCnMethod("eft"); }} className="btn btn-secondary flex-1">Cancel</button>
+                <button onClick={() => { const amt = parseFloat(refundCnAmount); if (!amt || amt <= 0) return alert("Enter a valid amount"); if (amt > refundCnMax + 0.01) return alert("Amount exceeds available credit"); refundCreditNote.mutate({ creditNoteId: refundCnId, amount: amt, method: refundCnMethod }); }} className="btn btn-primary flex-1" style={{ backgroundColor: "#10B981" }}>Process Refund</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

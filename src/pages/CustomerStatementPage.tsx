@@ -215,6 +215,28 @@ export default function CustomerStatementPage() {
         }
       }
 
+      // Refund rows for credit notes linked to this invoice
+      const linkedCreditNotes = custCreditNotes.filter((cn: any) => cn.invoiceId == inv.id && cn.refunded && (cn.refundAmount || 0) > 0.01);
+      for (const cn of linkedCreditNotes) {
+        const refundHistory = cn.refundHistory || [];
+        for (const rh of refundHistory) {
+          const refundAmt = Number(rh.amount || 0);
+          if (refundAmt <= 0) continue;
+          group.push({
+            date: rh.refundedAt || inv.invoiceDate || inv.createdAt,
+            ref: `↳ ${invRef}`,
+            parentRef: invRef,
+            desc: `Refund ${cn.creditNoteNumber || "CN"} to customer — ${(rh.method || "eft").toUpperCase()}`,
+            terms: "",
+            debit: 0,
+            credit: refundAmt,
+            source: "app",
+            type: "refund",
+            sortDate: new Date(rh.refundedAt || inv.invoiceDate || inv.createdAt).getTime(),
+          });
+        }
+      }
+
       invoiceGroups.push(group);
     }
 
@@ -225,7 +247,7 @@ export default function CustomerStatementPage() {
     for (const group of invoiceGroups) {
       // Sort within group: invoice first, then payments/credits by date
       const invoiceRow = group.find((r: any) => r.type === "invoice");
-      const creditRows = group.filter((r: any) => r.type === "payment" || r.type === "credit_allocation").sort((a: any, b: any) => a.sortDate - b.sortDate);
+      const creditRows = group.filter((r: any) => r.type === "payment" || r.type === "credit_allocation" || r.type === "refund").sort((a: any, b: any) => a.sortDate - b.sortDate);
       
       // Add invoice
       bal += invoiceRow.debit;
@@ -311,13 +333,14 @@ export default function CustomerStatementPage() {
     const closingBal = totalDebit - totalCredit;
 
     const ledgerRows = lines.map(l => {
-      const isPaymentChild = l.type === "payment" && l.parentRef;
+      const isPaymentChild = (l.type === "payment" || l.type === "credit_allocation" || l.type === "refund") && l.parentRef;
+      const isRefund = l.type === "refund";
       return `<tr style="${isPaymentChild ? "background:rgba(74,222,128,0.03)" : ""}">
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;white-space:nowrap${isPaymentChild ? ";padding-left:16px" : ""}">${new Date(l.date).toLocaleDateString("en-ZA")}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;font-weight:600;color:${l.type === "credit_note" ? "#F59E0B" : (isPaymentChild ? "#888" : "#D4A843")}">${l.ref}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;color:${isPaymentChild ? "#666" : "#333"}">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""}${l.terms ? ` <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span>` : ""}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;color:${isPaymentChild ? "#666" : "#333"}">${l.desc}${l.source === "sage" ? ' <span style="color:#6366F1;font-size:9px;background:rgba(99,102,241,0.08);padding:1px 4px;border-radius:2px">SAGE</span>' : ""}${l.terms ? ` <span style="color:#888">(${(l.terms || "cod").replace("_", " ")})</span>` : ""}${isRefund ? ' <span style="color:#10B981;font-size:9px;background:rgba(16,185,129,0.08);padding:1px 4px;border-radius:2px">REFUND</span>' : ""}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right">${l.debit > 0 ? l.debit.toFixed(2) : "-"}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:${l.type === "credit_note" ? "#F59E0B" : "#2E7D32"}">${l.credit > 0 ? l.credit.toFixed(2) : "-"}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;color:${l.type === "credit_note" ? "#F59E0B" : (isRefund ? "#10B981" : "#2E7D32")}">${l.credit > 0 ? l.credit.toFixed(2) : "-"}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:10.5px;text-align:right;font-weight:700;${l.balance > 0 ? "color:#c00" : ""}">${l.balance.toFixed(2)}</td>
       </tr>`;
     }).join("");
@@ -542,9 +565,10 @@ export default function CustomerStatementPage() {
                     </thead>
                     <tbody>
                       {lines.map((l, idx) => {
-                        const isPaymentChild = l.type === "payment" && l.parentRef;
+                        const isPaymentChild = (l.type === "payment" || l.type === "credit_allocation" || l.type === "refund") && l.parentRef;
+                        const isRefund = l.type === "refund";
                         const prevLine = idx > 0 ? lines[idx - 1] : null;
-                        const isNewInvoiceGroup = l.type === "invoice" && prevLine && (prevLine.type === "payment" || prevLine.type === "credit_note");
+                        const isNewInvoiceGroup = l.type === "invoice" && prevLine && (prevLine.type === "payment" || prevLine.type === "credit_note" || prevLine.type === "credit_allocation" || prevLine.type === "refund");
                         return (
                           <tr
                             key={idx}
@@ -565,9 +589,12 @@ export default function CustomerStatementPage() {
                               {l.source === "sage" && (
                                 <span className="ml-2 px-1 py-0.5 rounded text-[9px]" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8" }}>SAGE</span>
                               )}
+                              {isRefund && (
+                                <span className="ml-2 px-1 py-0.5 rounded text-[9px]" style={{ backgroundColor: "rgba(16,185,129,0.15)", color: "#10B981" }}>REFUND</span>
+                              )}
                             </td>
                             <td className="p-3 text-right text-white text-xs">{l.debit > 0 ? l.debit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</td>
-                            <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : "#4ADE80" }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</td>
+                            <td className="p-3 text-right text-xs" style={{ color: l.type === "credit_note" ? "#F59E0B" : (isRefund ? "#10B981" : "#4ADE80") }}>{l.credit > 0 ? l.credit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</td>
                             <td className="p-3 text-right font-semibold text-xs" style={{ color: l.balance > 0 ? "#D4A843" : "#4ADE80" }}>
                               {l.balance.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>

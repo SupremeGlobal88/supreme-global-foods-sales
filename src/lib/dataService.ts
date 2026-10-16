@@ -3495,6 +3495,40 @@ export const dataService = {
       return null;
     },
 
+    refundCreditNote: ({ creditNoteId, amount, method }: { creditNoteId: number; amount: number; method: string }) => {
+      const idx = creditNotes.findIndex((cn) => cn.id == creditNoteId);
+      if (idx < 0) return { success: false, error: "Credit note not found" };
+      const cn = creditNotes[idx];
+      if (cn.voided) return { success: false, error: "Credit note is voided" };
+      if (cn.refunded && cn.remainingAmount <= 0.01) return { success: false, error: "Credit note is already fully refunded" };
+
+      const remaining = cn.remainingAmount !== undefined ? cn.remainingAmount : 0;
+      if (amount > remaining + 0.01) return { success: false, error: "Refund amount exceeds remaining credit" };
+      if (amount <= 0) return { success: false, error: "Refund amount must be greater than zero" };
+
+      const newRemaining = Math.max(0, remaining - amount);
+      const refundEntry = {
+        amount,
+        method: method || "eft",
+        refundedAt: new Date().toISOString(),
+      };
+
+      creditNotes[idx] = {
+        ...cn,
+        remainingAmount: newRemaining,
+        refunded: true,
+        refundedAt: new Date().toISOString(),
+        refundAmount: (cn.refundAmount || 0) + amount,
+        refundMethod: method || "eft",
+        refundHistory: [...(cn.refundHistory || []), refundEntry],
+        updatedAt: new Date().toISOString(),
+      };
+
+      saveItem("sgf_creditNotes", creditNotes);
+      logAudit("UPDATE", "creditNote", creditNoteId, `Refunded R${amount.toFixed(2)} (${method || "eft"}) on ${cn.creditNoteNumber}. Remaining: R${newRemaining.toFixed(2)}`);
+      return { success: true, creditNote: creditNotes[idx] };
+    },
+
     /** Update invoice fields (admin only) — for correcting historical data */
     updateInvoice: ({ id, data }: { id: number; data: any }) => {
       const idx = invoices.findIndex((i) => i.id == id);

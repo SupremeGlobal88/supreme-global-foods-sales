@@ -79,6 +79,7 @@ export const appRouter = t.router({
     allocateCredit: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     voidCreditNoteAllocation: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     voidCreditNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    refundCreditNote: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     applyOverpaymentCredit: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     getCustomerCreditBalance: t.procedure.input((val: unknown) => val as number).query(() => 0 as number),
     createOrderFromInvoice: t.procedure.input((val: unknown) => val as number).mutation(({ input }) => dataService.order.createFromInvoice(input)),

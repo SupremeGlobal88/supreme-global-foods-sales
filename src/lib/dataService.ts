@@ -1113,35 +1113,54 @@ function repairCreditAllocations(): number {
   if (!invoices || invoices.length === 0) return 0;
   for (let i = 0; i < invoices.length; i++) {
     const inv = invoices[i];
-    if (!inv.creditAllocations || inv.creditAllocations.length === 0) continue;
+    const existingCredits = inv.creditAllocations || [];
 
-    const beforeCount = inv.creditAllocations.length;
-    // Keep only allocations for valid, non-voided credit notes that actually have a matching allocation
-    const validAllocations = inv.creditAllocations.filter((ca: any) => {
+    // Reconstruct expected creditAllocations from credit note data
+    const expectedCredits: any[] = [];
+    for (const cn of creditNotes) {
+      for (const alloc of (cn.allocations || [])) {
+        if (alloc.invoiceId == inv.id) {
+          expectedCredits.push({
+            creditNoteId: cn.id,
+            amount: alloc.amount,
+            allocatedAt: alloc.allocatedAt,
+          });
+        }
+      }
+    }
+
+    // Clean up existing: remove voided credits and deduplicate
+    const validExisting = existingCredits.filter((ca: any) => {
       const cn = creditNotes.find((c) => c.id == ca.creditNoteId);
       return cn && !cn.voided;
     });
-
-    // Also deduplicate: same creditNoteId should only appear once
     const seen = new Set();
-    const dedupedAllocations = validAllocations.filter((ca: any) => {
+    const dedupedExisting = validExisting.filter((ca: any) => {
       if (seen.has(ca.creditNoteId)) return false;
       seen.add(ca.creditNoteId);
       return true;
     });
 
-    if (dedupedAllocations.length !== beforeCount) {
-      const totalAlloc = dedupedAllocations.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
+    // Check if invoice needs fixing: missing allocations, wrong balance, or stale data
+    const needsFix =
+      dedupedExisting.length !== expectedCredits.length ||
+      !expectedCredits.every((ec: any) =>
+        dedupedExisting.some((ic: any) =>
+          ic.creditNoteId == ec.creditNoteId && Math.abs((ic.amount || 0) - (ec.amount || 0)) < 0.01
+        )
+      );
+
+    if (needsFix) {
+      const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
       const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
       const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-      let newBalance = Math.max(0, invTotal - amountPaid - totalAlloc);
-      // Round to avoid floating point issues
+      let newBalance = invTotal - amountPaid - totalAlloc;
       newBalance = Math.round(newBalance * 100) / 100;
 
       invoices[i] = {
         ...inv,
         balanceDue: newBalance,
-        creditAllocations: dedupedAllocations,
+        creditAllocations: expectedCredits,
         status: newBalance <= 0.01 ? "paid" : (amountPaid > 0.01 ? "partially_paid" : (inv.status === "paid" ? "sent" : inv.status)),
         updatedAt: new Date().toISOString(),
       };

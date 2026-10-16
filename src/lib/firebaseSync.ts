@@ -857,6 +857,12 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
           if (loser[prop] != null && mergedItem[prop] == null) {
             mergedItem[prop] = loser[prop];
           }
+          // Defensive: preserve creditAllocations that would be lost to empty arrays
+          if (prop === 'creditAllocations' &&
+              Array.isArray(loser[prop]) && loser[prop].length > 0 &&
+              Array.isArray(mergedItem[prop]) && mergedItem[prop].length === 0) {
+            mergedItem[prop] = loser[prop];
+          }
         }
         merged.set(k, mergedItem);
       }

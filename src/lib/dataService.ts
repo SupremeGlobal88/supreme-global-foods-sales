@@ -792,6 +792,19 @@ export function getAARate(): number { return _aaRate; }
 export function setAARate(rate: number): void { _aaRate = rate; }
 
 // ═══════════════════════════════════════════════════════════════
+//  BANKING DETAILS
+// ═══════════════════════════════════════════════════════════════
+export function getBankingDetails(): { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string } {
+  return {
+    bankName: "FNB",
+    accountName: "Supreme Global Foods",
+    accountNumber: "62586259303",
+    branchCode: "250655",
+    swiftCode: "FIRNZAJJ",
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  INVOICE NUMBERING
 // ═══════════════════════════════════════════════════════════════
 

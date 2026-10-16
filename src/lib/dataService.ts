@@ -867,8 +867,9 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = newPaid;
-      inv.balanceDue = total - newPaid; // Allow negative = customer credit
-      if (newPaid >= total) inv.status = "paid";
+      const creditsApplied1 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      inv.balanceDue = total - newPaid - creditsApplied1; // Allow negative = customer credit
+      if (inv.balanceDue <= 0.01) inv.status = "paid";
       else if (newPaid > 0) inv.status = "partially_paid";
       if (!inv.payments) inv.payments = [];
       inv.payments.push({
@@ -3023,8 +3024,9 @@ export const dataService = {
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = newPaid;
-      inv.balanceDue = total - newPaid; // Allow negative = customer credit
-      if (newPaid >= total) {
+      const creditsApplied2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      inv.balanceDue = total - newPaid - creditsApplied2; // Allow negative = customer credit
+      if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
       } else if (newPaid > 0) {
         inv.status = "partially_paid";
@@ -3100,8 +3102,9 @@ export const dataService = {
       const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = totalPaid;
-      inv.balanceDue = total - totalPaid; // Allow negative = customer credit
-      if (totalPaid >= total) {
+      const creditsApplied3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      inv.balanceDue = total - totalPaid - creditsApplied3; // Allow negative = customer credit
+      if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
       } else if (totalPaid > 0) {
         inv.status = "partially_paid";
@@ -3123,8 +3126,9 @@ export const dataService = {
       const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = totalPaid;
-      inv.balanceDue = total - totalPaid; // Allow negative = customer credit
-      if (totalPaid >= total) {
+      const creditsApplied4 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      inv.balanceDue = total - totalPaid - creditsApplied4; // Allow negative = customer credit
+      if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
       } else if (totalPaid > 0) {
         inv.status = "partially_paid";

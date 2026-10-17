@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
 import CustomerSearchDropdown from "@/components/CustomerSearchDropdown";
@@ -71,6 +71,19 @@ export default function CollectionsPage() {
   const [showActionModal, setShowActionModal] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [historyCustomerId, setHistoryCustomerId] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Listen for Firebase data updates and refresh collections
+  useEffect(() => {
+    const handler = (e: any) => {
+      const type = e.detail?.type;
+      if (type === "invoices" || type === "creditNotes" || type === "customers") {
+        invalidateCollections();
+      }
+    };
+    window.addEventListener("firebaseDataReceived", handler);
+    return () => window.removeEventListener("firebaseDataReceived", handler);
+  }, []);
 
   // Queries
   const { data: overdueInvoices } = trpc.collections.getOverdueInvoices.useQuery();
@@ -96,7 +109,14 @@ export default function CollectionsPage() {
 
   const filteredInvoices = (overdueInvoices || [])
     .filter((inv: any) => selectedBucket === "all" || inv.bucket === selectedBucket)
-    .filter((inv: any) => !selectedSalesRep || inv.salesRepName === selectedSalesRep);
+    .filter((inv: any) => !selectedSalesRep || inv.salesRepName === selectedSalesRep)
+    .filter((inv: any) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const invNum = String(inv.invoiceNumber || "").toLowerCase();
+      const custName = String(inv.customerName || inv.customer?.name || "").toLowerCase();
+      return invNum.includes(q) || custName.includes(q);
+    });
 
   // Sales rep summary from filtered data
   const repSummary = (salesReps || []).map((rep: string) => {
@@ -227,17 +247,34 @@ export default function CollectionsPage() {
       {/* PIPELINE VIEW */}
       {activeTab === "pipeline" && (
         <div className="space-y-4">
-          {/* Bucket Filter */}
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setSelectedBucket("all")} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === "all" ? "#D4A843" : "#18191A", color: selectedBucket === "all" ? "#0A0A0B" : "#8A8B8C" }}>All ({(overdueInvoices || []).filter((i: any) => !selectedSalesRep || i.salesRepName === selectedSalesRep).length})</button>
-            {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => {
-              const count = (overdueInvoices || []).filter((i: any) => i.bucket === key && (!selectedSalesRep || i.salesRepName === selectedSalesRep)).length;
-              return (
-                <button key={key} onClick={() => setSelectedBucket(key)} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === key ? cfg.color : "#18191A", color: selectedBucket === key ? "#fff" : "#8A8B8C", border: `1px solid ${selectedBucket === key ? cfg.color : "transparent"}` }}>
-                  {cfg.label} ({count})
+          {/* Search + Bucket Filter */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setSelectedBucket("all")} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === "all" ? "#D4A843" : "#18191A", color: selectedBucket === "all" ? "#0A0A0B" : "#8A8B8C" }}>All ({(overdueInvoices || []).filter((i: any) => !selectedSalesRep || i.salesRepName === selectedSalesRep).length})</button>
+              {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => {
+                const count = (overdueInvoices || []).filter((i: any) => i.bucket === key && (!selectedSalesRep || i.salesRepName === selectedSalesRep)).length;
+                return (
+                  <button key={key} onClick={() => setSelectedBucket(key)} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === key ? cfg.color : "#18191A", color: selectedBucket === key ? "#fff" : "#8A8B8C", border: `1px solid ${selectedBucket === key ? cfg.color : "transparent"}` }}>
+                    {cfg.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                placeholder="Search invoice or customer..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input-field text-sm w-full pr-8"
+                style={{ backgroundColor: "#131415", borderColor: "#222324", color: "#E8E8E9" }}
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8A8B8C] hover:text-[#EF4444]">
+                  <X className="w-4 h-4" />
                 </button>
-              );
-            })}
+              )}
+            </div>
           </div>
 
           {/* Invoices Table */}

@@ -317,6 +317,7 @@ function load() {
     const creditRepair = repairCreditAllocations();
     if (creditRepair > 0) {
       console.log(`[CreditRepair] Startup repaired ${creditRepair} invoice(s) with stale credit allocations`);
+      saveItem("sgf_invoices", invoices);
     }
 
     // USERS: always load and merge with defaults
@@ -1300,6 +1301,7 @@ function _doReloadFromStorage(keys?: string[]): void {
           const repairResult = repairCreditAllocations();
           if (repairResult > 0) {
             console.log(`[CreditRepair] Reload repaired ${repairResult} invoice(s) with stale credit allocations`);
+            saveItem("sgf_invoices", invoices);
           }
         }
       }

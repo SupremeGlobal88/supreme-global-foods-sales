@@ -867,7 +867,9 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = newPaid;
-      const creditsApplied1 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits0 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits0 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied1 = allocCredits0 + lineCredits0;
       inv.balanceDue = total - newPaid - creditsApplied1; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) inv.status = "paid";
       else if (newPaid > 0) inv.status = "partially_paid";
@@ -1960,7 +1962,9 @@ function updateInvoiceFromOrder(order: any) {
 
   // If order is cancelled, invoice must also be cancelled
   const isCancelledOrder = order.status === "cancelled";
-  const newBalanceDue = isCancelledOrder ? 0 : total - (inv.amountPaid || 0);
+  const allocC3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+  const lineC3 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+  const newBalanceDue = isCancelledOrder ? 0 : total - (inv.amountPaid || 0) - allocC3 - lineC3;
   const newStatus = isCancelledOrder ? "cancelled" : inv.status;
 
   invoices[idx] = {
@@ -3066,7 +3070,9 @@ export const dataService = {
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = newPaid;
-      const creditsApplied2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied2 = allocCredits + lineCredits;
       inv.balanceDue = total - newPaid - creditsApplied2; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
@@ -3113,7 +3119,7 @@ export const dataService = {
         notes: notes || "",
         totalInvoiceAmount: total,
         amountPaidBefore: currentPaid,
-        balanceAfter: Math.max(0, total - newPaid),
+        balanceAfter: Math.max(0, total - newPaid - creditsApplied2),
         createdAt: new Date().toISOString(),
       };
       receipts.push(receipt);
@@ -3144,7 +3150,9 @@ export const dataService = {
       const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = totalPaid;
-      const creditsApplied3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits2 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied3 = allocCredits2 + lineCredits2;
       inv.balanceDue = total - totalPaid - creditsApplied3; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
@@ -3168,7 +3176,9 @@ export const dataService = {
       const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = totalPaid;
-      const creditsApplied4 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits3 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied4 = allocCredits3 + lineCredits3;
       inv.balanceDue = total - totalPaid - creditsApplied4; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
@@ -3599,7 +3609,9 @@ export const dataService = {
         inv.total = data.total;
         // Recalculate balance if total changed and not a payment edit
         if (data.amountPaid === undefined) {
-          inv.balanceDue = data.total - (inv.amountPaid || 0);
+          const allocC = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+          const lineC = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+          inv.balanceDue = data.total - (inv.amountPaid || 0) - allocC - lineC;
           if (inv.balanceDue <= 0) inv.status = "paid";
           else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
           else inv.status = "sent";
@@ -3619,7 +3631,9 @@ export const dataService = {
         // If total was not explicitly provided, recalculate it from subtotal + new vatAmount
         if (data.total === undefined) {
           inv.total = subtotal + inv.vatAmount;
-          inv.balanceDue = inv.total - (inv.amountPaid || 0);
+          const allocC2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+          const lineC2 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+          inv.balanceDue = inv.total - (inv.amountPaid || 0) - allocC2 - lineC2;
           if (inv.balanceDue <= 0) inv.status = "paid";
           else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
         }
@@ -3856,7 +3870,10 @@ export const dataService = {
       let runningBal = 0;
       const lines = custInvoices.map((inv) => {
         const debit = Number(inv.total || inv.totalAmount || 0);
-        const credit = Number(inv.amountPaid || 0);
+        const paid = Number(inv.amountPaid || 0);
+        const allocC = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+        const lineC = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+        const credit = paid + allocC + lineC;
         runningBal += debit - credit;
         return {
           date: inv.invoiceDate || inv.createdAt,
@@ -3870,7 +3887,12 @@ export const dataService = {
         };
       });
       const totalInvoiced = custInvoices.reduce((s, i) => s + Number(i.total || i.totalAmount || 0), 0);
-      const totalPaid = custInvoices.reduce((s, i) => s + Number(i.amountPaid || 0), 0);
+      const totalPaid = custInvoices.reduce((s, i) => {
+        const paid = Number(i.amountPaid || 0);
+        const allocC = (i.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+        const lineC = (i.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+        return s + paid + allocC + lineC;
+      }, 0);
       return {
         customer: customer || null,
         fromDate: fromDate || new Date(0).toISOString(),

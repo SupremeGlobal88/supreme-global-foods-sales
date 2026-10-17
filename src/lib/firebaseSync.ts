@@ -572,9 +572,115 @@ export async function pushCreditNote(cn: any): Promise<void> {
   }
 }
 
+/** Repair invoice credit allocations by cross-checking against credit notes.
+ *  Reads credit notes from localStorage directly (avoids stale module state).
+ *  Returns the repaired invoice array (mutates in place for performance). */
+function repairInvoiceAllocations(invoiceArray: any[]): any[] {
+  let fixed = 0;
+  const cnRaw = localStorage.getItem("sgf_creditNotes");
+  const creditNotes = cnRaw ? JSON.parse(cnRaw) : [];
+  if (!Array.isArray(creditNotes)) return invoiceArray;
+
+  for (let i = 0; i < invoiceArray.length; i++) {
+    const inv = invoiceArray[i];
+    const existingCredits = inv.creditAllocations || [];
+
+    // Reconstruct expected creditAllocations from credit note data
+    const expectedCredits: any[] = [];
+    for (const cn of creditNotes) {
+      for (const alloc of (cn.allocations || [])) {
+        if (alloc.invoiceId == inv.id) {
+          expectedCredits.push({
+            creditNoteId: cn.id,
+            amount: alloc.amount,
+            allocatedAt: alloc.allocatedAt,
+          });
+        }
+      }
+    }
+
+    // Clean up existing: remove voided credits and deduplicate
+    const validExisting = existingCredits.filter((ca: any) => {
+      const cn = creditNotes.find((c: any) => c.id == ca.creditNoteId);
+      return cn && !cn.voided;
+    });
+    const seen = new Set();
+    const dedupedExisting = validExisting.filter((ca: any) => {
+      if (seen.has(ca.creditNoteId)) return false;
+      seen.add(ca.creditNoteId);
+      return true;
+    });
+
+    // ALWAYS recalculate the correct balance from current data
+    const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
+    const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
+    const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
+    let correctBalance = invTotal - amountPaid - totalAlloc;
+    correctBalance = Math.round(correctBalance * 100) / 100;
+
+    // Check if invoice needs fixing: wrong allocations OR wrong balance
+    const allocationsMismatch =
+      dedupedExisting.length !== expectedCredits.length ||
+      !expectedCredits.every((ec: any) =>
+        dedupedExisting.some((ic: any) =>
+          ic.creditNoteId == ec.creditNoteId && Math.abs((ic.amount || 0) - (ec.amount || 0)) < 0.01
+        )
+      );
+
+    const balanceMismatch = Math.abs((inv.balanceDue || 0) - correctBalance) > 0.01;
+
+    if (allocationsMismatch || balanceMismatch) {
+      invoiceArray[i] = {
+        ...inv,
+        balanceDue: correctBalance,
+        creditAllocations: expectedCredits,
+        status: correctBalance <= 0.01
+          ? "paid"
+          : amountPaid > 0.01
+            ? "partially_paid"
+            : inv.status === "paid"
+              ? "sent"
+              : inv.status,
+        updatedAt: new Date().toISOString(),
+      };
+      fixed++;
+    }
+  }
+
+  if (fixed > 0) {
+    console.log(`[FirebaseSync] Repaired ${fixed} invoice(s) with stale credit allocations`);
+  }
+  return invoiceArray;
+}
+
+/** Read invoices from storage, repair allocations, save back, and reload into memory.
+ *  Used when credit notes change (since that affects invoice allocations). */
+function repairStoredInvoices(): void {
+  const invRaw = localStorage.getItem("sgf_invoices");
+  if (!invRaw) return;
+  try {
+    const invoices = JSON.parse(invRaw);
+    if (!Array.isArray(invoices)) return;
+    const fixed = repairInvoiceAllocations(invoices);
+    if (fixed > 0) {
+      localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
+      reloadFromStorage(["sgf_invoices"]);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: invoices.length } }));
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 /** Subscribe to real-time credit note updates */
 export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
-  return createSubscription("creditNotes", "sgf_creditNotes", onData);
+  return createSubscription("creditNotes", "sgf_creditNotes", onData, {
+    postMerge: (merged) => {
+      // When credit notes change, invoice allocations may be stale
+      repairStoredInvoices();
+      return merged;
+    },
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -928,7 +1034,10 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
 }
 
 export function subscribeToInvoices(onData: (invoices: any[]) => void): () => void {
-  return createSubscription("invoices", "sgf_invoices", onData);
+  return createSubscription("invoices", "sgf_invoices", onData, {
+    logPrefix: "Invoices",
+    postMerge: (merged) => repairInvoiceAllocations(merged),
+  });
 }
 
 export function subscribeToFollowUpActions(onData: (actions: any[]) => void): () => void {
@@ -1361,7 +1470,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("sgf:quotesRepaired", (e: any) => {
     const count = e.detail?.count || 0;
     if (count > 0 && isFirebaseReady()) {
-      console.log("[FirebaseSync] Pushing repaired quotes to cloud...");
+      console.log(`[FirebaseSync] Pushing repaired quotes to cloud...`);
       try {
         const allOrdersRaw = getStorageItem("sgf_orders");
         const allOrders = allOrdersRaw ? JSON.parse(allOrdersRaw) : [];
@@ -1382,7 +1491,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("sgf:invoicesCleaned", (e: any) => {
     const count = e.detail?.removed || 0;
     if (count > 0 && isFirebaseReady()) {
-      console.log("[FirebaseSync] Pushing cleaned invoices to cloud...");
+      console.log(`[FirebaseSync] Pushing cleaned invoices to cloud...`);
       try {
         const allInvoicesRaw = getStorageItem("sgf_invoices");
         const allInvoices = allInvoicesRaw ? JSON.parse(allInvoicesRaw) : [];
@@ -1518,4 +1627,4 @@ export function initAutoSync(): () => void {
 
   return autoSyncCleanup;
 }
-// Built: 2026-10-16T12:00:00Z — Rebuild trigger: credit allocation fixes verified
+// Built: 2026-07-07T16:33:54Z

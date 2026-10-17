@@ -984,6 +984,28 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
           // Preserving stale arrays here was causing phantom allocations
           // to reappear after repair cleared them.
         }
+
+        // PAYMENT PRESERVATION: Never lose payments during merge.
+        // Payments represent real money transactions. If either side
+        // has payments, preserve ALL unique payments and recalculate amountPaid.
+        const localPayments = (item.payments || []) as any[];
+        const fbPayments = (fbItem.payments || []) as any[];
+        if (localPayments.length > 0 || fbPayments.length > 0) {
+          const paymentMap = new Map<string, any>();
+          for (const p of localPayments) {
+            const pk = p.id || p.createdAt || JSON.stringify(p);
+            paymentMap.set(pk, p);
+          }
+          for (const p of fbPayments) {
+            const pk = p.id || p.createdAt || JSON.stringify(p);
+            if (!paymentMap.has(pk)) paymentMap.set(pk, p);
+          }
+          mergedItem.payments = Array.from(paymentMap.values()).sort(
+            (a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+          );
+          mergedItem.amountPaid = mergedItem.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        }
+
         merged.set(k, mergedItem);
       }
     }

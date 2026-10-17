@@ -231,6 +231,11 @@ export function createLocalLink() {
                   if (prod) { try { await pushOneStockItem(prod); } catch (e) { console.warn("[order.update] pushOneStockItem failed for", stockId, e); } }
                 }
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
+                // If order was cancelled, invoice was also cancelled — push it to Firebase
+                if (data.status === "cancelled" && result) {
+                  const inv = dataService.invoice.list().find((i: any) => i.orderId == id);
+                  if (inv) { await pushInvoice(inv); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); }
+                }
                 break;
               }
               case "order.updateStatus": {

@@ -1988,6 +1988,7 @@ function updateInvoiceFromOrder(order: any) {
     updatedAt: new Date().toISOString(),
   };
   saveItem("sgf_invoices", invoices);
+  return invoices[idx];
 }
 
 /** When order status changes to ready/delivered, upgrade invoice from draft to sent */

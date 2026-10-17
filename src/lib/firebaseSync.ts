@@ -777,7 +777,22 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("orders", "sgf_orders");
   await pullType("appointments", "sgf_appointments");
   await pullType("checkins", "sgf_checkins");
-  await pullType("invoices", "sgf_invoices");
+  // Repair invoice allocations during pull so phantom credits are cleared on initial load
+  await pullType("invoices", "sgf_invoices", repairInvoiceAllocations);
+  // Push repaired invoices back to Firebase so the cloud gets cleaned
+  // and other devices receive clean data instead of stale phantom allocations
+  try {
+    const invRaw = localStorage.getItem("sgf_invoices");
+    if (invRaw) {
+      const invoices = JSON.parse(invRaw);
+      if (Array.isArray(invoices) && invoices.length > 0) {
+        await pushInvoices(invoices);
+        console.log("[FirebaseSync] Pushed repaired invoices to cloud");
+      }
+    }
+  } catch (e: any) {
+    console.warn("[FirebaseSync] Failed to push repaired invoices:", e.message);
+  }
   await pullType("customers", "sgf_customers", dedupCustomers);
   await pullType("stock", "sgf_products");
   await pullType("followUpActions", "sgf_followUpActions");
@@ -872,7 +887,11 @@ function createSubscription(
       // Skip if data hasn't changed since last processing
       if (!hasDataChanged(storageKey, items)) {
         if (path === "orders") console.log("[FirebaseSync] orders skipped — no change");
-        if (onData) onData(items);
+        // Pass merged data from localStorage instead of raw Firebase items.
+        // localStorage may have repaired data (e.g. cleaned phantom allocations).
+        const stored = getStorageItem(storageKey);
+        const mergedStored = stored ? JSON.parse(stored) : items;
+        if (onData) onData(mergedStored);
         return;
       }
 
@@ -887,7 +906,8 @@ function createSubscription(
         }
       } catch { /* ignore */ }
       reloadFromStorage([storageKey]);
-      if (onData) onData(items);
+      // CRITICAL FIX: pass merged (repaired) data to onData, not raw Firebase items
+      if (onData) onData(merged);
     }, 0);
   });
   listeners.push(unsub);

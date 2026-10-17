@@ -1141,8 +1141,15 @@ function repairCreditAllocations(): number {
       return true;
     });
 
-    // Check if invoice needs fixing: missing allocations, wrong balance, or stale data
-    const needsFix =
+    // ALWAYS recalculate the correct balance from current data
+    const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
+    const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
+    const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
+    let correctBalance = invTotal - amountPaid - totalAlloc;
+    correctBalance = Math.round(correctBalance * 100) / 100;
+
+    // Check if invoice needs fixing: wrong allocations OR wrong balance
+    const allocationsMismatch =
       dedupedExisting.length !== expectedCredits.length ||
       !expectedCredits.every((ec: any) =>
         dedupedExisting.some((ic: any) =>
@@ -1150,18 +1157,20 @@ function repairCreditAllocations(): number {
         )
       );
 
-    if (needsFix) {
-      const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
-      const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-      const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-      let newBalance = invTotal - amountPaid - totalAlloc;
-      newBalance = Math.round(newBalance * 100) / 100;
+    const balanceMismatch = Math.abs((inv.balanceDue || 0) - correctBalance) > 0.01;
 
+    if (allocationsMismatch || balanceMismatch) {
       invoices[i] = {
         ...inv,
-        balanceDue: newBalance,
+        balanceDue: correctBalance,
         creditAllocations: expectedCredits,
-        status: newBalance <= 0.01 ? "paid" : (amountPaid > 0.01 ? "partially_paid" : (inv.status === "paid" ? "sent" : inv.status)),
+        status: correctBalance <= 0.01
+          ? "paid"
+          : amountPaid > 0.01
+            ? "partially_paid"
+            : inv.status === "paid"
+              ? "sent"
+              : inv.status,
         updatedAt: new Date().toISOString(),
       };
       fixed++;

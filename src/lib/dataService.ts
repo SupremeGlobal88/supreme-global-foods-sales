@@ -1166,10 +1166,17 @@ function repairCreditAllocations(): number {
     const phantomAllocations = existingCredits.length !== validExisting.length;
 
     if (allocationsMismatch || balanceMismatch || phantomAllocations) {
+      // Also clean up creditedLines — remove entries for deleted/voided credit notes
+      const validCreditedLines = (inv.creditedLines || []).filter((cl: any) => {
+        const cn = creditNotes.find((c) => c.id == cl.creditNoteId);
+        return cn && !cn.voided;
+      });
+
       invoices[i] = {
         ...inv,
         balanceDue: correctBalance,
         creditAllocations: expectedCredits,
+        creditedLines: validCreditedLines,
         status: correctBalance <= 0.01
           ? "paid"
           : amountPaid > 0.01

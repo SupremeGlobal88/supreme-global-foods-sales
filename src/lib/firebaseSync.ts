@@ -277,7 +277,20 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
   if (!isFirebaseReady()) { addToPendingQueue("invoice", invoice); return { success: false, error: "Firebase not ready — queued for sync" }; }
   if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
-    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), { ...invoice, _syncedAt: Date.now() });
+    const syncedAt = Date.now();
+    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), { ...invoice, _syncedAt: syncedAt });
+    // Update localStorage so merge logic knows this data was synced
+    try {
+      const raw = getStorageItem("sgf_invoices");
+      if (raw) {
+        const invoices = JSON.parse(raw);
+        const idx = invoices.findIndex((i: any) => i.id == invoice.id);
+        if (idx >= 0) {
+          invoices[idx]._syncedAt = syncedAt;
+          setStorageItem("sgf_invoices", JSON.stringify(invoices));
+        }
+      }
+    } catch { /* ignore localStorage update errors */ }
     return { success: true };
   } catch (e: any) {
     console.error("[pushInvoice] FAILED:", invoice.invoiceNumber || invoice.id, e.message);
@@ -779,20 +792,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("checkins", "sgf_checkins");
   // Repair invoice allocations during pull so phantom credits are cleared on initial load
   await pullType("invoices", "sgf_invoices", repairInvoiceAllocations);
-  // Push repaired invoices back to Firebase so the cloud gets cleaned
-  // and other devices receive clean data instead of stale phantom allocations
-  try {
-    const invRaw = localStorage.getItem("sgf_invoices");
-    if (invRaw) {
-      const invoices = JSON.parse(invRaw);
-      if (Array.isArray(invoices) && invoices.length > 0) {
-        await pushInvoices(invoices);
-        console.log("[FirebaseSync] Pushed repaired invoices to cloud");
-      }
-    }
-  } catch (e: any) {
-    console.warn("[FirebaseSync] Failed to push repaired invoices:", e.message);
-  }
   await pullType("customers", "sgf_customers", dedupCustomers);
   await pullType("stock", "sgf_products");
   await pullType("followUpActions", "sgf_followUpActions");
@@ -980,34 +979,49 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    // For items in BOTH: use timestamp-based merge.
-    // If both have updatedAt, the NEWER version wins (prevents stale cloud data
-    // from overwriting recent local changes like credit notes, payment edits).
-    // If no timestamps, fall back to: local non-null values win over Firebase null.
+    // For items in BOTH: use _syncedAt as the PRIMARY comparison.
+    // _syncedAt is set ONLY when data is pushed TO Firebase. It represents
+    // the last time this device confirmed the data was in the cloud.
+    // This prevents repair functions (which update updatedAt) from making
+    // local data "win" over legitimately newer cloud data from other devices.
+    //
+    // Rules:
+    // 1. If Firebase has _syncedAt and local doesn't → Firebase wins (never synced locally)
+    // 2. If local _syncedAt > Firebase _syncedAt → local wins (local pushed more recently)
+    // 3. If Firebase _syncedAt > local _syncedAt → Firebase wins (cloud has newer data)
+    // 4. If neither has _syncedAt → fall back to updatedAt (legacy data)
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && incomingMap.has(k)) {
         const fbItem = incomingMap.get(k)!;
+        const localSynced = item._syncedAt || 0;
+        const fbSynced = fbItem._syncedAt || 0;
         const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
-        // Use the newer version as the base
-        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
-        // Always enrich with local properties that are missing/null in the winner
-        const loser = localUpdated >= fbUpdated ? fbItem : item;
+
+        let winner: any;
+        if (fbSynced && !localSynced) {
+          // Firebase has been synced, local hasn't → Firebase wins
+          winner = { ...fbItem };
+        } else if (localSynced && !fbSynced) {
+          // Local has been synced, Firebase hasn't → Local wins
+          winner = { ...item };
+        } else if (localSynced && fbSynced) {
+          // Both have _syncedAt → higher _syncedAt wins
+          winner = localSynced >= fbSynced ? { ...item } : { ...fbItem };
+        } else {
+          // Neither has _syncedAt (legacy data) → fall back to updatedAt
+          winner = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
+        }
+
+        const loser = winner === item ? fbItem : item;
         for (const prop of Object.keys(loser)) {
-          if (loser[prop] != null && mergedItem[prop] == null) {
-            mergedItem[prop] = loser[prop];
+          if (loser[prop] != null && winner[prop] == null) {
+            winner[prop] = loser[prop];
           }
-          // NOTE: Removed defensive creditAllocations preservation.
-          // The repairInvoiceAllocations function (called after every merge)
-          // correctly reconstructs allocations from credit note data.
-          // Preserving stale arrays here was causing phantom allocations
-          // to reappear after repair cleared them.
         }
 
         // PAYMENT PRESERVATION: Never lose payments during merge.
-        // Payments represent real money transactions. If either side
-        // has payments, preserve ALL unique payments and recalculate amountPaid.
         const localPayments = (item.payments || []) as any[];
         const fbPayments = (fbItem.payments || []) as any[];
         if (localPayments.length > 0 || fbPayments.length > 0) {
@@ -1020,13 +1034,13 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
             const pk = p.id || p.createdAt || JSON.stringify(p);
             if (!paymentMap.has(pk)) paymentMap.set(pk, p);
           }
-          mergedItem.payments = Array.from(paymentMap.values()).sort(
+          winner.payments = Array.from(paymentMap.values()).sort(
             (a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
           );
-          mergedItem.amountPaid = mergedItem.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+          winner.amountPaid = winner.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
         }
 
-        merged.set(k, mergedItem);
+        merged.set(k, winner);
       }
     }
 

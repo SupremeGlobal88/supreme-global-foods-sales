@@ -979,45 +979,23 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    // For items in BOTH: use _syncedAt as the PRIMARY comparison.
-    // _syncedAt is set ONLY when data is pushed TO Firebase. It represents
-    // the last time this device confirmed the data was in the cloud.
-    // This prevents repair functions (which update updatedAt) from making
-    // local data "win" over legitimately newer cloud data from other devices.
-    //
-    // Rules:
-    // 1. If Firebase has _syncedAt and local doesn't → Firebase wins (never synced locally)
-    // 2. If local _syncedAt > Firebase _syncedAt → local wins (local pushed more recently)
-    // 3. If Firebase _syncedAt > local _syncedAt → Firebase wins (cloud has newer data)
-    // 4. If neither has _syncedAt → fall back to updatedAt (legacy data)
+    // For items in BOTH: use timestamp-based merge.
+    // If both have updatedAt, the NEWER version wins (prevents stale cloud data
+    // from overwriting recent local changes like credit notes, payment edits).
+    // If no timestamps, fall back to: local non-null values win over Firebase null.
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && incomingMap.has(k)) {
         const fbItem = incomingMap.get(k)!;
-        const localSynced = item._syncedAt || 0;
-        const fbSynced = fbItem._syncedAt || 0;
         const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
-
-        let winner: any;
-        if (fbSynced && !localSynced) {
-          // Firebase has been synced, local hasn't → Firebase wins
-          winner = { ...fbItem };
-        } else if (localSynced && !fbSynced) {
-          // Local has been synced, Firebase hasn't → Local wins
-          winner = { ...item };
-        } else if (localSynced && fbSynced) {
-          // Both have _syncedAt → higher _syncedAt wins
-          winner = localSynced >= fbSynced ? { ...item } : { ...fbItem };
-        } else {
-          // Neither has _syncedAt (legacy data) → fall back to updatedAt
-          winner = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
-        }
-
-        const loser = winner === item ? fbItem : item;
+        // Use the newer version as the base
+        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
+        // Always enrich with local properties that are missing/null in the winner
+        const loser = localUpdated >= fbUpdated ? fbItem : item;
         for (const prop of Object.keys(loser)) {
-          if (loser[prop] != null && winner[prop] == null) {
-            winner[prop] = loser[prop];
+          if (loser[prop] != null && mergedItem[prop] == null) {
+            mergedItem[prop] = loser[prop];
           }
         }
 
@@ -1034,13 +1012,13 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
             const pk = p.id || p.createdAt || JSON.stringify(p);
             if (!paymentMap.has(pk)) paymentMap.set(pk, p);
           }
-          winner.payments = Array.from(paymentMap.values()).sort(
+          mergedItem.payments = Array.from(paymentMap.values()).sort(
             (a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
           );
-          winner.amountPaid = winner.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+          mergedItem.amountPaid = mergedItem.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
         }
 
-        merged.set(k, winner);
+        merged.set(k, mergedItem);
       }
     }
 

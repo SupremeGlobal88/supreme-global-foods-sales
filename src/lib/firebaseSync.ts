@@ -583,6 +583,8 @@ function repairInvoiceAllocations(invoiceArray: any[]): any[] {
 
   for (let i = 0; i < invoiceArray.length; i++) {
     const inv = invoiceArray[i];
+    // Skip cancelled invoices — their balance should remain 0
+    if (inv.status === "cancelled") continue;
     const existingCredits = inv.creditAllocations || [];
 
     // Reconstruct expected creditAllocations from credit note data

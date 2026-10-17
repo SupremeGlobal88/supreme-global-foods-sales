@@ -618,7 +618,10 @@ function repairInvoiceAllocations(invoiceArray: any[]): any[] {
     let correctBalance = invTotal - amountPaid - totalAlloc;
     correctBalance = Math.round(correctBalance * 100) / 100;
 
-    // Check if invoice needs fixing: wrong allocations OR wrong balance
+    // Check if invoice needs fixing:
+    // 1. Allocations don't match expected (missing or extra)
+    // 2. Balance is mathematically wrong
+    // 3. PHANTOM allocations exist (credit notes deleted but still in invoice array)
     const allocationsMismatch =
       dedupedExisting.length !== expectedCredits.length ||
       !expectedCredits.every((ec: any) =>
@@ -629,7 +632,10 @@ function repairInvoiceAllocations(invoiceArray: any[]): any[] {
 
     const balanceMismatch = Math.abs((inv.balanceDue || 0) - correctBalance) > 0.01;
 
-    if (allocationsMismatch || balanceMismatch) {
+    // PHANTOM: original array has items that validExisting filtered out (deleted credit notes)
+    const phantomAllocations = existingCredits.length !== validExisting.length;
+
+    if (allocationsMismatch || balanceMismatch || phantomAllocations) {
       invoiceArray[i] = {
         ...inv,
         balanceDue: correctBalance,

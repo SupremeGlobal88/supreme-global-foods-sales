@@ -1064,6 +1064,45 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
           mergedItem.amountPaid = mergedItem.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
         }
 
+        // INVOICE LINK PRESERVATION: Never lose order→invoice link during merge.
+        // If either side has invoiceNumber, keep it.
+        if (key === "sgf_orders") {
+          if (!mergedItem.invoiceNumber && item.invoiceNumber) mergedItem.invoiceNumber = item.invoiceNumber;
+          if (!mergedItem.invoiceNumber && fbItem.invoiceNumber) mergedItem.invoiceNumber = fbItem.invoiceNumber;
+        }
+
+        // CREDIT PRESERVATION: Never lose credit allocations or creditedLines during merge.
+        if (key === "sgf_invoices") {
+          const localCredits = item.creditAllocations || [];
+          const fbCredits = fbItem.creditAllocations || [];
+          if (localCredits.length > 0 || fbCredits.length > 0) {
+            const creditMap = new Map<string, any>();
+            for (const c of localCredits) {
+              const ck = c.creditNoteId || c.id || JSON.stringify(c);
+              creditMap.set(ck, c);
+            }
+            for (const c of fbCredits) {
+              const ck = c.creditNoteId || c.id || JSON.stringify(c);
+              if (!creditMap.has(ck)) creditMap.set(ck, c);
+            }
+            mergedItem.creditAllocations = Array.from(creditMap.values());
+          }
+          const localCredited = item.creditedLines || [];
+          const fbCredited = fbItem.creditedLines || [];
+          if (localCredited.length > 0 || fbCredited.length > 0) {
+            const lineMap = new Map<string, any>();
+            for (const cl of localCredited) {
+              const lk = cl.creditNoteId || cl.lineItemId || JSON.stringify(cl);
+              lineMap.set(lk, cl);
+            }
+            for (const cl of fbCredited) {
+              const lk = cl.creditNoteId || cl.lineItemId || JSON.stringify(cl);
+              if (!lineMap.has(lk)) lineMap.set(lk, cl);
+            }
+            mergedItem.creditedLines = Array.from(lineMap.values());
+          }
+        }
+
         merged.set(k, mergedItem);
       }
     }

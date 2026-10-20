@@ -313,13 +313,6 @@ function load() {
     const crn = safeLoadArray("sgf_creditNotes");
     creditNotes = crn || [];
 
-    // AUTO-REPAIR: Fix stale/duplicate credit allocations on invoices
-    const creditRepair = repairCreditAllocations();
-    if (creditRepair > 0) {
-      console.log(`[CreditRepair] Startup repaired ${creditRepair} invoice(s) with stale credit allocations`);
-      saveItem("sgf_invoices", invoices);
-    }
-
     // USERS: always load and merge with defaults
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
@@ -395,11 +388,6 @@ function load() {
   // FIX: Repair Sage invoice dates that were corrupted by the old date parser.
   // The old code did `20${parts[2]}` on 4-digit years, producing dates like "202026-07-06".
   try { fixSageInvoiceDates(); } catch { /* ignore */ }
-
-  // FIX: Re-link orders that have an invoice but lost their invoiceNumber.
-  // This happens when sync merges overwrite the order before the invoiceNumber
-  // was pushed, or when a device loads stale order data from Firebase.
-  try { fixOrphanedInvoiceLinks(); } catch { /* ignore */ }
 
   // ─── CORPORATE MODULE DATA LOADING ───
   const cc = getStorageItem("sgf_corporateCustomers");
@@ -1335,12 +1323,6 @@ function _doReloadFromStorage(keys?: string[]): void {
             if (typeof window !== "undefined") {
               window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
             }
-          }
-          // AUTO-REPAIR: Remove stale credit allocations from voided/non-existent credit notes
-          const repairResult = repairCreditAllocations();
-          if (repairResult > 0) {
-            console.log(`[CreditRepair] Reload repaired ${repairResult} invoice(s) with stale credit allocations`);
-            saveItem("sgf_invoices", invoices);
           }
         }
       }

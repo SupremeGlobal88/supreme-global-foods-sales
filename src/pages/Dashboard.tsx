@@ -124,7 +124,7 @@ export default function Dashboard() {
     const monthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
     const repSales = repNames.map((name: string) => {
       const repOrders = filteredOrders.filter((o: any) => {
-        return o.customer?.salesRepName === name && o.orderType !== "sample";
+        return o.customer?.salesRepName === name && o.orderType !== "sample" && o.status !== "cancelled";
       });
       const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
       return { name, todaySales: 0, weekSales: 0, monthSales };
@@ -360,7 +360,7 @@ export default function Dashboard() {
                     {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
                       const repMonthSales = selectedMonth
                         ? (filteredOrders || []).filter((o: any) => {
-                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample";
+                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample" && o.status !== "cancelled";
                           }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
                         : rep.totalSales;
                       return (
@@ -369,7 +369,7 @@ export default function Dashboard() {
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">{rep.customerCount}</td>
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">
                             {selectedMonth
-                              ? (filteredOrders || []).filter((o: any) => o.customer?.salesRepName === rep.name && o.orderType !== "sample").length
+                              ? (filteredOrders || []).filter((o: any) => o.customer?.salesRepName === rep.name && o.orderType !== "sample" && o.status !== "cancelled").length
                               : rep.orderCount}
                           </td>
                           <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

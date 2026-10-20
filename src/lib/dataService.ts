@@ -4263,13 +4263,17 @@ export const dataService = {
       const repStats = reps.map((rep) => {
         const name = rep.name;
         const repCustomers = customers.filter((c) => c.salesRepName === name);
+        const isCancelled = (o: any) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return s === "cancelled" || s === "canceled" || s === "cancel";
+        };
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample" && o.status !== "cancelled";
+          return cust?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
         });
         const repSamples = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType === "sample" && o.status !== "cancelled";
+          return cust?.salesRepName === name && o.orderType === "sample" && !isCancelled(o);
         });
         const totalSales = Math.round(repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
         const sampleCost = Math.round(repSamples.reduce((sum, o) => {
@@ -4304,9 +4308,13 @@ export const dataService = {
 
       const repSales = getCurrentSalesReps().map((rep) => {
         const name = rep.name;
+        const isCancelled = (o: any) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return s === "cancelled" || s === "canceled" || s === "cancel";
+        };
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample" && o.status !== "cancelled";
+          return cust?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
         });
 
         const todaySales = Math.round(repOrders

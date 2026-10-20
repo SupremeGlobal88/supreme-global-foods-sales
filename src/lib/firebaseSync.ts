@@ -277,20 +277,7 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
   if (!isFirebaseReady()) { addToPendingQueue("invoice", invoice); return { success: false, error: "Firebase not ready — queued for sync" }; }
   if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
-    const syncedAt = Date.now();
-    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), { ...invoice, _syncedAt: syncedAt });
-    // Update localStorage so merge logic knows this data was synced
-    try {
-      const raw = getStorageItem("sgf_invoices");
-      if (raw) {
-        const invoices = JSON.parse(raw);
-        const idx = invoices.findIndex((i: any) => i.id == invoice.id);
-        if (idx >= 0) {
-          invoices[idx]._syncedAt = syncedAt;
-          setStorageItem("sgf_invoices", JSON.stringify(invoices));
-        }
-      }
-    } catch { /* ignore localStorage update errors */ }
+    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), cleanForFirebase(invoice));
     return { success: true };
   } catch (e: any) {
     console.error("[pushInvoice] FAILED:", invoice.invoiceNumber || invoice.id, e.message);
@@ -630,172 +617,6 @@ export async function removeSpecialPrice(id: number): Promise<void> {
   }
 }
 
-/** Repair invoice credit allocations by cross-checking against credit notes.
- *  Reads credit notes from localStorage directly (avoids stale module state).
- *  Returns the repaired invoice array (mutates in place for performance). */
-function repairInvoiceAllocations(invoiceArray: any[]): any[] {
-  let fixed = 0;
-  const cnRaw = localStorage.getItem("sgf_creditNotes");
-  const creditNotes = cnRaw ? JSON.parse(cnRaw) : [];
-  if (!Array.isArray(creditNotes)) return invoiceArray;
-
-  for (let i = 0; i < invoiceArray.length; i++) {
-    const inv = invoiceArray[i];
-    // Skip cancelled invoices — their balance should remain 0
-    if (inv.status === "cancelled") continue;
-    const existingCredits = inv.creditAllocations || [];
-
-    // Reconstruct expected creditAllocations from credit note data
-    const expectedCredits: any[] = [];
-    for (const cn of creditNotes) {
-      for (const alloc of (cn.allocations || [])) {
-        if (alloc.invoiceId == inv.id) {
-          expectedCredits.push({
-            creditNoteId: cn.id,
-            amount: alloc.amount,
-            allocatedAt: alloc.allocatedAt,
-          });
-        }
-      }
-    }
-
-    // Clean up existing: remove voided credits and deduplicate
-    const validExisting = existingCredits.filter((ca: any) => {
-      const cn = creditNotes.find((c: any) => c.id == ca.creditNoteId);
-      return cn && !cn.voided;
-    });
-    const seen = new Set();
-    const dedupedExisting = validExisting.filter((ca: any) => {
-      if (seen.has(ca.creditNoteId)) return false;
-      seen.add(ca.creditNoteId);
-      return true;
-    });
-
-    // ALWAYS recalculate the correct balance from current data
-    const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
-    const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
-    const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-    let correctBalance = invTotal - amountPaid - totalAlloc;
-    correctBalance = Math.round(correctBalance * 100) / 100;
-
-    // Check if invoice needs fixing:
-    // 1. Allocations don't match expected (missing or extra)
-    // 2. Balance is mathematically wrong
-    // 3. PHANTOM allocations exist (credit notes deleted but still in invoice array)
-    const allocationsMismatch =
-      dedupedExisting.length !== expectedCredits.length ||
-      !expectedCredits.every((ec: any) =>
-        dedupedExisting.some((ic: any) =>
-          ic.creditNoteId == ec.creditNoteId && Math.abs((ic.amount || 0) - (ec.amount || 0)) < 0.01
-        )
-      );
-
-    const balanceMismatch = Math.abs((inv.balanceDue || 0) - correctBalance) > 0.01;
-
-    // PHANTOM: original array has items that validExisting filtered out (deleted credit notes)
-    const phantomAllocations = existingCredits.length !== validExisting.length;
-
-    if (allocationsMismatch || balanceMismatch || phantomAllocations) {
-      // Also clean up creditedLines — remove entries for deleted/voided credit notes
-      const validCreditedLines = (inv.creditedLines || []).filter((cl: any) => {
-        const cn = creditNotes.find((c: any) => c.id == cl.creditNoteId);
-        return cn && !cn.voided;
-      });
-
-      invoiceArray[i] = {
-        ...inv,
-        balanceDue: correctBalance,
-        creditAllocations: expectedCredits,
-        creditedLines: validCreditedLines,
-        status: correctBalance <= 0.01
-          ? "paid"
-          : amountPaid > 0.01
-            ? "partially_paid"
-            : inv.status === "paid"
-              ? "sent"
-              : inv.status,
-        updatedAt: new Date().toISOString(),
-      };
-      fixed++;
-    }
-  }
-
-  if (fixed > 0) {
-    console.log(`[FirebaseSync] Repaired ${fixed} invoice(s) with stale credit allocations`);
-  }
-  return invoiceArray;
-}
-
-/** Read invoices from storage, repair allocations, save back, and reload into memory.
- *  Used when credit notes change (since that affects invoice allocations). */
-function repairStoredInvoices(): void {
-  const invRaw = localStorage.getItem("sgf_invoices");
-  if (!invRaw) return;
-  try {
-    const invoices = JSON.parse(invRaw);
-    if (!Array.isArray(invoices)) return;
-    const fixed = repairInvoiceAllocations(invoices);
-    if (fixed > 0) {
-      localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
-      reloadFromStorage(["sgf_invoices"]);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: invoices.length } }));
-      }
-    }
-  } catch { /* ignore */ }
-}
-
-/** Subscribe to real-time credit note updates */
-export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
-  return createSubscription("creditNotes", "sgf_creditNotes", onData, {
-    postMerge: (merged) => {
-      // When credit notes change, invoice allocations may be stale
-      repairStoredInvoices();
-      return merged;
-    },
-  });
-}
-
-export function subscribeToCollectionNotes(onData?: (notes: any[]) => void): () => void {
-  return createSubscription("collectionNotes", "sgf_collectionNotes", onData);
-}
-
-export function subscribeToCollectionPromises(onData?: (promises: any[]) => void): () => void {
-  return createSubscription("collectionPromises", "sgf_collectionPromises", onData);
-}
-
-export function subscribeToAccountHolds(onData?: (holds: any[]) => void): () => void {
-  return createSubscription("accountHolds", "sgf_accountHolds", onData);
-}
-
-export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () => void {
-  return createSubscription("specialPrices", "sgf_specialPrices", onData);
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CORPORATE MODULE SUBSCRIPTIONS
-// ═══════════════════════════════════════════════════════════════
-
-export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
-  return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
-}
-
-export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
-  return createSubscription("purchaseOrders", "sgf_purchaseOrders", onData);
-}
-
-export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
-  return createSubscription("barrels", "sgf_barrels", onData);
-}
-
-export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
-  return createSubscription("certificatesOfCompliance", "sgf_cocs", onData);
-}
-
-export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
-  return createSubscription("packingListLines", "sgf_packingListLines", onData);
-}
-
 // =============================================================================
 // MANUAL PULL: Force-fetch all data from Firebase into localStorage
 // =============================================================================
@@ -807,8 +628,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
 
   const pullType = async (path: string, storageKey: string, postProcess?: (items: any[]) => any[]) => {
     try {
-      // CRITICAL: 15-second timeout prevents the app from hanging forever if Firebase is slow.
-      // onValue subscription downloads data in parallel; readFromFirebase is a backup check.
       const timeoutMs = 15000;
       const snapshot = await Promise.race([
         get(ref(db, path)),
@@ -817,11 +636,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
         ),
       ]);
       const data = fbToArray((snapshot as any).val());
-      // Store fingerprint of raw cloud data BEFORE merge.
-      // Subscriptions receive the same raw data; this lets them skip
-      // redundant merge/write/reload when data hasn't actually changed.
       storeFingerprint(storageKey, data);
-      // ALWAYS merge — even when cloud is empty, to clear deleted items locally
       let merged = mergeWithCloudData(storageKey, data);
       if (postProcess) merged = postProcess(merged);
       setStorageItem(storageKey, JSON.stringify(merged));
@@ -834,7 +649,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
     }
   };
 
-  // Customer dedup post-process: same customer from different devices may have different IDs
   const dedupCustomers = (items: any[]) => {
     const custMap = new Map<string, any>();
     for (const c of items) {
@@ -851,8 +665,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("orders", "sgf_orders");
   await pullType("appointments", "sgf_appointments");
   await pullType("checkins", "sgf_checkins");
-  // Repair invoice allocations during pull so phantom credits are cleared on initial load
-  await pullType("invoices", "sgf_invoices", repairInvoiceAllocations);
+  await pullType("invoices", "sgf_invoices");
   await pullType("customers", "sgf_customers", dedupCustomers);
   await pullType("stock", "sgf_products");
   await pullType("followUpActions", "sgf_followUpActions");
@@ -866,7 +679,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   return counts;
 }
 
-/** Firebase stores arrays as objects with numeric keys. Convert back to array. */
 function fbToArray(data: any): any[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
@@ -991,9 +803,11 @@ function getStableKey(item: any, storageKey: string): string | null {
 }
 
 /** Smart merge: Firebase is source of truth, but local-only items are preserved.
- *  For items in BOTH, local properties win over null/missing Firebase properties.
- *  This preserves local enrichment (customerCode matching, status updates)
- *  without losing Firebase updates. */
+ *  RULES (kept simple and stable):
+ *  1. Firebase items = source of truth (replace local copy)
+ *  2. Local items NOT in Firebase = preserved (unsynced new data)
+ *  3. No timestamps, no comparisons, no property enrichment, no ghost removal
+ */
 export function mergeWithCloudData(key: string, incoming: any[]): any[] {
   try {
     const raw = getStorageItem(key);
@@ -1011,8 +825,6 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // SAFETY GUARD: If Firebase returns 0 items but local has ANY data,
     // preserve local data. A null snapshot during initial connection or a
     // timeout from readFromFirebase should NEVER wipe local data.
-    // Legitimate mass-deletes are extremely rare and should use
-    // forceResetAndSync(), not automatic sync.
     if (incoming.length === 0 && local.length > 0) {
       console.warn(`[mergeWithCloudData] SAFETY: Firebase returned 0 ${key} but local has ${local.length} items. Preserving local data.`);
       return local;
@@ -1021,126 +833,20 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // Start with all Firebase items (source of truth)
     const merged = new Map<string, any>(incomingMap);
 
-    // Add local items that DON'T exist in Firebase (unsynced / newly created).
-    // CLOUD-FIRST RULE: If an item was previously synced (_syncedAt exists) but is
-    // no longer in Firebase, it was DELETED from the cloud → remove it locally.
-    // If an item was NEVER synced (no _syncedAt), it is a local draft → keep it.
-    // RACE-CONDITION SAFETY: If an item was recently updated (within 60s), keep it
-    // even if it has _syncedAt — the push may not have propagated to Firebase yet.
+    // Add local items that DON'T exist in Firebase (unsynced / newly created)
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
-        // DISABLED: Ghost removal was deleting legitimate data when Firebase
-        // returned incomplete snapshots (connection hiccups, partial reads).
-        // All local items that are missing from Firebase are now preserved.
-        // const recentlyUpdated = item.updatedAt && (Date.now() - new Date(item.updatedAt).getTime() < 60000);
-        // if (item._syncedAt && !recentlyUpdated) {
-        //   continue; // skip ghost
-        // }
-        merged.set(k, item);
+        merged.set(k, item); // Preserve local-only item
       }
     }
 
-    // For items in BOTH: use timestamp-based merge.
-    // If both have updatedAt, the NEWER version wins (prevents stale cloud data
-    // from overwriting recent local changes like credit notes, payment edits).
-    // If no timestamps, fall back to: local non-null values win over Firebase null.
-    for (const item of local) {
-      const k = getStableKey(item, key);
-      if (k !== null && incomingMap.has(k)) {
-        const fbItem = incomingMap.get(k)!;
-        const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
-        const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
-        // Use the newer version as the base
-        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
-        // Always enrich with local properties that are missing/null in the winner
-        const loser = localUpdated >= fbUpdated ? fbItem : item;
-        for (const prop of Object.keys(loser)) {
-          if (loser[prop] != null && mergedItem[prop] == null) {
-            mergedItem[prop] = loser[prop];
-          }
-        }
-
-        // PAYMENT PRESERVATION: Never lose payments during merge.
-        const localPayments = (item.payments || []) as any[];
-        const fbPayments = (fbItem.payments || []) as any[];
-        if (localPayments.length > 0 || fbPayments.length > 0) {
-          const paymentMap = new Map<string, any>();
-          for (const p of localPayments) {
-            const pk = p.id || p.createdAt || JSON.stringify(p);
-            paymentMap.set(pk, p);
-          }
-          for (const p of fbPayments) {
-            const pk = p.id || p.createdAt || JSON.stringify(p);
-            if (!paymentMap.has(pk)) paymentMap.set(pk, p);
-          }
-          mergedItem.payments = Array.from(paymentMap.values()).sort(
-            (a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
-          );
-          mergedItem.amountPaid = mergedItem.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
-        }
-
-        // INVOICE LINK PRESERVATION: Never lose order→invoice link during merge.
-        // If either side has invoiceNumber, keep it.
-        if (key === "sgf_orders") {
-          if (!mergedItem.invoiceNumber && item.invoiceNumber) mergedItem.invoiceNumber = item.invoiceNumber;
-          if (!mergedItem.invoiceNumber && fbItem.invoiceNumber) mergedItem.invoiceNumber = fbItem.invoiceNumber;
-        }
-
-        // CREDIT PRESERVATION: Never lose credit allocations or creditedLines during merge.
-        if (key === "sgf_invoices") {
-          const localCredits = item.creditAllocations || [];
-          const fbCredits = fbItem.creditAllocations || [];
-          if (localCredits.length > 0 || fbCredits.length > 0) {
-            const creditMap = new Map<string, any>();
-            for (const c of localCredits) {
-              const ck = c.creditNoteId || c.id || JSON.stringify(c);
-              creditMap.set(ck, c);
-            }
-            for (const c of fbCredits) {
-              const ck = c.creditNoteId || c.id || JSON.stringify(c);
-              if (!creditMap.has(ck)) creditMap.set(ck, c);
-            }
-            mergedItem.creditAllocations = Array.from(creditMap.values());
-          }
-          const localCredited = item.creditedLines || [];
-          const fbCredited = fbItem.creditedLines || [];
-          if (localCredited.length > 0 || fbCredited.length > 0) {
-            const lineMap = new Map<string, any>();
-            for (const cl of localCredited) {
-              const lk = cl.creditNoteId || cl.lineItemId || JSON.stringify(cl);
-              lineMap.set(lk, cl);
-            }
-            for (const cl of fbCredited) {
-              const lk = cl.creditNoteId || cl.lineItemId || JSON.stringify(cl);
-              if (!lineMap.has(lk)) lineMap.set(lk, cl);
-            }
-            mergedItem.creditedLines = Array.from(lineMap.values());
-          }
-        }
-
-        merged.set(k, mergedItem);
-      }
-    }
-
-    // Mark items that were ACTUALLY in Firebase as synced.
-    // CRITICAL: Only set _syncedAt on items that came from Firebase.
-    // Local drafts that were never synced must NOT get _syncedAt,
-    // otherwise ghost-removal will incorrectly delete them later.
-    const result = Array.from(merged.values());
-    for (const item of result) {
-      if (item && typeof item === "object") {
-        const k = getStableKey(item, key);
-        if (k !== null && incomingMap.has(k)) {
-          item._syncedAt = item._syncedAt || Date.now();
-        }
-      }
-    }
-    return result;
+    return Array.from(merged.values());
   } catch {
     return incoming;
   }
 }
+
 
 export function subscribeToCustomers(onData?: (customers: any[]) => void): () => void {
   return createSubscription("customers", "sgf_customers", onData, {
@@ -1185,7 +891,7 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
 export function subscribeToInvoices(onData: (invoices: any[]) => void): () => void {
   return createSubscription("invoices", "sgf_invoices", onData, {
     logPrefix: "Invoices",
-    postMerge: (merged) => repairInvoiceAllocations(merged),
+
   });
 }
 
@@ -1207,6 +913,46 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
 
 export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
   return createSubscription("users", "sgf_users", onData);
+}
+
+export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
+  return createSubscription("creditNotes", "sgf_creditNotes", onData);
+}
+
+export function subscribeToCollectionNotes(onData?: (notes: any[]) => void): () => void {
+  return createSubscription("collectionNotes", "sgf_collectionNotes", onData);
+}
+
+export function subscribeToCollectionPromises(onData?: (promises: any[]) => void): () => void {
+  return createSubscription("collectionPromises", "sgf_collectionPromises", onData);
+}
+
+export function subscribeToAccountHolds(onData?: (holds: any[]) => void): () => void {
+  return createSubscription("accountHolds", "sgf_accountHolds", onData);
+}
+
+export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () => void {
+  return createSubscription("specialPrices", "sgf_specialPrices", onData);
+}
+
+export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
+  return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
+}
+
+export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
+  return createSubscription("purchaseOrders", "sgf_purchaseOrders", onData);
+}
+
+export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
+  return createSubscription("barrels", "sgf_barrels", onData);
+}
+
+export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
+  return createSubscription("certificatesOfCompliance", "sgf_cocs", onData);
+}
+
+export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
+  return createSubscription("packingListLines", "sgf_packingListLines", onData);
 }
 
 // =============================================================================

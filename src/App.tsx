@@ -103,6 +103,34 @@ export default function App() {
           const counts = await pullFromCloud();
           reloadFromStorage();
           console.log("[Sync] Background cloud pull complete:", counts);
+
+          // POST-PULL REPAIR: Fix any data corruption from stale cloud data
+          // This runs AFTER cloud data is merged so we repair the merged result
+          const { fixOrphanedInvoiceLinks, repairCreditAllocations } = await import("@/lib/dataService");
+          const orphanFix = fixOrphanedInvoiceLinks();
+          if (orphanFix.changed > 0) {
+            console.log(`[Sync] Post-pull repaired ${orphanFix.changed} orphaned order→invoice links`);
+          }
+          const creditFix = repairCreditAllocations();
+          if (creditFix > 0) {
+            console.log(`[Sync] Post-pull repaired ${creditFix} invoice credit allocations`);
+          }
+
+          // If this is a new app version, force-push ALL local data to Firebase
+          // to clean up stale cloud data from old bugs
+          const appVer = window.SGF_APP_VERSION || "";
+          const lastSyncVer = localStorage.getItem("sgf_last_sync_version");
+          if (appVer && lastSyncVer !== appVer) {
+            console.log(`[Sync] New version detected (${lastSyncVer} → ${appVer}). Force-pushing repaired data to cloud...`);
+            const { pushInvoice, pushOrder } = await import("@/lib/firebaseSync");
+            const { invoice, order } = await import("@/lib/dataService");
+            const allInv = invoice.list();
+            const allOrd = order.list();
+            for (const inv of allInv) { await pushInvoice(inv); }
+            for (const ord of allOrd) { await pushOrder(ord); }
+            localStorage.setItem("sgf_last_sync_version", appVer);
+            console.log(`[Sync] Force-push complete: ${allInv.length} invoices, ${allOrd.length} orders`);
+          }
         }
       } catch (e) {
         console.warn("[Sync] Background pull error:", e);

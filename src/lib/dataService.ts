@@ -396,6 +396,11 @@ function load() {
   // The old code did `20${parts[2]}` on 4-digit years, producing dates like "202026-07-06".
   try { fixSageInvoiceDates(); } catch { /* ignore */ }
 
+  // FIX: Re-link orders that have an invoice but lost their invoiceNumber.
+  // This happens when sync merges overwrite the order before the invoiceNumber
+  // was pushed, or when a device loads stale order data from Firebase.
+  try { fixOrphanedInvoiceLinks(); } catch { /* ignore */ }
+
   // ─── CORPORATE MODULE DATA LOADING ───
   const cc = getStorageItem("sgf_corporateCustomers");
   if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
@@ -502,6 +507,40 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
     console.log(`[SageDate] Repaired ${changed} corrupted Sage invoice date(s)`);
   }
   return { changed, invoices: changedInvs };
+}
+
+/**
+ * Fix orders that have a matching invoice but lost their invoiceNumber.
+ * This happens when:
+ * 1. Invoice was generated and pushed to Firebase
+ * 2. Order was NOT pushed (old bug in OrdersPage.tsx)
+ * 3. Another device loads → gets invoice but order has no invoiceNumber
+ * Result: order shows "No Invoice Generated" even though invoice exists.
+ */
+export function fixOrphanedInvoiceLinks(): { changed: number } {
+  let changed = 0;
+  const invoiceMap = new Map<string | number, string>();
+  // Build map: orderId → invoiceNumber
+  for (const inv of invoices) {
+    if (inv.orderId && inv.invoiceNumber) {
+      invoiceMap.set(inv.orderId, inv.invoiceNumber);
+    }
+  }
+  // Scan orders and fix missing invoiceNumber
+  for (const ord of orders) {
+    if (ord.source === "sage") continue; // Sage orders don't link to generated invoices
+    if (!ord.invoiceNumber && invoiceMap.has(ord.id)) {
+      ord.invoiceNumber = invoiceMap.get(ord.id)!;
+      ord.updatedAt = new Date().toISOString();
+      changed++;
+      console.log(`[OrphanFix] Re-linked order ${ord.id} → ${ord.invoiceNumber}`);
+    }
+  }
+  if (changed > 0) {
+    saveItem("sgf_orders", orders);
+    console.log(`[OrphanFix] Re-linked ${changed} order(s) to existing invoices`);
+  }
+  return { changed };
 }
 
 /** Read banking details from settings. Used by invoice print, statements, emails. */

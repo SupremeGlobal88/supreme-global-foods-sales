@@ -585,6 +585,51 @@ export async function pushCreditNote(cn: any): Promise<void> {
   }
 }
 
+export async function pushCollectionNote(note: any): Promise<void> {
+  if (!isFirebaseReady() || !note || !note.id) return;
+  try {
+    await set(ref(db, `collectionNotes/${safeFbKey(note.id)}`), cleanForFirebase(note));
+  } catch (e: any) {
+    console.error("[pushCollectionNote] FAILED:", note.id, e.message);
+  }
+}
+
+export async function pushCollectionPromise(promise: any): Promise<void> {
+  if (!isFirebaseReady() || !promise || !promise.id) return;
+  try {
+    await set(ref(db, `collectionPromises/${safeFbKey(promise.id)}`), cleanForFirebase(promise));
+  } catch (e: any) {
+    console.error("[pushCollectionPromise] FAILED:", promise.id, e.message);
+  }
+}
+
+export async function pushAccountHold(hold: any): Promise<void> {
+  if (!isFirebaseReady() || !hold || !hold.id) return;
+  try {
+    await set(ref(db, `accountHolds/${safeFbKey(hold.id)}`), cleanForFirebase(hold));
+  } catch (e: any) {
+    console.error("[pushAccountHold] FAILED:", hold.id, e.message);
+  }
+}
+
+export async function pushSpecialPrice(sp: any): Promise<void> {
+  if (!isFirebaseReady() || !sp || !sp.id) return;
+  try {
+    await set(ref(db, `specialPrices/${safeFbKey(sp.id)}`), cleanForFirebase(sp));
+  } catch (e: any) {
+    console.error("[pushSpecialPrice] FAILED:", sp.id, e.message);
+  }
+}
+
+export async function removeSpecialPrice(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    await remove(ref(db, `specialPrices/${safeFbKey(id)}`));
+  } catch (e: any) {
+    console.error("[removeSpecialPrice] FAILED:", id, e.message);
+  }
+}
+
 /** Repair invoice credit allocations by cross-checking against credit notes.
  *  Reads credit notes from localStorage directly (avoids stale module state).
  *  Returns the repaired invoice array (mutates in place for performance). */
@@ -969,12 +1014,13 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
-        const recentlyUpdated = item.updatedAt && (Date.now() - new Date(item.updatedAt).getTime() < 60000);
-        if (item._syncedAt && !recentlyUpdated) {
-          // Previously synced but now deleted from cloud → skip (remove ghost)
-          continue;
-        }
-        // Never synced OR recently updated → preserve as local draft
+        // DISABLED: Ghost removal was deleting legitimate data when Firebase
+        // returned incomplete snapshots (connection hiccups, partial reads).
+        // All local items that are missing from Firebase are now preserved.
+        // const recentlyUpdated = item.updatedAt && (Date.now() - new Date(item.updatedAt).getTime() < 60000);
+        // if (item._syncedAt && !recentlyUpdated) {
+        //   continue; // skip ghost
+        // }
         merged.set(k, item);
       }
     }

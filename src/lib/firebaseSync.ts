@@ -756,6 +756,22 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
   });
 }
 
+export function subscribeToCollectionNotes(onData?: (notes: any[]) => void): () => void {
+  return createSubscription("collectionNotes", "sgf_collectionNotes", onData);
+}
+
+export function subscribeToCollectionPromises(onData?: (promises: any[]) => void): () => void {
+  return createSubscription("collectionPromises", "sgf_collectionPromises", onData);
+}
+
+export function subscribeToAccountHolds(onData?: (holds: any[]) => void): () => void {
+  return createSubscription("accountHolds", "sgf_accountHolds", onData);
+}
+
+export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () => void {
+  return createSubscription("specialPrices", "sgf_specialPrices", onData);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CORPORATE MODULE SUBSCRIPTIONS
 // ═══════════════════════════════════════════════════════════════
@@ -1240,7 +1256,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
   appointments: number; checkins: number; followUps: number; receipts: number;
   errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   // Count total items first for progress reporting
@@ -1253,6 +1269,19 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
     { storageKey: "sgf_checkins", fbPath: "checkins", counter: "checkins" as const, label: "Check-ins" },
     { storageKey: "sgf_followUps", fbPath: "followUps", counter: "followUps" as const, label: "Follow-ups" },
     { storageKey: "sgf_receipts", fbPath: "receipts", counter: "receipts" as const, label: "Receipts" },
+    { storageKey: "sgf_creditNotes", fbPath: "creditNotes", counter: "creditNotes" as const, label: "Credit Notes" },
+    { storageKey: "sgf_collectionNotes", fbPath: "collectionNotes", counter: "collectionNotes" as const, label: "Collection Notes" },
+    { storageKey: "sgf_collectionPromises", fbPath: "collectionPromises", counter: "collectionPromises" as const, label: "Collection Promises" },
+    { storageKey: "sgf_accountHolds", fbPath: "accountHolds", counter: "accountHolds" as const, label: "Account Holds" },
+    { storageKey: "sgf_specialPrices", fbPath: "specialPrices", counter: "specialPrices" as const, label: "Special Prices" },
+    { storageKey: "sgf_corporateCustomers", fbPath: "corporateCustomers", counter: "corporateCustomers" as const, label: "Corporate Customers" },
+    { storageKey: "sgf_purchaseOrders", fbPath: "purchaseOrders", counter: "purchaseOrders" as const, label: "Purchase Orders" },
+    { storageKey: "sgf_barrels", fbPath: "barrels", counter: "barrels" as const, label: "Barrels" },
+    { storageKey: "sgf_cocs", fbPath: "certificatesOfCompliance", counter: "cocs" as const, label: "COCs" },
+    { storageKey: "sgf_packingListLines", fbPath: "packingListLines", counter: "packingListLines" as const, label: "Packing Lists" },
+    { storageKey: "sgf_followUpActions", fbPath: "followUpActions", counter: "followUpActions" as const, label: "Follow-up Actions" },
+    { storageKey: "sgf_users", fbPath: "users", counter: "users" as const, label: "Users" },
+    { storageKey: "sgf_salesReps", fbPath: "salesReps", counter: "salesReps" as const, label: "Sales Reps" },
   ];
   let totalItems = 0;
   for (const list of lists) {
@@ -1312,9 +1341,13 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
 export async function forcePullAllFromCloud(): Promise<{
   orders: number; invoices: number; customers: number; stock: number;
   appointments: number; checkins: number; followUps: number; receipts: number;
+  creditNotes: number; collectionNotes: number; collectionPromises: number;
+  accountHolds: number; specialPrices: number; corporateCustomers: number;
+  purchaseOrders: number; barrels: number; cocs: number; packingListLines: number;
+  followUpActions: number; users: number; salesReps: number;
   errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   const pullList = async (fbPath: string, storageKey: string, counter: keyof typeof result) => {
@@ -1339,6 +1372,19 @@ export async function forcePullAllFromCloud(): Promise<{
   await pullList("checkins", "sgf_checkins", "checkins");
   await pullList("followUps", "sgf_followUps", "followUps");
   await pullList("receipts", "sgf_receipts", "receipts");
+  await pullList("creditNotes", "sgf_creditNotes", "creditNotes");
+  await pullList("collectionNotes", "sgf_collectionNotes", "collectionNotes");
+  await pullList("collectionPromises", "sgf_collectionPromises", "collectionPromises");
+  await pullList("accountHolds", "sgf_accountHolds", "accountHolds");
+  await pullList("specialPrices", "sgf_specialPrices", "specialPrices");
+  await pullList("corporateCustomers", "sgf_corporateCustomers", "corporateCustomers");
+  await pullList("purchaseOrders", "sgf_purchaseOrders", "purchaseOrders");
+  await pullList("barrels", "sgf_barrels", "barrels");
+  await pullList("certificatesOfCompliance", "sgf_cocs", "cocs");
+  await pullList("packingListLines", "sgf_packingListLines", "packingListLines");
+  await pullList("followUpActions", "sgf_followUpActions", "followUpActions");
+  await pullList("users", "sgf_users", "users");
+  await pullList("salesReps", "sgf_salesReps", "salesReps");
 
   dataServiceRefresh?.();
   console.log("[forcePull] COMPLETE:", result);
@@ -1718,7 +1764,7 @@ export function initAutoSync(): () => void {
 
     // ONLY dispatch event — React Query will refetch via tRPC invalidate.
     // The subscription function has already merged, saved, and reloaded.
-    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
+    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","collectionNotes","collectionPromises","accountHolds","specialPrices","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
       pendingEventTypes.add(type);
       if (eventDebounceTimer) clearTimeout(eventDebounceTimer);
       // On first load, batch all subscription events into a single dispatch
@@ -1743,6 +1789,10 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
   unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps")));
   unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
+  unsubs.push(subscribeToCollectionNotes(handleReceived("collectionNotes", "sgf_collectionNotes")));
+  unsubs.push(subscribeToCollectionPromises(handleReceived("collectionPromises", "sgf_collectionPromises")));
+  unsubs.push(subscribeToAccountHolds(handleReceived("accountHolds", "sgf_accountHolds")));
+  unsubs.push(subscribeToSpecialPrices(handleReceived("specialPrices", "sgf_specialPrices")));
   // ═══ CORPORATE MODULE — real-time subscriptions
   unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
   unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));

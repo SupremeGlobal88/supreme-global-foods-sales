@@ -286,8 +286,31 @@ export default function SettingsPage() {
       const result = await forcePushAllLocalData((done, total, currentType) => {
         setForcePushStatus(`${done}/${total} items pushed (${currentType})... Please wait.`);
       });
+      const parts = [
+        result.orders > 0 && `${result.orders} orders`,
+        result.invoices > 0 && `${result.invoices} invoices`,
+        result.customers > 0 && `${result.customers} customers`,
+        result.stock > 0 && `${result.stock} stock`,
+        result.appointments > 0 && `${result.appointments} appointments`,
+        result.checkins > 0 && `${result.checkins} checkins`,
+        result.followUps > 0 && `${result.followUps} followUps`,
+        result.receipts > 0 && `${result.receipts} receipts`,
+        result.creditNotes > 0 && `${result.creditNotes} creditNotes`,
+        result.collectionNotes > 0 && `${result.collectionNotes} collNotes`,
+        result.collectionPromises > 0 && `${result.collectionPromises} promises`,
+        result.accountHolds > 0 && `${result.accountHolds} holds`,
+        result.specialPrices > 0 && `${result.specialPrices} specialPrices`,
+        result.corporateCustomers > 0 && `${result.corporateCustomers} corpCusts`,
+        result.purchaseOrders > 0 && `${result.purchaseOrders} POs`,
+        result.barrels > 0 && `${result.barrels} barrels`,
+        result.cocs > 0 && `${result.cocs} COCs`,
+        result.packingListLines > 0 && `${result.packingListLines} packs`,
+        result.followUpActions > 0 && `${result.followUpActions} actions`,
+        result.users > 0 && `${result.users} users`,
+        result.salesReps > 0 && `${result.salesReps} salesReps`,
+      ].filter(Boolean).join(", ");
       setForcePushStatus(
-        `PUSHED: ${result.orders} orders, ${result.invoices} invoices, ${result.customers} customers, ${result.stock} stock items. ` +
+        `PUSHED: ${parts || "Nothing to push"}. ` +
         (result.errors.length > 0 ? `Errors: ${result.errors.slice(0, 3).join("; ")}` : "All done!")
       );
       setTimeout(() => setForcePushStatus(""), 15000);

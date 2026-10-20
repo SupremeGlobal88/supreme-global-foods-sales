@@ -4265,11 +4265,11 @@ export const dataService = {
         const repCustomers = customers.filter((c) => c.salesRepName === name);
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample";
+          return cust?.salesRepName === name && o.orderType !== "sample" && o.status !== "cancelled";
         });
         const repSamples = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType === "sample";
+          return cust?.salesRepName === name && o.orderType === "sample" && o.status !== "cancelled";
         });
         const totalSales = Math.round(repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
         const sampleCost = Math.round(repSamples.reduce((sum, o) => {
@@ -4306,7 +4306,7 @@ export const dataService = {
         const name = rep.name;
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample";
+          return cust?.salesRepName === name && o.orderType !== "sample" && o.status !== "cancelled";
         });
 
         const todaySales = Math.round(repOrders

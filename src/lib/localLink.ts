@@ -333,7 +333,7 @@ export function createLocalLink() {
               case "checkIn.getWeeklyReport": await smartSync("checkIns", "sgf_checkIns"); result = dataService.checkIn.getWeeklyReport(input?.year, input?.week); break;
               case "checkIn.getMonthlyReport": await smartSync("checkIns", "sgf_checkIns"); result = dataService.checkIn.getMonthlyReport(input?.year, input?.month); break;
               case "checkIn.getAARate": result = getAARate(); break;
-              case "checkIn.setAARate": result = setAARate(input); break;
+              case "checkIn.setAARate": { result = setAARate(input); const updatedCheckin = dataService.checkin.list().find((c: any) => c.id == input.id); if (updatedCheckin) await pushCheckin(updatedCheckin); reloadFromStorage(["sgf_checkins"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkins", count: 1 } })); break; }
               case "followUpAction.list": await smartSync("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.list(); break;
               case "followUpAction.listByCustomer": await smartSync("followUpActions", "sgf_followUpActions"); result = dataService.followUpAction.listByCustomer(input); break;
               case "followUpAction.create": result = dataService.followUpAction.create(input); await pushFollowUpAction(result); reloadFromStorage(["sgf_followUpActions"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "followUpActions", count: 1 } })); break;

@@ -331,16 +331,10 @@ function load() {
     if (!users || users.length === 0) {
       users = [...DEFAULT_USERS];
       saveItem("sgf_users", users);
-    } else {
-      let added = false;
-      for (const du of DEFAULT_USERS) {
-        if (!users.find((existing: any) => existing.name?.toLowerCase() === du.name.toLowerCase())) {
-          users.push(du);
-          added = true;
-        }
-      }
-      if (added) saveItem("sgf_users", users);
     }
+    // NOTE: Do NOT re-add default users here. If an admin deleted a user,
+    // they must stay deleted. Re-adding causes "jumping back" bug.
+    // Defaults are only injected on first load when users array is empty.
   } catch { /* ignore */ }
 
   // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
@@ -4895,16 +4889,9 @@ export const dataService = {
 
         if (!storedUserWithDifferentPin && !memUserWithDifferentPin) {
           found = DEFAULT_USERS.find((x: any) => x.name?.toLowerCase() === name.toLowerCase() && String(x.pin) === typedPin && x.isActive !== false);
-          if (found) {
-            // Repair: merge defaults into stored users so next time it works from DB
-            const existingNames = new Set((users || []).map((u: any) => u.name?.toLowerCase()));
-            for (const du of DEFAULT_USERS) {
-              if (!existingNames.has(du.name.toLowerCase())) {
-                users.push({ ...du, createdAt: new Date().toISOString() });
-              }
-            }
-            saveItem("sgf_users", users);
-          }
+          // Do NOT re-add missing default users here — if an admin deleted a user,
+          // they must stay deleted. Re-adding causes "jumping back" bug.
+          // Defaults are only injected on first app load when users array is empty.
         }
       }
 
@@ -5736,17 +5723,9 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
       (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
     );
     if (fromDefaults) {
-      // Repair stored users if needed
-      try {
-        const raw = getStorageItem("sgf_users");
-        const stored = raw ? JSON.parse(raw) : [];
-        const exists = stored.find((x: any) => x.name?.toLowerCase() === name.toLowerCase());
-        if (!exists) {
-          stored.push({ ...fromDefaults, isActive: true, createdAt: new Date().toISOString() });
-          setStorageItem("sgf_users", JSON.stringify(stored));
-          users = stored;
-        }
-      } catch { /* ignore */ }
+      // Do NOT re-add missing default users here — if an admin deleted a user,
+      // they must stay deleted. Re-adding causes "jumping back" bug.
+      // Defaults are only injected on first app load when users array is empty.
       return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role, pin: fromDefaults.pin };
     }
   }

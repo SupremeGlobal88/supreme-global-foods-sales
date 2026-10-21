@@ -88,6 +88,8 @@ export default function Dashboard() {
   const { data: allInvoices } = trpc.invoice.list.useQuery();
   const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
   const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: canViewAll });
+  const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
 
   const chartRef = useRef<HTMLDivElement>(null);
   const [pullStatus, setPullStatus] = useState("");
@@ -114,9 +116,16 @@ export default function Dashboard() {
     filteredInvoices.filter((i: any) => i.status !== "draft" && i.status !== "paid").reduce((s: number, i: any) => s + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0),
   [filteredInvoices]);
 
-  const filteredOrderCount = useMemo(() =>
-    filteredOrders.filter((o: any) => o.orderType !== "sample").length,
-  [filteredOrders]);
+  const filteredOrderCount = useMemo(() => {
+    const orderCount = filteredOrders.filter((o: any) => o.orderType !== "sample").length;
+    const poCount = selectedMonth
+      ? (purchaseOrders || []).filter((po: any) => {
+          const poDate = po.createdAt || "";
+          return poDate.startsWith(selectedMonth);
+        }).length
+      : (purchaseOrders || []).length;
+    return orderCount + poCount;
+  }, [filteredOrders, purchaseOrders, selectedMonth]);
 
   const filteredSalesBreakdown = useMemo(() => {
     if (!selectedMonth) return salesBreakdown;
@@ -130,7 +139,21 @@ export default function Dashboard() {
       const repOrders = filteredOrders.filter((o: any) => {
         return o.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
       });
-      const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+      // Include corporate purchase orders for this rep in selected month
+      const repPOs = (purchaseOrders || []).filter((po: any) => {
+        const poDate = po.createdAt || "";
+        const inMonth = selectedMonth ? poDate.startsWith(selectedMonth) : true;
+        const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+        return corpCustomer?.salesRepName === name && !isCancelled(po) && inMonth;
+      });
+      const poTotal = repPOs.reduce((sum: number, po: any) => {
+        const items = po.lineItems || [];
+        const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+        const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+        const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+        return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
+      }, 0);
+      const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0) + poTotal;
       return { name, todaySales: 0, weekSales: 0, monthSales };
     });
     return {
@@ -138,7 +161,7 @@ export default function Dashboard() {
       repSales,
       totals: { today: 0, week: 0, month: repSales.reduce((s: number, r: any) => s + r.monthSales, 0) },
     };
-  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions]);
+  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions, purchaseOrders, corporateCustomers]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -367,9 +390,24 @@ export default function Dashboard() {
                         return s === "cancelled" || s === "canceled" || s === "cancel";
                       };
                       const repMonthSales = selectedMonth
-                        ? (filteredOrders || []).filter((o: any) => {
-                            return o.salesRepName === rep.name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
-                          }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
+                        ? (() => {
+                            const orderTotal = (filteredOrders || []).filter((o: any) => {
+                              return o.salesRepName === rep.name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
+                            }).reduce((s: number, o: any) => s + Number(o.total || 0), 0);
+                            const poTotal = (purchaseOrders || []).filter((po: any) => {
+                              const poDate = po.createdAt || "";
+                              const inMonth = selectedMonth ? poDate.startsWith(selectedMonth) : true;
+                              const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+                              return corpCustomer?.salesRepName === rep.name && !isCancelled(po) && inMonth;
+                            }).reduce((sum: number, po: any) => {
+                              const items = po.lineItems || [];
+                              const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+                              const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+                              const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+                              return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
+                            }, 0);
+                            return orderTotal + poTotal;
+                          })()
                         : rep.totalSales;
                       return (
                         <tr key={rep.name} className="border-b border-[#18191A] hover:bg-[#131415]">
@@ -377,11 +415,22 @@ export default function Dashboard() {
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">{rep.customerCount}</td>
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">
                             {selectedMonth
-                              ? (filteredOrders || []).filter((o: any) => {
-                                  const s = String(o.status || "").toLowerCase().trim();
-                                  const isOrderCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
-                                  return o.salesRepName === rep.name && o.orderType !== "sample" && o.orderType !== "quote" && !isOrderCancelled;
-                                }).length
+                              ? (() => {
+                                  const orderCount = (filteredOrders || []).filter((o: any) => {
+                                    const s = String(o.status || "").toLowerCase().trim();
+                                    const isOrderCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
+                                    return o.salesRepName === rep.name && o.orderType !== "sample" && o.orderType !== "quote" && !isOrderCancelled;
+                                  }).length;
+                                  const poCount = (purchaseOrders || []).filter((po: any) => {
+                                    const poDate = po.createdAt || "";
+                                    const inMonth = selectedMonth ? poDate.startsWith(selectedMonth) : true;
+                                    const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+                                    const s = String(po.status || "").toLowerCase().trim();
+                                    const isPOCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
+                                    return corpCustomer?.salesRepName === rep.name && !isPOCancelled && inMonth;
+                                  }).length;
+                                  return orderCount + poCount;
+                                })()
                               : rep.orderCount}
                           </td>
                           <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

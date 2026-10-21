@@ -4310,7 +4310,20 @@ export const dataService = {
           const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType === "sample" && !isCancelled(o);
         });
-        const totalSales = Math.round(repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
+        // Include purchase orders (corporate) for this rep
+        const repPOs = purchaseOrders.filter((po) => {
+          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+          return corpCustomer?.salesRepName === name && !isCancelled(po);
+        });
+        const poTotal = Math.round(repPOs.reduce((sum, po) => {
+          const items = po.lineItems || [];
+          const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+          return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
+        }, 0) * 100) / 100;
+
+        const totalSales = Math.round((repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) + poTotal) * 100) / 100;
         const sampleCost = Math.round(repSamples.reduce((sum, o) => {
           const cost = o.items?.reduce((s: number, item: any) => {
             const prod = products.find((p) => p.id == item.stockItemId);
@@ -4318,7 +4331,7 @@ export const dataService = {
           }, 0) || 0;
           return sum + cost;
         }, 0) * 100) / 100;
-        return { name, customerCount: repCustomers.length, orderCount: repOrders.length, sampleCount: repSamples.length, totalSales, sampleCost };
+        return { name, customerCount: repCustomers.length, orderCount: repOrders.length + repPOs.length, sampleCount: repSamples.length, totalSales, sampleCost };
       });
       const activeCount = reps.filter((r) => r.isActive !== false).length;
       return { total: reps.length, active: activeCount, inactive: reps.length - activeCount, repStats };
@@ -4352,23 +4365,46 @@ export const dataService = {
           return cust?.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
         });
 
-        const todaySales = Math.round(repOrders
-          .filter((o) => (o.createdAt || "").startsWith(todayStr))
-          .reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
+        // Include purchase orders (corporate) for this rep
+        const repPOs = purchaseOrders.filter((po) => {
+          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+          return corpCustomer?.salesRepName === name && !isCancelled(po);
+        });
+        const poTotal = (po: any) => {
+          const items = po.lineItems || [];
+          const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+          return Math.round(subtotal * (1 + vatRate) * 100) / 100;
+        };
 
-        const weekSales = Math.round(repOrders
+        const todaySales = Math.round((repOrders
+          .filter((o) => (o.createdAt || "").startsWith(todayStr))
+          .reduce((sum, o) => sum + Number(o.total || 0), 0) +
+          repPOs.filter((po) => (po.createdAt || "").startsWith(todayStr))
+            .reduce((sum, po) => sum + poTotal(po), 0)) * 100) / 100;
+
+        const weekSales = Math.round((repOrders
           .filter((o) => {
             const ts = new Date(o.createdAt).getTime();
             return ts >= weekStart.getTime() && ts <= weekEnd.getTime();
           })
-          .reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
+          .reduce((sum, o) => sum + Number(o.total || 0), 0) +
+          repPOs.filter((po) => {
+            const ts = new Date(po.createdAt).getTime();
+            return ts >= weekStart.getTime() && ts <= weekEnd.getTime();
+          }).reduce((sum, po) => sum + poTotal(po), 0)) * 100) / 100;
 
-        const monthSales = Math.round(repOrders
+        const monthSales = Math.round((repOrders
           .filter((o) => {
             const ts = new Date(o.createdAt).getTime();
             return ts >= monthStart.getTime() && ts <= monthEnd.getTime();
           })
-          .reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
+          .reduce((sum, o) => sum + Number(o.total || 0), 0) +
+          repPOs.filter((po) => {
+            const ts = new Date(po.createdAt).getTime();
+            return ts >= monthStart.getTime() && ts <= monthEnd.getTime();
+          }).reduce((sum, po) => sum + poTotal(po), 0)) * 100) / 100;
 
         return { name, todaySales, weekSales, monthSales };
       });

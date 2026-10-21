@@ -89,6 +89,7 @@ export default function Dashboard() {
   const { data: salesRepStats } = trpc.salesRep.getStats.useQuery();
   const { data: salesBreakdown } = trpc.salesRep.getSalesBreakdown.useQuery(undefined, { enabled: canViewAll });
   const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
+  const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
 
   const chartRef = useRef<HTMLDivElement>(null);
   const [pullStatus, setPullStatus] = useState("");
@@ -138,13 +139,22 @@ export default function Dashboard() {
       const repOrders = filteredOrders.filter((o: any) => {
         return o.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
       });
-      // Include corporate purchase orders for this rep in selected month — same pattern as orders
+      // Include corporate purchase orders for this rep in selected month
+      // Use po.salesRepName/total if stored directly (new pattern), fallback to corporateCustomer lookup (existing POs)
       const repPOs = (purchaseOrders || []).filter((po: any) => {
         const poDate = po.createdAt || "";
         const inMonth = selectedMonth ? poDate.startsWith(selectedMonth) : true;
-        return po.salesRepName === name && !isCancelled(po) && inMonth;
+        const poRepName = po.salesRepName || (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId)?.salesRepName;
+        return poRepName === name && !isCancelled(po) && inMonth;
       });
-      const poTotal = repPOs.reduce((sum: number, po: any) => sum + Number(po.total || 0), 0);
+      const poTotal = repPOs.reduce((sum: number, po: any) => {
+        if (po.total) return sum + Number(po.total);
+        const items = po.lineItems || [];
+        const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+        const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+        const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+        return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
+      }, 0);
       const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0) + poTotal;
       return { name, todaySales: 0, weekSales: 0, monthSales };
     });
@@ -153,7 +163,7 @@ export default function Dashboard() {
       repSales,
       totals: { today: 0, week: 0, month: repSales.reduce((s: number, r: any) => s + r.monthSales, 0) },
     };
-  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions, purchaseOrders]);
+  }, [selectedMonth, filteredOrders, salesBreakdown, salesRepStats, recentOrders, monthOptions, purchaseOrders, corporateCustomers]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -389,8 +399,16 @@ export default function Dashboard() {
                             const poTotal = (purchaseOrders || []).filter((po: any) => {
                               const poDate = po.createdAt || "";
                               const inMonth = selectedMonth ? poDate.startsWith(selectedMonth) : true;
-                              return po.salesRepName === rep.name && !isCancelled(po) && inMonth;
-                            }).reduce((sum: number, po: any) => sum + Number(po.total || 0), 0);
+                              const poRepName = po.salesRepName || (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId)?.salesRepName;
+                              return poRepName === rep.name && !isCancelled(po) && inMonth;
+                            }).reduce((sum: number, po: any) => {
+                              if (po.total) return sum + Number(po.total);
+                              const items = po.lineItems || [];
+                              const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+                              const corpCustomer = (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId);
+                              const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+                              return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
+                            }, 0);
                             return orderTotal + poTotal;
                           })()
                         : rep.totalSales;
@@ -411,7 +429,8 @@ export default function Dashboard() {
                                     const inMonth = selectedMonth ? poDate.startsWith(selectedMonth) : true;
                                     const s = String(po.status || "").toLowerCase().trim();
                                     const isPOCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
-                                    return po.salesRepName === rep.name && !isPOCancelled && inMonth;
+                                    const poRepName = po.salesRepName || (corporateCustomers || []).find((c: any) => c.id == po.corporateCustomerId)?.salesRepName;
+                                    return poRepName === rep.name && !isPOCancelled && inMonth;
                                   }).length;
                                   return orderCount + poCount;
                                 })()

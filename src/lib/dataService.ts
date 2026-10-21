@@ -394,8 +394,6 @@ function load() {
   const po = getStorageItem("sgf_purchaseOrders");
   if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
   else purchaseOrders = [];
-  // FIX: Populate salesRepName and total on existing POs (same pattern as orders)
-  try { migratePurchaseOrderFields(); } catch { /* ignore */ }
   const br = getStorageItem("sgf_barrels");
   if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
   else barrels = [];
@@ -1434,7 +1432,6 @@ function _doReloadFromStorage(keys?: string[]): void {
       const po = getStorageItem("sgf_purchaseOrders");
       if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
     } catch { /* keep current */ }
-    try { migratePurchaseOrderFields(); } catch { /* ignore */ }
   }
   if (reloadAll || keys?.includes("sgf_barrels")) {
     try {
@@ -1848,48 +1845,6 @@ export function repairPurchaseOrderCompanies(): { repaired: number } {
     console.log(`[repairPurchaseOrderCompanies] Fixed ${repaired} purchase orders with mismatched company field`);
   }
   return { repaired };
-}
-
-/** Migrate existing purchase orders to include salesRepName and total (same pattern as orders).
- *  Runs on every app startup to fix legacy POs. */
-export function migratePurchaseOrderFields(): { migrated: number } {
-  let migrated = 0;
-  const migratedPOs: any[] = [];
-  for (let i = 0; i < purchaseOrders.length; i++) {
-    const po = purchaseOrders[i];
-    let changed = false;
-    const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
-    // Populate salesRepName if missing (same pattern as order.salesRepName)
-    if (!po.salesRepName && corpCustomer?.salesRepName) {
-      po.salesRepName = corpCustomer.salesRepName;
-      changed = true;
-    }
-    // Populate total if missing (same calculation as PO create + invoice generation)
-    if (po.total === undefined || po.total === null || po.total === 0) {
-      const items = po.lineItems || [];
-      const subtotal = items.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0);
-      const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
-      po.total = Math.round(subtotal * (1 + vatRate) * 100) / 100;
-      changed = true;
-    }
-    if (changed) {
-      purchaseOrders[i] = { ...po, updatedAt: new Date().toISOString() };
-      migrated++;
-      migratedPOs.push(purchaseOrders[i]);
-    }
-  }
-  if (migrated > 0) {
-    saveItem("sgf_purchaseOrders", purchaseOrders);
-    console.log(`[migratePurchaseOrderFields] Migrated ${migrated} purchase orders with salesRepName/total`);
-    // Push migrated POs to Firebase so other devices get the updated fields
-    try {
-      const { pushPurchaseOrder } = require("./firebaseSync");
-      for (const po of migratedPOs) {
-        pushPurchaseOrder(po);
-      }
-    } catch { /* ignore if firebaseSync not loaded yet */ }
-  }
-  return { migrated };
 }
 
 /** Generate an invoice for an existing order that doesn't have one.
@@ -4355,9 +4310,20 @@ export const dataService = {
           const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType === "sample" && !isCancelled(o);
         });
-        // Include purchase orders (corporate) for this rep — same pattern as orders
-        const repPOs = purchaseOrders.filter((po) => po.salesRepName === name && !isCancelled(po));
-        const poTotal = Math.round(repPOs.reduce((sum, po) => sum + Number(po.total || 0), 0) * 100) / 100;
+        // Include purchase orders (corporate) for this rep
+        // Use po.salesRepName if stored directly (new pattern), fallback to corporateCustomer lookup (existing POs)
+        const repPOs = purchaseOrders.filter((po) => {
+          const poRepName = po.salesRepName || corporateCustomers.find((c) => c.id == po.corporateCustomerId)?.salesRepName;
+          return poRepName === name && !isCancelled(po);
+        });
+        const poTotal = Math.round(repPOs.reduce((sum, po) => {
+          if (po.total) return sum + Number(po.total);
+          const items = po.lineItems || [];
+          const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+          return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
+        }, 0) * 100) / 100;
 
         const totalSales = Math.round((repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) + poTotal) * 100) / 100;
         const sampleCost = Math.round(repSamples.reduce((sum, o) => {
@@ -4401,14 +4367,24 @@ export const dataService = {
           return cust?.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
         });
 
-        // Include purchase orders (corporate) for this rep — same pattern as orders
-        const repPOs = purchaseOrders.filter((po) => po.salesRepName === name && !isCancelled(po));
+        // Include purchase orders (corporate) for this rep
+        // Use po.salesRepName if stored directly (new pattern), fallback to corporateCustomer lookup (existing POs)
+        const getPORepName = (po: any) => po.salesRepName || corporateCustomers.find((c) => c.id == po.corporateCustomerId)?.salesRepName;
+        const getPOTotal = (po: any) => {
+          if (po.total) return Number(po.total);
+          const items = po.lineItems || [];
+          const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+          return Math.round(subtotal * (1 + vatRate) * 100) / 100;
+        };
+        const repPOs = purchaseOrders.filter((po) => getPORepName(po) === name && !isCancelled(po));
 
         const todaySales = Math.round((repOrders
           .filter((o) => (o.createdAt || "").startsWith(todayStr))
           .reduce((sum, o) => sum + Number(o.total || 0), 0) +
           repPOs.filter((po) => (po.createdAt || "").startsWith(todayStr))
-            .reduce((sum, po) => sum + Number(po.total || 0), 0)) * 100) / 100;
+            .reduce((sum, po) => sum + getPOTotal(po), 0)) * 100) / 100;
 
         const weekSales = Math.round((repOrders
           .filter((o) => {
@@ -4419,7 +4395,7 @@ export const dataService = {
           repPOs.filter((po) => {
             const ts = new Date(po.createdAt).getTime();
             return ts >= weekStart.getTime() && ts <= weekEnd.getTime();
-          }).reduce((sum, po) => sum + Number(po.total || 0), 0)) * 100) / 100;
+          }).reduce((sum, po) => sum + getPOTotal(po), 0)) * 100) / 100;
 
         const monthSales = Math.round((repOrders
           .filter((o) => {
@@ -4430,7 +4406,7 @@ export const dataService = {
           repPOs.filter((po) => {
             const ts = new Date(po.createdAt).getTime();
             return ts >= monthStart.getTime() && ts <= monthEnd.getTime();
-          }).reduce((sum, po) => sum + Number(po.total || 0), 0)) * 100) / 100;
+          }).reduce((sum, po) => sum + getPOTotal(po), 0)) * 100) / 100;
 
         return { name, todaySales, weekSales, monthSales };
       });

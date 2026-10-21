@@ -719,8 +719,10 @@ export default function OrdersPage() {
       }))
     };
     // Only set salesRepName on NEW orders. On edit, preserve original.
+    // Use the customer's assigned sales rep, not the logged-in user.
     if (!editingOrder) {
-      payload.salesRepName = user?.name || "";
+      const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
+      payload.salesRepName = customer?.salesRepName || user?.name || "";
       // Pass admin override flag for below-corporate pricing approval
       if (adminOverride) {
         payload.adminApproved = true;
@@ -832,7 +834,7 @@ export default function OrdersPage() {
     <div class="info-block"><div class="label">Invoice Number</div><div class="value inv-num">${invoiceNumber}</div></div>
     <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
     <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#D4A843;font-weight:700;">${order.salesRepName || customer?.salesRepName || "N/A"}</div></div>
+    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#D4A843;font-weight:700;">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
     <div class="info-block"><div class="label">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div></div>
@@ -919,7 +921,7 @@ export default function OrdersPage() {
     <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:14px;">${order.orderNumber}</div></div>
     <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
     <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Prepared By</div><div class="value">${order.salesRepName || customer?.salesRepName || "N/A"}</div></div>
+    <div><div class="label">Prepared By</div><div class="value">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
     <div class="full-width" style="margin-top:4px;border-top:1px solid #e0e0e0;padding-top:8px;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
@@ -1003,7 +1005,7 @@ export default function OrdersPage() {
       `QUOTE NUMBER: ${order.orderNumber}\n` +
       `DATE: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}\n` +
       `VALID UNTIL: ${new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-ZA")}\n` +
-      `SALES REP: ${order.salesRepName || "N/A"}\n\n` +
+      `SALES REP: ${customer?.salesRepName || order.salesRepName || "N/A"}\n\n` +
       `ITEMS:\n${itemsList}\n\n` +
       `SUBTOTAL: R${safeNum(order.subtotal).toFixed(2)}\n` +
       `VAT (15%): R${safeNum(order.vatAmount).toFixed(2)}\n` +
@@ -1017,7 +1019,7 @@ export default function OrdersPage() {
       `Branch Code: ${banking?.branchCode || "N/A"}\n\n` +
       `To accept this quote, please reply to this email or contact your sales representative.\n\n` +
       `Kind regards,\n` +
-      `${order.salesRepName || customer?.salesRepName || "Supreme Global Foods Team"}\n` +
+      `${customer?.salesRepName || order.salesRepName || "Supreme Global Foods Team"}\n` +
       `sales@supremeglobalfoods.co.za | Tel: 061 478 8888\n\n` +
       `—\nSupreme Global Foods (Pty) Ltd\n28 Nagington Road, Wadeville, Germiston, 1422`
     );

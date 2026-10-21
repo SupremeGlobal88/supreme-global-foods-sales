@@ -848,7 +848,15 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    return Array.from(merged.values());
+    // Mark all merged items as synced so future ghost-removal works correctly.
+    // This MUST run after every merge — items from Firebase get _syncedAt here.
+    const result = Array.from(merged.values());
+    for (const item of result) {
+      if (item && typeof item === "object") {
+        item._syncedAt = item._syncedAt || Date.now();
+      }
+    }
+    return result;
   } catch {
     return incoming;
   }

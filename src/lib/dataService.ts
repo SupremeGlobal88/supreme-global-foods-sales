@@ -1854,6 +1854,7 @@ export function repairPurchaseOrderCompanies(): { repaired: number } {
  *  Runs on every app startup to fix legacy POs. */
 export function migratePurchaseOrderFields(): { migrated: number } {
   let migrated = 0;
+  const migratedPOs: any[] = [];
   for (let i = 0; i < purchaseOrders.length; i++) {
     const po = purchaseOrders[i];
     let changed = false;
@@ -1874,11 +1875,19 @@ export function migratePurchaseOrderFields(): { migrated: number } {
     if (changed) {
       purchaseOrders[i] = { ...po, updatedAt: new Date().toISOString() };
       migrated++;
+      migratedPOs.push(purchaseOrders[i]);
     }
   }
   if (migrated > 0) {
     saveItem("sgf_purchaseOrders", purchaseOrders);
     console.log(`[migratePurchaseOrderFields] Migrated ${migrated} purchase orders with salesRepName/total`);
+    // Push migrated POs to Firebase so other devices get the updated fields
+    try {
+      const { pushPurchaseOrder } = require("./firebaseSync");
+      for (const po of migratedPOs) {
+        pushPurchaseOrder(po);
+      }
+    } catch { /* ignore if firebaseSync not loaded yet */ }
   }
   return { migrated };
 }

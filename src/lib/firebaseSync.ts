@@ -848,30 +848,6 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
       }
     }
 
-    // For items in BOTH: use timestamp-based merge.
-    // If both have updatedAt, the NEWER version wins (prevents stale cloud data
-    // from overwriting recent local changes like cancelled orders, credit notes,
-    // payment edits, user deletes).
-    // If no timestamps, fall back to: local non-null values win over Firebase null.
-    for (const item of local) {
-      const k = getStableKey(item, key);
-      if (k !== null && incomingMap.has(k)) {
-        const fbItem = incomingMap.get(k)!;
-        const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
-        const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
-        // Use the newer version as the base
-        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
-        // Always enrich with local properties that are missing/null in the winner
-        const loser = localUpdated >= fbUpdated ? fbItem : item;
-        for (const prop of Object.keys(loser)) {
-          if (loser[prop] != null && mergedItem[prop] == null) {
-            mergedItem[prop] = loser[prop];
-          }
-        }
-        merged.set(k, mergedItem);
-      }
-    }
-
     // Mark all merged items as synced so future ghost-removal works correctly.
     // This MUST run after every merge — items from Firebase get _syncedAt here.
     const result = Array.from(merged.values());

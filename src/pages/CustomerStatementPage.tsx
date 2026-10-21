@@ -42,7 +42,8 @@ export default function CustomerStatementPage() {
     return invoices
       .filter((inv: any) => {
         // 1. Match by customerId — app invoices and linked Sage invoices
-        if (inv.customerId && inv.customerId === cId) return true;
+        // Use loose equality (==) because Firebase converts number IDs to strings
+        if (inv.customerId && inv.customerId == cId) return true;
         // 2. Match by nested customer.name — same as invoice page search!
         const invCustName = (inv.customer?.name || "").toLowerCase().trim();
         if (invCustName && invCustName === cName) return true;
@@ -79,10 +80,12 @@ export default function CustomerStatementPage() {
         const invCustName = (matchingInv.customer?.name || "").toLowerCase().trim();
         const invTopName = (matchingInv.customerName || "").toLowerCase().trim();
         if (invCustName === cName || invTopName === cName) return true;
-        if (matchingInv.customerId === selectedCustomer.id) return true;
+        // Use loose equality (==) because Firebase converts number IDs to strings
+        if (matchingInv.customerId == selectedCustomer.id) return true;
       }
       // Match by customerId on credit note directly
-      if (cn.customerId === selectedCustomer.id) return true;
+      // Use loose equality (==) because Firebase converts number IDs to strings
+      if (cn.customerId == selectedCustomer.id) return true;
       return false;
     }).filter((cn: any) => {
       const d = new Date(cn.createdAt);

@@ -28,7 +28,7 @@ export default function CustomerStatementPage() {
 
   // Selected customer object
   const selectedCustomer = useMemo(() => {
-    return (customers || []).find((c: any) => c.id === selectedCustomerId) || null;
+    return (customers || []).find((c: any) => c.id == selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
 
   // Filtered invoices for selected customer — EXACT same approach as InvoicesPage

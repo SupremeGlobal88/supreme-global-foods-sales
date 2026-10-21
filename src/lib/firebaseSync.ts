@@ -833,11 +833,18 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // Start with all Firebase items (source of truth)
     const merged = new Map<string, any>(incomingMap);
 
-    // Add local items that DON'T exist in Firebase (unsynced / newly created)
+    // Add local items that DON'T exist in Firebase (unsynced / newly created).
+    // CLOUD-FIRST RULE: If an item was previously synced (_syncedAt exists) but is
+    // no longer in Firebase, it was DELETED from the cloud → remove it locally.
+    // If an item was NEVER synced (no _syncedAt), it is a local draft → keep it.
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
-        merged.set(k, item); // Preserve local-only item
+        if (item._syncedAt) {
+          // Previously synced but now deleted from cloud → skip (remove ghost)
+          continue;
+        }
+        merged.set(k, item); // Preserve local-only draft
       }
     }
 

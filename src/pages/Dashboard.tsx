@@ -128,7 +128,7 @@ export default function Dashboard() {
         return s === "cancelled" || s === "canceled" || s === "cancel";
       };
       const repOrders = filteredOrders.filter((o: any) => {
-        return o.customer?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
+        return o.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
       });
       const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
       return { name, todaySales: 0, weekSales: 0, monthSales };
@@ -368,7 +368,7 @@ export default function Dashboard() {
                       };
                       const repMonthSales = selectedMonth
                         ? (filteredOrders || []).filter((o: any) => {
-                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample" && !isCancelled(o);
+                            return o.salesRepName === rep.name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
                           }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
                         : rep.totalSales;
                       return (
@@ -379,8 +379,8 @@ export default function Dashboard() {
                             {selectedMonth
                               ? (filteredOrders || []).filter((o: any) => {
                                   const s = String(o.status || "").toLowerCase().trim();
-                                  const isCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
-                                  return o.customer?.salesRepName === rep.name && o.orderType !== "sample" && !isCancelled;
+                                  const isOrderCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
+                                  return o.salesRepName === rep.name && o.orderType !== "sample" && o.orderType !== "quote" && !isOrderCancelled;
                                 }).length
                               : rep.orderCount}
                           </td>

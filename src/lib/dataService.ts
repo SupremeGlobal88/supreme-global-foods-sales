@@ -4304,7 +4304,7 @@ export const dataService = {
         };
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
+          return cust?.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
         });
         const repSamples = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
@@ -4349,7 +4349,7 @@ export const dataService = {
         };
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
+          return cust?.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
         });
 
         const todaySales = Math.round(repOrders

@@ -1132,6 +1132,12 @@ export default function OrdersPage() {
                       {isAdmin && order.orderType !== "quote" && !(invoices || []).some((inv: any) => inv.orderId == order.id && (inv.invoiceNumber?.startsWith("SGF") || inv.invoiceNumber?.startsWith("RC"))) && (
                         <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }}>NO INVOICE</span>
                       )}
+                      {/* DATA CORRUPTION WARNING: invoice cancelled but order status not cancelled */}
+                      {(invoices || []).some((inv: any) => inv.orderId == order.id && inv.status === "cancelled") && order.status !== "cancelled" && (
+                        <span className="ml-2 status-badge text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#F59E0B" }} title="Invoice is cancelled but order status is not. Click Cancel to fix.">
+                          <AlertTriangle className="w-3 h-3 inline" /> NEEDS CANCEL
+                        </span>
+                      )}
                     </td>
                     <td className="p-4 text-sm text-[#E8E8E9] font-body cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>{(getCustomer(order)?.name || order.customerName || "N/A")}</td>
                     <td className="p-4 cursor-pointer" onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>

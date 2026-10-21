@@ -4310,18 +4310,9 @@ export const dataService = {
           const cust = customers.find((c) => c.id == o.customerId);
           return cust?.salesRepName === name && o.orderType === "sample" && !isCancelled(o);
         });
-        // Include purchase orders (corporate) for this rep
-        const repPOs = purchaseOrders.filter((po) => {
-          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
-          return corpCustomer?.salesRepName === name && !isCancelled(po);
-        });
-        const poTotal = Math.round(repPOs.reduce((sum, po) => {
-          const items = po.lineItems || [];
-          const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
-          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
-          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
-          return sum + Math.round(subtotal * (1 + vatRate) * 100) / 100;
-        }, 0) * 100) / 100;
+        // Include purchase orders (corporate) for this rep — same pattern as orders
+        const repPOs = purchaseOrders.filter((po) => po.salesRepName === name && !isCancelled(po));
+        const poTotal = Math.round(repPOs.reduce((sum, po) => sum + Number(po.total || 0), 0) * 100) / 100;
 
         const totalSales = Math.round((repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) + poTotal) * 100) / 100;
         const sampleCost = Math.round(repSamples.reduce((sum, o) => {
@@ -4365,24 +4356,14 @@ export const dataService = {
           return cust?.salesRepName === name && o.orderType !== "sample" && o.orderType !== "quote" && !isCancelled(o);
         });
 
-        // Include purchase orders (corporate) for this rep
-        const repPOs = purchaseOrders.filter((po) => {
-          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
-          return corpCustomer?.salesRepName === name && !isCancelled(po);
-        });
-        const poTotal = (po: any) => {
-          const items = po.lineItems || [];
-          const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
-          const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
-          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
-          return Math.round(subtotal * (1 + vatRate) * 100) / 100;
-        };
+        // Include purchase orders (corporate) for this rep — same pattern as orders
+        const repPOs = purchaseOrders.filter((po) => po.salesRepName === name && !isCancelled(po));
 
         const todaySales = Math.round((repOrders
           .filter((o) => (o.createdAt || "").startsWith(todayStr))
           .reduce((sum, o) => sum + Number(o.total || 0), 0) +
           repPOs.filter((po) => (po.createdAt || "").startsWith(todayStr))
-            .reduce((sum, po) => sum + poTotal(po), 0)) * 100) / 100;
+            .reduce((sum, po) => sum + Number(po.total || 0), 0)) * 100) / 100;
 
         const weekSales = Math.round((repOrders
           .filter((o) => {
@@ -4393,7 +4374,7 @@ export const dataService = {
           repPOs.filter((po) => {
             const ts = new Date(po.createdAt).getTime();
             return ts >= weekStart.getTime() && ts <= weekEnd.getTime();
-          }).reduce((sum, po) => sum + poTotal(po), 0)) * 100) / 100;
+          }).reduce((sum, po) => sum + Number(po.total || 0), 0)) * 100) / 100;
 
         const monthSales = Math.round((repOrders
           .filter((o) => {
@@ -4404,7 +4385,7 @@ export const dataService = {
           repPOs.filter((po) => {
             const ts = new Date(po.createdAt).getTime();
             return ts >= monthStart.getTime() && ts <= monthEnd.getTime();
-          }).reduce((sum, po) => sum + poTotal(po), 0)) * 100) / 100;
+          }).reduce((sum, po) => sum + Number(po.total || 0), 0)) * 100) / 100;
 
         return { name, todaySales, weekSales, monthSales };
       });
@@ -5094,15 +5075,20 @@ export const dataService = {
     create: (data: any) => {
       // Auto-inherit company from linked corporate customer if not explicitly set
       let company = data.company;
-      if (!company && data.corporateCustomerId) {
-        const cust = corporateCustomers.find((c) => c.id == data.corporateCustomerId);
-        if (cust?.company) company = cust.company;
-      }
+      const corpCustomer = corporateCustomers.find((c) => c.id == data.corporateCustomerId);
+      if (!company && corpCustomer?.company) company = corpCustomer.company;
+      // Calculate total from lineItems (same pattern as order total + invoice generation)
+      const items = data.lineItems || [];
+      const subtotal = items.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0);
+      const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+      const total = subtotal * (1 + vatRate);
       const newItem = {
         ...data,
         company: company || "sgf",
         id: Date.now(),
         status: data.status || "received",
+        salesRepName: corpCustomer?.salesRepName || "",
+        total: Math.round(total * 100) / 100,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -5114,7 +5100,21 @@ export const dataService = {
     update: ({ id, data }: { id: number; data: any }) => {
       const idx = purchaseOrders.findIndex((po) => po.id == id);
       if (idx >= 0) {
-        purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
+        const merged = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
+        // Recalculate total if lineItems changed (same pattern as order update)
+        if (data.lineItems) {
+          const corpCustomer = corporateCustomers.find((c) => c.id == merged.corporateCustomerId);
+          const items = merged.lineItems || [];
+          const subtotal = items.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0);
+          const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+          merged.total = Math.round(subtotal * (1 + vatRate) * 100) / 100;
+        }
+        // Update salesRepName if corporateCustomerId changed
+        if (data.corporateCustomerId) {
+          const corpCustomer = corporateCustomers.find((c) => c.id == data.corporateCustomerId);
+          merged.salesRepName = corpCustomer?.salesRepName || "";
+        }
+        purchaseOrders[idx] = merged;
         saveItem("sgf_purchaseOrders", purchaseOrders);
         logAudit("UPDATE", "purchaseOrder", id, `Purchase order updated: ${purchaseOrders[idx].poNumber || "PO"}`);
         return purchaseOrders[idx];

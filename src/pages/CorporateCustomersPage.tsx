@@ -30,12 +30,14 @@ export default function CorporateCustomersPage() {
     paymentTerms: "30_days" as "cod" | "7_days" | "14_days" | "30_days",
     notes: "",
     isActive: true,
+    salesRepName: "",
   });
   const [linkedCustomerId, setLinkedCustomerId] = useState<number | null>(null);
   const [companyFilter, setCompanyFilter] = useState<"all" | CompanyKey>("all");
 
   const { data: customers } = trpc.corporateCustomer.list.useQuery();
   const { data: existingCustomers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: salesReps } = trpc.salesRep.list.useQuery();
   const createCustomer = trpc.corporateCustomer.create.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.corporateCustomer.list.invalidate(); setShowForm(false); resetForm(); },
   });
@@ -56,7 +58,7 @@ export default function CorporateCustomersPage() {
   const selected = (customers || []).find((c: any) => c.id === selectedCustomer);
 
   function resetForm() {
-    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", vatExempt: false, contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true });
+    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", vatExempt: false, contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true, salesRepName: "" });
     setLinkedCustomerId(null);
   }
 
@@ -80,6 +82,7 @@ export default function CorporateCustomersPage() {
       postalCode: cust.postalCode || prev.postalCode,
       paymentTerms: (cust.paymentTerms as typeof prev.paymentTerms) || prev.paymentTerms,
       notes: cust.notes || prev.notes,
+      salesRepName: cust.salesRepName || prev.salesRepName,
     }));
   }
 
@@ -89,6 +92,7 @@ export default function CorporateCustomersPage() {
       contactPerson: c.contactPerson || "", email: c.email || "", phone: c.phone || "",
       deliveryAddress: c.deliveryAddress || "", city: c.city || "", province: c.province || "",
       postalCode: c.postalCode || "", paymentTerms: (c.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "30_days", notes: c.notes || "", isActive: c.isActive !== false,
+      salesRepName: c.salesRepName || "",
     });
     setEditingId(c.id);
     setShowForm(true);
@@ -226,6 +230,7 @@ export default function CorporateCustomersPage() {
                     <AlertCircle className="w-3 h-3" /> VAT Number not set — required for documents
                   </div>
                 )}
+                {selected.salesRepName && <div className="flex justify-between"><span className="text-[#8A8B8C]">Sales Rep</span><span className="text-white">{selected.salesRepName}</span></div>}
                 {selected.contactPerson && <div className="flex justify-between"><span className="text-[#8A8B8C]">Contact</span><span className="text-white">{selected.contactPerson}</span></div>}
                 {selected.email && <div className="flex justify-between"><span className="text-[#8A8B8C]">Email</span><span className="text-white">{selected.email}</span></div>}
                 {selected.phone && <div className="flex justify-between"><span className="text-[#8A8B8C]">Phone</span><span className="text-white">{selected.phone}</span></div>}
@@ -368,6 +373,15 @@ export default function CorporateCustomersPage() {
                     <option value="7_days">7 Days</option>
                     <option value="14_days">14 Days</option>
                     <option value="30_days">30 Days</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label-text">Sales Rep</label>
+                  <select value={formData.salesRepName} onChange={(e) => setFormData({ ...formData, salesRepName: e.target.value })} className="input-field w-full">
+                    <option value="">Select sales rep...</option>
+                    {(salesReps || []).map((rep: any) => (
+                      <option key={rep.name} value={rep.name}>{rep.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-2"><label className="label-text">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field w-full" rows={3} /></div>

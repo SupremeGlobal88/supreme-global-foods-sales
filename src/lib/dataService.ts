@@ -5039,6 +5039,7 @@ export const dataService = {
         isCorporate: true,
         company: newItem.company || "sgf",
         notes: newItem.notes || "",
+        salesRepName: newItem.salesRepName || "",
         createdAt: newItem.createdAt,
         updatedAt: newItem.updatedAt,
       };
@@ -5069,6 +5070,7 @@ export const dataService = {
             paymentTerms: data.paymentTerms ?? customers[cIdx].paymentTerms,
             company: data.company ?? customers[cIdx].company,
             notes: data.notes ?? customers[cIdx].notes,
+            salesRepName: data.salesRepName ?? customers[cIdx].salesRepName,
             updatedAt: new Date().toISOString(),
           };
           saveItem("sgf_customers", customers);

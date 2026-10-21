@@ -4909,7 +4909,7 @@ export const dataService = {
       }
 
       if (!found) return null;
-      const hardcoded = DEFAULT_USERS.find((u) => u.id === found.id || u.name.toLowerCase() === found.name?.toLowerCase());
+      const hardcoded = DEFAULT_USERS.find((u) => u.id == found.id || u.name.toLowerCase() === found.name?.toLowerCase());
       const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
       return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
     },
@@ -4944,7 +4944,7 @@ export const dataService = {
         const superAdminCount = users.filter((u) => u.role === "super_admin").length;
         if (superAdminCount <= 1) return { success: false, error: "Cannot delete the last super admin" };
       }
-      users = users.filter((u) => u.id !== id);
+      users = users.filter((u) => u.id != id);
       saveItem("sgf_users", users);
       logAudit("DELETE", "user", id, `User deleted: ${target?.name || "Unknown"}`);
       return { success: true };
@@ -5660,7 +5660,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
         (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
       );
       if (found) {
-        const hardcoded = DEFAULT_USERS.find((u) => u.id === found.id || u.name.toLowerCase() === found.name?.toLowerCase());
+        const hardcoded = DEFAULT_USERS.find((u) => u.id == found.id || u.name.toLowerCase() === found.name?.toLowerCase());
         const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
         return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
       }
@@ -5670,7 +5670,7 @@ export function directAuthenticate(name: string, pin: string): { id: number; nam
           (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
         );
         if (adminFound) {
-          const hardcoded = DEFAULT_USERS.find((u) => u.id === adminFound.id || u.name.toLowerCase() === adminFound.name?.toLowerCase());
+          const hardcoded = DEFAULT_USERS.find((u) => u.id == adminFound.id || u.name.toLowerCase() === adminFound.name?.toLowerCase());
           const resolvedPin = adminFound.pin != null ? adminFound.pin : hardcoded?.pin;
           return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: resolvedPin };
         }

@@ -351,6 +351,8 @@ export default function OrdersPage() {
       reloadFromStorage(); // Force re-read from localStorage into memory
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
+      await utils.salesRep.getStats.invalidate();
+      await utils.salesRep.getSalesBreakdown.invalidate();
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
@@ -367,6 +369,8 @@ export default function OrdersPage() {
       reloadFromStorage();
       utils.order.list.invalidate();
       utils.order.getStats.invalidate();
+      utils.salesRep.getStats.invalidate();
+      utils.salesRep.getSalesBreakdown.invalidate();
       utils.stock.search.invalidate();
       utils.stock.list.invalidate();
       utils.stock.getStats.invalidate();
@@ -387,6 +391,8 @@ export default function OrdersPage() {
       reloadFromStorage();
       utils.order.list.invalidate();
       utils.order.getStats.invalidate();
+      utils.salesRep.getStats.invalidate();
+      utils.salesRep.getSalesBreakdown.invalidate();
       utils.stock.search.invalidate();
       utils.stock.list.invalidate();
       utils.stock.getStats.invalidate();
@@ -404,6 +410,8 @@ export default function OrdersPage() {
       reloadFromStorage();
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
+      await utils.salesRep.getStats.invalidate();
+      await utils.salesRep.getSalesBreakdown.invalidate();
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();

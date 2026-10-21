@@ -244,6 +244,7 @@ export function createLocalLink() {
                 const updateResult = dataService.order.updateStatus(input);
                 result = updateResult?.order || updateResult;
                 await fbPush("order", result);
+                reloadFromStorage(["sgf_orders"]);
                 const changedStockIds = new Set((result?.items || []).map((it: any) => Number(it.stockItemId)));
                 for (const stockId of changedStockIds) {
                   const prod = dataService.stock.getById(stockId);
@@ -252,12 +253,13 @@ export function createLocalLink() {
                 window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "stock", count: changedStockIds.size } }));
                 if (updateResult?.cancelledInvoice) {
                   await pushInvoice(updateResult.cancelledInvoice);
+                  reloadFromStorage(["sgf_invoices"]);
                   window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
                 }
                 // ALSO push activated invoice when order becomes ready/delivered (NOT when cancelled)
                 if (input.status !== "cancelled") {
                   const activatedInv = dataService.invoice.list().find((i: any) => i.orderId == input.id);
-                  if (activatedInv) { await pushInvoice(activatedInv); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); }
+                  if (activatedInv) { await pushInvoice(activatedInv); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); }
                 }
                 break;
               }

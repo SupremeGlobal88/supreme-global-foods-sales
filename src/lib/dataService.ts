@@ -5159,15 +5159,15 @@ export const dataService = {
 
   coc: {
     list: () => certificatesOfCompliance,
-    listByBarrel: (barrelId: number) => certificatesOfCompliance.filter((c) => c.barrelId === barrelId),
-    listByPurchaseOrder: (poId: number) => certificatesOfCompliance.filter((c) => c.purchaseOrderId === poId),
-    listByInvoice: (invoiceId: number) => certificatesOfCompliance.filter((c) => c.invoiceId === invoiceId || c.invoiceNumber === invoiceId),
+    listByBarrel: (barrelId: number) => certificatesOfCompliance.filter((c) => c.barrelId == barrelId),
+    listByPurchaseOrder: (poId: number) => certificatesOfCompliance.filter((c) => c.purchaseOrderId == poId),
+    listByInvoice: (invoiceId: number) => certificatesOfCompliance.filter((c) => c.invoiceId == invoiceId || c.invoiceNumber == invoiceId),
     getById: (id: number) => certificatesOfCompliance.find((c) => c.id == id) || null,
     generateForInvoice: (invoiceId: number) => {
       const inv = invoices.find((i) => i.id == invoiceId);
       if (!inv) return [];
       // Remove any existing COCs for this invoice
-      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.invoiceId !== invoiceId);
+      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.invoiceId != invoiceId);
       const customerRecord = customers.find((c) => c.id == inv.customerId);
       const now = new Date();
       const mfgDateStr = now.toLocaleDateString("en-GB");
@@ -5350,7 +5350,7 @@ export const dataService = {
       return null;
     },
     delete: (id: number) => {
-      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id !== id);
+      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id != id);
       saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
       saveItem("sgf_cocs", certificatesOfCompliance);
       return { success: true };
@@ -5361,12 +5361,15 @@ export const dataService = {
      *  All COCs created in a single batch with unique sequential IDs. */
     bulkGenerateForPO: (poId: number, cocDataList: any[], deleteOrphanIds: number[] = []) => {
       // 1. Remove orphaned COCs (packing list lines that no longer exist)
+      // Use string comparison because Firebase converts number IDs to strings
+      const orphanIdSet = new Set(deleteOrphanIds.map((id) => String(id)));
       if (deleteOrphanIds.length > 0) {
-        certificatesOfCompliance = certificatesOfCompliance.filter((c) => !deleteOrphanIds.includes(c.id));
+        certificatesOfCompliance = certificatesOfCompliance.filter((c) => !orphanIdSet.has(String(c.id)));
       }
 
       // 2. Remove all existing COCs for this PO — the new list is complete
-      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.purchaseOrderId !== poId);
+      // Use loose equality (==) because Firebase may convert number IDs to strings
+      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.purchaseOrderId != poId);
 
       // 3. Create all new COCs with guaranteed unique sequential IDs
       const created: any[] = [];

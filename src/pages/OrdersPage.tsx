@@ -74,14 +74,16 @@ function GenerateInvoiceButton({
         reloadFromStorage();
         const invNum = generateInvoiceForOrder(orderId);
         if (invNum) {
-          // Push to Firebase
+          // Push to Firebase — CRITICAL: push BOTH invoice AND order
+          // so all devices see the invoiceNumber link on the order
           try {
             const allInv = dataService.invoice.list();
             const newInv = allInv.find((i: any) => i.orderId == orderId && i.invoiceNumber === invNum);
-            if (newInv) {
-              const { pushInvoice } = await import("@/lib/firebaseSync");
-              await pushInvoice(newInv);
-            }
+            const allOrd = dataService.order.list();
+            const updatedOrd = allOrd.find((o: any) => o.id == orderId);
+            const { pushInvoice, pushOrder } = await import("@/lib/firebaseSync");
+            if (newInv) await pushInvoice(newInv);
+            if (updatedOrd) await pushOrder(updatedOrd);
           } catch (e: any) {
             console.warn("[Invoice] Firebase push:", e?.message);
           }

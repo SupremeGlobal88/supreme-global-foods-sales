@@ -2,7 +2,8 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud, pushInvoice } from "@/lib/firebaseSync";
+import { repairCancelledInvoiceBalances } from "@/lib/dataService";
 import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -103,6 +104,17 @@ export default function App() {
           const counts = await pullFromCloud();
           reloadFromStorage();
           console.log("[Sync] Background cloud pull complete:", counts);
+
+          // Repair cancelled invoices with non-zero balance after cloud pull
+          const repairResult = repairCancelledInvoiceBalances();
+          if (repairResult.changed > 0) {
+            console.log(`[Sync] Repaired ${repairResult.changed} cancelled invoice(s), pushing to cloud...`);
+            for (const inv of repairResult.invoices) {
+              try { await pushInvoice(inv); } catch (e) { console.warn("[Sync] pushInvoice failed for", inv.invoiceNumber, e); }
+            }
+            reloadFromStorage();
+            console.log("[Sync] Cancelled invoice repair pushed to cloud");
+          }
         }
       } catch (e) {
         console.warn("[Sync] Background pull error:", e);

@@ -7,12 +7,13 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Supreme Sales Command</title>
-    <script>window.SGF_APP_VERSION="%VITE_APP_VERSION%";</script>
+    <!-- HARD-CODED VERSION: Increment this on every critical deploy to force cache bust -->
+    <script>window.SGF_APP_VERSION="2.1.0-stable-sync-fix";</script>
     <!-- Cache-bust: if loaded JS references old patterns, force reload -->
     <script>
       (function(){
         try {
-          var APP_VERSION = window.SGF_APP_VERSION || "%VITE_APP_VERSION%";
+          var APP_VERSION = window.SGF_APP_VERSION;
           var lastVer = localStorage.getItem("sgf_app_version");
           if (lastVer && lastVer !== APP_VERSION) {
             console.log("[CacheBust] Version changed from " + lastVer + " to " + APP_VERSION + " — clearing cache");

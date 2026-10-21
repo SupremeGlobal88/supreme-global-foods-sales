@@ -123,8 +123,12 @@ export default function Dashboard() {
     const repNames = ((salesRepStats as any)?.repStats || []).map((r: any) => r.name);
     const monthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
     const repSales = repNames.map((name: string) => {
+      const isCancelled = (o: any) => {
+        const s = String(o.status || "").toLowerCase().trim();
+        return s === "cancelled" || s === "canceled" || s === "cancel";
+      };
       const repOrders = filteredOrders.filter((o: any) => {
-        return o.customer?.salesRepName === name && o.orderType !== "sample";
+        return o.customer?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
       });
       const monthSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
       return { name, todaySales: 0, weekSales: 0, monthSales };
@@ -358,9 +362,13 @@ export default function Dashboard() {
                   </thead>
                   <tbody>
                     {((salesRepStats as any)?.repStats || []).map((rep: Record<string, any>) => {
+                      const isCancelled = (o: any) => {
+                        const s = String(o.status || "").toLowerCase().trim();
+                        return s === "cancelled" || s === "canceled" || s === "cancel";
+                      };
                       const repMonthSales = selectedMonth
                         ? (filteredOrders || []).filter((o: any) => {
-                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample";
+                            return o.customer?.salesRepName === rep.name && o.orderType !== "sample" && !isCancelled(o);
                           }).reduce((s: number, o: any) => s + Number(o.total || 0), 0)
                         : rep.totalSales;
                       return (
@@ -369,7 +377,11 @@ export default function Dashboard() {
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">{rep.customerCount}</td>
                           <td className="p-2 text-right text-sm text-[#E8E8E9]">
                             {selectedMonth
-                              ? (filteredOrders || []).filter((o: any) => o.customer?.salesRepName === rep.name && o.orderType !== "sample").length
+                              ? (filteredOrders || []).filter((o: any) => {
+                                  const s = String(o.status || "").toLowerCase().trim();
+                                  const isCancelled = s === "cancelled" || s === "canceled" || s === "cancel";
+                                  return o.customer?.salesRepName === rep.name && o.orderType !== "sample" && !isCancelled;
+                                }).length
                               : rep.orderCount}
                           </td>
                           <td className="p-2 text-right text-sm font-semibold" style={{ color: "#D4A843" }}>R {Number(repMonthSales).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

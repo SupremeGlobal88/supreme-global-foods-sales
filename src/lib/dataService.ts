@@ -313,12 +313,6 @@ function load() {
     const crn = safeLoadArray("sgf_creditNotes");
     creditNotes = crn || [];
 
-    // AUTO-REPAIR: Fix stale/duplicate credit allocations on invoices
-    const creditRepair = repairCreditAllocations();
-    if (creditRepair > 0) {
-      console.log(`[CreditRepair] Startup repaired ${creditRepair} invoice(s) with stale credit allocations`);
-    }
-
     // USERS: always load and merge with defaults
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
@@ -387,6 +381,10 @@ function load() {
   // FIX: Activate invoices stuck in draft for delivered/ready orders.
   // This fixes the bug where === vs == caused activateInvoiceFromOrder to fail.
   try { fixDraftInvoicesForDeliveredOrders(); } catch { /* ignore */ }
+
+  // FIX: Repair cancelled invoices that still have a non-zero balanceDue.
+  // This fixes data corrupted before the balanceDue=0 fix was added to cancelInvoiceFromOrder.
+  try { repairCancelledInvoiceBalances(); } catch { /* ignore */ }
 
   // FIX: Assign proper numeric codes to customers with "AUTO", blank, or missing codes
   try { fixMissingCustomerCodes(); } catch { /* ignore */ }
@@ -501,6 +499,40 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
     console.log(`[SageDate] Repaired ${changed} corrupted Sage invoice date(s)`);
   }
   return { changed, invoices: changedInvs };
+}
+
+/**
+ * Fix orders that have a matching invoice but lost their invoiceNumber.
+ * This happens when:
+ * 1. Invoice was generated and pushed to Firebase
+ * 2. Order was NOT pushed (old bug in OrdersPage.tsx)
+ * 3. Another device loads → gets invoice but order has no invoiceNumber
+ * Result: order shows "No Invoice Generated" even though invoice exists.
+ */
+export function fixOrphanedInvoiceLinks(): { changed: number } {
+  let changed = 0;
+  const invoiceMap = new Map<string | number, string>();
+  // Build map: orderId → invoiceNumber
+  for (const inv of invoices) {
+    if (inv.orderId && inv.invoiceNumber) {
+      invoiceMap.set(inv.orderId, inv.invoiceNumber);
+    }
+  }
+  // Scan orders and fix missing invoiceNumber
+  for (const ord of orders) {
+    if (ord.source === "sage") continue; // Sage orders don't link to generated invoices
+    if (!ord.invoiceNumber && invoiceMap.has(ord.id)) {
+      ord.invoiceNumber = invoiceMap.get(ord.id)!;
+      ord.updatedAt = new Date().toISOString();
+      changed++;
+      console.log(`[OrphanFix] Re-linked order ${ord.id} → ${ord.invoiceNumber}`);
+    }
+  }
+  if (changed > 0) {
+    saveItem("sgf_orders", orders);
+    console.log(`[OrphanFix] Re-linked ${changed} order(s) to existing invoices`);
+  }
+  return { changed };
 }
 
 /** Read banking details from settings. Used by invoice print, statements, emails. */
@@ -867,7 +899,9 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = newPaid;
-      const creditsApplied1 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits0 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits0 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied1 = allocCredits0 + lineCredits0;
       inv.balanceDue = total - newPaid - creditsApplied1; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) inv.status = "paid";
       else if (newPaid > 0) inv.status = "partially_paid";
@@ -1113,6 +1147,8 @@ function repairCreditAllocations(): number {
   if (!invoices || invoices.length === 0) return 0;
   for (let i = 0; i < invoices.length; i++) {
     const inv = invoices[i];
+    // Skip cancelled invoices — their balance should remain 0
+    if (inv.status === "cancelled") continue;
     const existingCredits = inv.creditAllocations || [];
 
     // Reconstruct expected creditAllocations from credit note data
@@ -1148,7 +1184,10 @@ function repairCreditAllocations(): number {
     let correctBalance = invTotal - amountPaid - totalAlloc;
     correctBalance = Math.round(correctBalance * 100) / 100;
 
-    // Check if invoice needs fixing: wrong allocations OR wrong balance
+    // Check if invoice needs fixing:
+    // 1. Allocations don't match expected (missing or extra)
+    // 2. Balance is mathematically wrong
+    // 3. PHANTOM allocations exist (credit notes deleted but still in invoice array)
     const allocationsMismatch =
       dedupedExisting.length !== expectedCredits.length ||
       !expectedCredits.every((ec: any) =>
@@ -1159,11 +1198,21 @@ function repairCreditAllocations(): number {
 
     const balanceMismatch = Math.abs((inv.balanceDue || 0) - correctBalance) > 0.01;
 
-    if (allocationsMismatch || balanceMismatch) {
+    // PHANTOM: original array has items that validExisting filtered out (deleted credit notes)
+    const phantomAllocations = existingCredits.length !== validExisting.length;
+
+    if (allocationsMismatch || balanceMismatch || phantomAllocations) {
+      // Also clean up creditedLines — remove entries for deleted/voided credit notes
+      const validCreditedLines = (inv.creditedLines || []).filter((cl: any) => {
+        const cn = creditNotes.find((c) => c.id == cl.creditNoteId);
+        return cn && !cn.voided;
+      });
+
       invoices[i] = {
         ...inv,
         balanceDue: correctBalance,
         creditAllocations: expectedCredits,
+        creditedLines: validCreditedLines,
         status: correctBalance <= 0.01
           ? "paid"
           : amountPaid > 0.01
@@ -1278,11 +1327,6 @@ function _doReloadFromStorage(keys?: string[]): void {
             if (typeof window !== "undefined") {
               window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
             }
-          }
-          // AUTO-REPAIR: Remove stale credit allocations from voided/non-existent credit notes
-          const repairResult = repairCreditAllocations();
-          if (repairResult > 0) {
-            console.log(`[CreditRepair] Reload repaired ${repairResult} invoice(s) with stale credit allocations`);
           }
         }
       }
@@ -1947,7 +1991,9 @@ function updateInvoiceFromOrder(order: any) {
 
   // If order is cancelled, invoice must also be cancelled
   const isCancelledOrder = order.status === "cancelled";
-  const newBalanceDue = isCancelledOrder ? 0 : total - (inv.amountPaid || 0);
+  const allocC3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+  const lineC3 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+  const newBalanceDue = isCancelledOrder ? 0 : total - (inv.amountPaid || 0) - allocC3 - lineC3;
   const newStatus = isCancelledOrder ? "cancelled" : inv.status;
 
   invoices[idx] = {
@@ -1975,6 +2021,7 @@ function updateInvoiceFromOrder(order: any) {
     updatedAt: new Date().toISOString(),
   };
   saveItem("sgf_invoices", invoices);
+  return invoices[idx];
 }
 
 /** When order status changes to ready/delivered, upgrade invoice from draft to sent */
@@ -1994,14 +2041,16 @@ function activateInvoiceFromOrder(orderId: number) {
 function cancelInvoiceFromOrder(orderId: number): any | null {
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const idx = invoices.findIndex((i) => i.orderId == orderId);
-  if (idx >= 0 && invoices[idx].status !== "cancelled") {
+  if (idx >= 0) {
     const oldInvStatus = invoices[idx].status;
+    const hadBalance = invoices[idx].balanceDue;
     invoices[idx].status = "cancelled";
+    invoices[idx].balanceDue = 0;
     invoices[idx].updatedAt = new Date().toISOString();
-    invoices[idx].cancelledAt = new Date().toISOString();
-    invoices[idx].cancellationReason = "Order cancelled";
+    invoices[idx].cancelledAt = invoices[idx].cancelledAt || new Date().toISOString();
+    invoices[idx].cancellationReason = invoices[idx].cancellationReason || "Order cancelled";
     saveItem("sgf_invoices", invoices);
-    console.log(`[Invoice] Cancelled invoice ${invoices[idx].invoiceNumber} (was ${oldInvStatus}) because order ${orderId} was cancelled`);
+    console.log(`[Invoice] Cancelled invoice ${invoices[idx].invoiceNumber} (was ${oldInvStatus}, balance was ${hadBalance}) because order ${orderId} was cancelled`);
     return invoices[idx];
   }
   return null;
@@ -2027,6 +2076,31 @@ export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoice
   if (changed > 0) {
     saveItem("sgf_invoices", invoices);
     console.log(`[Invoice] Fixed ${changed} invoice(s) stuck in draft for delivered/ready orders`);
+  }
+  return { changed, invoices: changedInvs };
+}
+
+/** Repair cancelled invoices that still have a non-zero balanceDue.
+ *  This fixes data corrupted before the balanceDue=0 fix was added to cancelInvoiceFromOrder.
+ *  Returns changed invoices so caller can push to Firebase (cloud-first). */
+export function repairCancelledInvoiceBalances(): { changed: number; invoices: any[] } {
+  let changed = 0;
+  const changedInvs: any[] = [];
+  for (const inv of invoices) {
+    const isCancelled = String(inv.status || "").toLowerCase().trim() === "cancelled";
+    const balanceDue = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0) - (inv.amountPaid || 0);
+    if (isCancelled && balanceDue !== 0) {
+      inv.balanceDue = 0;
+      inv.cancelledAt = inv.cancelledAt || new Date().toISOString();
+      inv.cancellationReason = inv.cancellationReason || "Order cancelled";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
+    }
+  }
+  if (changed > 0) {
+    saveItem("sgf_invoices", invoices);
+    console.log(`[Invoice] Repaired ${changed} cancelled invoice(s) with non-zero balanceDue`);
   }
   return { changed, invoices: changedInvs };
 }
@@ -3019,7 +3093,17 @@ export const dataService = {
     },
     updateStatus: ({ id, status, amountPaid }: { id: number; status: string; amountPaid?: number }) => {
       const idx = invoices.findIndex((i) => i.id == id);
-      if (idx >= 0) { invoices[idx].status = status; invoices[idx].amountPaid = amountPaid || 0; saveItem("sgf_invoices", invoices); return invoices[idx]; }
+      if (idx >= 0) {
+        invoices[idx].status = status;
+        if (status === "cancelled") {
+          invoices[idx].balanceDue = 0;
+          invoices[idx].cancelledAt = invoices[idx].cancelledAt || new Date().toISOString();
+          invoices[idx].cancellationReason = invoices[idx].cancellationReason || "Invoice cancelled";
+        }
+        invoices[idx].amountPaid = amountPaid || 0;
+        saveItem("sgf_invoices", invoices);
+        return invoices[idx];
+      }
       return null;
     },
     delete: (id: number) => {
@@ -3052,7 +3136,9 @@ export const dataService = {
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = newPaid;
-      const creditsApplied2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied2 = allocCredits + lineCredits;
       inv.balanceDue = total - newPaid - creditsApplied2; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
@@ -3099,7 +3185,7 @@ export const dataService = {
         notes: notes || "",
         totalInvoiceAmount: total,
         amountPaidBefore: currentPaid,
-        balanceAfter: Math.max(0, total - newPaid),
+        balanceAfter: Math.max(0, total - newPaid - creditsApplied2),
         createdAt: new Date().toISOString(),
       };
       receipts.push(receipt);
@@ -3130,7 +3216,9 @@ export const dataService = {
       const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = totalPaid;
-      const creditsApplied3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits2 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied3 = allocCredits2 + lineCredits2;
       inv.balanceDue = total - totalPaid - creditsApplied3; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
@@ -3154,7 +3242,9 @@ export const dataService = {
       const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       const total = Number(inv.total || inv.totalAmount || 0);
       inv.amountPaid = totalPaid;
-      const creditsApplied4 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const allocCredits3 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+      const lineCredits3 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+      const creditsApplied4 = allocCredits3 + lineCredits3;
       inv.balanceDue = total - totalPaid - creditsApplied4; // Allow negative = customer credit
       if (inv.balanceDue <= 0.01) {
         inv.status = "paid";
@@ -3585,7 +3675,9 @@ export const dataService = {
         inv.total = data.total;
         // Recalculate balance if total changed and not a payment edit
         if (data.amountPaid === undefined) {
-          inv.balanceDue = data.total - (inv.amountPaid || 0);
+          const allocC = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+          const lineC = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+          inv.balanceDue = data.total - (inv.amountPaid || 0) - allocC - lineC;
           if (inv.balanceDue <= 0) inv.status = "paid";
           else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
           else inv.status = "sent";
@@ -3605,7 +3697,9 @@ export const dataService = {
         // If total was not explicitly provided, recalculate it from subtotal + new vatAmount
         if (data.total === undefined) {
           inv.total = subtotal + inv.vatAmount;
-          inv.balanceDue = inv.total - (inv.amountPaid || 0);
+          const allocC2 = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+          const lineC2 = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+          inv.balanceDue = inv.total - (inv.amountPaid || 0) - allocC2 - lineC2;
           if (inv.balanceDue <= 0) inv.status = "paid";
           else if ((inv.amountPaid || 0) > 0) inv.status = "partially_paid";
         }
@@ -3842,7 +3936,10 @@ export const dataService = {
       let runningBal = 0;
       const lines = custInvoices.map((inv) => {
         const debit = Number(inv.total || inv.totalAmount || 0);
-        const credit = Number(inv.amountPaid || 0);
+        const paid = Number(inv.amountPaid || 0);
+        const allocC = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+        const lineC = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+        const credit = paid + allocC + lineC;
         runningBal += debit - credit;
         return {
           date: inv.invoiceDate || inv.createdAt,
@@ -3856,7 +3953,12 @@ export const dataService = {
         };
       });
       const totalInvoiced = custInvoices.reduce((s, i) => s + Number(i.total || i.totalAmount || 0), 0);
-      const totalPaid = custInvoices.reduce((s, i) => s + Number(i.amountPaid || 0), 0);
+      const totalPaid = custInvoices.reduce((s, i) => {
+        const paid = Number(i.amountPaid || 0);
+        const allocC = (i.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+        const lineC = (i.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
+        return s + paid + allocC + lineC;
+      }, 0);
       return {
         customer: customer || null,
         fromDate: fromDate || new Date(0).toISOString(),
@@ -4202,13 +4304,17 @@ export const dataService = {
       const repStats = reps.map((rep) => {
         const name = rep.name;
         const repCustomers = customers.filter((c) => c.salesRepName === name);
+        const isCancelled = (o: any) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return s === "cancelled" || s === "canceled" || s === "cancel";
+        };
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample";
+          return cust?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
         });
         const repSamples = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType === "sample";
+          return cust?.salesRepName === name && o.orderType === "sample" && !isCancelled(o);
         });
         const totalSales = Math.round(repOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100;
         const sampleCost = Math.round(repSamples.reduce((sum, o) => {
@@ -4243,9 +4349,13 @@ export const dataService = {
 
       const repSales = getCurrentSalesReps().map((rep) => {
         const name = rep.name;
+        const isCancelled = (o: any) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return s === "cancelled" || s === "canceled" || s === "cancel";
+        };
         const repOrders = orders.filter((o) => {
           const cust = customers.find((c) => c.id == o.customerId);
-          return cust?.salesRepName === name && o.orderType !== "sample";
+          return cust?.salesRepName === name && o.orderType !== "sample" && !isCancelled(o);
         });
 
         const todaySales = Math.round(repOrders

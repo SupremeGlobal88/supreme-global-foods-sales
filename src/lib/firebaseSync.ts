@@ -277,7 +277,7 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
   if (!isFirebaseReady()) { addToPendingQueue("invoice", invoice); return { success: false, error: "Firebase not ready — queued for sync" }; }
   if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
-    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), { ...invoice, _syncedAt: Date.now() });
+    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), cleanForFirebase(invoice));
     return { success: true };
   } catch (e: any) {
     console.error("[pushInvoice] FAILED:", invoice.invoiceNumber || invoice.id, e.message);
@@ -572,33 +572,49 @@ export async function pushCreditNote(cn: any): Promise<void> {
   }
 }
 
-/** Subscribe to real-time credit note updates */
-export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
-  return createSubscription("creditNotes", "sgf_creditNotes", onData);
+export async function pushCollectionNote(note: any): Promise<void> {
+  if (!isFirebaseReady() || !note || !note.id) return;
+  try {
+    await set(ref(db, `collectionNotes/${safeFbKey(note.id)}`), cleanForFirebase(note));
+  } catch (e: any) {
+    console.error("[pushCollectionNote] FAILED:", note.id, e.message);
+  }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// CORPORATE MODULE SUBSCRIPTIONS
-// ═══════════════════════════════════════════════════════════════
-
-export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
-  return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
+export async function pushCollectionPromise(promise: any): Promise<void> {
+  if (!isFirebaseReady() || !promise || !promise.id) return;
+  try {
+    await set(ref(db, `collectionPromises/${safeFbKey(promise.id)}`), cleanForFirebase(promise));
+  } catch (e: any) {
+    console.error("[pushCollectionPromise] FAILED:", promise.id, e.message);
+  }
 }
 
-export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
-  return createSubscription("purchaseOrders", "sgf_purchaseOrders", onData);
+export async function pushAccountHold(hold: any): Promise<void> {
+  if (!isFirebaseReady() || !hold || !hold.id) return;
+  try {
+    await set(ref(db, `accountHolds/${safeFbKey(hold.id)}`), cleanForFirebase(hold));
+  } catch (e: any) {
+    console.error("[pushAccountHold] FAILED:", hold.id, e.message);
+  }
 }
 
-export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
-  return createSubscription("barrels", "sgf_barrels", onData);
+export async function pushSpecialPrice(sp: any): Promise<void> {
+  if (!isFirebaseReady() || !sp || !sp.id) return;
+  try {
+    await set(ref(db, `specialPrices/${safeFbKey(sp.id)}`), cleanForFirebase(sp));
+  } catch (e: any) {
+    console.error("[pushSpecialPrice] FAILED:", sp.id, e.message);
+  }
 }
 
-export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
-  return createSubscription("certificatesOfCompliance", "sgf_cocs", onData);
-}
-
-export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
-  return createSubscription("packingListLines", "sgf_packingListLines", onData);
+export async function removeSpecialPrice(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    await remove(ref(db, `specialPrices/${safeFbKey(id)}`));
+  } catch (e: any) {
+    console.error("[removeSpecialPrice] FAILED:", id, e.message);
+  }
 }
 
 // =============================================================================
@@ -612,8 +628,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
 
   const pullType = async (path: string, storageKey: string, postProcess?: (items: any[]) => any[]) => {
     try {
-      // CRITICAL: 15-second timeout prevents the app from hanging forever if Firebase is slow.
-      // onValue subscription downloads data in parallel; readFromFirebase is a backup check.
       const timeoutMs = 15000;
       const snapshot = await Promise.race([
         get(ref(db, path)),
@@ -622,11 +636,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
         ),
       ]);
       const data = fbToArray((snapshot as any).val());
-      // Store fingerprint of raw cloud data BEFORE merge.
-      // Subscriptions receive the same raw data; this lets them skip
-      // redundant merge/write/reload when data hasn't actually changed.
       storeFingerprint(storageKey, data);
-      // ALWAYS merge — even when cloud is empty, to clear deleted items locally
       let merged = mergeWithCloudData(storageKey, data);
       if (postProcess) merged = postProcess(merged);
       setStorageItem(storageKey, JSON.stringify(merged));
@@ -639,7 +649,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
     }
   };
 
-  // Customer dedup post-process: same customer from different devices may have different IDs
   const dedupCustomers = (items: any[]) => {
     const custMap = new Map<string, any>();
     for (const c of items) {
@@ -670,7 +679,6 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   return counts;
 }
 
-/** Firebase stores arrays as objects with numeric keys. Convert back to array. */
 function fbToArray(data: any): any[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
@@ -751,7 +759,11 @@ function createSubscription(
       // Skip if data hasn't changed since last processing
       if (!hasDataChanged(storageKey, items)) {
         if (path === "orders") console.log("[FirebaseSync] orders skipped — no change");
-        if (onData) onData(items);
+        // Pass merged data from localStorage instead of raw Firebase items.
+        // localStorage may have repaired data (e.g. cleaned phantom allocations).
+        const stored = getStorageItem(storageKey);
+        const mergedStored = stored ? JSON.parse(stored) : items;
+        if (onData) onData(mergedStored);
         return;
       }
 
@@ -766,7 +778,8 @@ function createSubscription(
         }
       } catch { /* ignore */ }
       reloadFromStorage([storageKey]);
-      if (onData) onData(items);
+      // CRITICAL FIX: pass merged (repaired) data to onData, not raw Firebase items
+      if (onData) onData(merged);
     }, 0);
   });
   listeners.push(unsub);
@@ -790,9 +803,11 @@ function getStableKey(item: any, storageKey: string): string | null {
 }
 
 /** Smart merge: Firebase is source of truth, but local-only items are preserved.
- *  For items in BOTH, local properties win over null/missing Firebase properties.
- *  This preserves local enrichment (customerCode matching, status updates)
- *  without losing Firebase updates. */
+ *  RULES (kept simple and stable):
+ *  1. Firebase items = source of truth (replace local copy)
+ *  2. Local items NOT in Firebase = preserved (unsynced new data)
+ *  3. No timestamps, no comparisons, no property enrichment, no ghost removal
+ */
 export function mergeWithCloudData(key: string, incoming: any[]): any[] {
   try {
     const raw = getStorageItem(key);
@@ -810,8 +825,6 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // SAFETY GUARD: If Firebase returns 0 items but local has ANY data,
     // preserve local data. A null snapshot during initial connection or a
     // timeout from readFromFirebase should NEVER wipe local data.
-    // Legitimate mass-deletes are extremely rare and should use
-    // forceResetAndSync(), not automatic sync.
     if (incoming.length === 0 && local.length > 0) {
       console.warn(`[mergeWithCloudData] SAFETY: Firebase returned 0 ${key} but local has ${local.length} items. Preserving local data.`);
       return local;
@@ -820,72 +833,20 @@ export function mergeWithCloudData(key: string, incoming: any[]): any[] {
     // Start with all Firebase items (source of truth)
     const merged = new Map<string, any>(incomingMap);
 
-    // Add local items that DON'T exist in Firebase (unsynced / newly created).
-    // CLOUD-FIRST RULE: If an item was previously synced (_syncedAt exists) but is
-    // no longer in Firebase, it was DELETED from the cloud → remove it locally.
-    // If an item was NEVER synced (no _syncedAt), it is a local draft → keep it.
-    // RACE-CONDITION SAFETY: If an item was recently updated (within 60s), keep it
-    // even if it has _syncedAt — the push may not have propagated to Firebase yet.
+    // Add local items that DON'T exist in Firebase (unsynced / newly created)
     for (const item of local) {
       const k = getStableKey(item, key);
       if (k !== null && !incomingMap.has(k)) {
-        const recentlyUpdated = item.updatedAt && (Date.now() - new Date(item.updatedAt).getTime() < 60000);
-        if (item._syncedAt && !recentlyUpdated) {
-          // Previously synced but now deleted from cloud → skip (remove ghost)
-          continue;
-        }
-        // Never synced OR recently updated → preserve as local draft
-        merged.set(k, item);
+        merged.set(k, item); // Preserve local-only item
       }
     }
 
-    // For items in BOTH: use timestamp-based merge.
-    // If both have updatedAt, the NEWER version wins (prevents stale cloud data
-    // from overwriting recent local changes like credit notes, payment edits).
-    // If no timestamps, fall back to: local non-null values win over Firebase null.
-    for (const item of local) {
-      const k = getStableKey(item, key);
-      if (k !== null && incomingMap.has(k)) {
-        const fbItem = incomingMap.get(k)!;
-        const localUpdated = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
-        const fbUpdated = fbItem.updatedAt ? new Date(fbItem.updatedAt).getTime() : 0;
-        // Use the newer version as the base
-        const mergedItem = localUpdated >= fbUpdated ? { ...item } : { ...fbItem };
-        // Always enrich with local properties that are missing/null in the winner
-        const loser = localUpdated >= fbUpdated ? fbItem : item;
-        for (const prop of Object.keys(loser)) {
-          if (loser[prop] != null && mergedItem[prop] == null) {
-            mergedItem[prop] = loser[prop];
-          }
-          // Defensive: preserve creditAllocations that would be lost to empty arrays
-          if (prop === 'creditAllocations' &&
-              Array.isArray(loser[prop]) && loser[prop].length > 0 &&
-              Array.isArray(mergedItem[prop]) && mergedItem[prop].length === 0) {
-            mergedItem[prop] = loser[prop];
-          }
-        }
-        merged.set(k, mergedItem);
-      }
-    }
-
-    // Mark items that were ACTUALLY in Firebase as synced.
-    // CRITICAL: Only set _syncedAt on items that came from Firebase.
-    // Local drafts that were never synced must NOT get _syncedAt,
-    // otherwise ghost-removal will incorrectly delete them later.
-    const result = Array.from(merged.values());
-    for (const item of result) {
-      if (item && typeof item === "object") {
-        const k = getStableKey(item, key);
-        if (k !== null && incomingMap.has(k)) {
-          item._syncedAt = item._syncedAt || Date.now();
-        }
-      }
-    }
-    return result;
+    return Array.from(merged.values());
   } catch {
     return incoming;
   }
 }
+
 
 export function subscribeToCustomers(onData?: (customers: any[]) => void): () => void {
   return createSubscription("customers", "sgf_customers", onData, {
@@ -928,7 +889,10 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
 }
 
 export function subscribeToInvoices(onData: (invoices: any[]) => void): () => void {
-  return createSubscription("invoices", "sgf_invoices", onData);
+  return createSubscription("invoices", "sgf_invoices", onData, {
+    logPrefix: "Invoices",
+
+  });
 }
 
 export function subscribeToFollowUpActions(onData: (actions: any[]) => void): () => void {
@@ -949,6 +913,46 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
 
 export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
   return createSubscription("users", "sgf_users", onData);
+}
+
+export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
+  return createSubscription("creditNotes", "sgf_creditNotes", onData);
+}
+
+export function subscribeToCollectionNotes(onData?: (notes: any[]) => void): () => void {
+  return createSubscription("collectionNotes", "sgf_collectionNotes", onData);
+}
+
+export function subscribeToCollectionPromises(onData?: (promises: any[]) => void): () => void {
+  return createSubscription("collectionPromises", "sgf_collectionPromises", onData);
+}
+
+export function subscribeToAccountHolds(onData?: (holds: any[]) => void): () => void {
+  return createSubscription("accountHolds", "sgf_accountHolds", onData);
+}
+
+export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () => void {
+  return createSubscription("specialPrices", "sgf_specialPrices", onData);
+}
+
+export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
+  return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
+}
+
+export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
+  return createSubscription("purchaseOrders", "sgf_purchaseOrders", onData);
+}
+
+export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
+  return createSubscription("barrels", "sgf_barrels", onData);
+}
+
+export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
+  return createSubscription("certificatesOfCompliance", "sgf_cocs", onData);
+}
+
+export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
+  return createSubscription("packingListLines", "sgf_packingListLines", onData);
 }
 
 // =============================================================================
@@ -998,7 +1002,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
   appointments: number; checkins: number; followUps: number; receipts: number;
   errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   // Count total items first for progress reporting
@@ -1011,6 +1015,19 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
     { storageKey: "sgf_checkins", fbPath: "checkins", counter: "checkins" as const, label: "Check-ins" },
     { storageKey: "sgf_followUps", fbPath: "followUps", counter: "followUps" as const, label: "Follow-ups" },
     { storageKey: "sgf_receipts", fbPath: "receipts", counter: "receipts" as const, label: "Receipts" },
+    { storageKey: "sgf_creditNotes", fbPath: "creditNotes", counter: "creditNotes" as const, label: "Credit Notes" },
+    { storageKey: "sgf_collectionNotes", fbPath: "collectionNotes", counter: "collectionNotes" as const, label: "Collection Notes" },
+    { storageKey: "sgf_collectionPromises", fbPath: "collectionPromises", counter: "collectionPromises" as const, label: "Collection Promises" },
+    { storageKey: "sgf_accountHolds", fbPath: "accountHolds", counter: "accountHolds" as const, label: "Account Holds" },
+    { storageKey: "sgf_specialPrices", fbPath: "specialPrices", counter: "specialPrices" as const, label: "Special Prices" },
+    { storageKey: "sgf_corporateCustomers", fbPath: "corporateCustomers", counter: "corporateCustomers" as const, label: "Corporate Customers" },
+    { storageKey: "sgf_purchaseOrders", fbPath: "purchaseOrders", counter: "purchaseOrders" as const, label: "Purchase Orders" },
+    { storageKey: "sgf_barrels", fbPath: "barrels", counter: "barrels" as const, label: "Barrels" },
+    { storageKey: "sgf_cocs", fbPath: "certificatesOfCompliance", counter: "cocs" as const, label: "COCs" },
+    { storageKey: "sgf_packingListLines", fbPath: "packingListLines", counter: "packingListLines" as const, label: "Packing Lists" },
+    { storageKey: "sgf_followUpActions", fbPath: "followUpActions", counter: "followUpActions" as const, label: "Follow-up Actions" },
+    { storageKey: "sgf_users", fbPath: "users", counter: "users" as const, label: "Users" },
+    { storageKey: "sgf_salesReps", fbPath: "salesReps", counter: "salesReps" as const, label: "Sales Reps" },
   ];
   let totalItems = 0;
   for (const list of lists) {
@@ -1070,9 +1087,13 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
 export async function forcePullAllFromCloud(): Promise<{
   orders: number; invoices: number; customers: number; stock: number;
   appointments: number; checkins: number; followUps: number; receipts: number;
+  creditNotes: number; collectionNotes: number; collectionPromises: number;
+  accountHolds: number; specialPrices: number; corporateCustomers: number;
+  purchaseOrders: number; barrels: number; cocs: number; packingListLines: number;
+  followUpActions: number; users: number; salesReps: number;
   errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   const pullList = async (fbPath: string, storageKey: string, counter: keyof typeof result) => {
@@ -1097,6 +1118,19 @@ export async function forcePullAllFromCloud(): Promise<{
   await pullList("checkins", "sgf_checkins", "checkins");
   await pullList("followUps", "sgf_followUps", "followUps");
   await pullList("receipts", "sgf_receipts", "receipts");
+  await pullList("creditNotes", "sgf_creditNotes", "creditNotes");
+  await pullList("collectionNotes", "sgf_collectionNotes", "collectionNotes");
+  await pullList("collectionPromises", "sgf_collectionPromises", "collectionPromises");
+  await pullList("accountHolds", "sgf_accountHolds", "accountHolds");
+  await pullList("specialPrices", "sgf_specialPrices", "specialPrices");
+  await pullList("corporateCustomers", "sgf_corporateCustomers", "corporateCustomers");
+  await pullList("purchaseOrders", "sgf_purchaseOrders", "purchaseOrders");
+  await pullList("barrels", "sgf_barrels", "barrels");
+  await pullList("certificatesOfCompliance", "sgf_cocs", "cocs");
+  await pullList("packingListLines", "sgf_packingListLines", "packingListLines");
+  await pullList("followUpActions", "sgf_followUpActions", "followUpActions");
+  await pullList("users", "sgf_users", "users");
+  await pullList("salesReps", "sgf_salesReps", "salesReps");
 
   dataServiceRefresh?.();
   console.log("[forcePull] COMPLETE:", result);
@@ -1476,7 +1510,7 @@ export function initAutoSync(): () => void {
 
     // ONLY dispatch event — React Query will refetch via tRPC invalidate.
     // The subscription function has already merged, saved, and reloaded.
-    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
+    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","collectionNotes","collectionPromises","accountHolds","specialPrices","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
       pendingEventTypes.add(type);
       if (eventDebounceTimer) clearTimeout(eventDebounceTimer);
       // On first load, batch all subscription events into a single dispatch
@@ -1501,6 +1535,10 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
   unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps")));
   unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
+  unsubs.push(subscribeToCollectionNotes(handleReceived("collectionNotes", "sgf_collectionNotes")));
+  unsubs.push(subscribeToCollectionPromises(handleReceived("collectionPromises", "sgf_collectionPromises")));
+  unsubs.push(subscribeToAccountHolds(handleReceived("accountHolds", "sgf_accountHolds")));
+  unsubs.push(subscribeToSpecialPrices(handleReceived("specialPrices", "sgf_specialPrices")));
   // ═══ CORPORATE MODULE — real-time subscriptions
   unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
   unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));

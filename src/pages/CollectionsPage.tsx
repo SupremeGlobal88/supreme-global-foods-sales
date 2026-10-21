@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
 import CustomerSearchDropdown from "@/components/CustomerSearchDropdown";
@@ -71,6 +71,19 @@ export default function CollectionsPage() {
   const [showActionModal, setShowActionModal] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [historyCustomerId, setHistoryCustomerId] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Listen for Firebase data updates and refresh collections
+  useEffect(() => {
+    const handler = (e: any) => {
+      const type = e.detail?.type;
+      if (type === "invoices" || type === "creditNotes" || type === "customers") {
+        invalidateCollections();
+      }
+    };
+    window.addEventListener("firebaseDataReceived", handler);
+    return () => window.removeEventListener("firebaseDataReceived", handler);
+  }, []);
 
   // Queries
   const { data: overdueInvoices } = trpc.collections.getOverdueInvoices.useQuery();
@@ -80,6 +93,13 @@ export default function CollectionsPage() {
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
   const { data: customerHistory } = trpc.collections.getCustomerPaymentHistory.useQuery(historyCustomerId, { enabled: historyCustomerId > 0 });
+
+  // Helper: resolve customer name from customerId (fixes N/A for Sage invoices with stripped embedded customer)
+  const getCustomerName = (customerId: any) => {
+    if (!customerId) return "N/A";
+    const c = (customers || []).find((c: any) => c.id == customerId);
+    return c?.name || "N/A";
+  };
 
   // Mutations
   const invalidateCollections = async () => {
@@ -96,7 +116,14 @@ export default function CollectionsPage() {
 
   const filteredInvoices = (overdueInvoices || [])
     .filter((inv: any) => selectedBucket === "all" || inv.bucket === selectedBucket)
-    .filter((inv: any) => !selectedSalesRep || inv.salesRepName === selectedSalesRep);
+    .filter((inv: any) => !selectedSalesRep || inv.salesRepName === selectedSalesRep)
+    .filter((inv: any) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const invNum = String(inv.invoiceNumber || "").toLowerCase();
+      const custName = String(inv.customerName || inv.customer?.name || "").toLowerCase();
+      return invNum.includes(q) || custName.includes(q);
+    });
 
   // Sales rep summary from filtered data
   const repSummary = (salesReps || []).map((rep: string) => {
@@ -119,7 +146,7 @@ export default function CollectionsPage() {
     const templates = getReminderTemplates();
     const template = templates[bucket] || templates.days_1_2;
     return template.body
-      .replace(/{customerName}/g, invoice.customer?.name || "Valued Customer")
+      .replace(/{customerName}/g, getCustomerName(invoice.customerId) || "Valued Customer")
       .replace(/{invoiceNumber}/g, invoice.invoiceNumber)
       .replace(/{amount}/g, Number(invoice.total).toFixed(2))
       .replace(/{balanceDue}/g, Number(invoice.balanceDue).toFixed(2))
@@ -227,17 +254,34 @@ export default function CollectionsPage() {
       {/* PIPELINE VIEW */}
       {activeTab === "pipeline" && (
         <div className="space-y-4">
-          {/* Bucket Filter */}
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setSelectedBucket("all")} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === "all" ? "#D4A843" : "#18191A", color: selectedBucket === "all" ? "#0A0A0B" : "#8A8B8C" }}>All ({(overdueInvoices || []).filter((i: any) => !selectedSalesRep || i.salesRepName === selectedSalesRep).length})</button>
-            {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => {
-              const count = (overdueInvoices || []).filter((i: any) => i.bucket === key && (!selectedSalesRep || i.salesRepName === selectedSalesRep)).length;
-              return (
-                <button key={key} onClick={() => setSelectedBucket(key)} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === key ? cfg.color : "#18191A", color: selectedBucket === key ? "#fff" : "#8A8B8C", border: `1px solid ${selectedBucket === key ? cfg.color : "transparent"}` }}>
-                  {cfg.label} ({count})
+          {/* Search + Bucket Filter */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setSelectedBucket("all")} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === "all" ? "#D4A843" : "#18191A", color: selectedBucket === "all" ? "#0A0A0B" : "#8A8B8C" }}>All ({(overdueInvoices || []).filter((i: any) => !selectedSalesRep || i.salesRepName === selectedSalesRep).length})</button>
+              {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => {
+                const count = (overdueInvoices || []).filter((i: any) => i.bucket === key && (!selectedSalesRep || i.salesRepName === selectedSalesRep)).length;
+                return (
+                  <button key={key} onClick={() => setSelectedBucket(key)} className="px-3 py-1.5 rounded-full text-xs font-body font-medium transition-all cursor-pointer" style={{ backgroundColor: selectedBucket === key ? cfg.color : "#18191A", color: selectedBucket === key ? "#fff" : "#8A8B8C", border: `1px solid ${selectedBucket === key ? cfg.color : "transparent"}` }}>
+                    {cfg.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                placeholder="Search invoice or customer..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input-field text-sm w-full pr-8"
+                style={{ backgroundColor: "#131415", borderColor: "#222324", color: "#E8E8E9" }}
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8A8B8C] hover:text-[#EF4444]">
+                  <X className="w-4 h-4" />
                 </button>
-              );
-            })}
+              )}
+            </div>
           </div>
 
           {/* Invoices Table */}
@@ -274,7 +318,7 @@ export default function CollectionsPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || "N/A"}</td>
+                            <td className="p-3 text-sm text-[#E8E8E9] font-body">{getCustomerName(inv.customerId)}</td>
                             <td className="p-3 text-sm text-[#4ADE80] font-body">{inv.salesRepName || inv.customer?.salesRepName || "-"}</td>
                             <td className="p-3 text-right font-display text-white">R {inv.balanceDue.toFixed(2)}</td>
                             <td className="p-3 text-center">
@@ -357,7 +401,7 @@ export default function CollectionsPage() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="text-white font-body font-medium">{fu.customer?.name || "Unknown"}</h4>
+                            <h4 className="text-white font-body font-medium">{getCustomerName(fu.customerId) || "Unknown"}</h4>
                             {isOverdue && (
                               <span className="status-badge text-xs" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
                                 <AlertTriangle className="w-3 h-3 inline mr-1" />{fu.daysSinceFollowUp} days overdue
@@ -502,6 +546,7 @@ export default function CollectionsPage() {
         <ActionModal
           action={showActionModal}
           invoice={selectedInvoice}
+          customerName={getCustomerName(selectedInvoice.customerId)}
           onClose={() => setShowActionModal(null)}
           onSubmit={(data: any) => {
             if (showActionModal === "call" || showActionModal === "note" || showActionModal === "whatsapp") {
@@ -532,14 +577,14 @@ function printDailyReport(report: any) {
     return '<div class="stat"><div class="stat-num" style="color:' + cfg.color + '">' + items.length + '</div><div class="stat-label">' + cfg.label + '</div></div>';
   }).join("");
   const rows = Object.entries(buckets).flatMap(([_, items]: [string, any]) => {
-    return items.map((inv: any) => '<tr><td>' + inv.invoiceNumber + '</td><td>' + (inv.customer?.name || "") + '</td><td>R ' + inv.balanceDue.toFixed(2) + '</td><td>' + inv.daysOverdue + '</td><td>' + (BUCKET_CONFIG[inv.bucket]?.label || "") + '</td></tr>');
+    return items.map((inv: any) => '<tr><td>' + inv.invoiceNumber + '</td><td>' + (inv.customerName || inv.customer?.name || "") + '</td><td>R ' + inv.balanceDue.toFixed(2) + '</td><td>' + inv.daysOverdue + '</td><td>' + (BUCKET_CONFIG[inv.bucket]?.label || "") + '</td></tr>');
   }).join("");
   pw.document.write('<html><head><title>Daily Collections Report</title><style>body{font-family:Arial,sans-serif;padding:40px;max-width:900px;margin:0 auto;color:#333}.header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:20px;margin-bottom:30px}.stat{display:inline-block;padding:15px 25px;margin:10px;background:#f9f9f9;border-radius:8px;text-align:center}.stat-num{font-size:24px;font-weight:bold;color:#D4A843}.stat-label{font-size:12px;color:#666;text-transform:uppercase}table{width:100%;border-collapse:collapse;margin:20px 0}th{background:#f5f5f5;padding:10px;text-align:left;font-size:11px;text-transform:uppercase}td{padding:10px;border-bottom:1px solid #eee;font-size:13px}</style></head><body><div class="header"><h1 style="font-size:28px;color:#D4A843;margin:0">Supreme Global Foods</h1><p>Daily Collections Report - ' + report.today + '</p></div><div style="text-align:center">' + bucketCards + '</div><table><thead><tr><th>Invoice</th><th>Customer</th><th>Balance</th><th>Days Over</th><th>Bucket</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
   pw.document.close();
   pw.print();
 }
 
-function ActionModal({ action, invoice, onClose, onSubmit, reminderText }: { action: string; invoice: any; onClose: () => void; onSubmit: (data: any) => void; reminderText: string }) {
+function ActionModal({ action, invoice, customerName, onClose, onSubmit, reminderText }: { action: string; invoice: any; customerName: string; onClose: () => void; onSubmit: (data: any) => void; reminderText: string }) {
   const [notes, setNotes] = useState(action === "email" || action === "sms" || action === "whatsapp" ? reminderText : "");
   const [contactPerson, setContactPerson] = useState("");
   const [promisedAmount, setPromisedAmount] = useState(Number(invoice.balanceDue) || 0);
@@ -567,7 +612,7 @@ function ActionModal({ action, invoice, onClose, onSubmit, reminderText }: { act
         </div>
         <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
           <div className="text-xs text-[#8A8B8C]">Invoice: <span className="text-[#D4A843]">{invoice.invoiceNumber}</span></div>
-          <div className="text-xs text-[#8A8B8C]">Customer: <span className="text-white">{invoice.customer?.name}</span></div>
+          <div className="text-xs text-[#8A8B8C]">Customer: <span className="text-white">{customerName}</span></div>
           <div className="text-xs text-[#8A8B8C]">Balance: <span className="text-[#F59E0B]">R {invoice.balanceDue?.toFixed(2)}</span></div>
           <div className="text-xs text-[#8A8B8C]">Days Overdue: <span className="text-[#EF4444]">+{invoice.daysOverdue}</span></div>
         </div>

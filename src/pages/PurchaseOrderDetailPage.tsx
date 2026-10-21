@@ -443,6 +443,7 @@ export default function PurchaseOrderDetailPage() {
           corporateCustomerName: customer?.name || "",
           recircleProductCode: existingCOC.recircleProductCode, // PRESERVED
           customerProductCode: poLine?.customerStockCode || existingCOC.customerProductCode || "",
+          customerDescription: poLine?.customerDescription || existingCOC.customerDescription || "",
           productDescription: fullDesc, // Updated in case product description changed
           batchNumber: existingCOC.batchNumber, // PRESERVED — never changes
           lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || existingCOC.lotSealNumber || "",
@@ -492,6 +493,7 @@ export default function PurchaseOrderDetailPage() {
         corporateCustomerName: customer?.name || "",
         recircleProductCode: uniqueProductCode,
         customerProductCode: poLine?.customerStockCode || "",
+        customerDescription: poLine?.customerDescription || "",
         productDescription: fullDesc,
         batchNumber,
         lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || "",
@@ -546,7 +548,7 @@ export default function PurchaseOrderDetailPage() {
         <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
           <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold; width:32%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.recircleProductCode || "-"}</td></tr>
           <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT CODE ${(cust?.name || "CUSTOMER").toUpperCase()}</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.customerProductCode || "-"}</td></tr>
-          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
+          <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.customerDescription || coc.productDescription || "-"}</td></tr>
           <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">LOT No</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.lotSealNumber || "-"}</td></tr>
           <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">BATCH NUMBER</td><td style="padding:3px 6px; border:1px solid #ccc; font-family:monospace;">${coc.batchNumber || "-"}</td></tr>
           <tr><td style="padding:3px 6px; border:1px solid #ccc; font-weight:bold;">DATE OF MFG</td><td style="padding:3px 6px; border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>
@@ -703,7 +705,7 @@ export default function PurchaseOrderDetailPage() {
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;width:30%;">PRODUCT CODE ${cfg.shortName}</td><td style="padding:6px;border:1px solid #ccc;">${coc.recircleProductCode || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT CODE ${customer?.name?.toUpperCase() || "CUSTOMER"}</td><td style="padding:6px;border:1px solid #ccc;">${coc.customerProductCode || "-"}</td></tr>
-          <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:6px;border:1px solid #ccc;">${coc.productDescription || "-"}</td></tr>
+          <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">PRODUCT DESCRIPTION</td><td style="padding:6px;border:1px solid #ccc;">${coc.customerDescription || coc.productDescription || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">LOT / SEAL No</td><td style="padding:6px;border:1px solid #ccc;">${coc.lotSealNumber || coc.lotNumber || coc.sealNumber || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">BATCH NUMBER</td><td style="padding:6px;border:1px solid #ccc;">${coc.batchNumber || "-"}</td></tr>
           <tr><td style="padding:6px;border:1px solid #ccc;font-weight:bold;">DATE OF MANUFACTURING</td><td style="padding:6px;border:1px solid #ccc;">${coc.manufacturingDate || "-"}</td></tr>

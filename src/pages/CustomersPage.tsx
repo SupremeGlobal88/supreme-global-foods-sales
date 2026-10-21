@@ -119,17 +119,15 @@ export default function CustomersPage() {
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     if (!customers) return;
     const headers = ["Customer Code", "Name", "Business Name", "Contact Person", "Phone", "Email", "Address", "City", "Province", "Payment Terms", "Price Tier", "Sales Rep", "VAT Number"];
     const rows = customers.map((c) => [c.customerCode, c.name, c.businessName || "", c.contactPerson || "", c.phone || "", c.email || "", c.physicalAddress || "", c.city || "", c.province || "", c.paymentTerms, c.priceTier || "wholesale", c.salesRepName || "", c.vatNumber || ""]);
-    const csv = [headers.join(","), ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Customers");
+    XLSX.writeFile(wb, `customers_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   const bulkUploadCustomers = trpc.customer.bulkUpload.useMutation({

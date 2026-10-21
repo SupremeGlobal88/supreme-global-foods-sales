@@ -121,7 +121,7 @@ async function fbPush(type: "order" | "appointment" | "checkin" | "invoice" | "c
       case "invoice": await pushInvoice(item); break;
       case "customer": await pushOneCustomer(item); break;
       case "user": await pushUser(item); break;
-      case "userDeleted": await pushUserDelete(item); break;
+      case "userDeleted": await pushUserDelete(item.id); break;
     }
   } catch (e: any) { console.error("[fbPush] FAILED:", type, item?.id, e?.message || e); }
 }
@@ -170,7 +170,7 @@ export function createLocalLink() {
               case "user.getById": await smartSync("users", "sgf_users"); result = dataService.user.getById(input); break;
               case "user.create": { result = dataService.user.create(input); await pushUser(result); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); break; }
               case "user.update": { const { id, data } = input; result = dataService.user.update({ id, data }); if (result) { await pushUser(result); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); } break; }
-              case "user.delete": { result = dataService.user.delete(input); if (result?.success) { await pushUserDelete(input); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); } break; }
+              case "user.delete": { result = dataService.user.delete(input); if (result?.success) { await pushUserDelete(input.id); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); } break; }
               case "user.toggleActive": { result = dataService.user.toggleActive(input); if (result?.success) { const updatedUser = dataService.user.getById(input); if (updatedUser) await pushUser(updatedUser); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); } break; }
               case "user.resetPin": { result = dataService.user.resetPin(input); if (result?.success) { const updatedUser = dataService.user.getById(input.id); if (updatedUser) await pushUser(updatedUser); reloadFromStorage(["sgf_users"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } })); } break; }
               case "stock.list": await smartSync("stock", "sgf_products"); result = dataService.stock.list(); break;
@@ -324,14 +324,14 @@ export function createLocalLink() {
               case "appointment.getByUser": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.getByUser(input); break;
               case "appointment.create": { result = dataService.appointment.create(input); await pushAppointment(result); reloadFromStorage(["sgf_appointments"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 1 } })); break; }
               case "appointment.update": { const { id, data } = input; result = dataService.appointment.update({ id, data }); if (result) { await pushAppointment(result); } reloadFromStorage(["sgf_appointments"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 1 } })); break; }
-              case "appointment.delete": { result = dataService.appointment.delete(input); await pushAppointmentDelete(input); reloadFromStorage(["sgf_appointments"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 1 } })); break; }
+              case "appointment.delete": { result = dataService.appointment.delete(input); await pushAppointmentDelete(input.id); reloadFromStorage(["sgf_appointments"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 1 } })); break; }
               case "appointment.updateStatus": { result = dataService.appointment.updateStatus(input); if (result) { await pushAppointment(result); } reloadFromStorage(["sgf_appointments"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 1 } })); break; }
               case "appointment.getStats": await smartSync("appointments", "sgf_appointments"); result = dataService.appointment.getStats(); break;
               case "checkIn.list": await smartSync("checkIns", "sgf_checkIns"); result = dataService.checkIn.list(); break;
               case "checkIn.getById": await smartSync("checkIns", "sgf_checkIns"); result = dataService.checkIn.getById(input); break;
               case "checkIn.create": { result = dataService.checkIn.create(input); await pushCheckin(result); reloadFromStorage(["sgf_checkIns"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } })); break; }
               case "checkIn.update": { const { id, data } = input; result = dataService.checkIn.update({ id, data }); if (result) { await pushCheckin(result); } reloadFromStorage(["sgf_checkIns"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } })); break; }
-              case "checkIn.delete": { result = dataService.checkIn.delete(input); await pushCheckinDelete(input); reloadFromStorage(["sgf_checkIns"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } })); break; }
+              case "checkIn.delete": { result = dataService.checkIn.delete(input); await pushCheckinDelete(input.id); reloadFromStorage(["sgf_checkIns"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } })); break; }
               case "checkIn.checkout": { result = dataService.checkIn.checkout(input); if (result) { await pushCheckin(result); } reloadFromStorage(["sgf_checkIns"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } })); break; }
               case "checkIn.getStats": await smartSync("checkIns", "sgf_checkIns"); result = dataService.checkIn.getStats(); break;
               case "checkIn.getDailyReport": await smartSync("checkIns", "sgf_checkIns"); result = dataService.checkIn.getDailyReport(); break;

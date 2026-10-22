@@ -1075,8 +1075,11 @@ export default function InvoicesPage() {
               {filtered.map((inv: any) => {
                 const isExp = expanded === inv.id;
                 const tot = Number(inv.total || 0);
+                const isSample = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+                const displayTot = isSample ? 0 : tot;
                 const paid = Number(inv.amountPaid || 0);
                 const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (tot - paid);
+                const displayBal = isSample ? 0 : bal;
                 // Use loose equality (==) — Firebase may convert number IDs to strings
                 const invReceipts = (allReceipts || []).filter((r: any) => r.invoiceId == inv.id);
                 return (
@@ -1097,6 +1100,9 @@ export default function InvoicesPage() {
                           {inv.source === "sage" && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}>SAGE</span>
                           )}
+                          {isSample && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(59,130,246,0.15)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.3)" }}>SAMPLE</span>
+                          )}
                           {(inv.items || []).length > 0 && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(74,222,128,0.1)", color: "#4ADE80" }}>{inv.items.length} item{(inv.items || []).length !== 1 ? "s" : ""}</span>
                           )}
@@ -1105,9 +1111,9 @@ export default function InvoicesPage() {
                       <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || (customers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.poNumber || inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
-                      <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>
-                      <td className="p-3 text-right text-sm font-display" style={{ color: bal > 0 ? "#EF4444" : bal < 0 ? "#3B82F6" : "#4ADE80" }}>
-                        {bal < 0 ? `Credit R ${Math.abs(bal).toFixed(2)}` : `R ${bal.toFixed(2)}`}
+                      <td className="p-3 text-right text-sm text-white font-display">R {displayTot.toFixed(2)}</td>
+                      <td className="p-3 text-right text-sm font-display" style={{ color: displayBal > 0 ? "#EF4444" : displayBal < 0 ? "#3B82F6" : "#4ADE80" }}>
+                        {displayBal < 0 ? `Credit R ${Math.abs(displayBal).toFixed(2)}` : `R ${displayBal.toFixed(2)}`}
                       </td>
                       <td className="p-3 text-center">{badge(inv.status)}</td>
                       <td className="p-3 text-right">
@@ -1137,13 +1143,13 @@ export default function InvoicesPage() {
                           {isAdmin && (
                             <button onClick={() => { setEditInvId(inv.id); setEditInvNumber(inv.invoiceNumber); setEditInvCustomerId(inv.customerId || 0); setEditInvDate(inv.invoiceDate ? inv.invoiceDate.slice(0, 10) : ""); setEditInvTotal(String(inv.total || 0)); setEditInvPaid(String(inv.amountPaid || 0)); setEditInvNotes(inv.notes || ""); setEditInvStatus(inv.status || "sent"); setEditInvPaymentTerms(inv.paymentTerms || "cod"); setEditInvVatRate(inv.vatRate !== undefined ? inv.vatRate : 0.15); setShowEditInv(true); }} className="p-1.5 rounded hover:bg-[#222324]" title="Edit Invoice"><Pencil className="w-3.5 h-3.5 text-[#D4A843]" /></button>
                           )}
-                          {isAdmin && bal > 0 && inv.status !== "cancelled" && (
+                          {isAdmin && !isSample && bal > 0 && inv.status !== "cancelled" && (
                             <button onClick={() => openPay(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Record Payment"><DollarSign className="w-3.5 h-3.5 text-[#4ADE80]" /></button>
                           )}
-                          {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
+                          {isAdmin && !isSample && inv.status !== "draft" && inv.status !== "cancelled" && (
                             <button onClick={() => openCreditNote(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Credit Note"><RotateCcw className="w-3.5 h-3.5 text-[#F59E0B]" /></button>
                           )}
-                          {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
+                          {isAdmin && !isSample && inv.status !== "draft" && inv.status !== "cancelled" && (
                             <button onClick={() => sendEmail(inv)} className="p-1.5 rounded hover:bg-[#222324]" title="Email Invoice"><Mail className="w-3.5 h-3.5 text-[#3B82F6]" /></button>
                           )}
                         </div>
@@ -1226,31 +1232,31 @@ export default function InvoicesPage() {
                           {/* Totals */}
                           <div className="flex justify-end mb-4">
                             <div className="text-right space-y-1 text-xs" style={{ width: 220 }}>
-                              <div className="flex justify-between"><span className="text-[#8A8B8C]">Subtotal (excl VAT):</span><span>R {Number(inv.subtotal || 0).toFixed(2)}</span></div>
-                              <div className="flex justify-between"><span className="text-[#8A8B8C]">{inv.vatRate === 0 ? "VAT Exempt @ 0%" : `VAT ${(inv.vatRate !== undefined ? inv.vatRate * 100 : 15).toFixed(0)}%`}:</span><span>R {Number(inv.vatAmount || 0).toFixed(2)}</span></div>
+                              <div className="flex justify-between"><span className="text-[#8A8B8C]">Subtotal (excl VAT):</span><span>R {isSample ? "0.00" : Number(inv.subtotal || 0).toFixed(2)}</span></div>
+                              <div className="flex justify-between"><span className="text-[#8A8B8C]">{inv.vatRate === 0 ? "VAT Exempt @ 0%" : `VAT ${(inv.vatRate !== undefined ? inv.vatRate * 100 : 15).toFixed(0)}%`}:</span><span>R {isSample ? "0.00" : Number(inv.vatAmount || 0).toFixed(2)}</span></div>
                               <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #D4A843" }}>
-                                <span className="text-[#D4A843] font-semibold">Total:</span><span className="text-[#D4A843] font-bold">R {tot.toFixed(2)}</span>
+                                <span className="text-[#D4A843] font-semibold">Total:</span><span className="text-[#D4A843] font-bold">R {displayTot.toFixed(2)}</span>
                               </div>
-                              {paid > 0 && <div className="flex justify-between"><span className="text-[#8A8B8C]">Paid:</span><span className="text-[#4ADE80]">R {paid.toFixed(2)}</span></div>}
+                              {paid > 0 && !isSample && <div className="flex justify-between"><span className="text-[#8A8B8C]">Paid:</span><span className="text-[#4ADE80]">R {paid.toFixed(2)}</span></div>}
                               {(() => {
                                 const allocCredits = (inv.creditAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
                                 const lineCredits = (inv.creditedLines || []).reduce((sum: number, cl: any) => sum + (cl.creditAmount || 0), 0);
                                 const creditsApplied = allocCredits + lineCredits;
-                                return creditsApplied > 0 ? (
+                                return creditsApplied > 0 && !isSample ? (
                                   <div className="flex justify-between">
                                     <span className="text-[#8A8B8C]">Credits Applied:</span>
                                     <span className="text-[#F59E0B]">R {creditsApplied.toFixed(2)}</span>
                                   </div>
                                 ) : null;
                               })()}
-                              {bal > 0 && (
+                              {displayBal > 0 && (
                                 <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #EF4444" }}>
-                                  <span className="text-[#EF4444] font-bold">Balance Due:</span><span className="text-[#EF4444] font-bold">R {bal.toFixed(2)}</span>
+                                  <span className="text-[#EF4444] font-bold">Balance Due:</span><span className="text-[#EF4444] font-bold">R {displayBal.toFixed(2)}</span>
                                 </div>
                               )}
-                              {bal < 0 && (
+                              {displayBal < 0 && (
                                 <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #3B82F6" }}>
-                                  <span className="text-[#3B82F6] font-bold">Customer Credit:</span><span className="text-[#3B82F6] font-bold">R {Math.abs(bal).toFixed(2)}</span>
+                                  <span className="text-[#3B82F6] font-bold">Customer Credit:</span><span className="text-[#3B82F6] font-bold">R {Math.abs(displayBal).toFixed(2)}</span>
                                 </div>
                               )}
                             </div>
@@ -1381,16 +1387,16 @@ export default function InvoicesPage() {
                               }
                               return <button onClick={() => { if (confirm(`Generate Certificate of Compliance for invoice ${inv.invoiceNumber}?`)) generateCOC.mutate(inv.id); }} className="btn-secondary text-xs" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#22C55E" }}><FileCheck className="w-3 h-3" /> Generate COC</button>;
                             })()}
-                            {isAdmin && bal > 0 && inv.status !== "cancelled" && (
+                            {isAdmin && !isSample && bal > 0 && inv.status !== "cancelled" && (
                               <button onClick={() => openPay(inv)} className="btn-primary text-xs"><DollarSign className="w-3 h-3" /> Record Payment</button>
                             )}
-                            {isAdmin && bal > 0 && inv.status !== "cancelled" && inv.status !== "draft" && (
+                            {isAdmin && !isSample && bal > 0 && inv.status !== "cancelled" && inv.status !== "draft" && (
                               <button onClick={() => openAllocCredit(inv)} className="btn-primary text-xs" style={{ background: "rgba(245,158,11,0.15)", borderColor: "rgba(245,158,11,0.4)" }}><RotateCcw className="w-3 h-3" /> Apply Credit</button>
                             )}
-                            {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
+                            {isAdmin && !isSample && inv.status !== "draft" && inv.status !== "cancelled" && (
                               <button onClick={() => openCreditNote(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(245,158,11,0.3)" }}><RotateCcw className="w-3 h-3" /> Credit Note</button>
                             )}
-                            {isAdmin && inv.status !== "draft" && inv.status !== "cancelled" && (
+                            {isAdmin && !isSample && inv.status !== "draft" && inv.status !== "cancelled" && (
                               <button onClick={() => sendEmail(inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(59,130,246,0.3)" }}><Mail className="w-3 h-3" /> Email to Customer</button>
                             )}
                             {isAdmin && (!inv.orderId || !(allOrders || []).find((o: any) => o.id === inv.orderId)) && (

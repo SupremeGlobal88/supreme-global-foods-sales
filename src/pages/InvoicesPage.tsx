@@ -468,7 +468,7 @@ export default function InvoicesPage() {
           else window.onload=printIt;
           setTimeout(printIt, 2000);
         })();
-      </script></body></html>`);
+      <\/script></body></html>`);
     w.document.close();
   }
 
@@ -534,7 +534,7 @@ export default function InvoicesPage() {
 
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>COCs - ${inv.invoiceNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${cocPages}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>COCs - ${inv.invoiceNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${cocPages}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();<\/script></body></html>`);
     w.document.close();
     w.focus();
   }
@@ -625,7 +625,7 @@ export default function InvoicesPage() {
         else window.onload=printIt;
         setTimeout(printIt, 2000);
       })();
-    </script>`);
+    <\/script>`);
     w.document.close();
   }
 
@@ -738,7 +738,7 @@ export default function InvoicesPage() {
 
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>Credit Note ${cn.creditNoteNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${page}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Credit Note ${cn.creditNoteNumber}</title><style>@media print{body{-webkit-print-color-adjust:exact;}}</style></head><body style="background:#fff;">${page}<script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},300);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();<\/script></body></html>`);
     w.document.close();
   }
 
@@ -923,7 +923,7 @@ export default function InvoicesPage() {
           else window.onload=printIt;
           setTimeout(printIt, 2000);
         })();
-      </script></body></html>`);
+      <\/script></body></html>`);
     w.document.close();
   }
 
@@ -1102,7 +1102,7 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
+                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || (customers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.poNumber || inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {tot.toFixed(2)}</td>

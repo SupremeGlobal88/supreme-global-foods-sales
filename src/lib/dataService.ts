@@ -2030,6 +2030,18 @@ function activateInvoiceFromOrder(orderId: number) {
   }
 }
 
+/** When purchase order status changes to fulfilled, upgrade invoice from draft to sent */
+function activateInvoiceFromPO(poId: number) {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const idx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+  if (idx >= 0 && invoices[idx].status === "draft") {
+    invoices[idx].status = "sent";
+    invoices[idx].updatedAt = new Date().toISOString();
+    saveItem("sgf_invoices", invoices);
+    console.log(`[Invoice] Activated invoice ${invoices[idx].invoiceNumber} for fulfilled purchase order ${poId}`);
+  }
+}
+
 /** When order is cancelled, also cancel its linked invoice (if any).
  *  Returns the cancelled invoice so caller can push to Firebase (cloud-first). */
 function cancelInvoiceFromOrder(orderId: number): any | null {
@@ -2050,7 +2062,8 @@ function cancelInvoiceFromOrder(orderId: number): any | null {
   return null;
 }
 
-/** Fix invoices stuck in "draft" whose orders are already delivered/ready.
+/** Fix invoices stuck in "draft" whose orders are already delivered/ready or whose
+ *  purchase orders are already fulfilled.
  *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder.
  *  Returns changed invoices so caller can push to Firebase (cloud-first). */
 export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoices: any[] } {
@@ -2065,11 +2078,20 @@ export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoice
       inv.updatedAt = new Date().toISOString();
       changed++;
       changedInvs.push(inv);
+      continue;
+    }
+    // Also check purchase orders (corporate orders)
+    const po = purchaseOrders.find((p) => p.id == inv.purchaseOrderId);
+    if (po && po.status === "fulfilled") {
+      inv.status = "sent";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
     }
   }
   if (changed > 0) {
     saveItem("sgf_invoices", invoices);
-    console.log(`[Invoice] Fixed ${changed} invoice(s) stuck in draft for delivered/ready orders`);
+    console.log(`[Invoice] Fixed ${changed} invoice(s) stuck in draft for delivered/ready orders or fulfilled purchase orders`);
   }
   return { changed, invoices: changedInvs };
 }
@@ -5151,6 +5173,10 @@ export const dataService = {
         purchaseOrders[idx].status = status;
         purchaseOrders[idx].updatedAt = new Date().toISOString();
         saveItem("sgf_purchaseOrders", purchaseOrders);
+        // Activate linked invoice when PO is fulfilled
+        if (status === "fulfilled") {
+          activateInvoiceFromPO(id);
+        }
         logAudit("UPDATE", "purchaseOrder", id, `Purchase order status changed: ${purchaseOrders[idx].poNumber || "PO"} ${oldStatus} → ${status}`);
         return purchaseOrders[idx];
       }

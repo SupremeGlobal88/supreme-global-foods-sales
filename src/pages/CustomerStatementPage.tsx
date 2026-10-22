@@ -19,6 +19,7 @@ export default function CustomerStatementPage() {
   const { data: invoices } = trpc.invoice.list.useQuery();
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
+  const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
   const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
@@ -26,10 +27,29 @@ export default function CustomerStatementPage() {
   const [stmtTo, setStmtTo] = useState(new Date().toISOString().slice(0, 10));
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Selected customer object
+  // Merge corporate customers into the customer list for dropdown robustness
+  const allCustomersForDropdown = useMemo(() => {
+    const custMap = new Map<number, any>();
+    for (const c of customers || []) custMap.set(c.id, c);
+    for (const cc of corporateCustomers || []) {
+      if (!custMap.has(cc.id)) {
+        custMap.set(cc.id, {
+          ...cc,
+          customerCode: cc.code || cc.customerCode || `CORP-${cc.id.toString().slice(-4)}`,
+        });
+      }
+    }
+    return Array.from(custMap.values()).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
+  }, [customers, corporateCustomers]);
+
+  // Selected customer object (search in merged list + corporate fallback)
   const selectedCustomer = useMemo(() => {
-    return (customers || []).find((c: any) => c.id == selectedCustomerId) || null;
-  }, [customers, selectedCustomerId]);
+    const fromMerged = allCustomersForDropdown.find((c: any) => c.id == selectedCustomerId);
+    if (fromMerged) return fromMerged;
+    const fromCorp = (corporateCustomers || []).find((c: any) => c.id == selectedCustomerId);
+    if (fromCorp) return { ...fromCorp, customerCode: fromCorp.code || fromCorp.customerCode || `CORP-${fromCorp.id.toString().slice(-4)}` };
+    return null;
+  }, [allCustomersForDropdown, corporateCustomers, selectedCustomerId]);
 
   // Filtered invoices for selected customer — EXACT same approach as InvoicesPage
   // The invoice page simply checks: invoice.customer.name.includes(searchTerm)
@@ -54,6 +74,11 @@ export default function CustomerStatementPage() {
         const invCode = (inv.customerCode || "").toString().trim().toLowerCase();
         const cCode = (selectedCustomer.customerCode || "").toString().trim().toLowerCase();
         if (invCode && cCode && invCode === cCode) return true;
+        // 5. Match by purchaseOrderId → corporateCustomerId (corporate invoices)
+        if (inv.purchaseOrderId) {
+          const po = (purchaseOrders || []).find((p: any) => p.id == inv.purchaseOrderId);
+          if (po && po.corporateCustomerId == cId) return true;
+        }
         return false;
       })
       .filter((inv: any) => {
@@ -67,7 +92,7 @@ export default function CustomerStatementPage() {
         new Date(a.invoiceDate || a.createdAt).getTime() -
         new Date(b.invoiceDate || b.createdAt).getTime()
       );
-  }, [invoices, selectedCustomer, stmtFrom, stmtTo]);
+  }, [invoices, selectedCustomer, stmtFrom, stmtTo, purchaseOrders]);
 
   // Credit notes for this customer
   const custCreditNotes = useMemo(() => {
@@ -308,17 +333,16 @@ export default function CustomerStatementPage() {
 
   const totalOutstanding = aging.current + aging.days30 + aging.days60 + aging.days90 + aging.days90plus;
 
-  // Customer dropdown list (filtered by search)
+  // Customer dropdown list (filtered by search) — includes corporate customers
   const filteredCustomers = useMemo(() => {
-    if (!customers) return [];
-    const sorted = [...customers].sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
+    if (!allCustomersForDropdown.length) return [];
     const q = searchTerm.toLowerCase().trim();
-    if (!q) return sorted;
-    return sorted.filter((c: any) =>
+    if (!q) return allCustomersForDropdown;
+    return allCustomersForDropdown.filter((c: any) =>
       (c.name || "").toLowerCase().includes(q) ||
       (c.customerCode || "").toString().toLowerCase().includes(q)
     );
-  }, [customers, searchTerm]);
+  }, [allCustomersForDropdown, searchTerm]);
 
   // ─── PRINT ───
   function printStatement() {

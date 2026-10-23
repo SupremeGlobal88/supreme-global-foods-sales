@@ -2588,14 +2588,11 @@ export const dataService = {
         for (const item of requestedItems) {
           const product = products.find((p) => p.id == item.stockItemId);
           if (!product) continue;
-          // Calculate committed stock (non-delivered/cancelled orders, EXCLUDE quotes)
-          const committed = orders
-            .filter((o) => o.orderType !== "quote" && o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
-            .flatMap((o) => o.items || [])
-            .filter((it: any) => it.stockItemId == item.stockItemId)
-            .reduce((sum: number, it: any) => sum + (it.quantity || 0), 0);
-          const available = Math.max(0, (product.quantity || 0) - committed);
-          const requestedQty = isSample ? 1 : (item.quantity || 0);
+          // product.quantity already has all non-cancelled orders deducted at creation time.
+          // It IS the live available stock — do NOT subtract committed again.
+          const available = Math.max(0, product.quantity || 0);
+          const conversion = item.conversion || 1;
+          const requestedQty = (isSample ? 1 : (item.quantity || 0)) * conversion;
           if (requestedQty > available) {
             throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
           }
@@ -2871,6 +2868,20 @@ export const dataService = {
         updatedAt: new Date().toISOString(),
       };
       orders.push(newOrder);
+
+      // VALIDATE stock availability before converting (quotes never deducted stock)
+      for (const item of (newOrder.items || [])) {
+        const product = products.find((p) => p.id == item.stockItemId);
+        if (!product) continue;
+        const available = Math.max(0, product.quantity || 0);
+        const conversion = item.conversion || 1;
+        const requestedQty = (item.quantity || 0) * conversion;
+        if (requestedQty > available) {
+          // Rollback: remove the new order we just pushed
+          orders.pop();
+          throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
+        }
+      }
 
       // DEDUCT STOCK for each item
       for (const item of (newOrder.items || [])) {

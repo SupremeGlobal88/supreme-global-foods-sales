@@ -609,6 +609,40 @@ export default function OrdersPage() {
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
 
+    // CUSTOMER ACCOUNT CHECK: validate active status, credit limit, COD overdue
+    const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
+    if (customer) {
+      // Check inactive
+      if (customer.isActive === false && !isSuperAdmin) {
+        return { valid: false, error: `Customer account is INACTIVE. Only Super Admin can place orders for inactive customers.` };
+      }
+      // Check credit limit (non-COD only)
+      const creditLimit = Number(customer.creditLimit || 0);
+      if (creditLimit > 0 && formData.paymentTerms !== "cod") {
+        const outstanding = (invoices || [])
+          .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+          .reduce((sum: number, inv: any) => sum + (inv.balanceDue || 0), 0);
+        if (outstanding >= creditLimit && !isSuperAdmin) {
+          return { valid: false, error: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Only Super Admin can override.` };
+        }
+      }
+      // Check COD overdue (2 days)
+      if (formData.paymentTerms === "cod") {
+        const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
+        const unpaidCOD = (invoices || [])
+          .filter((inv: any) => {
+            if (inv.customerId != customer.id) return false;
+            if (inv.status === "cancelled") return false;
+            if ((inv.balanceDue || 0) <= 0.01) return false;
+            return new Date(inv.invoiceDate || inv.createdAt) < twoDaysAgo;
+          });
+        if (unpaidCOD.length > 0 && !isSuperAdmin) {
+          const totalUnpaid = unpaidCOD.reduce((s: number, inv: any) => s + (inv.balanceDue || 0), 0);
+          return { valid: false, error: `COD account has unpaid invoices older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Only Super Admin can override.` };
+        }
+      }
+    }
+
     // ZERO AMOUNT VALIDATION: Calculate running total — reject if R0
     if (formData.orderType !== "sample" && formData.orderType !== "quote") {
       let runningSubtotal = 0;
@@ -642,58 +676,59 @@ export default function OrdersPage() {
       if (belowItems.length > 0 && !isAdmin && !adminOverride) {
         return { valid: false, error: `PRICE BELOW CORPORATE FLOOR:\n${belowItems.join("\n")}\n\nSuper admin approval required.` };
       }
-  // Admin has checked override — must enter correct PIN
-      if (belowItems.length > 0 && adminOverride) {
-        if (!adminPin || adminPin.trim().length === 0) {
-          return { valid: false, error: "Please enter your admin PIN to approve below-corporate pricing." };
-        }
-        // Resolve PIN from multiple sources (cloud-first: Firebase may not have pin field synced)
-        let effectivePin = "";
-        // 1. Hardcoded defaults (most reliable — survives any data corruption)
-        const DEFAULT_USERS = [
-          { id: 1, name: "Collin", pin: "2580" },
-          { id: 2, name: "Adeli", pin: "1111" },
-          { id: 3, name: "Inhouse", pin: "2222" },
-          { id: 4, name: "Michael", pin: "3333" },
-          { id: 5, name: "Nkosana", pin: "4444" },
-          { id: 6, name: "Tebogo Bila", pin: "6666" },
-          { id: 7, name: "Aggie", pin: "1018" },
-          { id: 8, name: "Ronald", pin: "2581" },
-          { id: 9, name: "Jolene", pin: "7777" },
-          { id: 10, name: "David", pin: "8888" },
-        ];
-        const defaultUser = DEFAULT_USERS.find((u) =>
-          u.id === user?.id ||
-          (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
-        );
-        if (defaultUser) effectivePin = defaultUser.pin;
-        // 2. Direct localStorage read (bypasses React state / tRPC cache)
-        if (!effectivePin) {
-          try {
-            const demoStr = localStorage.getItem("demo_user");
-            if (demoStr) {
-              const demo = JSON.parse(demoStr);
-              if (demo.pin != null) effectivePin = String(demo.pin);
-            }
-          } catch { /* ignore */ }
-        }
-        // 3. sgf_users in localStorage (Firebase-synced users)
-        if (!effectivePin) {
-          try {
-            const rawUsers = localStorage.getItem("sgf_users");
-            if (rawUsers) {
-              const allUsers = JSON.parse(rawUsers);
-              const dbUser = allUsers.find((u: any) =>
-                u.id === user?.id ||
-                (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
-              );
-              if (dbUser?.pin != null) effectivePin = String(dbUser.pin);
-            }
-          } catch { /* ignore */ }
-        }
-        if (adminPin !== effectivePin) {
-          return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve below-corporate pricing." };
-        }
+    }
+
+    // SUPER ADMIN PIN VALIDATION: if override checkbox is checked, require valid PIN
+    if (adminOverride) {
+      if (!adminPin || adminPin.trim().length === 0) {
+        return { valid: false, error: "Please enter your admin PIN to approve this order." };
+      }
+      // Resolve PIN from multiple sources (cloud-first: Firebase may not have pin field synced)
+      let effectivePin = "";
+      // 1. Hardcoded defaults (most reliable — survives any data corruption)
+      const DEFAULT_USERS = [
+        { id: 1, name: "Collin", pin: "2580" },
+        { id: 2, name: "Adeli", pin: "1111" },
+        { id: 3, name: "Inhouse", pin: "2222" },
+        { id: 4, name: "Michael", pin: "3333" },
+        { id: 5, name: "Nkosana", pin: "4444" },
+        { id: 6, name: "Tebogo Bila", pin: "6666" },
+        { id: 7, name: "Aggie", pin: "1018" },
+        { id: 8, name: "Ronald", pin: "2581" },
+        { id: 9, name: "Jolene", pin: "7777" },
+        { id: 10, name: "David", pin: "8888" },
+      ];
+      const defaultUser = DEFAULT_USERS.find((u) =>
+        u.id === user?.id ||
+        (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
+      );
+      if (defaultUser) effectivePin = defaultUser.pin;
+      // 2. Direct localStorage read (bypasses React state / tRPC cache)
+      if (!effectivePin) {
+        try {
+          const demoStr = localStorage.getItem("demo_user");
+          if (demoStr) {
+            const demo = JSON.parse(demoStr);
+            if (demo.pin != null) effectivePin = String(demo.pin);
+          }
+        } catch { /* ignore */ }
+      }
+      // 3. sgf_users in localStorage (Firebase-synced users)
+      if (!effectivePin) {
+        try {
+          const rawUsers = localStorage.getItem("sgf_users");
+          if (rawUsers) {
+            const allUsers = JSON.parse(rawUsers);
+            const dbUser = allUsers.find((u: any) =>
+              u.id === user?.id ||
+              (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
+            );
+            if (dbUser?.pin != null) effectivePin = String(dbUser.pin);
+          }
+        } catch { /* ignore */ }
+      }
+      if (adminPin !== effectivePin) {
+        return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve this order." };
       }
     }
 
@@ -734,6 +769,10 @@ export default function OrdersPage() {
       // Pass admin override flag for below-corporate pricing approval
       if (adminOverride) {
         payload.adminApproved = true;
+      }
+      // Pass super admin override for customer blocking (inactive, credit limit, COD overdue)
+      if (isSuperAdmin && adminOverride && adminPin) {
+        payload.superAdminOverride = true;
       }
     }
     if (editingOrder) {
@@ -1641,7 +1680,7 @@ export default function OrdersPage() {
                 <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444" }}><AlertTriangle className="w-4 h-4 inline mr-2" />{orderCheck.error}</div>
               )}
 
-              {/* Admin Override — below-corporate pricing detected */}
+              {/* Admin Override — below-corporate pricing or customer blocking */}
               {(() => {
                 if (formData.orderType === "sample" || formData.orderType === "quote" || !isAdmin) return null;
                 const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);

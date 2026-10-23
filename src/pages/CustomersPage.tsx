@@ -18,6 +18,7 @@ const PRICE_TIER_COLORS: Record<string, string> = {
 export default function CustomersPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super_admin";
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
@@ -37,6 +38,8 @@ export default function CustomersPage() {
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
     salesRepName: "", vatNumber: "", vatExempt: false, notes: "",
     company: "sgf" as CompanyKey,
+    isActive: true,
+    creditLimit: "",
   });
 
   const { data: customers } = trpc.customer.search.useQuery({ query: search || " " });
@@ -70,12 +73,12 @@ export default function CustomersPage() {
   });
 
   function resetForm() {
-    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", vatExempt: false, notes: "", company: "sgf" });
+    setFormData({ customerCode: "", name: "", businessName: "", contactPerson: "", phone: "", email: "", physicalAddress: "", city: "", province: "", postalCode: "", paymentTerms: "cod", priceTier: "wholesale", salesRepName: myRepName, vatNumber: "", vatExempt: false, notes: "", company: "sgf", isActive: true, creditLimit: "" });
     setVatError("");
   }
 
   function handleEdit(cust: NonNullable<typeof customers>[0]) {
-    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", vatExempt: !!cust.vatExempt, notes: cust.notes || "", company: (cust.company as CompanyKey) || "sgf" });
+    setFormData({ customerCode: cust.customerCode, name: cust.name, businessName: cust.businessName || "", contactPerson: cust.contactPerson || "", phone: cust.phone || "", email: cust.email || "", physicalAddress: cust.physicalAddress || "", city: cust.city || "", province: cust.province || "", postalCode: cust.postalCode || "", paymentTerms: cust.paymentTerms as "cod" | "7_days" | "14_days" | "30_days", priceTier: (cust.priceTier as "corporate" | "bulk" | "wholesale" | "retail") || "wholesale", salesRepName: cust.salesRepName || "", vatNumber: cust.vatNumber || "", vatExempt: !!cust.vatExempt, notes: cust.notes || "", company: (cust.company as CompanyKey) || "sgf", isActive: cust.isActive !== false, creditLimit: cust.creditLimit != null ? String(cust.creditLimit) : "" });
     setEditingId(cust.id); setShowForm(true);
   }
 
@@ -98,15 +101,19 @@ export default function CustomersPage() {
     }
     setVatError("");
     setImportStatus("");
+    const payload: any = {
+      ...formData,
+      isActive: formData.isActive,
+      creditLimit: formData.creditLimit === "" ? 0 : Number(formData.creditLimit),
+    };
     if (editingId) {
-      updateCustomer.mutate({ id: editingId, data: formData });
+      updateCustomer.mutate({ id: editingId, data: payload });
     } else {
       // Auto-generate customer code for new customers
-      const dataToSend = { ...formData };
-      if (!dataToSend.customerCode || dataToSend.customerCode.trim() === "") {
-        dataToSend.customerCode = "AUTO"; // Will be replaced by backend
+      if (!payload.customerCode || payload.customerCode.trim() === "") {
+        payload.customerCode = "AUTO"; // Will be replaced by backend
       }
-      createCustomer.mutate(dataToSend);
+      createCustomer.mutate(payload);
     }
   }
 
@@ -357,8 +364,33 @@ export default function CustomersPage() {
             <div className="space-y-4">
               <div className="card-surface p-6">
                 <div className="flex items-start justify-between mb-6">
-                  <div><h2 className="font-display font-semibold text-white text-xl">{selected.name}</h2><p className="text-[#8A8B8C] font-body text-sm">{selected.businessName}</p></div>
+                  <div>
+                    <h2 className="font-display font-semibold text-white text-xl">{selected.name}</h2>
+                    <p className="text-[#8A8B8C] font-body text-sm">{selected.businessName}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${selected.isActive !== false ? "bg-[rgba(74,222,128,0.12)] text-[#4ADE80]" : "bg-[rgba(239,68,68,0.12)] text-[#EF4444]"}`}>
+                        {selected.isActive !== false ? "ACTIVE" : "INACTIVE"}
+                      </span>
+                      {selected.creditLimit > 0 && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[rgba(99,102,241,0.12)] text-[#818CF8]">
+                          Credit: R {Number(selected.creditLimit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex gap-2">
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          const newStatus = selected.isActive !== false ? false : true;
+                          updateCustomer.mutate({ id: selected.id, data: { isActive: newStatus } });
+                        }}
+                        className={`btn-secondary text-xs ${selected.isActive !== false ? "hover:text-[#EF4444]" : "hover:text-[#4ADE80]"}`}
+                        title={selected.isActive !== false ? "Deactivate customer" : "Reactivate customer"}
+                      >
+                        {selected.isActive !== false ? "Deactivate" : "Reactivate"}
+                      </button>
+                    )}
                     {isAdmin && <button onClick={() => handleEdit(selected)} className="btn-secondary text-xs"><Pencil className="w-3 h-3" /> Edit</button>}
                     {isAdmin && <button onClick={() => { if (confirm("Delete this customer?")) deleteCustomer.mutate({ id: selected.id }); }} className="btn-secondary text-xs hover:text-[#EF4444]"><Trash2 className="w-3 h-3" /></button>}
                   </div>
@@ -443,6 +475,33 @@ export default function CustomersPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="label-text block mb-1.5">Price Tier</label><select value={formData.priceTier} onChange={(e) => setFormData({ ...formData, priceTier: e.target.value as "corporate" | "bulk" | "wholesale" | "retail" })} className="input-field"><option value="corporate">Corporate</option><option value="bulk">Bulk</option><option value="wholesale">Wholesale</option><option value="retail">Retail</option></select></div>
                   <div><label className="label-text block mb-1.5">Payment Terms</label><select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as "cod" | "7_days" | "14_days" | "30_days" })} className="input-field"><option value="cod">COD</option><option value="7_days">7 Days</option><option value="14_days">14 Days</option><option value="30_days">30 Days</option></select></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label-text block mb-1.5">Approved Credit Limit <span className="text-[#8A8B8C] font-normal">(0 = no limit)</span></label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.creditLimit}
+                      onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                      className="input-field"
+                      placeholder="e.g. 5000"
+                      readOnly={!isSuperAdmin}
+                      style={{ backgroundColor: !isSuperAdmin ? "#0A0A0B" : undefined }}
+                      title={!isSuperAdmin ? "Only Super Admin can edit credit limits" : ""}
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 pt-6">
+                    <input
+                      type="checkbox"
+                      id="isActive"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                      className="w-4 h-4 accent-[#D4A843] cursor-pointer"
+                    />
+                    <label htmlFor="isActive" className="label-text cursor-pointer">Account Active</label>
+                  </div>
                 </div>
                 <div><label className="label-text block mb-1.5">Company</label><select value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value as CompanyKey })} className="input-field"><option value="sgf">Supreme Global Foods</option><option value="recircle">Recircle SA</option></select></div>
                 <div><label className="label-text block mb-1.5">Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field" required /></div>

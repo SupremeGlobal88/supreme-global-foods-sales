@@ -2135,6 +2135,119 @@ function searchItems(items: any[], query: string) {
 
 export { SALES_REPS, getCommittedStock, getAvailableStock };
 
+/* ─── CUSTOMER CREDIT & ACTIVITY HELPERS ─── */
+
+/** Sum outstanding balanceDue for all non-cancelled invoices linked to a regular customer */
+function getCustomerOutstandingBalance(customerId: number): number {
+  return invoices
+    .filter((inv) => inv.customerId == customerId && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+    .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
+}
+
+/** Sum outstanding balanceDue for all non-cancelled invoices linked to a corporate customer via purchaseOrderId */
+function getCorporateCustomerOutstandingBalance(corporateCustomerId: number): number {
+  const poIds = purchaseOrders
+    .filter((po) => po.corporateCustomerId == corporateCustomerId)
+    .map((po) => po.id);
+  return invoices
+    .filter((inv) => inv.purchaseOrderId != null && poIds.includes(inv.purchaseOrderId) && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+    .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
+}
+
+/** Check if a regular customer is allowed to place an order.
+ *  Returns { blocked: false } if OK, or { blocked: true, reason: string } if blocked.
+ *  overrideBySuperAdmin bypasses all checks. */
+function checkCustomerCanOrder(
+  customerId: number,
+  paymentTerms: string,
+  overrideBySuperAdmin = false
+): { blocked: boolean; reason?: string } {
+  if (overrideBySuperAdmin) return { blocked: false };
+
+  const customer = customers.find((c) => c.id == customerId);
+  if (!customer) return { blocked: true, reason: "Customer not found." };
+
+  // 1. Customer deactivated
+  if (customer.isActive === false) {
+    return { blocked: true, reason: `Customer account is inactive. Contact admin to reactivate.` };
+  }
+
+  // 2. Credit limit exceeded (only for 7/14/30 day terms)
+  const creditLimit = Number(customer.creditLimit || 0);
+  if (creditLimit > 0 && paymentTerms !== "cod") {
+    const outstanding = getCustomerOutstandingBalance(customerId);
+    if (outstanding >= creditLimit) {
+      return { blocked: true, reason: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Super admin PIN required.` };
+    }
+  }
+
+  // 3. COD: unpaid delivered orders older than 2 days
+  if (paymentTerms === "cod") {
+    const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
+    const unpaidCODInvoices = invoices.filter((inv) => {
+      if (inv.customerId != customerId) return false;
+      if (inv.status === "cancelled") return false;
+      if ((inv.balanceDue || 0) <= 0.01) return false;
+      const invDate = new Date(inv.invoiceDate || inv.createdAt);
+      return invDate < twoDaysAgo;
+    });
+    if (unpaidCODInvoices.length > 0) {
+      const totalUnpaid = unpaidCODInvoices.reduce((s, inv) => s + (inv.balanceDue || 0), 0);
+      return { blocked: true, reason: `COD account has unpaid invoices older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Super admin PIN required.` };
+    }
+  }
+
+  return { blocked: false };
+}
+
+/** Check if a corporate customer is allowed to place a purchase order.
+ *  Same logic as regular customers but uses corporate customer data. */
+function checkCorporateCustomerCanOrder(
+  corporateCustomerId: number,
+  overrideBySuperAdmin = false
+): { blocked: boolean; reason?: string } {
+  if (overrideBySuperAdmin) return { blocked: false };
+
+  const corpCustomer = corporateCustomers.find((c) => c.id == corporateCustomerId);
+  if (!corpCustomer) return { blocked: true, reason: "Corporate customer not found." };
+
+  // 1. Customer deactivated
+  if (corpCustomer.isActive === false) {
+    return { blocked: true, reason: `Corporate customer account is inactive. Contact admin to reactivate.` };
+  }
+
+  // 2. Credit limit exceeded
+  const creditLimit = Number(corpCustomer.creditLimit || 0);
+  if (creditLimit > 0) {
+    const outstanding = getCorporateCustomerOutstandingBalance(corporateCustomerId);
+    if (outstanding >= creditLimit) {
+      return { blocked: true, reason: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Super admin PIN required.` };
+    }
+  }
+
+  // 3. COD: unpaid invoices older than 2 days
+  const paymentTerms = corpCustomer.paymentTerms || "30_days";
+  if (paymentTerms === "cod") {
+    const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
+    const poIds = purchaseOrders
+      .filter((po) => po.corporateCustomerId == corporateCustomerId)
+      .map((po) => po.id);
+    const unpaidCODInvoices = invoices.filter((inv) => {
+      if (inv.purchaseOrderId == null || !poIds.includes(inv.purchaseOrderId)) return false;
+      if (inv.status === "cancelled") return false;
+      if ((inv.balanceDue || 0) <= 0.01) return false;
+      const invDate = new Date(inv.invoiceDate || inv.createdAt);
+      return invDate < twoDaysAgo;
+    });
+    if (unpaidCODInvoices.length > 0) {
+      const totalUnpaid = unpaidCODInvoices.reduce((s, inv) => s + (inv.balanceDue || 0), 0);
+      return { blocked: true, reason: `COD account has unpaid invoices older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Super admin PIN required.` };
+    }
+  }
+
+  return { blocked: false };
+}
+
 export const dataService = {
   auth: {
     me: () => {
@@ -2425,6 +2538,8 @@ export const dataService = {
         ...data,
         id: Date.now(),
         customerCode: (data.customerCode && data.customerCode !== "AUTO") ? data.customerCode : generateNextCustomerCode(),
+        isActive: data.isActive !== undefined ? data.isActive : true,
+        creditLimit: data.creditLimit !== undefined ? Number(data.creditLimit) : 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -2596,6 +2711,18 @@ export const dataService = {
           if (requestedQty > available) {
             throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
           }
+        }
+      }
+
+      // CUSTOMER CHECK: validate active status, credit limit, and COD overdue rules
+      if (!isQuote) {
+        const check = checkCustomerCanOrder(
+          data.customerId,
+          data.paymentTerms || "cod",
+          data.superAdminOverride === true
+        );
+        if (check.blocked) {
+          throw new Error(check.reason);
         }
       }
       
@@ -5048,6 +5175,8 @@ export const dataService = {
         ...data,
         company: data.company || "sgf",
         id: Date.now(),
+        isActive: data.isActive !== undefined ? data.isActive : true,
+        creditLimit: data.creditLimit !== undefined ? Number(data.creditLimit) : 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -5073,6 +5202,8 @@ export const dataService = {
         company: newItem.company || "sgf",
         notes: newItem.notes || "",
         salesRepName: newItem.salesRepName || "",
+        isActive: newItem.isActive,
+        creditLimit: newItem.creditLimit,
         createdAt: newItem.createdAt,
         updatedAt: newItem.updatedAt,
       };
@@ -5104,6 +5235,8 @@ export const dataService = {
             company: data.company ?? customers[cIdx].company,
             notes: data.notes ?? customers[cIdx].notes,
             salesRepName: data.salesRepName ?? customers[cIdx].salesRepName,
+            isActive: data.isActive !== undefined ? data.isActive : customers[cIdx].isActive,
+            creditLimit: data.creditLimit !== undefined ? Number(data.creditLimit) : customers[cIdx].creditLimit,
             updatedAt: new Date().toISOString(),
           };
           saveItem("sgf_customers", customers);
@@ -5129,6 +5262,15 @@ export const dataService = {
     listByCompany: (company: string) => purchaseOrders.filter((po) => po.company === company || (!po.company && company === "sgf")),
     getById: (id: number) => purchaseOrders.find((po) => po.id == id) || null,
     create: (data: any) => {
+      // CUSTOMER CHECK: validate corporate customer status, credit limit, and COD overdue rules
+      const check = checkCorporateCustomerCanOrder(
+        data.corporateCustomerId,
+        data.superAdminOverride === true
+      );
+      if (check.blocked) {
+        throw new Error(check.reason);
+      }
+
       // Auto-inherit company from linked corporate customer if not explicitly set
       let company = data.company;
       const corpCustomer = corporateCustomers.find((c) => c.id == data.corporateCustomerId);

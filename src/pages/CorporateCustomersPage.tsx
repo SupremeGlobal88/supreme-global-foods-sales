@@ -2,11 +2,15 @@ import { useState, useMemo } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { getCompanyConfig, getAllCompanies, type CompanyKey } from "@/lib/companyConfig";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Search, Plus, Pencil, Trash2, X, Building2, MapPin, Mail, Phone, Tag, Package, Globe, AlertCircle, Users, Link2, Unlink,
 } from "lucide-react";
 
 export default function CorporateCustomersPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super_admin";
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -30,6 +34,7 @@ export default function CorporateCustomersPage() {
     paymentTerms: "30_days" as "cod" | "7_days" | "14_days" | "30_days",
     notes: "",
     isActive: true,
+    creditLimit: "",
     salesRepName: "",
   });
   const [linkedCustomerId, setLinkedCustomerId] = useState<number | null>(null);
@@ -58,7 +63,7 @@ export default function CorporateCustomersPage() {
   const selected = (customers || []).find((c: any) => c.id === selectedCustomer);
 
   function resetForm() {
-    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", vatExempt: false, contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true, salesRepName: "" });
+    setFormData({ name: "", code: "", company: "sgf", logoUrl: "", vatNumber: "", vatExempt: false, contactPerson: "", email: "", phone: "", deliveryAddress: "", city: "", province: "", postalCode: "", paymentTerms: "30_days", notes: "", isActive: true, creditLimit: "", salesRepName: "" });
     setLinkedCustomerId(null);
   }
 
@@ -92,6 +97,7 @@ export default function CorporateCustomersPage() {
       contactPerson: c.contactPerson || "", email: c.email || "", phone: c.phone || "",
       deliveryAddress: c.deliveryAddress || "", city: c.city || "", province: c.province || "",
       postalCode: c.postalCode || "", paymentTerms: (c.paymentTerms as "cod" | "7_days" | "14_days" | "30_days") || "30_days", notes: c.notes || "", isActive: c.isActive !== false,
+      creditLimit: c.creditLimit != null ? String(c.creditLimit) : "",
       salesRepName: c.salesRepName || "",
     });
     setEditingId(c.id);
@@ -101,10 +107,14 @@ export default function CorporateCustomersPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.name.trim()) return;
+    const payload: any = {
+      ...formData,
+      creditLimit: formData.creditLimit === "" ? 0 : Number(formData.creditLimit),
+    };
     if (editingId) {
-      updateCustomer.mutate({ id: editingId, data: { ...formData } });
+      updateCustomer.mutate({ id: editingId, data: payload });
     } else {
-      createCustomer.mutate({ ...formData, productMappings: [] });
+      createCustomer.mutate({ ...payload, productMappings: [] });
     }
   }
 
@@ -216,7 +226,17 @@ export default function CorporateCustomersPage() {
                       return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: cfg.documentColor + "22", color: cfg.documentColor }}>{cfg.shortName}</span>;
                     })()}
                   </div>
-                  {selected.code && <p className="text-xs text-[#8A8B8C]">Code: {selected.code}</p>}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${selected.isActive !== false ? "bg-[rgba(74,222,128,0.12)] text-[#4ADE80]" : "bg-[rgba(239,68,68,0.12)] text-[#EF4444]"}`}>
+                      {selected.isActive !== false ? "ACTIVE" : "INACTIVE"}
+                    </span>
+                    {selected.creditLimit > 0 && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[rgba(99,102,241,0.12)] text-[#818CF8]">
+                        Credit: R {Number(selected.creditLimit).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
+                  {selected.code && <p className="text-xs text-[#8A8B8C] mt-1">Code: {selected.code}</p>}
                   {selected.vatNumber && (
                     <p className="text-xs font-mono mt-1" style={{ color: "#D4A843" }}>
                       VAT: {selected.vatNumber}
@@ -251,7 +271,24 @@ export default function CorporateCustomersPage() {
                 )}
               </div>
               <div className="pt-3 border-t border-[#222324] flex gap-2">
-                <button onClick={() => handleEdit(selected)} className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1"><Pencil className="w-3 h-3" /> Edit</button>
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      const newStatus = selected.isActive !== false ? false : true;
+                      updateCustomer.mutate({ id: selected.id, data: { isActive: newStatus } });
+                    }}
+                    className={`btn-secondary flex-1 text-xs flex items-center justify-center gap-1 ${selected.isActive !== false ? "hover:text-[#EF4444]" : "hover:text-[#4ADE80]"}`}
+                    title={selected.isActive !== false ? "Deactivate customer" : "Reactivate customer"}
+                  >
+                    {selected.isActive !== false ? "Deactivate" : "Reactivate"}
+                  </button>
+                )}
+                {isAdmin && (
+                  <button onClick={() => handleEdit(selected)} className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1"><Pencil className="w-3 h-3" /> Edit</button>
+                )}
+                {isAdmin && (
+                  <button onClick={() => { if (confirm("Delete this corporate customer?")) deleteCustomer.mutate({ id: selected.id }); }} className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1 hover:text-[#EF4444]"><Trash2 className="w-3 h-3" /></button>
+                )}
                 <a href={`#/purchase-orders?customer=${selected.id}`} className="btn-gold flex-1 text-xs flex items-center justify-center gap-1"><Package className="w-3 h-3" /> View POs</a>
               </div>
             </div>
@@ -385,6 +422,31 @@ export default function CorporateCustomersPage() {
                   </select>
                 </div>
                 <div className="col-span-2"><label className="label-text">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field w-full" rows={3} /></div>
+                <div>
+                  <label className="label-text">Approved Credit Limit <span className="text-[#8A8B8C] font-normal">(0 = no limit)</span></label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.creditLimit}
+                    onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                    className="input-field w-full"
+                    placeholder="e.g. 5000"
+                    readOnly={!isSuperAdmin}
+                    style={{ backgroundColor: !isSuperAdmin ? "#0A0A0B" : undefined }}
+                    title={!isSuperAdmin ? "Only Super Admin can edit credit limits" : ""}
+                  />
+                </div>
+                <div className="flex items-center gap-3 pt-6">
+                  <input
+                    type="checkbox"
+                    id="corpIsActive"
+                    checked={formData.isActive}
+                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                    className="w-4 h-4 accent-[#D4A843] cursor-pointer"
+                  />
+                  <label htmlFor="corpIsActive" className="label-text cursor-pointer">Account Active</label>
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-3">
                 <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>

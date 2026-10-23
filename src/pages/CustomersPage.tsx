@@ -164,7 +164,7 @@ export default function CustomersPage() {
   // Remove duplicate customers by name (keeps the first/original)
   function removeDuplicateCustomers() {
     try {
-      const raw = getStorageItem("sgf_customers");
+      const raw = localStorage.getItem("sgf_customers");
       if (!raw) return;
       const allCustomers = JSON.parse(raw);
       const seen = new Set<string>();
@@ -183,12 +183,14 @@ export default function CustomersPage() {
           unique.push(cust); // keep first occurrence
         }
       }
-      setStorageItem("sgf_customers", JSON.stringify(unique));
+      localStorage.setItem("sgf_customers", JSON.stringify(unique));
+      reloadFromStorage(["sgf_customers"]);
       // Refresh data
       utils.customer.search.invalidate();
       utils.customer.getStats.invalidate();
       alert(`Removed ${removed} duplicate customers. ${unique.length} unique customers remaining.`);
     } catch (e) {
+      console.error("[Customers] Error removing duplicates:", e);
       alert("Error removing duplicates.");
     }
   }

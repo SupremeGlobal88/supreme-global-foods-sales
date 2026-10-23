@@ -128,7 +128,7 @@ export default function CustomersPage() {
 
   async function handleExport() {
     if (!customers) return;
-    const regularCustomers = customers.filter((c) => !c.isCorporate);
+    const regularCustomers = customers.filter((c) => !c.isCorporate && c.priceTier !== "corporate");
     const headers = ["Customer Code", "Name", "Business Name", "Contact Person", "Phone", "Email", "Address", "City", "Province", "Payment Terms", "Price Tier", "Sales Rep", "VAT Number"];
     const rows = regularCustomers.map((c) => [c.customerCode, c.name, c.businessName || "", c.contactPerson || "", c.phone || "", c.email || "", c.physicalAddress || "", c.city || "", c.province || "", c.paymentTerms, c.priceTier || "wholesale", c.salesRepName || "", c.vatNumber || ""]);
     const XLSX = await import("xlsx");
@@ -329,7 +329,7 @@ export default function CustomersPage() {
         <div className="card-surface p-4"><div className="label-text mb-1">TOTAL</div><div className="stat-number">{stats?.total || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">ACTIVE</div><div className="stat-number" style={{ color: "#4ADE80" }}>{stats?.active || 0}</div></div>
         <div className="card-surface p-4"><div className="label-text mb-1">NEW THIS MONTH</div><div className="stat-number" style={{ color: "#D4A843" }}>{stats?.thisMonth || 0}</div></div>
-        <div className="card-surface p-4"><div className="label-text mb-1">30-DAY ACCOUNTS</div><div className="stat-number" style={{ color: "#6366F1" }}>{(customers || []).filter((c) => c.paymentTerms === "30_days" && !c.isCorporate).length}</div></div>
+        <div className="card-surface p-4"><div className="label-text mb-1">30-DAY ACCOUNTS</div><div className="stat-number" style={{ color: "#6366F1" }}>{(customers || []).filter((c) => c.paymentTerms === "30_days" && !c.isCorporate && c.priceTier !== "corporate").length}</div></div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -339,7 +339,7 @@ export default function CustomersPage() {
             <input type="text" placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="input-field pl-10 w-full" />
           </div>
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-            {(customers || []).filter((c) => !c.isCorporate).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((cust) => (
+            {(customers || []).filter((c) => !c.isCorporate && c.priceTier !== "corporate").sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0).map((cust) => (
               <div key={cust.id} onClick={() => setSelectedCustomer(cust.id)} className="card-surface p-4 cursor-pointer transition-all" style={{ borderLeft: selectedCustomer === cust.id ? "3px solid #D4A843" : "3px solid transparent", backgroundColor: selectedCustomer === cust.id ? "rgba(212, 168, 67, 0.08)" : undefined }}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">

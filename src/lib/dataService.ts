@@ -2570,12 +2570,15 @@ export const dataService = {
       saveItem("sgf_customers", customers);
       return { success: true };
     },
-    getStats: () => ({
-      total: customers.length,
-      active: customers.filter((c) => c.isActive === "active").length,
-      inactive: customers.filter((c) => c.isActive !== "active").length,
-      thisMonth: customers.length,
-    }),
+    getStats: () => {
+      const regular = customers.filter((c) => !c.isCorporate && c.priceTier !== "corporate");
+      return {
+        total: regular.length,
+        active: regular.filter((c) => c.isActive !== false).length,
+        inactive: regular.filter((c) => c.isActive === false).length,
+        thisMonth: regular.length,
+      };
+    },
     getSalesReps: () => {
       // Merge sales reps from two sources:
       // 1. Active users with sales_rep role (from Firebase-synced users)

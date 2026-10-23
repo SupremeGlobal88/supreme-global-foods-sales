@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { reloadFromStorage } from "@/lib/dataService";
+import { getStorageItem, setStorageItem } from "@/lib/compressedStorage";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Plus, Pencil, Trash2, X, Users, MapPin, Mail,
@@ -165,8 +166,8 @@ export default function CustomersPage() {
   // Before deleting a duplicate, re-links any invoices or orders to the kept customer.
   function removeDuplicateCustomers() {
     try {
-      const rawCustomers = localStorage.getItem("sgf_customers");
-      if (!rawCustomers) return;
+      // Read via compressedStorage (LZ-String) — NOT raw localStorage
+      const rawCustomers = getStorageItem("sgf_customers");
       const allCustomers = JSON.parse(rawCustomers);
 
       // Build name -> kept customer map (first occurrence wins)
@@ -192,20 +193,20 @@ export default function CustomersPage() {
         return;
       }
 
-      // Read linked data — guard against corrupted localStorage
+      // Read linked data via compressedStorage
       let invoices: any[] = [];
       let orders: any[] = [];
       try {
-        const rawInvoices = localStorage.getItem("sgf_invoices");
-        if (rawInvoices) invoices = JSON.parse(rawInvoices);
+        const rawInvoices = getStorageItem("sgf_invoices");
+        invoices = JSON.parse(rawInvoices);
       } catch {
-        console.warn("[Customers] sgf_invoices localStorage is corrupted, skipping invoice re-linking.");
+        console.warn("[Customers] Could not read sgf_invoices, skipping invoice re-linking.");
       }
       try {
-        const rawOrders = localStorage.getItem("sgf_orders");
-        if (rawOrders) orders = JSON.parse(rawOrders);
+        const rawOrders = getStorageItem("sgf_orders");
+        orders = JSON.parse(rawOrders);
       } catch {
-        console.warn("[Customers] sgf_orders localStorage is corrupted, skipping order re-linking.");
+        console.warn("[Customers] Could not read sgf_orders, skipping order re-linking.");
       }
 
       let reLinkedInvoices = 0;
@@ -237,10 +238,10 @@ export default function CustomersPage() {
         }
       }
 
-      // Save everything back
-      localStorage.setItem("sgf_customers", JSON.stringify(unique));
-      localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
-      localStorage.setItem("sgf_orders", JSON.stringify(orders));
+      // Save back via compressedStorage (handles LZ-String compression)
+      setStorageItem("sgf_customers", JSON.stringify(unique));
+      setStorageItem("sgf_invoices", JSON.stringify(invoices));
+      setStorageItem("sgf_orders", JSON.stringify(orders));
 
       // Reload in-memory arrays
       reloadFromStorage(["sgf_customers", "sgf_invoices", "sgf_orders"]);

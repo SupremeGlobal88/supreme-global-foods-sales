@@ -192,11 +192,21 @@ export default function CustomersPage() {
         return;
       }
 
-      // Read linked data
-      const rawInvoices = localStorage.getItem("sgf_invoices");
-      const rawOrders = localStorage.getItem("sgf_orders");
-      const invoices: any[] = rawInvoices ? JSON.parse(rawInvoices) : [];
-      const orders: any[] = rawOrders ? JSON.parse(rawOrders) : [];
+      // Read linked data — guard against corrupted localStorage
+      let invoices: any[] = [];
+      let orders: any[] = [];
+      try {
+        const rawInvoices = localStorage.getItem("sgf_invoices");
+        if (rawInvoices) invoices = JSON.parse(rawInvoices);
+      } catch {
+        console.warn("[Customers] sgf_invoices localStorage is corrupted, skipping invoice re-linking.");
+      }
+      try {
+        const rawOrders = localStorage.getItem("sgf_orders");
+        if (rawOrders) orders = JSON.parse(rawOrders);
+      } catch {
+        console.warn("[Customers] sgf_orders localStorage is corrupted, skipping order re-linking.");
+      }
 
       let reLinkedInvoices = 0;
       let reLinkedOrders = 0;

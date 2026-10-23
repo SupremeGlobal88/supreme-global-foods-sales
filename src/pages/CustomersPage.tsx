@@ -161,37 +161,97 @@ export default function CustomersPage() {
 
   const [importStatus, setImportStatus] = useState("");
 
-  // Remove duplicate customers by name (keeps the first/original)
+  // Remove duplicate customers by name (keeps the first/original).
+  // Before deleting a duplicate, re-links any invoices or orders to the kept customer.
   function removeDuplicateCustomers() {
     try {
-      const raw = localStorage.getItem("sgf_customers");
-      if (!raw) return;
-      const allCustomers = JSON.parse(raw);
-      const seen = new Set<string>();
-      const unique: any[] = [];
-      let removed = 0;
+      const rawCustomers = localStorage.getItem("sgf_customers");
+      if (!rawCustomers) return;
+      const allCustomers = JSON.parse(rawCustomers);
+
+      // Build name -> kept customer map (first occurrence wins)
+      const seen = new Map<string, any>(); // normName -> kept customer
+      const duplicates: any[] = []; // customers to remove
+      const unique: any[] = [];     // customers to keep
       for (const cust of allCustomers) {
         const normName = (cust.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
         if (!normName) {
-          unique.push(cust); // keep nameless entries
+          unique.push(cust);
           continue;
         }
         if (seen.has(normName)) {
-          removed++; // skip duplicate
+          duplicates.push({ duplicate: cust, kept: seen.get(normName) });
         } else {
-          seen.add(normName);
-          unique.push(cust); // keep first occurrence
+          seen.set(normName, cust);
+          unique.push(cust);
         }
       }
+
+      if (duplicates.length === 0) {
+        alert("No duplicate customers found.");
+        return;
+      }
+
+      // Read linked data
+      const rawInvoices = localStorage.getItem("sgf_invoices");
+      const rawOrders = localStorage.getItem("sgf_orders");
+      const invoices: any[] = rawInvoices ? JSON.parse(rawInvoices) : [];
+      const orders: any[] = rawOrders ? JSON.parse(rawOrders) : [];
+
+      let reLinkedInvoices = 0;
+      let reLinkedOrders = 0;
+
+      for (const { duplicate, kept } of duplicates) {
+        const dupId = duplicate.id;
+        const keepId = kept.id;
+        if (dupId == null || keepId == null) continue;
+
+        // Re-link invoices
+        for (const inv of invoices) {
+          if (inv.customerId == dupId) {
+            inv.customerId = keepId;
+            inv.customer = { ...kept };
+            inv.customerName = kept.name;
+            inv.customerCode = kept.customerCode;
+            reLinkedInvoices++;
+          }
+        }
+
+        // Re-link orders (includes quotes and samples)
+        for (const order of orders) {
+          if (order.customerId == dupId) {
+            order.customerId = keepId;
+            order.customer = { ...kept };
+            reLinkedOrders++;
+          }
+        }
+      }
+
+      // Save everything back
       localStorage.setItem("sgf_customers", JSON.stringify(unique));
-      reloadFromStorage(["sgf_customers"]);
-      // Refresh data
+      localStorage.setItem("sgf_invoices", JSON.stringify(invoices));
+      localStorage.setItem("sgf_orders", JSON.stringify(orders));
+
+      // Reload in-memory arrays
+      reloadFromStorage(["sgf_customers", "sgf_invoices", "sgf_orders"]);
+
+      // Refresh tRPC queries
       utils.customer.search.invalidate();
       utils.customer.getStats.invalidate();
-      alert(`Removed ${removed} duplicate customers. ${unique.length} unique customers remaining.`);
+      utils.invoice.list.invalidate();
+      utils.order.list.invalidate();
+
+      const msg = [
+        `Removed ${duplicates.length} duplicate customer(s).`,
+        `${unique.length} unique customers remaining.`,
+        reLinkedInvoices > 0 ? `Re-linked ${reLinkedInvoices} invoice(s).` : null,
+        reLinkedOrders > 0 ? `Re-linked ${reLinkedOrders} order(s).` : null,
+      ].filter(Boolean).join("\n");
+
+      alert(msg);
     } catch (e) {
       console.error("[Customers] Error removing duplicates:", e);
-      alert("Error removing duplicates.");
+      alert("Error removing duplicates: " + (e instanceof Error ? e.message : String(e)));
     }
   }
 

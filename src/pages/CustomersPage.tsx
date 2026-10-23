@@ -65,6 +65,7 @@ export default function CustomersPage() {
   });
   const deleteCustomer = trpc.customer.delete.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setSelectedCustomer(null); },
+    onError: (err: any) => { alert("Failed to delete customer: " + (err.message || "Unknown error")); },
   });
   const setSpecialPrice = trpc.specialPrice.set.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.specialPrice.listByCustomer.invalidate(); setShowSpecialPriceForm(false); setSpecialPriceData({ stockItemId: 0, specialPrice: 0 }); },

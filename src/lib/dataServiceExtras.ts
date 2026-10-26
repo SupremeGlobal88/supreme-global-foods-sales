@@ -720,7 +720,14 @@ dataService.order.getStats = () => {
 
 // ─── 9. INVOICE missing methods ───
 if (!dataService.invoice.updateInvoice) {
-  dataService.invoice.updateInvoice = dataService.invoice.update;
+  dataService.invoice.updateInvoice = ({ id, data }: { id: number; data: any }) => {
+    const invoices = JSON.parse(getStorageItem("sgf_invoices") || "[]");
+    const idx = invoices.findIndex((i: any) => i.id == id);
+    if (idx < 0) throw new Error("Invoice not found");
+    invoices[idx] = { ...invoices[idx], ...data, updatedAt: new Date().toISOString() };
+    setStorageItem("sgf_invoices", JSON.stringify(invoices));
+    return invoices[idx];
+  };
 }
 
 if (!dataService.invoice.updateStatus) {

@@ -317,16 +317,16 @@ function load() {
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
     const DEFAULT_USERS = [
-      { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
-      { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
-      { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
-      { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333", isActive: true, createdAt: new Date().toISOString() },
-      { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444", isActive: true, createdAt: new Date().toISOString() },
-      { id: 6, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666", isActive: true, createdAt: new Date().toISOString() },
-      { id: 7, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018", isActive: true, createdAt: new Date().toISOString() },
-      { id: 8, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581", isActive: true, createdAt: new Date().toISOString() },
-      { id: 9, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777", isActive: true, createdAt: new Date().toISOString() },
-      { id: 10, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888", isActive: true, createdAt: new Date().toISOString() },
+      { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
+      { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
+      { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
+      { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333", isActive: true, createdAt: new Date().toISOString() },
+      { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444", isActive: true, createdAt: new Date().toISOString() },
+      { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666", isActive: true, createdAt: new Date().toISOString() },
+      { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018", isActive: true, createdAt: new Date().toISOString() },
+      { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581", isActive: true, createdAt: new Date().toISOString() },
+      { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777", isActive: true, createdAt: new Date().toISOString() },
+      { id: 10, name: "David", email: "", role: "super_admin", pin: "8888", isActive: true, createdAt: new Date().toISOString() },
     ];
     if (!users || users.length === 0) {
       users = [...DEFAULT_USERS];
@@ -5041,16 +5041,16 @@ export const dataService = {
     getByName: (name: string) => users.find((u) => u.name?.toLowerCase() === name.toLowerCase() && u.isActive !== false) || null,
     authenticate: ({ name, pin }: { name: string; pin: string }) => {
       const DEFAULT_USERS = [
-        { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true },
-        { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111", isActive: true },
-        { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222", isActive: true },
-        { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333", isActive: true },
-        { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444", isActive: true },
-        { id: 6, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666", isActive: true },
-        { id: 7, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018", isActive: true },
-        { id: 8, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581", isActive: true },
-        { id: 9, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777", isActive: true },
-        { id: 10, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888", isActive: true },
+        { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580", isActive: true },
+        { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111", isActive: true },
+        { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222", isActive: true },
+        { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333", isActive: true },
+        { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444", isActive: true },
+        { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666", isActive: true },
+        { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018", isActive: true },
+        { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581", isActive: true },
+        { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777", isActive: true },
+        { id: 10, name: "David", email: "", role: "super_admin", pin: "8888", isActive: true },
       ];
 
       // Firebase RTDB auto-converts numeric strings to numbers (e.g. "2580" → 2580).
@@ -5869,16 +5869,16 @@ export function factoryReset(): void {
  */
 export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string; pin?: string } | null {
   const DEFAULT_USERS = [
-    { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580" },
-    { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111" },
-    { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222" },
-    { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333" },
-    { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444" },
-    { id: 6, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666" },
-    { id: 7, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018" },
-    { id: 8, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581" },
-    { id: 9, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777" },
-    { id: 10, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888" },
+    { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580" },
+    { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111" },
+    { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222" },
+    { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333" },
+    { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444" },
+    { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666" },
+    { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018" },
+    { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581" },
+    { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777" },
+    { id: 10, name: "David", email: "", role: "super_admin", pin: "8888" },
   ];
 
   const ADMIN_ALIASES = ["admin", "administrator", "superadmin"];

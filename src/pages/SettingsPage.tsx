@@ -25,17 +25,17 @@ import { useRole } from "@/hooks/useRole";
 import { resetTransactionData, clearAppointmentsAndCheckins, factoryReset, fixDuplicateInvoiceNumbers } from "@/lib/dataService";
 
 const DEFAULT_COMPANY = {
-  name: "Supreme Global Foods",
-  tradingName: "Supreme Global Foods",
-  regNumber: "2015/123456/07",
-  vatNumber: "4150254441",
-  phone: "061 478 8888",
-  email: "sales@supremeglobalfoods.co.za",
-  address: "28 Nagington road, Wadeville, Germiston",
-  city: "Germiston",
-  province: "Gauteng",
-  postalCode: "1422",
-  website: "https://www.supremeglobalfoods.co.za",
+  name: "",
+  tradingName: "",
+  regNumber: "",
+  vatNumber: "",
+  phone: "",
+  email: "",
+  address: "",
+  city: "",
+  province: "",
+  postalCode: "",
+  website: "",
 };
 
 const DEFAULT_BANKING = {

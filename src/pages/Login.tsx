@@ -18,7 +18,7 @@ function EmergencyAccess() {
       localStorage.setItem("demo_user", JSON.stringify({
         id: 1,
         name: "Collin",
-        email: "collin@supremeglobalfoods.co.za",
+        email: "",
         role: "super_admin",
         pin: "2580",
       }));

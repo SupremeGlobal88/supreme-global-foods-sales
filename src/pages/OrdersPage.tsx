@@ -1,182 +1,386 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
-import { useAuth } from "@/providers/AuthProvider";
+import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { ChevronDown, Search, X, Pencil, Printer, Plus, Trash2, AlertTriangle, Package, Truck, CheckCircle, Clock, FileText, Send, Shield } from "lucide-react";
-import { InvoiceModal } from "@/components/InvoiceModal";
-import { reloadFromStorage } from "@/utils/reloadFromStorage";
-import { generateInvoiceForOrder } from "@/lib/dataService";
-import { getBankingDetails, getCompanyConfig } from "@/lib/staticData";
-
-// Safe number formatter for invoice amounts
-function safeNum(val: any): string {
-  const n = Number(val);
-  if (Number.isFinite(n)) return n.toFixed(2);
-  return "0.00";
+import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDetails } from "@/lib/dataService";
+import { getCompanyConfig } from "@/lib/companyConfig";
+import * as staticData from "@/data/staticData";
+import {
+  Plus, X, Printer, ChevronDown, ChevronUp, Package, CheckCircle,
+  Truck, Ban, Tag, DollarSign, AlertTriangle, FlaskConical,
+  ShoppingBag, Pencil, RotateCcw, Info, Search, FileText, Mail,
+  Shield,
+} from "lucide-react";
+const sampleOverrideRef = { current: false };
+const PRICE_TIERS = [
+  { key: "corporate", label: "Corporate", color: "#D4A843" },
+  { key: "bulk", label: "Bulk", color: "#6366F1" },
+  { key: "wholesale", label: "Wholesale", color: "#4ADE80" },
+  { key: "retail", label: "Retail", color: "#F59E0B" },
+];
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  pending: { label: "Pending", color: "#F59E0B" },
+  picking: { label: "Picking", color: "#6366F1" },
+  ready: { label: "Ready", color: "#4ADE80" },
+  delivered: { label: "Delivered", color: "#4ADE80" },
+  cancelled: { label: "Cancelled", color: "#EF4444" },
+  sample_delivered: { label: "Sample", color: "#D4A843" },
+  draft: { label: "Draft", color: "#8A8B8C" },
+  sent: { label: "Sent", color: "#6366F1" },
+  accepted: { label: "Accepted", color: "#4ADE80" },
+  rejected: { label: "Rejected", color: "#EF4444" },
+  converted: { label: "Converted", color: "#D4A843" },
+};
+function safeNum(n: any, fallback = 0): number {
+  const val = Number(n);
+  return Number.isFinite(val) ? val : fallback;
 }
-
-// GenerateInvoiceButton — shared between orders and quotes
-function GenerateInvoiceButton({ order, orderType = "order", onInvoiceGenerated }: any) {
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [invoiceData, setInvoiceData] = useState<any>(null);
-  const [generating, setGenerating] = useState(false);
-  const { data: customers = [] } = trpc.customer.list.useQuery();
-  const { data: stockItems = [] } = trpc.stockItem.list.useQuery();
-
-  async function handleGenerate() {
-    if (!order || generating) return;
-    setGenerating(true);
-    try {
-      const invoice = await generateInvoiceForOrder(order, customers, stockItems, { orderType });
-      if (!invoice) { alert("Failed to generate invoice."); return; }
-      const banking = getBankingDetails();
-      const company = getCompanyConfig();
-      const payload = { ...invoice, bankingDetails: banking, companyDetails: company };
-      setInvoiceData(payload);
-      setInvoiceOpen(true);
-      if (onInvoiceGenerated) onInvoiceGenerated();
-    } catch (e) {
-      console.error("Invoice generation error:", e);
-      alert("Invoice generation failed.");
-    } finally {
-      setGenerating(false);
-    }
-  }
-
+function GenerateInvoiceButton({ orderId }: { orderId: number }) {
+  const [busy, setBusy] = useState(false);
+  const utils = trpc.useUtils();
+  const { data: liveInvoices } = trpc.invoice.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+  const hasInvoice = (liveInvoices || []).some(
+    (i: any) => i.orderId == orderId && (i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC"))
+  );
   return (
-    <>
-      <button onClick={handleGenerate} disabled={generating} className="btn-secondary text-xs" style={{ borderColor: "rgba(212,168,67,0.3)" }}>
-        <FileText className="w-3 h-3" /> {generating ? "Generating..." : "Invoice"}
-      </button>
-      {invoiceData && <InvoiceModal open={invoiceOpen} onOpenChange={setInvoiceOpen} invoiceData={invoiceData} />}
-    </>
+    <button
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        reloadFromStorage();
+        const invNum = generateInvoiceForOrder(orderId);
+        if (invNum) {
+          try {
+            const allInv = dataService.invoice.list();
+            const newInv = allInv.find((i: any) => i.orderId == orderId && i.invoiceNumber === invNum);
+            const allOrd = dataService.order.list();
+            const updatedOrd = allOrd.find((o: any) => o.id == orderId);
+            const { pushInvoice, pushOrder } = await import("@/lib/firebaseSync");
+            if (newInv) await pushInvoice(newInv);
+            if (updatedOrd) await pushOrder(updatedOrd);
+          } catch (e: any) {
+            console.warn("[Invoice] Firebase push:", e?.message);
+          }
+          await utils.invoice.list.refetch();
+          reloadFromStorage();
+          alert("Invoice " + invNum + " created and synced!");
+        } else {
+          alert("Invoice generation is busy. Please wait and try again.");
+          setBusy(false);
+        }
+      }}
+      disabled={busy}
+      className="btn-secondary text-xs flex items-center gap-1.5"
+      style={{
+        borderColor: hasInvoice ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.5)",
+        color: hasInvoice ? "#4ADE80" : busy ? "#8A8B8C" : "#EF4444",
+        backgroundColor: hasInvoice ? "rgba(74,222,128,0.08)" : busy ? "rgba(138,139,140,0.08)" : "rgba(239,68,68,0.08)",
+        opacity: busy ? 0.6 : 1,
+        cursor: busy ? "not-allowed" : "pointer",
+      }}
+    >
+      <FileText className="w-3 h-3" />
+      {busy ? "Generating..." : hasInvoice ? "Regenerate Invoice" : "Generate Invoice"}
+      {!hasInvoice && !busy && <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] animate-pulse" />}
+    </button>
   );
 }
-
-function ProductPickerModal({ open, onClose, onSelect, stockItems, selectedId }: any) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return stockItems || [];
-    return (stockItems || []).filter((s: any) => (s.productName || "").toLowerCase().includes(q) || String(s.sku || "").toLowerCase().includes(q));
-  }, [query, stockItems]);
+function ProductPickerModal({
+  isOpen,
+  onClose,
+  onSelect,
+  stockItems,
+  availableStock,
+  selectedId,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (id: number) => void;
+  stockItems: any[];
+  availableStock: Record<number, number>;
+  selectedId: number;
+}) {
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isOpen) {
+      setSearch("");
+      const isMobile = window.innerWidth < 768 || "ontouchstart" in window;
+      if (!isMobile) {
+        setTimeout(() => searchRef.current?.focus(), 100);
+      }
+    }
+  }, [isOpen]);
+  if (!isOpen) return null;
+  const filtered = (stockItems || [])
+    .filter((s) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        s.productName?.toLowerCase().includes(q) ||
+        s.productCode?.toLowerCase().includes(q) ||
+        s.category?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      const availA = availableStock[a.id] || 0;
+      const availB = availableStock[b.id] || 0;
+      if (availA > 0 && availB <= 0) return -1;
+      if (availA <= 0 && availB > 0) return 1;
+      return (a.productName || "").localeCompare(b.productName || "");
+    });
   return (
-    open && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-        <div className="card max-w-lg w-full mx-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between p-4 border-b border-[#333334]">
-            <h3 className="text-lg font-semibold text-white">Select Product</h3>
-            <button onClick={onClose} className="p-1 rounded hover:bg-[#333334]/50 text-[#8A8B8C]"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
+      <div
+        className="card-surface w-full sm:max-w-lg sm:mx-4 max-h-[85vh] flex flex-col"
+        style={{ borderRadius: "16px 16px 0 0", maxHeight: "85vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "#222324" }}>
+          <h3 className="font-display font-semibold text-white text-lg">Select Product</h3>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-[#222324] cursor-pointer">
+            <X className="w-5 h-5 text-[#8A8B8C]" />
+          </button>
+        </div>
+        <div className="p-4 border-b" style={{ borderColor: "#222324" }}>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
+            <input
+              ref={searchRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, code or category..."
+              className="input-field w-full pl-10"
+              autoComplete="off"
+            />
           </div>
-          <div className="p-4 border-b border-[#333334]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
-              <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products..." className="input-field pl-10 w-full" />
-            </div>
-          </div>
-          <div className="overflow-y-auto p-2 space-y-1">
-            {filtered.length === 0 && <div className="text-center text-sm text-[#8A8B8C] py-8">No products found.</div>}
-            {filtered.map((item: any) => (
-              <button key={item.id} onClick={() => { onSelect(item); setQuery(""); }} className={`w-full text-left p-3 rounded-lg transition-colors ${selectedId === item.id ? "bg-[#D4A843]/20 border border-[#D4A843]/30" : "hover:bg-[#333334]/50 border border-transparent"}`}>
-                <div className="text-sm text-white font-medium">{item.productName}</div>
-                <div className="text-xs text-[#8A8B8C] mt-1">SKU: {item.sku || "—"} | Stock: {Number(item.currentStock || 0).toFixed(2)} kg</div>
-                <div className="text-xs text-[#8A8B8C] mt-0.5">Retail: R{(Number(item.retailPrice) || 0).toFixed(2)} | Wholesale: R{(Number(item.wholesalePrice) || 0).toFixed(2)} | Corporate: R{(Number(item.corporatePrice) || 0).toFixed(2)}</div>
-              </button>
-            ))}
+          <div className="flex items-center gap-4 mt-2 text-xs">
+            <span className="text-[#4ADE80]">● In Stock</span>
+            <span className="text-[#EF4444]">● Out of Stock</span>
+            <span className="text-[#8A8B8C]">{filtered.length} products</span>
           </div>
         </div>
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(85vh - 160px)" }}>
+          {filtered.length === 0 && (
+            <div className="p-8 text-center text-[#8A8B8C] text-sm">No products found</div>
+          )}
+          {filtered.map((s) => {
+            const avail = availableStock[s.id] || 0;
+            const isOutOfStock = avail <= 0;
+            const isSelected = selectedId === s.id;
+            const canSelect = !isOutOfStock || isSelected;
+            return (
+              <div
+                key={s.id}
+                onPointerUp={(e) => {
+                  if (canSelect) {
+                    onSelect(s.id);
+                    onClose();
+                  }
+                }}
+                className="w-full text-left border-b select-none"
+                style={{
+                  borderColor: "#18191A",
+                  backgroundColor: isSelected ? "rgba(212, 168, 67, 0.12)" : "transparent",
+                  opacity: isOutOfStock && !isSelected ? 0.5 : 1,
+                  minHeight: 56,
+                  padding: "12px 16px",
+                  cursor: canSelect ? "pointer" : "not-allowed",
+                  touchAction: "manipulation",
+                  WebkitTapHighlightColor: "rgba(212,168,67,0.2)",
+                }}
+                role="button"
+                aria-label={`${s.productName}, ${avail} available`}
+              >
+                <div className="flex items-center justify-between pointer-events-none">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: isOutOfStock ? "#EF4444" : "#4ADE80" }}
+                      />
+                      <span className="text-sm font-body font-medium text-[#E8E8E9] truncate">
+                        {s.productName}
+                      </span>
+                      {isSelected && (
+                        <span className="text-xs flex-shrink-0 px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(212, 168, 67, 0.2)", color: "#D4A843" }}>
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 ml-[18px]">
+                      <span className="text-xs text-[#8A8B8C] font-mono-data">{s.productCode}</span>
+                      <span className="text-xs text-[#8A8B8C]">{s.category}</span>
+                      {s.color && <span className="text-xs" style={{ color: "#D4A843" }}>{s.color}</span>}
+                      {s.description && <span className="text-xs text-[#8A8B8C] truncate max-w-[200px]">{s.description}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-3">
+                    <div className={`text-sm font-display font-semibold ${isOutOfStock ? "text-[#EF4444]" : "text-[#4ADE80]"}`}>
+                      {avail} avail
+                    </div>
+                    <div className="text-xs text-[#8A8B8C]">SOH: {s.quantity || 0}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    )
+    </div>
   );
 }
-
-const statusTabs = ["all", "pending", "processing", "out_for_delivery", "delivered", "cancelled"] as const;
-
+const statusTabs = [
+  { key: "all", label: "All" },
+  { key: "pending", label: "Pending" },
+  { key: "picking", label: "Picking" },
+  { key: "ready", label: "Ready" },
+  { key: "delivered", label: "Delivered" },
+  { key: "cancelled", label: "Cancelled" },
+  { key: "sample", label: "Samples" },
+  { key: "quotes", label: "Quotes" },
+];
 export default function OrdersPage() {
   const { user } = useAuth();
   const { isAdmin, isSalesRep, isSuperAdmin, role } = useRole();
+  const myRepName = user?.name || "";
+  const banking = getBankingDetails();
   const utils = trpc.useUtils();
+  const [activeTab, setActiveTab] = useState("all");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<(typeof statusTabs)[number]>("all");
-  const [search, setSearch] = useState("");
-  const [showQuoteEmail, setShowQuoteEmail] = useState(false);
-  const [quoteEmailOrder, setQuoteEmailOrder] = useState<any>(null);
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
-  const [productPickerIndex, setProductPickerIndex] = useState(0);
-  const [bankingDetails, setBankingDetails] = useState<any>(null);
-  const [companyDetails, setCompanyDetails] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    customerId: 0, orderType: "regular" as "regular" | "sample" | "quote",
+    paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
+    priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
+    deliveryAddress: "", notes: "",
+    items: [] as { stockItemId: number; quantity: number; unitPrice?: number }[],
+  });
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerInputRef = useRef<HTMLInputElement>(null);
   const [adminOverride, setAdminOverride] = useState(false);
   const [adminPin, setAdminPin] = useState("");
-  const sampleOverrideRef = useRef(false);
-  const [quoteSort, setQuoteSort] = useState<"newest" | "oldest">("newest");
-
-  const { data: orders = [], isLoading } = trpc.order.list.useQuery(undefined, { refetchInterval: 30000 });
-  const { data: customers = [] } = trpc.customer.list.useQuery();
-  const { data: stockItems = [] } = trpc.stockItem.list.useQuery();
-  const { data: invoices = [] } = trpc.invoice.list.useQuery(undefined, { enabled: isAdmin });
-
-  const createOrder = trpc.order.create.useMutation({ onSuccess: () => { utils.order.list.invalidate(); setShowForm(false); resetForm(); } });
-  const updateOrder = trpc.order.update.useMutation({ onSuccess: () => { utils.order.list.invalidate(); setShowForm(false); setEditingOrder(null); resetForm(); } });
-  const updateOrderStatus = trpc.order.updateStatus.useMutation({ onSuccess: () => utils.order.list.invalidate() });
-  const deleteOrder = trpc.order.delete.useMutation({ onSuccess: () => utils.order.list.invalidate() });
-
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productPickerIndex, setProductPickerIndex] = useState<number>(0);
+  const { data: orders } = trpc.order.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+  });
+  const { data: invoices } = trpc.invoice.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+  });
+  const { data: customers } = trpc.customer.search.useQuery({ query: " " });
+  const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
+  const { data: stats } = trpc.order.getStats.useQuery();
+  const [liveInvoiceOrderIds, setLiveInvoiceOrderIds] = useState<Set<number>>(new Set());
   useEffect(() => {
-    setBankingDetails(getBankingDetails());
-    setCompanyDetails(getCompanyConfig());
+    function refresh() {
+      const allInv = dataService.invoice.list();
+      const ids = new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC")).map((i: any) => Number(i.orderId)));
+      setLiveInvoiceOrderIds(ids);
+    }
+    refresh();
+    const interval = setInterval(refresh, 3000);
+    window.addEventListener("firebaseDataReceived", refresh);
+    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
   }, []);
-
+  const { data: customerSpecialPrices } = trpc.specialPrice.listByCustomer.useQuery(
+    { customerId: formData.customerId }, { enabled: formData.customerId > 0 }
+  );
+  const updateStatus = trpc.order.updateStatus.useMutation({
+    onSuccess: async () => {
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.salesRep.getStats.invalidate();
+      await utils.salesRep.getSalesBreakdown.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
+    },
+  });
+  const createOrder = trpc.order.create.useMutation({
+    onSuccess: async () => {
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
+      reloadFromStorage();
+      utils.order.list.invalidate();
+      utils.order.getStats.invalidate();
+      utils.salesRep.getStats.invalidate();
+      utils.salesRep.getSalesBreakdown.invalidate();
+      utils.stock.search.invalidate();
+      utils.stock.list.invalidate();
+      utils.stock.getStats.invalidate();
+      utils.sampleReport.getAll.invalidate();
+    },
+    onError: (err: any) => {
+      alert("Failed to place order: " + (err.message || "Unknown error. Please check console for details."));
+      console.error("[createOrder] error:", err);
+    },
+    onSettled: () => {
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
+    },
+  });
+  const updateOrder = trpc.order.update.useMutation({
+    onSuccess: async () => {
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
+      reloadFromStorage();
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.salesRep.getStats.invalidate();
+      await utils.salesRep.getSalesBreakdown.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
+    },
+    onError: (err: any) => {
+      alert("Failed to update order: " + (err.message || "Unknown error"));
+      console.error("[updateOrder] error:", err);
+    },
+    onSettled: () => {
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
+    },
+  });
+  const deleteOrder = trpc.order.delete.useMutation({
+    onSuccess: () => {
+      utils.order.list.invalidate();
+      utils.order.getStats.invalidate();
+    },
+    onError: (err: any) => {
+      alert("Failed to delete order: " + (err.message || "Unknown error"));
+    },
+  });
   const allCustomers = useMemo(() => {
     const merged = [...(customers || [])];
-    const corpList = (customers || []).filter((c) => c.customerType === "corporate");
-    corpList.forEach((c) => {
-      if (!merged.find((m) => m.id === c.id)) merged.push(c);
+    const corpList = (customers || []).filter((c: any) => c.customerType === "corporate");
+    corpList.forEach((c: any) => {
+      if (!merged.find((m: any) => m.id === c.id)) merged.push(c);
     });
     return merged;
   }, [customers]);
-
   const filteredCustomers = useMemo(() => {
-    return (allCustomers || []).filter((c) => !c.isCorporateSubaccount);
-  }, [allCustomers]);
-
-  const [formData, setFormData] = useState({
-    customerId: "",
-    priceTier: "wholesale" as "retail" | "wholesale" | "corporate",
-    orderType: "normal" as "normal" | "sample" | "quote",
-    paymentTerms: "cod" as "cod" | "net30" | "eom" | "prepaid",
-    deliveryDate: "",
-    notes: "",
-    items: [{ stockItemId: "", quantity: "", unitPrice: "", unitLabel: "kg", conversion: 1 }],
-  });
-
+    if (!customerSearch.trim()) return allCustomers;
+    const q = customerSearch.toLowerCase();
+    return allCustomers.filter((c: any) =>
+      (c.name || "").toLowerCase().includes(q) ||
+      (c.companyName || "").toLowerCase().includes(q) ||
+      (c.contactPerson || "").toLowerCase().includes(q) ||
+      (c.phone || "").toLowerCase().includes(q)
+    );
+  }, [allCustomers, customerSearch]);
   const selectedCustomer = useMemo(() => {
-    return (allCustomers || []).find((c) => String(c.id) === String(formData.customerId));
+    return allCustomers.find((c: any) => c.id === formData.customerId);
   }, [allCustomers, formData.customerId]);
-
-  const [priceTier, setPriceTier] = useState(formData.priceTier);
-
-  useEffect(() => {
-    if (selectedCustomer && selectedCustomer.priceTier) {
-      const tier = selectedCustomer.priceTier;
-      if (["retail", "wholesale", "corporate"].includes(tier)) {
-        setFormData((prev) => ({ ...prev, priceTier: tier }));
-        setPriceTier(tier);
-      }
-    }
-  }, [selectedCustomer]);
-
-  const subtotal = useMemo(() => {
-    return formData.items.reduce((sum, item) => {
-      const qty = Number(item.quantity) || 0;
-      const price = Number(item.unitPrice) || 0;
-      return sum + qty * price;
-    }, 0);
-  }, [formData.items]);
-
-  const vatRate = 0.15;
-  const vatAmount = subtotal * vatRate;
-  const totalWithVat = subtotal + vatAmount;
-
   const committedStock = useMemo(() => {
     const map: Record<number, number> = {};
     (orders || []).forEach((order: any) => {
@@ -191,7 +395,6 @@ export default function OrdersPage() {
     });
     return map;
   }, [orders]);
-
   const availableStock = useMemo(() => {
     const map: Record<number, number> = {};
     (stockItems || []).forEach((item: any) => {
@@ -202,106 +405,89 @@ export default function OrdersPage() {
     });
     return map;
   }, [stockItems, committedStock]);
-
-  function getUnitPrice(stockItemId: number | string, tier: string, customPrice?: number): number {
+  const productOrderStatuses = useMemo(() => {
+    const map: Record<number, { orderNumber: string; qty: number }[]> = {};
+    (orders || []).forEach((order: any) => {
+      if (order.status === "cancelled" || order.status === "delivered") return;
+      (order.items || []).forEach((item: any) => {
+        const stockId = Number(item.stockItemId);
+        if (!map[stockId]) map[stockId] = [];
+        map[stockId].push({ orderNumber: order.orderNumber || `#${order.id}`, qty: Number(item.quantity) || 0 });
+      });
+    });
+    return map;
+  }, [orders]);
+  function getUnitPrice(stockItemId: number, tier: string, customPrice?: number): number {
     if (customPrice !== undefined && customPrice > 0) return customPrice;
-    const item = (stockItems || []).find((s) => Number(s.id) === Number(stockItemId));
+    const item = (stockItems || []).find((s: any) => Number(s.id) === stockItemId);
     if (!item) return 0;
     switch (tier) {
       case "retail": return Number(item.retailPrice) || 0;
       case "wholesale": return Number(item.wholesalePrice) || 0;
       case "corporate": return Number(item.corporatePrice) || 0;
+      case "bulk": return Number(item.bulkPrice) || 0;
       default: return Number(item.wholesalePrice) || 0;
     }
   }
-
-  function getPriceBreakdown(stockItemId: number | string, unitPrice: number) {
-    const item = (stockItems || []).find((s) => Number(s.id) === Number(stockItemId));
-    if (!item) return { unitPrice: 0, vatPerUnit: 0, totalPerUnit: 0 };
-    const qty = 1;
-    const vat = unitPrice * vatRate;
-    return { unitPrice, vatPerUnit: vat, totalPerUnit: unitPrice + vat };
-  }
-
-  function getTierPrice(stockItemId: number | string, tier: string): number {
-    return getUnitPrice(stockItemId, tier);
-  }
-
-  function getEffectivePrice(stockItemId: number | string, customPrice?: number): number {
+  function getEffectivePrice(stockItemId: number, customPrice?: number): number {
     return getUnitPrice(stockItemId, formData.priceTier, customPrice);
   }
-
-  function handleAddItem() {
-    setFormData((prev) => ({ ...prev, items: [...prev.items, { stockItemId: "", quantity: "", unitPrice: "", unitLabel: "kg", conversion: 1 }] }));
+  function getPriceBreakdown(stockItemId: number, quantity: number) {
+    const unitPrice = getEffectivePrice(stockItemId);
+    const subtotal = unitPrice * quantity;
+    const vat = subtotal * 0.15;
+    const total = subtotal + vat;
+    return { unitPrice, subtotal, vat, total, basePrice: unitPrice };
   }
-
-  function handleRemoveItem(index: number) {
-    setFormData((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
-  }
-
-  function handleCustomerSelect(cid: number | string) {
-    setFormData((prev) => ({ ...prev, customerId: String(cid) }));
-    const customer = (allCustomers || []).find((c) => String(c.id) === String(cid));
-    if (customer && customer.priceTier) {
-      const tier = customer.priceTier;
-      if (["retail", "wholesale", "corporate"].includes(tier)) {
-        setFormData((prev) => ({ ...prev, priceTier: tier }));
-        setPriceTier(tier);
-      }
-    }
-  }
-
   function resetForm() {
-    setFormData({ customerId: "", priceTier: "wholesale", orderType: "normal", paymentTerms: "cod", deliveryDate: "", notes: "", items: [{ stockItemId: "", quantity: "", unitPrice: "", unitLabel: "kg", conversion: 1 }] });
+    setFormData({
+      customerId: 0, orderType: "regular", paymentTerms: "cod",
+      priceTier: "wholesale", deliveryAddress: "", notes: "",
+      items: [],
+    });
+    setCustomerSearch("");
     setAdminOverride(false);
     setAdminPin("");
-    sampleOverrideRef.current = false;
   }
-
-  function canPlaceOrder(): { ok: boolean; message?: string } {
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    if (validItems.length === 0) return { ok: false, message: "Add at least one item" };
-    if (Number(formData.customerId) === 0) return { ok: false, message: "Select a customer" };
-    if (formData.orderType === "quote") return { ok: true };
+  function canPlaceOrder(): { valid: boolean; error?: string } {
+    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
+    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
+    if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
+    if (formData.orderType === "quote") return { valid: true };
     for (const item of validItems) {
-      const stockId = Number(item.stockItemId);
+      const stockId = item.stockItemId;
       const avail = availableStock[stockId] || 0;
       const conversion = item.conversion || 1;
-      const requestedQty = Number(item.quantity) * conversion;
-      if (avail <= 0) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { ok: false, message: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
+      const requestedQty = item.quantity * conversion;
+      if (avail <= 0) { const s = (stockItems || []).find((x: any) => Number(x.id) === stockId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
       if (formData.orderType === "sample") {
-        const existing = (orders || []).some((o) =>
+        const existing = (orders || []).some((o: any) =>
           o.id !== editingOrder?.id &&
-          Number(o.customerId) === Number(formData.customerId) &&
+          o.customerId === formData.customerId &&
           o.orderType === "sample" &&
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
-        if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { ok: false, message: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        if (Number(item.quantity) > 1 && !sampleOverrideRef.current) return { ok: false, message: "Sample orders: 1 unit per product max. Only Super Admin can override." };
-      } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { ok: false, message: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
-    }
-    const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
-    if (customer) {
-      // Block inactive customers unless super admin or admin override
-      if (customer.isActive === false && !isSuperAdmin && !adminOverride) {
-        return { ok: false, message: "This customer is inactive. Please activate the customer before placing an order, or use admin override." };
+        if (existing) { const s = (stockItems || []).find((x: any) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
+        if (item.quantity > 1 && !sampleOverrideRef.current) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
+      } else {
+        if (requestedQty > avail) { const s = (stockItems || []).find((x: any) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} units)` }; }
       }
-
-      // Credit limit check for non-super-admins (unless admin override)
-      if (!isSuperAdmin && !adminOverride) {
-        const creditLimit = Number(customer.creditLimit) || 0;
-        if (creditLimit > 0) {
-          const outstanding = (invoices || [])
-            .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
-            .reduce((sum: number, inv: any) => sum + (inv.balanceDue || 0), 0);
-          if (outstanding >= creditLimit && !isSuperAdmin && !adminOverride) {
-            return { ok: false, message: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Only Super Admin can override.` };
-          }
+    }
+    const customer = (customers || []).find((c: any) => c.id === formData.customerId);
+    if (customer) {
+      if (customer.isActive === false && !isSuperAdmin && !adminOverride) {
+        return { valid: false, error: `Customer account is INACTIVE. Only Super Admin can place orders for inactive customers.` };
+      }
+      const creditLimit = Number(customer.creditLimit) || 0;
+      if (creditLimit > 0 && formData.paymentTerms !== "cod") {
+        const outstanding = (invoices || [])
+          .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+          .reduce((sum: number, inv: any) => sum + (inv.balanceDue || 0), 0);
+        if (outstanding >= creditLimit && !isSuperAdmin && !adminOverride) {
+          return { valid: false, error: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Only Super Admin can override.` };
         }
       }
-
-      // COD overdue check for non-super-admins (unless admin override)
-      if (!isSuperAdmin && !adminOverride) {
+      if (formData.paymentTerms === "cod") {
         const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
         const unpaidCOD = (invoices || [])
           .filter((inv: any) => {
@@ -312,161 +498,58 @@ export default function OrdersPage() {
           });
         if (unpaidCOD.length > 0 && !isSuperAdmin && !adminOverride) {
           const totalUnpaid = unpaidCOD.reduce((s: number, inv: any) => s + (inv.balanceDue || 0), 0);
-          return { ok: false, message: `This customer has ${unpaidCOD.length} unpaid COD invoice(s) older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Only Super Admin can override.` };
+          return { valid: false, error: `COD account has unpaid invoices older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Only Super Admin can override.` };
         }
       }
     }
-    return { ok: true };
+    return { valid: true };
   }
-
   function startEditOrder(order: any) {
     setEditingOrder(order);
     setFormData({
-      customerId: String(order.customerId || ""),
-      priceTier: order.priceTier || "wholesale",
-      orderType: order.orderType || "normal",
+      customerId: order.customerId || 0,
+      orderType: order.orderType || "regular",
       paymentTerms: order.paymentTerms || "cod",
-      deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().split("T")[0] : "",
+      priceTier: order.priceTier || "wholesale",
+      deliveryAddress: order.deliveryAddress || "",
       notes: order.notes || "",
       items: (order.items || []).map((item: any) => ({
-        stockItemId: String(item.stockItemId || ""),
-        quantity: String(item.quantity || ""),
-        unitPrice: String(item.unitPrice || ""),
-        unitLabel: item.unitLabel || "kg",
-        conversion: item.conversion || 1,
+        stockItemId: Number(item.stockItemId) || 0,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: item.unitPrice ? Number(item.unitPrice) : undefined,
       })),
     });
+    setCustomerSearch(order.customer?.name || "");
     setAdminOverride(order.superAdminOverride || false);
     setAdminPin("");
     setShowForm(true);
   }
-
-  function printPickingSlip(order: any) {
-    const customer = (allCustomers || []).find((c) => String(c.id) === String(order.customerId));
-    const company = getCompanyConfig();
-    const items = (order.items || []).map((item: any) => {
-      const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-      return { ...item, productName: stock?.productName || "Unknown", sku: stock?.sku || "—" };
-    });
-    const html = `
-      <html><head><title>Picking Slip #${order.orderNumber}</title><style>
-        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .header h1 { margin: 0; font-size: 24px; }
-        .header p { margin: 5px 0; color: #666; }
-        .info { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .info div { flex: 1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background: #f5f5f5; font-weight: bold; }
-        .totals { margin-top: 20px; text-align: right; }
-        .totals div { margin: 5px 0; }
-        .footer { margin-top: 40px; text-align: center; color: #666; font-size: 12px; }
-      </style></head><body>
-        <div class="header">
-          <h1>${company?.companyName || "Supreme Global Foods"}</h1>
-          <p>${company?.address || ""}</p>
-          <p>Tel: ${company?.phone || ""} | Email: ${company?.email || ""}</p>
-        </div>
-        <div class="info">
-          <div><strong>Order #:</strong> ${order.orderNumber || "—"}<br/><strong>Date:</strong> ${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</div>
-          <div><strong>Customer:</strong> ${customer?.companyName || customer?.name || "—"}<br/><strong>Delivery:</strong> ${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString() : "—"}</div>
-        </div>
-        <table><thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Unit</th></tr></thead><tbody>
-          ${items.map((item: any) => `<tr><td>${item.productName}</td><td>${item.sku}</td><td>${item.quantity}</td><td>${item.unitLabel || "kg"}</td></tr>`).join("")}
-        </tbody></table>
-        <div class="footer">Picking Slip — For warehouse use only</div>
-      </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); w.print(); }
-  }
-
-  function printQuote(order: any) {
-    const customer = (allCustomers || []).find((c) => String(c.id) === String(order.customerId));
-    const company = getCompanyConfig();
-    const items = (order.items || []).map((item: any) => {
-      const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-      return { ...item, productName: stock?.productName || "Unknown", sku: stock?.sku || "—" };
-    });
-    const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0);
-    const vat = subtotal * 0.15;
-    const total = subtotal + vat;
-    const html = `
-      <html><head><title>Quote #${order.orderNumber}</title><style>
-        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .header h1 { margin: 0; font-size: 28px; color: #D4A843; }
-        .header p { margin: 5px 0; color: #666; }
-        .info { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .info div { flex: 1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background: #f5f5f5; font-weight: bold; }
-        .totals { margin-top: 20px; text-align: right; }
-        .totals div { margin: 5px 0; }
-        .quote-valid { margin-top: 20px; padding: 10px; background: #f9f9f9; border-left: 4px solid #D4A843; }
-      </style></head><body>
-        <div class="header">
-          <h1>${company?.companyName || "Supreme Global Foods"}</h1>
-          <p>${company?.address || ""}</p>
-          <p>Tel: ${company?.phone || ""} | Email: ${company?.email || ""}</p>
-        </div>
-        <div class="info">
-          <div><strong>Quote #:</strong> ${order.orderNumber || "—"}<br/><strong>Date:</strong> ${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}<br/><strong>Valid Until:</strong> ${order.validUntil ? new Date(order.validUntil).toLocaleDateString() : "—"}</div>
-          <div><strong>Customer:</strong> ${customer?.companyName || customer?.name || "—"}<br/><strong>Contact:</strong> ${customer?.contactPerson || "—"}<br/><strong>Email:</strong> ${customer?.email || "—"}</div>
-        </div>
-        <table><thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>
-          ${items.map((item: any) => `<tr><td>${item.productName}</td><td>${item.sku}</td><td>${item.quantity}</td><td>R ${(Number(item.unitPrice) || 0).toFixed(2)}</td><td>R ${((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2)}</td></tr>`).join("")}
-        </tbody></table>
-        <div class="totals">
-          <div><strong>Subtotal:</strong> R ${subtotal.toFixed(2)}</div>
-          <div><strong>VAT (15%):</strong> R ${vat.toFixed(2)}</div>
-          <div style="font-size: 18px; margin-top: 10px;"><strong>Total:</strong> R ${total.toFixed(2)}</div>
-        </div>
-        <div class="quote-valid">This quote is valid for 30 days from the date of issue.</div>
-      </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); w.print(); }
-  }
-
-  function sendQuoteEmail(order: any) {
-    const customer = (allCustomers || []).find((c) => String(c.id) === String(order.customerId));
-    if (!customer?.email) { alert("Customer has no email address."); return; }
-    const items = (order.items || []).map((item: any) => {
-      const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-      return { ...item, productName: stock?.productName || "Unknown" };
-    });
-    const subtotal = items.reduce((s: number, item: any) => s + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0);
-    const vat = subtotal * 0.15;
-    const total = subtotal + vat;
-    const subject = `Quote #${order.orderNumber} from Supreme Global Foods`;
-    const body = `Dear ${customer.contactPerson || customer.companyName || "Customer"},\n\nPlease find your quote below:\n\nQuote #: ${order.orderNumber}\nDate: ${new Date(order.createdAt).toLocaleDateString()}\nValid Until: ${order.validUntil ? new Date(order.validUntil).toLocaleDateString() : "N/A"}\n\nItems:\n${items.map((item: any) => `- ${item.productName}: ${item.quantity} x R ${(Number(item.unitPrice) || 0).toFixed(2)} = R ${((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2)}`).join("\n")}\n\nSubtotal: R ${subtotal.toFixed(2)}\nVAT (15%): R ${vat.toFixed(2)}\nTotal: R ${total.toFixed(2)}\n\nThis quote is valid for 30 days.\n\nBest regards,\nSupreme Global Foods Team`;
-    window.location.href = `mailto:${customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const check = editingOrder ? canEditOrderBasic() : canPlaceOrder();
-    if (!check.ok) { alert(check.message); return; }
+    if (!check.valid) { alert(check.error); return; }
     const payload: any = {
-      customerId: Number(formData.customerId),
-      priceTier: formData.priceTier,
+      customerId: formData.customerId,
       orderType: formData.orderType,
       paymentTerms: formData.paymentTerms,
-      deliveryDate: formData.deliveryDate ? new Date(formData.deliveryDate).toISOString() : undefined,
+      priceTier: formData.priceTier,
+      deliveryAddress: formData.deliveryAddress,
       notes: formData.notes,
       items: formData.items
-        .filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0)
+        .filter((i) => i.stockItemId > 0 && i.quantity > 0)
         .map((i) => ({
-          stockItemId: Number(i.stockItemId),
-          quantity: Number(i.quantity),
-          unitPrice: Number(i.unitPrice),
-          unitLabel: i.unitLabel || "kg",
-          conversion: i.conversion || 1,
+          stockItemId: i.stockItemId,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
         })),
     };
-    if (adminOverride && adminPin) {
-      payload.superAdminOverride = true;
+    if (!editingOrder) {
+      if (formData.orderType === "sample") {
+        payload.sampleApproved = true;
+      }
+      if (adminOverride && adminPin) {
+        payload.superAdminOverride = true;
+      }
     }
     if (editingOrder) {
       updateOrder.mutate({ id: editingOrder.id, data: payload });
@@ -474,14 +557,12 @@ export default function OrdersPage() {
       createOrder.mutate(payload);
     }
   }
-
-  function canEditOrderBasic(): { ok: boolean; message?: string } {
-    if (Number(formData.customerId) === 0) return { ok: false, message: "Select a customer" };
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    if (validItems.length === 0) return { ok: false, message: "Add at least one item" };
-    return { ok: true };
+  function canEditOrderBasic(): { valid: boolean; error?: string } {
+    if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
+    const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
+    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
+    return { valid: true };
   }
-
   function canEditOrder(order: any): boolean {
     if (order.orderType === "quote") {
       if (order.status === "converted" || order.status === "rejected") return false;
@@ -489,7 +570,6 @@ export default function OrdersPage() {
     }
     return isAdmin;
   }
-
   function canCancelOrder(order: any): boolean {
     if (order.orderType === "quote") {
       if (order.status === "converted" || order.status === "rejected") return false;
@@ -497,436 +577,504 @@ export default function OrdersPage() {
     }
     return isAdmin && order.status !== "cancelled";
   }
-
   function canProgressOrder(order: any): boolean {
     if (order.orderType === "quote") return false;
     if (!isAdmin) return false;
     if (order.status === "delivered" || order.status === "cancelled") return false;
     return true;
   }
-
   function getCustomer(order: any) {
-    return (allCustomers || []).find((c) => String(c.id) === String(order.customerId));
+    return allCustomers.find((c: any) => c.id === order.customerId);
   }
-
-  const STATUS_LABELS: Record<string, string> = {
-    all: "All",
-    pending: "Pending",
-    processing: "Processing",
-    out_for_delivery: "Out for Delivery",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
-  };
-
-  const PRICE_TIERS = [
-    { value: "retail", label: "Retail" },
-    { value: "wholesale", label: "Wholesale" },
-    { value: "corporate", label: "Corporate" },
-  ];
-
-  const productOrderStatuses = useMemo(() => {
-    const map: Record<string, string> = {};
-    (orders || []).forEach((order: any) => {
-      if (order.status === "cancelled") return;
-      (order.items || []).forEach((item: any) => {
-        const stockId = String(item.stockItemId);
-        if (!map[stockId] || ["pending", "processing", "out_for_delivery"].includes(order.status)) {
-          map[stockId] = order.status;
-        }
-      });
-    });
-    return map;
-  }, [orders]);
-
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: orders.length };
+    const counts: Record<string, number> = { all: (orders || []).length };
     statusTabs.forEach((tab) => {
-      if (tab === "all") return;
-      counts[tab] = (orders || []).filter((o: any) => o.status === tab).length;
+      if (tab.key === "all") return;
+      if (tab.key === "sample") {
+        counts[tab.key] = (orders || []).filter((o: any) => o.orderType === "sample").length;
+      } else if (tab.key === "quotes") {
+        counts[tab.key] = (orders || []).filter((o: any) => o.orderType === "quote").length;
+      } else {
+        counts[tab.key] = (orders || []).filter((o: any) => o.status === tab.key).length;
+      }
     });
     return counts;
   }, [orders]);
-
   const filteredOrders = useMemo(() => {
     let list = [...(orders || [])];
     if (activeTab !== "all") {
-      list = list.filter((o: any) => o.status === activeTab);
+      if (activeTab === "sample") {
+        list = list.filter((o: any) => o.orderType === "sample");
+      } else if (activeTab === "quotes") {
+        list = list.filter((o: any) => o.orderType === "quote");
+      } else {
+        list = list.filter((o: any) => o.status === activeTab);
+      }
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
       list = list.filter((o: any) => {
         const c = getCustomer(o);
         return (
           (o.orderNumber || "").toLowerCase().includes(q) ||
-          (c?.companyName || "").toLowerCase().includes(q) ||
-          (c?.name || "").toLowerCase().includes(q)
+          (c?.name || "").toLowerCase().includes(q) ||
+          (c?.companyName || "").toLowerCase().includes(q)
         );
       });
     }
     return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [orders, activeTab, search]);
-
-  // Loading skeleton
-  if (isLoading) {
+  }, [orders, activeTab, orderSearch]);
+  const subtotal = useMemo(() => {
+    return formData.items.reduce((sum, item) => {
+      const price = getEffectivePrice(item.stockItemId, item.unitPrice);
+      return sum + (item.quantity * price);
+    }, 0);
+  }, [formData.items, formData.priceTier, stockItems, customerSpecialPrices]);
+  const vatRate = 0.15;
+  const vatAmount = subtotal * vatRate;
+  const totalWithVat = subtotal + vatAmount;
+  if (!orders) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="h-8 w-48 bg-[#333334]/50 rounded animate-pulse" />
-          <div className="h-10 w-32 bg-[#333334]/50 rounded animate-pulse" />
-        </div>
-        <div className="h-12 bg-[#333334]/50 rounded animate-pulse" />
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-20 bg-[#333334]/50 rounded animate-pulse" />
-          ))}
-        </div>
+      <div className="space-y-4">
+        <div className="h-8 w-48 bg-[#222324] rounded animate-pulse" />
+        <div className="h-64 bg-[#222324] rounded animate-pulse" />
       </div>
     );
   }
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Orders</h1>
-          <p className="text-sm text-[#8A8B8C] mt-1">Manage orders, quotes, and sample requests</p>
+          <h1 className="font-display text-2xl font-bold text-white">Orders</h1>
+          <p className="text-sm text-[#8A8B8C] mt-1">Manage orders, quotes, and samples</p>
         </div>
-        <button onClick={() => { setEditingOrder(null); resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2">
+        <button
+          onClick={() => { setEditingOrder(null); resetForm(); setShowForm(true); }}
+          className="btn-primary flex items-center gap-2"
+        >
           <Plus className="w-4 h-4" /> New Order
         </button>
       </div>
-
-      {/* Tabs */}
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((tab) => (
-          <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab ? "bg-[#D4A843] text-black" : "bg-[#18191A] text-[#8A8B8C] hover:text-white border border-[#333334]"}`}>
-            {STATUS_LABELS[tab]} {tabCounts[tab] > 0 && <span className="ml-1 text-xs opacity-70">({tabCounts[tab]})</span>}
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === tab.key
+                ? "bg-[#D4A843] text-black"
+                : "bg-[#18191A] text-[#8A8B8C] hover:text-white border border-[#222324]"
+            }`}
+          >
+            {tab.label} {tabCounts[tab.key] > 0 && <span className="text-xs opacity-70">({tabCounts[tab.key]})</span>}
           </button>
         ))}
       </div>
-
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search orders..." className="input-field pl-10 w-full" />
+        <input
+          type="text"
+          value={orderSearch}
+          onChange={(e) => setOrderSearch(e.target.value)}
+          placeholder="Search orders..."
+          className="input-field pl-10 w-full"
+        />
       </div>
-
-      {/* Orders List */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {filteredOrders.length === 0 && (
           <div className="text-center py-12 text-[#8A8B8C]">
             <Package className="w-12 h-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No orders found</p>
-            <p className="text-sm mt-1">{search ? "Try adjusting your search" : "Create your first order to get started"}</p>
+            <p className="text-sm mt-1">{orderSearch ? "Try adjusting your search" : "Create your first order to get started"}</p>
           </div>
         )}
         {filteredOrders.map((order: any) => {
           const customer = getCustomer(order);
           const isQuote = order.orderType === "quote";
           const isSample = order.orderType === "sample";
-          const statusColors: Record<string, string> = {
-            pending: "bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30",
-            processing: "bg-[#3B82F6]/10 text-[#3B82F6] border-[#3B82F6]/30",
-            out_for_delivery: "bg-[#8B5CF6]/10 text-[#8B5CF6] border-[#8B5CF6]/30",
-            delivered: "bg-[#22C55E]/10 text-[#22C55E] border-[#22C55E]/30",
-            cancelled: "bg-[#EF4444]/10 text-[#EF4444] border-[#EF4444]/30",
-          };
+          const isExpanded = expandedOrder === order.id;
           return (
-            <div key={order.id} className="card hover:border-[#D4A843]/30 transition-colors">
-              <div className="p-4 sm:p-6">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div key={order.id} className="card overflow-hidden">
+              <div
+                className="p-4 cursor-pointer"
+                onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+              >
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-lg font-semibold text-white">#{order.orderNumber || order.id}</span>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColors[order.status] || statusColors.pending}`}>
-                        {order.status?.replace(/_/g, " ")}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-display font-semibold text-white">#{order.orderNumber || order.id}</span>
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-medium border"
+                        style={{
+                          backgroundColor: STATUS_LABELS[order.status]?.color + "20" || "#F59E0B20",
+                          color: STATUS_LABELS[order.status]?.color || "#F59E0B",
+                          borderColor: (STATUS_LABELS[order.status]?.color || "#F59E0B") + "40",
+                        }}
+                      >
+                        {STATUS_LABELS[order.status]?.label || order.status}
                       </span>
-                      {isQuote && <span className="px-2 py-1 rounded-full text-xs font-medium bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/30">Quote</span>}
-                      {isSample && <span className="px-2 py-1 rounded-full text-xs font-medium bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/30">Sample</span>}
-                      {order.superAdminOverride && <span className="px-2 py-1 rounded-full text-xs font-medium bg-[#D4A843]/10 text-[#D4A843] border border-[#D4A843]/30">Admin Override</span>}
+                      {isQuote && <span className="px-2 py-0.5 rounded-full text-xs bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/30">Quote</span>}
+                      {isSample && <span className="px-2 py-0.5 rounded-full text-xs bg-[#D4A843]/20 text-[#D4A843] border border-[#D4A843]/30">Sample</span>}
+                      {order.superAdminOverride && <span className="px-2 py-0.5 rounded-full text-xs bg-[#D4A843]/20 text-[#D4A843] border border-[#D4A843]/30">Admin Override</span>}
                     </div>
-                    <div className="mt-2 text-sm text-[#8A8B8C]">
-                      <span className="text-white font-medium">{customer?.companyName || customer?.name || "Unknown Customer"}</span>
+                    <div className="mt-1 text-sm text-[#8A8B8C]">
+                      <span className="text-white">{customer?.name || "Unknown"}</span>
                       <span className="mx-2">·</span>
                       <span>{new Date(order.createdAt).toLocaleDateString()}</span>
                       <span className="mx-2">·</span>
                       <span className="capitalize">{order.paymentTerms?.replace(/_/g, " ")}</span>
-                      <span className="mx-2">·</span>
-                      <span className="capitalize">{order.priceTier}</span>
-                    </div>
-                    <div className="mt-3 space-y-1">
-                      {(order.items || []).slice(0, 3).map((item: any, idx: number) => {
-                        const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-                        return (
-                          <div key={idx} className="text-sm text-[#8A8B8C]">
-                            {stock?.productName || "Unknown"} × {item.quantity} {item.unitLabel || "kg"} @ R {(Number(item.unitPrice) || 0).toFixed(2)}
-                          </div>
-                        );
-                      })}
-                      {(order.items || []).length > 3 && (
-                        <div className="text-sm text-[#8A8B8C]">+{(order.items || []).length - 3} more items</div>
-                      )}
-                    </div>
-                    <div className="mt-3 text-sm font-medium text-white">
-                      Total: R {(Number(order.totalAmount) || 0).toFixed(2)}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="text-right">
+                    <div className="font-display font-semibold text-white">R {safeNum(order.totalAmount).toFixed(2)}</div>
+                    <div className="text-xs text-[#8A8B8C]">{order.items?.length || 0} items</div>
+                  </div>
+                </div>
+              </div>
+              {isExpanded && (
+                <div className="px-4 pb-4 border-t" style={{ borderColor: "#222324" }}>
+                  <div className="mt-3 space-y-2">
+                    {(order.items || []).map((item: any, idx: number) => {
+                      const stock = (stockItems || []).find((s: any) => s.id == item.stockItemId);
+                      return (
+                        <div key={idx} className="flex items-center justify-between text-sm">
+                          <span className="text-[#8A8B8C]">{stock?.productName || "Unknown"} × {item.quantity}</span>
+                          <span className="text-white">R {safeNum(item.unitPrice * item.quantity).toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between text-sm font-medium pt-2 border-t" style={{ borderColor: "#222324" }}>
+                      <span className="text-[#8A8B8C]">Subtotal</span>
+                      <span className="text-white">R {safeNum(order.subtotal).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[#8A8B8C]">VAT (15%)</span>
+                      <span className="text-white">R {safeNum(order.vatAmount).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-base font-display font-bold">
+                      <span className="text-white">Total</span>
+                      <span className="text-[#D4A843]">R {safeNum(order.totalAmount).toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {canProgressOrder(order) && (
-                      <button onClick={() => { const statuses = ["pending", "processing", "out_for_delivery", "delivered"]; const idx = statuses.indexOf(order.status); if (idx >= 0 && idx < statuses.length - 1) { updateOrderStatus.mutate({ id: order.id, status: statuses[idx + 1] }); } }} className="btn-primary text-xs flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          const flow = ["pending", "picking", "ready", "delivered"];
+                          const idx = flow.indexOf(order.status);
+                          if (idx >= 0 && idx < flow.length - 1) {
+                            updateStatus.mutate({ id: order.id, status: flow[idx + 1] });
+                          }
+                        }}
+                        className="btn-primary text-xs flex items-center gap-1"
+                      >
                         <Truck className="w-3 h-3" /> Progress
                       </button>
                     )}
-                    <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs flex items-center gap-1" style={{ borderColor: "rgba(212,168,67,0.3)" }}>
-                      <Printer className="w-3 h-3" /> Picking Slip
+                    <button onClick={() => window.print()} className="btn-secondary text-xs flex items-center gap-1">
+                      <Printer className="w-3 h-3" /> Print
                     </button>
-                    {isQuote && (
-                      <>
-                        <button onClick={() => printQuote(order)} className="btn-secondary text-xs flex items-center gap-1" style={{ borderColor: "rgba(212,168,67,0.3)" }}>
-                          <FileText className="w-3 h-3" /> Print Quote
-                        </button>
-                        <button onClick={() => sendQuoteEmail(order)} className="btn-secondary text-xs flex items-center gap-1" style={{ borderColor: "rgba(212,168,67,0.3)" }}>
-                          <Send className="w-3 h-3" /> Email
-                        </button>
-                      </>
-                    )}
-                    <GenerateInvoiceButton order={order} orderType={isQuote ? "quote" : "order"} onInvoiceGenerated={() => utils.order.list.invalidate()} />
+                    <GenerateInvoiceButton orderId={order.id} />
                     {canEditOrder(order) && (
-                      <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs flex items-center gap-1" style={{ borderColor: "rgba(212,168,67,0.3)" }}>
-                        <Pencil className="w-3 h-3" /> Edit {isQuote ? "Quote" : "Order"}
+                      <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs flex items-center gap-1">
+                        <Pencil className="w-3 h-3" /> Edit
                       </button>
                     )}
                     {canCancelOrder(order) && (
-                      <button onClick={() => { if (confirm("Cancel this order?")) deleteOrder.mutate(order.id); }} className="btn-danger text-xs flex items-center gap-1">
-                        <X className="w-3 h-3" /> Cancel
+                      <button
+                        onClick={() => { if (confirm("Cancel this order?")) deleteOrder.mutate(order.id); }}
+                        className="btn-danger text-xs flex items-center gap-1"
+                      >
+                        <Ban className="w-3 h-3" /> Cancel
                       </button>
                     )}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
       </div>
-
-      {/* Order Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowForm(false)}>
-          <div className="card max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-[#18191A] border-b border-[#333334] p-4 sm:p-6 z-10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">{editingOrder ? `Edit ${editingOrder.orderType === "quote" ? "Quote" : "Order"}` : "New Order"}</h2>
-                <button onClick={() => setShowForm(false)} className="p-2 rounded-lg hover:bg-[#333334]/50 text-[#8A8B8C]"><X className="w-5 h-5" /></button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={() => { setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); }}>
+          <div className="card-surface w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: "#222324" }}>
+              <h2 className="font-display text-xl font-bold text-white">
+                {editingOrder ? "Edit Order" : "New Order"}
+              </h2>
+              <button
+                onClick={() => { setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); }}
+                className="p-2 rounded-full hover:bg-[#222324] cursor-pointer"
+              >
+                <X className="w-5 h-5 text-[#8A8B8C]" />
+              </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6">
-              {/* Customer */}
+            <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="space-y-2">
-                <label className="label-text">Customer *</label>
-                <select value={formData.customerId} onChange={(e) => handleCustomerSelect(e.target.value)} className="input-field w-full" required>
-                  <option value="">Select customer...</option>
-                  {filteredCustomers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.companyName || c.name} {c.customerType === "corporate" ? "(Corporate)" : ""}</option>
-                  ))}
-                </select>
+                <label className="text-sm font-medium text-white">Customer</label>
+                <div className="relative">
+                  <input
+                    ref={customerInputRef}
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    placeholder="Search customer..."
+                    className="input-field w-full"
+                    autoComplete="off"
+                  />
+                  {showCustomerDropdown && (
+                    <div className="absolute z-10 w-full mt-1 card-surface max-h-60 overflow-y-auto" style={{ border: "1px solid #222324" }}>
+                      {filteredCustomers.length === 0 && (
+                        <div className="p-3 text-sm text-[#8A8B8C]">No customers found</div>
+                      )}
+                      {filteredCustomers.map((c: any) => (
+                        <div
+                          key={`${c._type}-${c.id}`}
+                          onClick={() => {
+                            setFormData((prev) => ({ ...prev, customerId: c.id }));
+                            setCustomerSearch(c.name || "");
+                            setShowCustomerDropdown(false);
+                          }}
+                          className="p-3 hover:bg-[#222324] cursor-pointer border-b"
+                          style={{ borderColor: "#18191A" }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white font-medium">{c.name}</span>
+                            <span className="text-xs text-[#8A8B8C]">{c._type === "corporate" ? "Corporate" : "Regular"}</span>
+                          </div>
+                          <div className="text-xs text-[#8A8B8C] mt-0.5">{c.contactPerson} • {c.phone}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {selectedCustomer && (
-                  <div className="text-sm text-[#8A8B8C] mt-1">
-                    Credit Limit: R {(Number(selectedCustomer.creditLimit) || 0).toFixed(2)} | Type: {selectedCustomer.customerType || "regular"} | Status: {selectedCustomer.isActive === false ? <span className="text-[#EF4444]">Inactive</span> : <span className="text-[#22C55E]">Active</span>}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-[#8A8B8C]">Selected:</span>
+                    <span className="text-white font-medium">{selectedCustomer.name}</span>
+                    {selectedCustomer.isActive === false && (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-[#EF4444]/20 text-[#EF4444]">INACTIVE</span>
+                    )}
                   </div>
                 )}
               </div>
-
-              {/* Order Type & Price Tier */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="label-text">Order Type *</label>
-                  <select value={formData.orderType} onChange={(e) => { const type = e.target.value as any; setFormData((prev) => ({ ...prev, orderType: type })); if (type === "sample") { setFormData((prev) => ({ ...prev, paymentTerms: "cod" })); } }} className="input-field w-full">
-                    <option value="normal">Normal Order</option>
-                    <option value="sample">Sample Order</option>
+                  <label className="text-sm font-medium text-white">Order Type</label>
+                  <select
+                    value={formData.orderType}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, orderType: e.target.value as any }))}
+                    className="input-field w-full"
+                  >
+                    <option value="regular">Regular</option>
+                    <option value="sample">Sample</option>
                     <option value="quote">Quote</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="label-text">Price Tier *</label>
-                  <select value={formData.priceTier} onChange={(e) => { const tier = e.target.value as any; setFormData((prev) => ({ ...prev, priceTier: tier })); setPriceTier(tier); }} className="input-field w-full">
+                  <label className="text-sm font-medium text-white">Payment Terms</label>
+                  <select
+                    value={formData.paymentTerms}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, paymentTerms: e.target.value as any }))}
+                    className="input-field w-full"
+                  >
+                    <option value="cod">COD</option>
+                    <option value="7_days">7 Days</option>
+                    <option value="14_days">14 Days</option>
+                    <option value="30_days">30 Days</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Price Tier</label>
+                  <select
+                    value={formData.priceTier}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, priceTier: e.target.value as any }))}
+                    className="input-field w-full"
+                  >
                     {PRICE_TIERS.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
+                      <option key={t.key} value={t.key}>{t.label}</option>
                     ))}
                   </select>
                 </div>
               </div>
-
-              {/* Payment Terms & Delivery Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="label-text">Payment Terms *</label>
-                  <select value={formData.paymentTerms} onChange={(e) => setFormData((prev) => ({ ...prev, paymentTerms: e.target.value as any }))} className="input-field w-full">
-                    <option value="cod">Cash on Delivery</option>
-                    <option value="net30">Net 30</option>
-                    <option value="eom">End of Month</option>
-                    <option value="prepaid">Prepaid</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="label-text">Delivery Date</label>
-                  <input type="date" value={formData.deliveryDate} onChange={(e) => setFormData((prev) => ({ ...prev, deliveryDate: e.target.value }))} className="input-field w-full" />
-                </div>
-              </div>
-
-              {/* Notes */}
               <div className="space-y-2">
-                <label className="label-text">Notes</label>
-                <textarea value={formData.notes} onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))} rows={3} className="input-field w-full resize-none" placeholder="Add any special instructions..." />
+                <label className="text-sm font-medium text-white">Delivery Address</label>
+                <input
+                  type="text"
+                  value={formData.deliveryAddress}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, deliveryAddress: e.target.value }))}
+                  placeholder="Leave blank for warehouse collection"
+                  className="input-field w-full"
+                />
               </div>
-
-              {/* Admin override for all restriction checks */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="adminOverride"
-                    checked={adminOverride}
-                    onChange={(e) => { setAdminOverride(e.target.checked); if (!e.target.checked) setAdminPin(""); }}
-                    className="w-4 h-4 rounded border-[#333334] bg-[#18191A] text-[#D4A843] focus:ring-[#D4A843]"
-                  />
-                  <label htmlFor="adminOverride" className="text-sm text-white cursor-pointer">
-                    Admin Override
-                  </label>
-                </div>
-                {adminOverride && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      value={adminPin}
-                      onChange={(e) => setAdminPin(e.target.value)}
-                      placeholder="Enter admin PIN"
-                      className="input-field w-48"
-                    />
-                    <span className="text-xs text-[#8A8B8C]">Enter PIN to bypass restrictions</span>
-                  </div>
-                )}
+                <label className="text-sm font-medium text-white">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Any special instructions..."
+                  rows={2}
+                  className="input-field w-full"
+                />
               </div>
-
-              {/* Items */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="label-text">Items *</label>
-                  <button type="button" onClick={handleAddItem} className="text-sm text-[#D4A843] hover:text-[#E8C86A] flex items-center gap-1">
-                    <Plus className="w-4 h-4" /> Add Item
+                  <label className="text-sm font-medium text-white">Items</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        items: [...prev.items, { stockItemId: 0, quantity: 1 }],
+                      }));
+                    }}
+                    className="btn-secondary text-xs flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> Add Item
                   </button>
                 </div>
-                {formData.items.map((item, index) => {
-                  const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-                  const avail = availableStock[Number(item.stockItemId)] || 0;
-                  const conversion = item.conversion || 1;
-                  const price = getEffectivePrice(item.stockItemId, Number(item.unitPrice) || undefined);
+                {formData.items.map((item, idx) => {
+                  const stock = (stockItems || []).find((s: any) => s.id == item.stockItemId);
+                  const avail = availableStock[item.stockItemId] || 0;
+                  const isOutOfStock = avail <= 0 && item.stockItemId > 0;
+                  const { basePrice, total } = getPriceBreakdown(item.stockItemId, item.quantity || 0);
                   return (
-                    <div key={index} className="card p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-white">Item {index + 1}</span>
-                        {formData.items.length > 1 && (
-                          <button type="button" onClick={() => handleRemoveItem(index)} className="text-[#EF4444] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs text-[#8A8B8C]">Product *</label>
-                          <button type="button" onClick={() => { setProductPickerIndex(index); setProductPickerOpen(true); }} className="input-field w-full text-left flex items-center justify-between">
-                            <span className={stock ? "text-white" : "text-[#8A8B8C]"}>{stock ? stock.productName : "Select product..."}</span>
-                            <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />
+                    <div key={idx} className="flex flex-col sm:flex-row gap-3 p-3 bg-[#18191A] rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProductPickerIndex(idx);
+                              setProductPickerOpen(true);
+                            }}
+                            className="flex-1 text-left input-field py-2 px-3 min-h-[40px] flex items-center gap-2"
+                          >
+                            {stock ? (
+                              <>
+                                <span
+                                  className="w-2 h-2 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: isOutOfStock ? "#EF4444" : "#4ADE80" }}
+                                />
+                                <span className="truncate">{stock.productName}</span>
+                                <span className="text-[#8A8B8C] text-xs flex-shrink-0">({stock.productCode})</span>
+                              </>
+                            ) : (
+                              <span className="text-[#8A8B8C]">Click to select product...</span>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                items: prev.items.filter((_, i) => i !== idx),
+                              }));
+                            }}
+                            className="p-2 text-[#EF4444] hover:bg-[#EF4444]/10 rounded-lg flex-shrink-0"
+                          >
+                            <X className="w-4 h-4" />
                           </button>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-xs text-[#8A8B8C]">Quantity *</label>
-                          <input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => { const qty = e.target.value; setFormData((prev) => { const items = [...prev.items]; items[index] = { ...items[index], quantity: qty }; return { ...prev, items }; }); }} className="input-field w-full" placeholder="0.00" />
+                        {stock && (
+                          <div className="flex items-center gap-4 mt-2 text-xs">
+                            <span className={isOutOfStock ? "text-[#EF4444]" : "text-[#4ADE80]"}>
+                              {avail} available
+                            </span>
+                            <span className="text-[#8A8B8C]">SOH: {stock.quantity || 0}</span>
+                            {productOrderStatuses[item.stockItemId]?.length > 0 && (
+                              <span className="text-[#8A8B8C]">
+                                In orders: {productOrderStatuses[item.stockItemId].map((o: any) => `${o.orderNumber}(${o.qty})`).join(", ")}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-24">
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const qty = parseInt(e.target.value) || 0;
+                              setFormData((prev) => {
+                                const newItems = [...prev.items];
+                                newItems[idx] = { ...newItems[idx], quantity: qty };
+                                return { ...prev, items: newItems };
+                              });
+                            }}
+                            className="input-field w-full text-center"
+                          />
+                        </div>
+                        <div className="w-28 text-right">
+                          <div className="text-sm text-[#8A8B8C]">R {basePrice.toFixed(2)}</div>
+                          <div className="text-sm font-display font-semibold text-[#D4A843]">R {total.toFixed(2)}</div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs text-[#8A8B8C]">Unit Price (R) *</label>
-                          <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(e) => { const price = e.target.value; setFormData((prev) => { const items = [...prev.items]; items[index] = { ...items[index], unitPrice: price }; return { ...prev, items }; }); }} className="input-field w-full" placeholder="0.00" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs text-[#8A8B8C]">Unit</label>
-                          <select value={item.unitLabel} onChange={(e) => setFormData((prev) => { const items = [...prev.items]; items[index] = { ...items[index], unitLabel: e.target.value }; return { ...prev, items }; })} className="input-field w-full">
-                            <option value="kg">kg</option>
-                            <option value="g">g</option>
-                            <option value="unit">unit</option>
-                            <option value="box">box</option>
-                            <option value="case">case</option>
-                          </select>
-                        </div>
-                      </div>
-                      {stock && (
-                        <div className="text-xs text-[#8A8B8C]">
-                          Available: {avail.toFixed(2)} kg | Suggested: R {price.toFixed(2)} ({formData.priceTier})
-                        </div>
-                      )}
                     </div>
                   );
                 })}
+                {formData.items.length === 0 && (
+                  <div className="text-center py-6 text-[#8A8B8C] text-sm">No items added. Click "Add Item" to start.</div>
+                )}
               </div>
-
-              {/* Totals */}
-              <div className="card p-4 space-y-2">
+              <div className="border-t pt-4 space-y-2" style={{ borderColor: "#222324" }}>
                 <div className="flex justify-between text-sm">
                   <span className="text-[#8A8B8C]">Subtotal</span>
-                  <span className="text-white">R {subtotal.toFixed(2)}</span>
+                  <span className="text-white font-display">R {subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-[#8A8B8C]">VAT (15%)</span>
-                  <span className="text-white">R {vatAmount.toFixed(2)}</span>
+                  <span className="text-[#8A8B8C]">VAT ({(vatRate * 100).toFixed(0)}%)</span>
+                  <span className="text-white font-display">R {vatAmount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-lg font-semibold border-t border-[#333334] pt-2">
+                <div className="flex justify-between text-lg font-display font-bold">
                   <span className="text-white">Total</span>
                   <span className="text-[#D4A843]">R {totalWithVat.toFixed(2)}</span>
                 </div>
               </div>
-
-              {/* Validation */}
               {(() => {
                 const validation = canPlaceOrder();
-                if (!validation.ok) {
+                if (!validation.valid) {
                   return (
                     <div className="flex items-center gap-2 p-3 bg-[#EF4444]/10 border rounded-lg" style={{ borderColor: "rgba(239,68,68,0.3)" }}>
                       <AlertTriangle className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
-                      <span className="text-sm text-[#EF4444]">{validation.message}</span>
+                      <span className="text-sm text-[#EF4444]">{validation.error}</span>
                     </div>
                   );
                 }
                 return null;
               })()}
-
-              {/* Submit */}
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" disabled={createOrder.isPending || updateOrder.isPending || !canPlaceOrder().ok} className="btn-primary">
-                  {createOrder.isPending || updateOrder.isPending ? "Saving..." : editingOrder ? "Update" : "Place Order"}
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={createOrder.isPending || updateOrder.isPending || !canPlaceOrder().valid}
+                className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {createOrder.isPending || updateOrder.isPending ? (
+                  <span className="animate-pulse">Processing...</span>
+                ) : editingOrder ? (
+                  "Update Order"
+                ) : (
+                  "Place Order"
+                )}
+              </button>
             </form>
           </div>
         </div>
       )}
-
       <ProductPickerModal
-        open={productPickerOpen}
+        isOpen={productPickerOpen}
         onClose={() => setProductPickerOpen(false)}
-        onSelect={(item: any) => {
+        onSelect={(id) => {
           setFormData((prev) => {
-            const items = [...prev.items];
-            items[productPickerIndex] = {
-              ...items[productPickerIndex],
-              stockItemId: String(item.id),
-              unitPrice: String(getEffectivePrice(item.id)),
-              unitLabel: "kg",
-              conversion: 1,
-            };
-            return { ...prev, items };
+            const newItems = [...prev.items];
+            newItems[productPickerIndex] = { ...newItems[productPickerIndex], stockItemId: id };
+            return { ...prev, items: newItems };
           });
-          setProductPickerOpen(false);
         }}
-        stockItems={stockItems}
+        stockItems={stockItems || []}
+        availableStock={availableStock}
         selectedId={formData.items[productPickerIndex]?.stockItemId || 0}
       />
     </div>

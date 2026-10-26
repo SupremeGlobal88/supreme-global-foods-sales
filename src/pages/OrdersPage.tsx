@@ -545,7 +545,7 @@ export default function OrdersPage() {
     })),
   };
   if (!editingOrder) {
-   payload.salesRepName = customer?.salesRepName || user?.name || "";
+   payload.salesRepName = selectedCustomer?.salesRepName || user?.name || "";
    if (adminOverride) {
     payload.adminApproved = true;
    }

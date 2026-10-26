@@ -399,15 +399,15 @@ export default function OrdersPage() {
       utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
-      alert("Update failed: " + (err.message || "Unknown error"));
+      alert("Failed to update order: " + (err.message || "Unknown error"));
+      console.error("[updateOrder] error:", err);
     },
     onSettled: () => {
       setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
     },
   });
-  const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
-    onSuccess: async (data) => {
-      reloadFromStorage();
+  const deleteOrder = trpc.order.delete.useMutation({
+    onSuccess: async () => {
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
       await utils.salesRep.getStats.invalidate();
@@ -415,253 +415,183 @@ export default function OrdersPage() {
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
-      await utils.invoice.list.invalidate();
-      if (data?.order) {
-        alert(`Quote converted to order ${data.order.orderNumber} successfully!`);
-      }
+      await utils.sampleReport.getAll.invalidate();
     },
-    onError: (err: any) => {
-      alert("Failed to convert quote: " + (err.message || "Unknown error"));
+  });
+  const restoreOrder = trpc.order.restore.useMutation({
+    onSuccess: async () => {
+      await utils.order.list.invalidate();
+      await utils.order.getStats.invalidate();
+      await utils.salesRep.getStats.invalidate();
+      await utils.salesRep.getSalesBreakdown.invalidate();
+      await utils.stock.search.invalidate();
+      await utils.stock.list.invalidate();
+      await utils.stock.getStats.invalidate();
+      await utils.sampleReport.getAll.invalidate();
     },
   });
 
-  // Build committed stock map: for each product, total qty in non-delivered/cancelled orders
-  const committedStock = useMemo(() => {
-    const map: Record<number, number> = {};
-    (orders || [])
-      .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
-      .flatMap((o) => o.items || [])
-      .forEach((item: any) => { map[item.stockItemId] = (map[item.stockItemId] || 0) + (item.quantity || 0); });
-    return map;
-  }, [orders]);
+  const { data: salesReps } = trpc.salesRep.list.useQuery(undefined, {
+    refetchInterval: 5000,
+    refetchOnMount: "always",
+  });
 
-  // Available = current SOH (stock already deducted at order creation).
-  // Stock is physically deducted in order.create and stays deducted through
-  // the entire lifecycle. Only cancelled orders restore stock.
-  // committedStock is used for display/info only, NOT for availability calc.
+  // ── stock availability (SOH minus committed quantities) ──
   const availableStock = useMemo(() => {
     const map: Record<number, number> = {};
-    (stockItems || []).forEach((s) => {
-      map[s.id] = s.quantity || 0;
+    (stockItems || []).forEach((s) => { map[s.id] = safeNum(s.quantity); });
+    // Subtract committed quantities from non-delivered, non-cancelled orders
+    (orders || []).forEach((o: any) => {
+      if (o.status === "delivered" || o.status === "cancelled" || o.status === "sample_delivered") return;
+      (o.items || []).forEach((it: any) => {
+        const id = Number(it.stockItemId);
+        if (!id) return;
+        const conversion = it.conversion || 1;
+        const qtyInKg = safeNum(it.quantity) * conversion;
+        map[id] = safeNum(map[id]) - qtyInKg;
+      });
     });
     return map;
-  }, [stockItems]);
+  }, [stockItems, orders]);
 
-  // For each product, get the active order statuses consuming that stock
+  // ── in-progress orders per product (for stock commitment display) ──
   const productOrderStatuses = useMemo(() => {
-    const map: Record<number, Array<{ orderNumber: string; status: string; qty: number }>> = {};
-    (orders || [])
-      .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
-      .forEach((o) => {
-        (o.items || []).forEach((item: any) => {
-          if (!map[item.stockItemId]) map[item.stockItemId] = [];
-          map[item.stockItemId].push({ orderNumber: o.orderNumber, status: o.status, qty: item.quantity });
-        });
+    const map: Record<number, { orderNumber: string; qty: number; status: string }[]> = {};
+    (orders || []).forEach((o: any) => {
+      if (o.status === "delivered" || o.status === "cancelled" || o.status === "sample_delivered") return;
+      (o.items || []).forEach((it: any) => {
+        const id = Number(it.stockItemId);
+        if (!id) return;
+        if (!map[id]) map[id] = [];
+        map[id].push({ orderNumber: o.orderNumber || `#${o.id}`, qty: it.quantity, status: o.status });
       });
+    });
     return map;
   }, [orders]);
+
+  function getTierPrice(stockItemId: number): number {
+    const item = (stockItems || []).find((s) => s.id === stockItemId);
+    if (!item) return 0;
+    switch (formData.priceTier) {
+      case "corporate": return safeNum(item.corporatePrice);
+      case "bulk": return safeNum(item.bulkPrice);
+      case "wholesale": return safeNum(item.wholesalePrice);
+      case "retail": return safeNum(item.retailPrice);
+      default: return safeNum(item.wholesalePrice);
+    }
+  }
+
+  function getEffectivePrice(stockItemId: number, customPrice?: number): number {
+    if (customPrice && customPrice > 0) return customPrice;
+    const special = (customerSpecialPrices || []).find((sp: any) => sp.stockItemId === stockItemId);
+    if (special && Number(special.price) > 0) return Number(special.price);
+    return getTierPrice(stockItemId);
+  }
+
+  function getUnitLabel(stockItemId: number, unit?: string): string {
+    const item = (stockItems || []).find((s) => s.id === stockItemId);
+    if (!item || !unit || unit === "each") return "unit";
+    const u = (item.sellingUnits || []).find((x: any) => x.unit === unit);
+    return u?.label || unit;
+  }
+
+  function formatCurrency(n: number) {
+    return "R " + n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
   function resetForm() {
     setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
     setCustomerSearch("");
-    setShowCustomerDropdown(false);
     setAdminOverride(false);
     setAdminPin("");
-  }
-
-  function getTierPrice(stockItemId: number | string, tier?: string): number {
-    const stock = (stockItems || []).find((s) => String(s.id) === String(stockItemId));
-    if (!stock) return 0;
-    // Sample orders ALWAYS use corporate price tier regardless of formData.priceTier
-    const effectiveTier = formData.orderType === "sample" ? "corporate" : (tier || formData.priceTier);
-    let rawPrice: number;
-    switch (effectiveTier) {
-      case "corporate": rawPrice = Number(stock.corporatePrice); break;
-      case "bulk": rawPrice = Number(stock.bulkPrice); break;
-      case "retail": rawPrice = Number(stock.retailPrice); break;
-      default: rawPrice = Number(stock.wholesalePrice); break;
-    }
-    // If loaded price is 0 or missing, fall back to STATIC_PRODUCTS (source of truth)
-    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
-      let staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode || (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim()));
-      // Renamed-format fallback: productCode may hold the static name (e.g. "20 MEGA LONG VALUE")
-      // with color appended to productName (e.g. "MEGA LONG VALUE Brown")
-      if (!staticProd && stock.productCode) {
-        const codeNorm = String(stock.productCode).toLowerCase().trim().replace(/\s+/g, " ");
-        const colorNorm = String(stock.color || "").toLowerCase().trim();
-        staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) =>
-          String(p.productName || "").toLowerCase().trim().replace(/\s+/g, " ") === codeNorm &&
-          (!colorNorm || String(p.color || "").toLowerCase().trim() === colorNorm)
-        );
-      }
-      if (staticProd) {
-        switch (effectiveTier) {
-          case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
-          case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
-          case "retail": rawPrice = Number(staticProd.retailPrice); break;
-          default: rawPrice = Number(staticProd.wholesalePrice); break;
-        }
-      }
-    }
-    return rawPrice;
-  }
-
-  function getEffectivePrice(stockItemId: number | string, customPrice?: number): number {
-    if (customPrice && customPrice > 0) return customPrice;
-    // Sample orders must ALWAYS use corporate price — never special/customer prices
-    if (formData.orderType === "sample") {
-      return getTierPrice(stockItemId);
-    }
-    const sp = (customerSpecialPrices || []).find((p: any) => String(p.stockItemId) === String(stockItemId));
-    if (sp) return Number(sp.specialPrice);
-    return getTierPrice(stockItemId);
-  }
-
-  function handleCustomerSelect(cid: number | string) {
-    const customer = (customers || []).find((c) => String(c.id) === String(cid));
-    setFormData({ ...formData, customerId: Number(cid) || 0,
-      priceTier: (customer?.priceTier as any) || "wholesale",
-      paymentTerms: (customer?.paymentTerms as any) || "cod",
-      deliveryAddress: customer?.physicalAddress || "",
-      // Only clear items when creating a NEW order — preserve items when editing
-      items: editingOrder ? formData.items : [],
-    });
-    setCustomerSearch(customer?.name || "");
     setShowCustomerDropdown(false);
   }
 
-  function handleOpenCustomerDropdown() {
-    setShowCustomerDropdown(true);
-    setCustomerSearch("");
-    setTimeout(() => customerInputRef.current?.focus(), 50);
-  }
-
-  const filteredCustomers = useMemo(() => {
-    const list = (customers || []).filter(Boolean).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
-    if (!showCustomerDropdown) return [];
-    const q = customerSearch.toLowerCase().trim();
-    if (!q || q.length < 1) return list;
-    return list.filter((c) =>
-      c.name?.toLowerCase().includes(q) ||
-      c.customerCode?.toLowerCase().includes(q) ||
-      c.city?.toLowerCase().includes(q)
-    );
-  }, [customers, customerSearch, showCustomerDropdown]);
-
-  function handleAddItem() { setFormData({ ...formData, items: [...formData.items, { stockItemId: 0, quantity: 1 }] }); }
-  function handleRemoveItem(index: number) { setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) }); }
-
-  const handleUpdateItem = (index: number, field: string, value: number | string) => {
-    setFormData((prev) => {
-      const updated = [...prev.items];
-      updated[index] = { ...updated[index], [field]: value };
-      if (field === "stockItemId" && Number(value) > 0) {
-        const product = (stockItems || []).find((s) => String(s.id) === String(value));
-        const units = product?.sellingUnits || [];
-        if (units.length > 0) {
-          updated[index].unit = units[0].unit;
-          updated[index].conversion = units[0].conversion;
-          updated[index].unitLabel = units[0].label;
-        } else {
-          updated[index].unit = "each";
-          updated[index].conversion = 1;
-          updated[index].unitLabel = "Each";
-        }
-        if (prev.orderType === "sample" && !sampleOverrideRef.current) updated[index].quantity = 1;
-      }
-      if (prev.orderType === "sample" && field === "quantity" && Number(value) > 1 && !sampleOverrideRef.current) {
-        updated[index].quantity = 1;
-      }
-      return { ...prev, items: updated };
+  // ── build filtered orders list ──
+  const filteredOrders = useMemo(() => {
+    let list = (orders || []).filter((o: any) => {
+      if (!o || typeof o !== "object") return false;
+      if (activeTab === "all") return true;
+      if (activeTab === "sample") return o.orderType === "sample";
+      if (activeTab === "quotes") return o.orderType === "quote";
+      return o.status === activeTab;
     });
-  };
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      list = list.filter((o: any) =>
+        (o.orderNumber || "").toLowerCase().includes(q) ||
+        (o.customerName || "").toLowerCase().includes(q) ||
+        String(o.id).includes(q)
+      );
+    }
+    // Sort: pending first, then by date desc
+    return list.sort((a: any, b: any) => {
+      const aPending = a.status === "pending" ? 1 : 0;
+      const bPending = b.status === "pending" ? 1 : 0;
+      if (aPending !== bPending) return bPending - aPending;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+  }, [orders, activeTab, orderSearch]);
 
-  function canEditOrderBasic(): { valid: boolean; error?: string } {
-    // Basic validation for admin editing existing orders — no stock check
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
-    if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
-    return { valid: true };
+  // ── totals for an order ──
+  function calcOrderTotal(order: any) {
+    return (order.items || []).reduce((sum: number, it: any) => {
+      const price = it.unitPrice || it.priceAtOrder || 0;
+      return sum + price * safeNum(it.quantity);
+    }, 0);
   }
 
+  function calcOrderTotalWithVat(order: any) {
+    const sub = calcOrderTotal(order);
+    const vat = sub * 0.15;
+    return sub + vat;
+  }
+
+  // ── validation helper ──
   function canPlaceOrder(): { valid: boolean; error?: string } {
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
-    if (Number(formData.customerId) === 0) return { valid: false, error: "Select a customer" };
-    // Quotes don't deduct stock — skip stock validation
-    if (formData.orderType === "quote") return { valid: true };
-    for (const item of validItems) {
-      const stockId = Number(item.stockItemId);
-      const avail = availableStock[stockId] || 0;
-      const conversion = item.conversion || 1;
-      const requestedQty = Number(item.quantity) * conversion;
-      if (avail <= 0) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
-      if (formData.orderType === "sample") {
-        // When editing, exclude the current order from the duplicate check
-        const existing = (orders || []).some((o) => 
-          o.id !== editingOrder?.id && // Exclude the order being edited
-          Number(o.customerId) === Number(formData.customerId) && 
-          o.orderType === "sample" && 
-          o.items?.some((it: any) => Number(it.stockItemId) === stockId)
-        );
-        if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
-        if (Number(item.quantity) > 1 && !sampleOverrideRef.current) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
-      } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
+    if (formData.items.length === 0) return { valid: false, error: "Add at least one item." };
+    for (const it of formData.items) {
+      if (!it.stockItemId) return { valid: false, error: "Select a product for every item." };
+      if (!it.quantity || it.quantity < 1) return { valid: false, error: "Quantity must be at least 1." };
     }
 
-    // CUSTOMER ACCOUNT CHECK: validate active status, credit limit, COD overdue
+    // CUSTOMER ACCOUNT CHECK
     const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
     if (customer) {
-      // Check inactive
       if (customer.isActive === false && !isSuperAdmin && !adminOverride) {
-        return { valid: false, error: `Customer account is INACTIVE. Only Super Admin can place orders for inactive customers.` };
+        return { valid: false, error: "Customer account is inactive. Contact admin." };
       }
-      // Check credit limit (non-COD only)
-      const creditLimit = Number(customer.creditLimit || 0);
+      const creditLimit = safeNum(customer.creditLimit);
+      const outstanding = safeNum(customer.balanceOutstanding);
       if (creditLimit > 0 && formData.paymentTerms !== "cod") {
-        const outstanding = (invoices || [])
-          .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
-          .reduce((sum: number, inv: any) => sum + (inv.balanceDue || 0), 0);
         if (outstanding >= creditLimit && !isSuperAdmin && !adminOverride) {
-          return { valid: false, error: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Only Super Admin can override.` };
+          return { valid: false, error: `Credit limit exceeded (R${outstanding.toFixed(2)} / R${creditLimit.toFixed(2)}).` };
         }
       }
-      // Check COD overdue (2 days)
       if (formData.paymentTerms === "cod") {
-        const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
-        const unpaidCOD = (invoices || [])
-          .filter((inv: any) => {
-            if (inv.customerId != customer.id) return false;
-            if (inv.status === "cancelled") return false;
-            if ((inv.balanceDue || 0) <= 0.01) return false;
-            return new Date(inv.invoiceDate || inv.createdAt) < twoDaysAgo;
-          });
+        const unpaidCOD = (invoices || []).filter((inv: any) =>
+          String(inv.customerId) === String(customer.id) &&
+          inv.paymentTerms === "cod" &&
+          inv.status !== "paid" &&
+          inv.status !== "cancelled"
+        );
         if (unpaidCOD.length > 0 && !isSuperAdmin && !adminOverride) {
-          const totalUnpaid = unpaidCOD.reduce((s: number, inv: any) => s + (inv.balanceDue || 0), 0);
-          return { valid: false, error: `COD account has unpaid invoices older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Only Super Admin can override.` };
+          return { valid: false, error: `This COD customer has ${unpaidCOD.length} unpaid COD invoice(s). Please settle before placing a new COD order.` };
         }
       }
     }
 
-    // ZERO AMOUNT VALIDATION: Calculate running total — reject if R0
-    if (formData.orderType !== "sample" && formData.orderType !== "quote") {
-      let runningSubtotal = 0;
-      for (const item of validItems) {
-        const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-        const conversion = item.conversion || 1;
-        const basePrice = getEffectivePrice(item.stockItemId);
-        const unitPrice = item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion;
-        runningSubtotal += unitPrice * item.quantity;
-      }
-      const runningTotal = runningSubtotal * 1.15;
-      if (runningTotal <= 0) {
-        return { valid: false, error: "Order total is R0.00. Please enter a valid unit price for each item before placing the order." };
-      }
+    const total = formData.items.reduce((sum, it) => {
+      const price = getEffectivePrice(it.stockItemId, it.unitPrice);
+      return sum + price * safeNum(it.quantity);
+    }, 0);
+    if (total <= 0) return { valid: false, error: "Order total must be greater than zero." };
 
-      // BELOW-CORPORATE VALIDATION: Check custom prices against corporate floor
+    // Admin override: below-corporate pricing
+    if (formData.orderType !== "sample" && formData.orderType !== "quote") {
+      const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
       const belowItems: string[] = [];
       for (const item of validItems) {
-        // Only check items where a custom price was explicitly entered (> 0)
         if (item.unitPrice && item.unitPrice > 0) {
           const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
           if (stock) {
@@ -674,107 +604,56 @@ export default function OrdersPage() {
         }
       }
       if (belowItems.length > 0 && !isAdmin && !adminOverride) {
-        return { valid: false, error: `PRICE BELOW CORPORATE FLOOR:\n${belowItems.join("\n")}\n\nSuper admin approval required.` };
+        return { valid: false, error: `Below corporate floor: ${belowItems.join(" | ")}. Admin PIN required.` };
       }
     }
 
-    // SUPER ADMIN PIN VALIDATION: if override checkbox is checked, require valid PIN
     if (adminOverride) {
-      if (!adminPin || adminPin.trim().length === 0) {
-        return { valid: false, error: "Please enter your admin PIN to approve this order." };
-      }
-      // Resolve PIN from multiple sources (cloud-first: Firebase may not have pin field synced)
-      let effectivePin = "";
-      // 1. Hardcoded defaults (most reliable — survives any data corruption)
-      const DEFAULT_USERS = [
-        { id: 1, name: "Collin", pin: "2580" },
-        { id: 2, name: "Adeli", pin: "1111" },
-        { id: 3, name: "Inhouse", pin: "2222" },
-        { id: 4, name: "Michael", pin: "3333" },
-        { id: 5, name: "Nkosana", pin: "4444" },
-        { id: 6, name: "Tebogo Bila", pin: "6666" },
-        { id: 7, name: "Aggie", pin: "1018" },
-        { id: 8, name: "Ronald", pin: "2581" },
-        { id: 9, name: "Jolene", pin: "7777" },
-        { id: 10, name: "David", pin: "8888" },
-      ];
-      const defaultUser = DEFAULT_USERS.find((u) =>
-        u.id === user?.id ||
-        (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
-      );
-      if (defaultUser) effectivePin = defaultUser.pin;
-      // 2. Direct localStorage read (bypasses React state / tRPC cache)
-      if (!effectivePin) {
-        try {
-          const demoStr = localStorage.getItem("demo_user");
-          if (demoStr) {
-            const demo = JSON.parse(demoStr);
-            if (demo.pin != null) effectivePin = String(demo.pin);
-          }
-        } catch { /* ignore */ }
-      }
-      // 3. sgf_users in localStorage (Firebase-synced users)
-      if (!effectivePin) {
-        try {
-          const rawUsers = localStorage.getItem("sgf_users");
-          if (rawUsers) {
-            const allUsers = JSON.parse(rawUsers);
-            const dbUser = allUsers.find((u: any) =>
-              u.id === user?.id ||
-              (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
-            );
-            if (dbUser?.pin != null) effectivePin = String(dbUser.pin);
-          }
-        } catch { /* ignore */ }
-      }
-      if (adminPin !== effectivePin) {
-        return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve this order." };
+      if (!adminPin || adminPin.length < 4) {
+        return { valid: false, error: "Enter a valid admin PIN (min 4 digits)." };
       }
     }
 
     return { valid: true };
   }
 
+  const orderCheck = useMemo(() => canPlaceOrder(), [formData, customers, stockItems, invoices, isAdmin, isSuperAdmin, adminOverride, adminPin]);
+
+  function handleAddItem() {
+    setFormData((prev) => ({ ...prev, items: [...prev.items, { stockItemId: 0, quantity: 1, unitPrice: undefined }] }));
+  }
+  function handleRemoveItem(index: number) {
+    setFormData((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+  }
+  function handleUpdateItem(index: number, field: string, value: any) {
+    setFormData((prev) => {
+      const updated = [...prev.items];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, items: updated };
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // When editing ANY order, use basic validation (no stock check, no duplicate checks)
-    // Stock was already deducted when order was created; we're just updating details
-    const check = editingOrder ? canEditOrderBasic() : canPlaceOrder();
-    if (!check.valid) { alert(check.error); return; }
-    const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-    // CRITICAL FIX: Coerce IDs to numbers because Firebase returns them as strings.
-    // tRPC Zod schema expects numbers; without coercion, client-side validation
-    // fails silently (no onError), making the Place Order button appear to do nothing.
+    if (!orderCheck.valid) return;
+
     const payload: any = {
-      customerId: Number(formData.customerId) || 0,
-      orderType: formData.orderType,
-      paymentTerms: formData.paymentTerms,
-      priceTier: formData.priceTier,
-      deliveryAddress: formData.deliveryAddress,
-      notes: formData.notes,
-      items: validItems.map((item) => ({
-        stockItemId: Number(item.stockItemId) || 0,
-        quantity: formData.orderType === "sample" && !sampleOverrideRef.current ? 1 : Number(item.quantity) || 0,
-        unitPrice: formData.orderType === "sample" ? 0 : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : undefined),
-        unit: item.unit || "each",
-        conversion: item.conversion || 1,
-        unitLabel: item.unitLabel || "Each"
-      }))
+      ...formData,
+      customerId: Number(formData.customerId),
+      items: formData.items.map((it) => ({
+        stockItemId: Number(it.stockItemId),
+        quantity: Number(it.quantity),
+        unitPrice: it.unitPrice,
+        unit: it.unit || "each",
+        conversion: it.conversion || 1,
+      })),
+      status: "pending",
     };
-    // Only set salesRepName on NEW orders. On edit, preserve original.
-    // Use the customer's assigned sales rep, not the logged-in user.
-    if (!editingOrder) {
-      const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
-      payload.salesRepName = customer?.salesRepName || user?.name || "";
-      // Pass admin override flag for below-corporate pricing approval
-      if (adminOverride) {
-        payload.adminApproved = true;
-      }
-      // Pass super admin override for customer blocking (inactive, credit limit, COD overdue)
-      if (adminOverride && adminPin) {
-        payload.superAdminOverride = true;
-      }
+
+    if (adminOverride && adminPin) {
+      payload.superAdminOverride = true;
     }
+
     if (editingOrder) {
       updateOrder.mutate({ id: editingOrder.id, data: payload });
     } else {
@@ -782,519 +661,356 @@ export default function OrdersPage() {
     }
   }
 
+  function handlePrint(order: any) {
+    const company = getCompanyConfig();
+    const customer = (customers || []).find((c: any) => String(c.id) === String(order.customerId));
+    const rep = (salesReps || []).find((r: any) => String(r.id) === String(order.salesRepId));
+    const repName = rep?.name || order.salesRepName || "";
+    const repCell = rep?.cell || "";
+
+    const subtotal = (order.items || []).reduce((sum: number, it: any) => {
+      const price = it.unitPrice || it.priceAtOrder || 0;
+      return sum + price * safeNum(it.quantity);
+    }, 0);
+    const vat = subtotal * 0.15;
+    const total = subtotal + vat;
+
+    const itemsHtml = (order.items || []).map((it: any) => {
+      const stock = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+      const unitLabel = getUnitLabel(it.stockItemId, it.unit);
+      const price = it.unitPrice || it.priceAtOrder || 0;
+      const lineTotal = price * safeNum(it.quantity);
+      return `
+        <tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;">${stock?.productName || "Product"}${it.unit && it.unit !== "each" ? ` <span style="color:#888;font-size:11px;">(${unitLabel})</span>` : ""}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center;">${it.quantity}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right;">R ${price.toFixed(2)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right;">R ${lineTotal.toFixed(2)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Order ${order.orderNumber || order.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
+            .header { border-bottom: 2px solid #D4A843; padding-bottom: 12px; margin-bottom: 16px; }
+            .header h1 { margin: 0; font-size: 22px; color: #D4A843; }
+            .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            th { background: #f8f8f8; padding: 8px; font-size: 12px; text-align: left; border-bottom: 2px solid #ddd; }
+            .totals { text-align: right; font-size: 14px; margin-top: 8px; }
+            .totals strong { font-size: 16px; color: #D4A843; }
+            .footer { margin-top: 24px; font-size: 11px; color: #777; border-top: 1px solid #eee; padding-top: 8px; }
+            .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; margin-left: 8px; }
+            .banking { background: #f8f8f8; padding: 10px; border-radius: 6px; font-size: 12px; margin-top: 12px; }
+            .banking strong { color: #D4A843; }
+            .vat-row { color: #666; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${company.name}</h1>
+            <div style="font-size:12px;color:#555;">${company.registrationNumber || ""} | ${company.vatNumber || ""}</div>
+            <div style="font-size:12px;color:#555;">${company.address || ""}</div>
+            <div style="font-size:12px;color:#555;">${company.email || ""} | ${company.phone || ""}</div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+              <strong style="font-size:16px;">ORDER ${order.orderNumber || order.id}</strong>
+              <span class="status-badge" style="background:${STATUS_LABELS[order.status]?.color || "#ccc"}22;color:${STATUS_LABELS[order.status]?.color || "#ccc"};">${STATUS_LABELS[order.status]?.label || order.status}</span>
+            </div>
+            <div style="text-align:right;font-size:12px;color:#555;">
+              <div>Date: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}</div>
+              <div>Payment: ${(order.paymentTerms || "").replace("_", " ")}</div>
+            </div>
+          </div>
+
+          <div class="meta">
+            <strong>Customer:</strong> ${customer?.name || order.customerName || "N/A"}<br/>
+            <strong>Delivery:</strong> ${order.deliveryAddress || customer?.deliveryAddress || "N/A"}<br/>
+            <strong>Sales Rep:</strong> ${repName}${repCell ? ` | ${repCell}` : ""}
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th style="text-align:center;">Qty</th>
+                <th style="text-align:right;">Unit Price</th>
+                <th style="text-align:right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <div>Subtotal: R ${subtotal.toFixed(2)}</div>
+            <div class="vat-row">VAT (15%): R ${vat.toFixed(2)}</div>
+            <div><strong>Total: R ${total.toFixed(2)}</strong></div>
+          </div>
+
+          <div class="banking">
+            <strong>Banking Details</strong><br/>
+            Bank: ${banking.bankName || "N/A"}<br/>
+            Account: ${banking.accountNumber || "N/A"}<br/>
+            Branch: ${banking.branchCode || "N/A"}<br/>
+            Account Name: ${banking.accountName || "N/A"}
+          </div>
+
+          <div class="footer">
+            ${company.name} — Order generated from Supreme Global Foods Sales App<br/>
+            Thank you for your business!
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 300);
+  }
+
+  function handlePrintDeliveryNote(order: any) {
+    const company = getCompanyConfig();
+    const customer = (customers || []).find((c: any) => String(c.id) === String(order.customerId));
+    const rep = (salesReps || []).find((r: any) => String(r.id) === String(order.salesRepId));
+    const repName = rep?.name || order.salesRepName || "";
+    const repCell = rep?.cell || "";
+
+    const itemsHtml = (order.items || []).map((it: any) => {
+      const stock = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+      const unitLabel = getUnitLabel(it.stockItemId, it.unit);
+      return `
+        <tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;">${stock?.productName || "Product"}${it.unit && it.unit !== "each" ? ` <span style="color:#888;font-size:11px;">(${unitLabel})</span>` : ""}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center;">${it.quantity}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right;">R ${(it.unitPrice || it.priceAtOrder || 0).toFixed(2)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Delivery Note ${order.orderNumber || order.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
+            .header { border-bottom: 2px solid #4ADE80; padding-bottom: 12px; margin-bottom: 16px; }
+            .header h1 { margin: 0; font-size: 22px; color: #4ADE80; }
+            .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            th { background: #f8f8f8; padding: 8px; font-size: 12px; text-align: left; border-bottom: 2px solid #ddd; }
+            .footer { margin-top: 24px; font-size: 11px; color: #777; border-top: 1px solid #eee; padding-top: 8px; }
+            .signature { margin-top: 40px; display: flex; justify-content: space-between; }
+            .signature-box { width: 200px; border-top: 1px solid #333; padding-top: 4px; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${company.name}</h1>
+            <div style="font-size:12px;color:#555;">${company.registrationNumber || ""} | ${company.vatNumber || ""}</div>
+            <div style="font-size:12px;color:#555;">${company.address || ""}</div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+              <strong style="font-size:16px;">DELIVERY NOTE — ${order.orderNumber || order.id}</strong>
+            </div>
+            <div style="text-align:right;font-size:12px;color:#555;">
+              <div>Date: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}</div>
+            </div>
+          </div>
+
+          <div class="meta">
+            <strong>Customer:</strong> ${customer?.name || order.customerName || "N/A"}<br/>
+            <strong>Delivery Address:</strong> ${order.deliveryAddress || customer?.deliveryAddress || "N/A"}<br/>
+            <strong>Sales Rep:</strong> ${repName}${repCell ? ` | ${repCell}` : ""}
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th style="text-align:center;">Qty</th>
+                <th style="text-align:right;">Unit Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="signature">
+            <div class="signature-box">Received By<br/><span style="font-size:10px;color:#888;">Name & Signature</span></div>
+            <div class="signature-box">Date Received</div>
+          </div>
+
+          <div class="footer">
+            ${company.name} — Delivery Note generated from Supreme Global Foods Sales App
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 300);
+  }
+
+  // ── START EDIT ORDER ──
   function startEditOrder(order: any) {
     setEditingOrder(order);
-    sampleOverrideRef.current = order?.orderType === "sample" && user?.role === "super_admin";
+    const mappedItems = (order.items || []).map((it: any) => ({
+      stockItemId: it.stockItemId,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      unit: it.unit || "each",
+      conversion: it.conversion || 1,
+    }));
+    setFormData({
+      customerId: order.customerId,
+      orderType: order.orderType || "regular",
+      paymentTerms: order.paymentTerms || "cod",
+      priceTier: order.priceTier || "wholesale",
+      deliveryAddress: order.deliveryAddress || "",
+      notes: order.notes || "",
+      items: mappedItems,
+    });
+    setCustomerSearch(order.customerName || "");
     setAdminOverride(false);
     setAdminPin("");
-    setFormData({
-      customerId: order.customerId, orderType: order.orderType || "regular",
-      paymentTerms: order.paymentTerms || "cod", priceTier: order.priceTier || "wholesale",
-      deliveryAddress: order.deliveryAddress || "", notes: order.notes || "",
-      items: (order.items || []).map((it: any) => ({ stockItemId: it.stockItemId, quantity: it.quantity, unitPrice: it.unitPrice, unit: it.unit || "each", conversion: it.conversion || 1, unitLabel: it.unitLabel || "Each" })),
-    });
-    // Pre-fill customer search with existing customer name so field is not blank
-    const cust = (customers || []).find((c: any) => c.id === order.customerId);
-    setCustomerSearch(cust?.name || "");
     setShowForm(true);
   }
 
-  function canEditOrder(order: any): boolean {
-    // ONLY ADMIN can edit orders (admin or super_admin).
-    // Sales reps can NO LONGER edit their own orders — they must contact admin.
-    // Quotes: only admin can edit while in draft or sent status.
-    if (order.orderType === "quote") {
-      if (order.status === "converted" || order.status === "rejected") return false;
-      return isAdmin;
-    }
-    // Admin can edit ANY order (including delivered/cancelled/sample_delivered)
-    return isAdmin;
-  }
-
-  function canCancelOrder(order: any): boolean {
-    // ONLY ADMIN can cancel orders.
-    // Sales reps can NO LONGER cancel orders — they must contact admin.
-    // Quotes: only admin can reject while in draft or sent status.
-    if (order.orderType === "quote") {
-      if (order.status === "converted" || order.status === "rejected") return false;
-      return isAdmin;
-    }
-    // Admin can cancel ANY non-cancelled order
-    return isAdmin && order.status !== "cancelled";
-  }
-
-  function canProgressOrder(order: any): boolean {
-    // Quotes don't use the normal order status flow
-    if (order.orderType === "quote") return false;
-    // ONLY ADMIN can click status buttons (Mark Picking / Mark Ready / Mark Delivered)
-    if (!isAdmin) return false;
-    if (order.status === "delivered" || order.status === "cancelled") return false;
-    return true;
-  }
-
-  function getCustomer(order: any) {
-    return (customers || []).find((c) => c.id === order.customerId);
-  }
-
-  function printPickingSlip(order: any) {
-    const customer = getCustomer(order);
-    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
-    const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-<html><head><title>Picking Slip - ${order.orderNumber}</title>
-<style>
-  @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
-  .logo-img { height: 55px; margin-bottom: 4px; }
-  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
-  .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
-  .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
-  .inv-num { color: #D4A843; font-size: 16px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-  th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
-  .badge-sample { background: #FFF3E0; color: #E65100; }
-  .footer { margin-top: 40px; border-top: 2px solid #D4A843; padding-top: 20px; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
-  .sig-line { border-bottom: 1px solid #333; height: 40px; margin-top: 8px; }
-  .sig-label { font-size: 11px; color: #666; margin-top: 6px; }
-</style></head><body>
-  <div class="header">
-    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
-    <div class="subtitle">Tel: ${getCompanyConfig((order.company || "sgf") as any).contact.phone}</div>
-  </div>
-  <div class="doc-title">FACTORY PICKING SLIP</div>
-  <div style="text-align:center;margin-bottom:15px;">
-    <span class="badge ${order.orderType === "sample" ? "badge-sample" : ""}">${order.orderType === "sample" ? "SAMPLE ORDER — NO CHARGE" : `PRICE TIER: ${(order.priceTier || "WHOLESALE").toUpperCase()}`}</span>
-  </div>
-  <div class="info-section">
-    <div class="info-block"><div class="label">Invoice Number</div><div class="value inv-num">${invoiceNumber}</div></div>
-    <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
-    <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#D4A843;font-weight:700;">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div></div>
-    <div class="info-block"><div class="label">Phone</div><div class="value">${customer?.phone || "N/A"}</div></div>
-    <div class="info-block" style="grid-column: 1 / -1;"><div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div></div>
-    ${order.notes ? `<div class="info-block" style="grid-column: 1 / -1;"><div class="label">Notes</div><div class="value" style="font-style:italic;color:#888;">${order.notes}</div></div>` : ""}
-  </div>
-  <table>
-    <thead><tr><th>Product Code</th><th>Product Name</th><th>Qty</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `<tr><td>${item.productCode}</td><td>${item.productName}</td><td style="font-weight:bold;font-size:16px;">${item.quantity}${item.unitLabel ? ` <span style="color:#888;font-size:10px;">${item.unitLabel}</span>` : ""}</td></tr>`).join("") || ""}
-    </tbody>
-  </table>
-  <div class="footer">
-    <div class="signatures">
-      <div><div class="label">Picked By (Name & Signature)</div><div class="sig-line"></div><div class="sig-label">Print name and sign</div></div>
-      <div><div class="label">Time Completed</div><div class="sig-line"></div><div class="sig-label">Date & Time order was picked</div></div>
-    </div>
-    <div style="margin-top:30px;text-align:center;font-size:10px;color:#999;">This is an internal factory document. Prices are not shown. For office use only.</div>
-  </div>
-  <script>
-    (function(){
-      var done=false;
-      function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } }
-      if(document.readyState==='complete') printIt();
-      else window.onload=printIt;
-      setTimeout(printIt, 2000);
-    })();
-  </script>
-</body></html>`);
-    printWindow.document.close();
-  }
-
-  /** Print a professional quote document on Supreme Global Foods stationery */
-  function printQuote(order: any) {
-    const customer = getCustomer(order);
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
-    const validUntil = new Date(order.createdAt);
-    validUntil.setDate(validUntil.getDate() + 30);
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`
-<html><head><title>Quote - ${order.orderNumber}</title>
-<style>
-  @page { size: A4; margin: 10mm; }
-  @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 12px; border-bottom: 3px solid #D4A843; padding-bottom: 10px; }
-  .logo-img { height: 45px; margin-bottom: 2px; }
-  .logo-fallback { font-size: 24px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
-  .subtitle { color: #666; font-size: 11px; margin-top: 2px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 20px; font-weight: bold; margin: 10px 0; letter-spacing: 2px; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #6366F1; color: white; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
-  .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 12px; font-weight: 600; margin-top: 2px; color: #222; }
-  .full-width { grid-column: 1 / -1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th { background: #D4A843; color: white; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
-  .text-right { text-align: right; }
-  .totals { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border-left: 4px solid #D4A843; }
-  .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
-  .total-final { font-size: 16px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 6px; margin-top: 4px; }
-  .terms { margin-top: 14px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
-  .terms-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .terms-text { font-size: 10px; color: #666; line-height: 1.5; }
-  .footer { margin-top: 16px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
-  .banking { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; }
-  .banking-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .banking-row { display: grid; grid-template-columns: 120px 1fr; font-size: 11px; padding: 2px 0; }
-  .banking-label { color: #888; }
-  .banking-value { color: #333; font-weight: 600; }
-</style></head><body>
-  <div class="header">
-    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington Road, Wadeville, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
-  </div>
-  <div class="doc-title">QUOTATION</div>
-  <div style="text-align:center;margin-bottom:10px;"><span class="badge">QUOTE</span></div>
-  <div class="info-section">
-    <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:14px;">${order.orderNumber}</div></div>
-    <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Prepared By</div><div class="value">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
-    <div class="full-width" style="margin-top:4px;border-top:1px solid #e0e0e0;padding-top:8px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div>
-          <div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Phone</div><div class="value">${customer?.phone || "N/A"}</div>
-        </div>
-        <div>
-          <div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div>
-          <div class="label" style="margin-top:4px;">Payment Terms</div><div class="value">${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Price Tier</div><div class="value">${(order.priceTier || "wholesale").toUpperCase()}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <table>
-    <thead><tr><th>Product Code</th><th>Product Name</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Line Total</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `
-        <tr>
-          <td>${item.productCode || "N/A"}</td>
-          <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:9px;">${item.unitLabel}</span>` : ""}</td>
-          <td style="text-align:center;font-weight:bold;">${item.quantity}</td>
-          <td style="text-align:right;">${item.unit || "each"}</td>
-          <td style="text-align:right;">R ${safeNum(item.unitPrice).toFixed(2)}</td>
-          <td style="text-align:right;font-weight:600;">R ${safeNum(item.lineTotal).toFixed(2)}</td>
-        </tr>
-      `).join("") || ""}
-    </tbody>
-  </table>
-  <div class="totals">
-    <div class="total-row"><span>Subtotal</span><span>R ${safeNum(order.subtotal).toFixed(2)}</span></div>
-    <div class="total-row"><span>VAT (15%)</span><span>R ${safeNum(order.vat).toFixed(2)}</span></div>
-    <div class="total-final"><span>TOTAL</span><span>R ${safeNum(order.total).toFixed(2)}</span></div>
-  </div>
-  <div class="banking">
-    <div class="banking-title">Banking Details</div>
-    <div class="banking-row"><span class="banking-label">Bank</span><span class="banking-value">${banking.bankName}</span></div>
-    <div class="banking-row"><span class="banking-label">Account Name</span><span class="banking-value">${banking.accountName}</span></div>
-    <div class="banking-row"><span class="banking-label">Account Number</span><span class="banking-value">${banking.accountNumber}</span></div>
-    <div class="banking-row"><span class="banking-label">Branch Code</span><span class="banking-value">${banking.branchCode}</span></div>
-    <div class="banking-row"><span class="banking-label">Branch Name</span><span class="banking-value">${banking.branchName}</span></div>
-  </div>
-  <div class="terms">
-    <div class="terms-title">Terms & Conditions</div>
-    <div class="terms-text">This quotation is valid for 30 days from the date of issue. Prices are subject to change without notice after the validity period. Payment terms are strictly as stated above. Goods remain the property of Supreme Global Foods until paid in full. E&OE.</div>
-  </div>
-  <div class="footer">
-    <div>28 Nagington Road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
-    <div style="margin-top:4px;">Reg: 2018/123456/07 &middot; VAT: 4120263826</div>
-  </div>
-  <script>
-    (function(){
-      var done=false;
-      function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } }
-      if(document.readyState==='complete') printIt();
-      else window.onload=printIt;
-      setTimeout(printIt, 2000);
-    })();
-  </script>
-</body></html>`);
-    w.document.close();
-  }
-
-  /** Print a professional invoice on Supreme Global Foods stationery */
-  function printInvoice(order: any) {
-    const customer = getCustomer(order);
-    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
-    const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-<html><head><title>Invoice - ${invoiceNumber}</title>
-<style>
-  @page { size: A4; margin: 10mm; }
-  @media print { body { padding: 0; } .no-print { display: none; } }
-  body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 12px; border-bottom: 3px solid #D4A843; padding-bottom: 10px; }
-  .logo-img { height: 45px; margin-bottom: 2px; }
-  .logo-fallback { font-size: 24px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
-  .subtitle { color: #666; font-size: 11px; margin-top: 2px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 20px; font-weight: bold; margin: 10px 0; letter-spacing: 2px; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #4ADE80; color: white; }
-  .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
-  .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-  .value { font-size: 12px; font-weight: 600; margin-top: 2px; color: #222; }
-  .full-width { grid-column: 1 / -1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th { background: #D4A843; color: white; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
-  td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
-  .text-right { text-align: right; }
-  .totals { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border-left: 4px solid #D4A843; }
-  .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
-  .total-final { font-size: 16px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 6px; margin-top: 4px; }
-  .terms { margin-top: 14px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
-  .terms-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .terms-text { font-size: 10px; color: #666; line-height: 1.5; }
-  .footer { margin-top: 16px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
-  .banking { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; }
-  .banking-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .banking-row { display: grid; grid-template-columns: 120px 1fr; font-size: 11px; padding: 2px 0; }
-  .banking-label { color: #888; }
-  .banking-value { color: #333; font-weight: 600; }
-</style></head><body>
-  <div class="header">
-    <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington Road, Wadeville, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
-  </div>
-  <div class="doc-title">TAX INVOICE</div>
-  <div style="text-align:center;margin-bottom:10px;"><span class="badge">INVOICE</span></div>
-  <div class="info-section">
-    <div><div class="label">Invoice Number</div><div class="value" style="color:#D4A843;font-size:14px;">${invoiceNumber}</div></div>
-    <div><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
-    <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Sales Rep</div><div class="value">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
-    <div class="full-width" style="margin-top:4px;border-top:1px solid #e0e0e0;padding-top:8px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div>
-          <div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Phone</div><div class="value">${customer?.phone || "N/A"}</div>
-        </div>
-        <div>
-          <div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || customer?.physicalAddress || "N/A"}${customer?.city ? `, ${customer.city}` : ""}</div>
-          <div class="label" style="margin-top:4px;">Payment Terms</div><div class="value">${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div>
-          <div class="label" style="margin-top:4px;">Price Tier</div><div class="value">${(order.priceTier || "wholesale").toUpperCase()}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <table>
-    <thead><tr><th>Product Code</th><th>Product Name</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Unit</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Line Total</th></tr></thead>
-    <tbody>
-      ${order.items?.map((item: any) => `
-        <tr>
-          <td>${item.productCode || "N/A"}</td>
-          <td><strong>${item.productName || "Unknown"}</strong>${item.unitLabel ? `<br/><span style="color:#888;font-size:9px;">${item.unitLabel}</span>` : ""}</td>
-          <td style="text-align:center;font-weight:bold;">${item.quantity}</td>
-          <td style="text-align:right;">${item.unit || "each"}</td>
-          <td style="text-align:right;">R ${safeNum(item.unitPrice).toFixed(2)}</td>
-          <td style="text-align:right;font-weight:600;">R ${safeNum(item.lineTotal).toFixed(2)}</td>
-        </tr>
-      `).join("") || ""}
-    </tbody>
-  </table>
-  <div class="totals">
-    <div class="total-row"><span>Subtotal</span><span>R ${safeNum(order.subtotal).toFixed(2)}</span></div>
-    <div class="total-row"><span>VAT (15%)</span><span>R ${safeNum(order.vat).toFixed(2)}</span></div>
-    <div class="total-final"><span>TOTAL</span><span>R ${safeNum(order.total).toFixed(2)}</span></div>
-  </div>
-  <div class="banking">
-    <div class="banking-title">Banking Details</div>
-    <div class="banking-row"><span class="banking-label">Bank</span><span class="banking-value">${banking.bankName}</span></div>
-    <div class="banking-row"><span class="banking-label">Account Name</span><span class="banking-value">${banking.accountName}</span></div>
-    <div class="banking-row"><span class="banking-label">Account Number</span><span class="banking-value">${banking.accountNumber}</span></div>
-    <div class="banking-row"><span class="banking-label">Branch Code</span><span class="banking-value">${banking.branchCode}</span></div>
-    <div class="banking-row"><span class="banking-label">Branch Name</span><span class="banking-value">${banking.branchName}</span></div>
-  </div>
-  <div class="terms">
-    <div class="terms-title">Terms & Conditions</div>
-    <div class="terms-text">Payment is due strictly in accordance with the payment terms stated above. Interest will be charged on overdue accounts. Goods remain the property of Supreme Global Foods until paid in full. E&OE.</div>
-  </div>
-  <div class="footer">
-    <div>28 Nagington Road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
-    <div style="margin-top:4px;">Reg: 2018/123456/07 &middot; VAT: 4120263826</div>
-  </div>
-  <script>
-    (function(){
-      var done=false;
-      function printIt(){ if(!done){ done=true; setTimeout(function(){ window.print(); }, 200); } }
-      if(document.readyState==='complete') printIt();
-      else window.onload=printIt;
-      setTimeout(printIt, 2000);
-    })();
-  </script>
-</body></html>`);
-    printWindow.document.close();
-  }
-
-  /** Email a professional invoice as a shareable mailto link */
-  function emailInvoice(order: any) {
-    const customer = getCustomer(order);
-    const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
-    const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
-    const subject = encodeURIComponent(`Tax Invoice ${invoiceNumber} — Supreme Global Foods`);
-    const body = encodeURIComponent(`Dear ${customer?.name || "Customer"},\n\nPlease find your tax invoice attached.\n\nInvoice Number: ${invoiceNumber}\nOrder Number: ${order.orderNumber}\nDate: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}\nTotal: R ${safeNum(order.total).toFixed(2)}\n\nPayment Terms: ${order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}\n\nBanking Details:\nBank: ${banking.bankName}\nAccount Name: ${banking.accountName}\nAccount Number: ${banking.accountNumber}\nBranch Code: ${banking.branchCode}\nBranch Name: ${banking.branchName}\n\nKind regards,\nSupreme Global Foods Team\nsales@supremeglobalfoods.co.za\n061 478 8888`);
-    window.location.href = `mailto:${customer?.email || ""}?subject=${subject}&body=${body}`;
-  }
-
-  // Build filtered orders
-  const filteredOrders = useMemo(() => {
-    let list = (orders || []).filter((o: any) => {
-      if (activeTab === "all") return true;
-      if (activeTab === "sample") return o.orderType === "sample";
-      if (activeTab === "quotes") return o.orderType === "quote";
-      return o.status === activeTab && o.orderType !== "sample" && o.orderType !== "quote";
+  // ── Sales rep view: filter to own orders ──
+  const myOrders = useMemo(() => {
+    if (isAdmin || isSuperAdmin) return filteredOrders;
+    return filteredOrders.filter((o: any) => {
+      const repNameMatch = (o.salesRepName || "").toLowerCase().trim() === myRepName.toLowerCase().trim();
+      const repIdMatch = user && String(o.salesRepId) === String(user.id);
+      return repNameMatch || repIdMatch;
     });
-    const q = orderSearch.toLowerCase().trim();
-    if (q) {
-      list = list.filter((o: any) =>
-        o.orderNumber?.toLowerCase().includes(q) ||
-        o.customerName?.toLowerCase().includes(q) ||
-        o.salesRepName?.toLowerCase().includes(q) ||
-        String(o.id).includes(q)
-      );
-    }
-    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [orders, activeTab, orderSearch]);
-
-  // Stats
-  const orderCounts = useMemo(() => {
-    const all = orders || [];
-    return {
-      all: all.length,
-      pending: all.filter((o: any) => o.status === "pending" && o.orderType !== "sample" && o.orderType !== "quote").length,
-      picking: all.filter((o: any) => o.status === "picking" && o.orderType !== "sample" && o.orderType !== "quote").length,
-      ready: all.filter((o: any) => o.status === "ready" && o.orderType !== "sample" && o.orderType !== "quote").length,
-      delivered: all.filter((o: any) => o.status === "delivered" && o.orderType !== "sample" && o.orderType !== "quote").length,
-      cancelled: all.filter((o: any) => o.status === "cancelled" && o.orderType !== "sample" && o.orderType !== "quote").length,
-      sample: all.filter((o: any) => o.orderType === "sample").length,
-      quotes: all.filter((o: any) => o.orderType === "quote").length,
-    };
-  }, [orders]);
+  }, [filteredOrders, isAdmin, isSuperAdmin, myRepName, user]);
 
   return (
-    <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        {statusTabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className="card-surface p-3 text-center transition-all cursor-pointer"
-            style={{
-              border: activeTab === tab.key ? "2px solid #D4A843" : "2px solid transparent",
-              backgroundColor: activeTab === tab.key ? "rgba(212,168,67,0.1)" : undefined,
-            }}
-          >
-            <div className="text-2xl font-display font-bold" style={{ color: activeTab === tab.key ? "#D4A843" : "#E8E8E9" }}>
-              {orderCounts[tab.key as keyof typeof orderCounts] || 0}
-            </div>
-            <div className="text-xs text-[#8A8B8C] mt-1">{tab.label}</div>
+    <div className="p-4 sm:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-white">Orders</h1>
+          <p className="text-[#8A8B8C] text-sm mt-1">Manage orders, quotes & samples</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" /> New Order
           </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Pending", value: stats?.pending || 0, color: "#F59E0B" },
+          { label: "Picking", value: stats?.picking || 0, color: "#6366F1" },
+          { label: "Ready", value: stats?.ready || 0, color: "#4ADE80" },
+          { label: "Delivered", value: stats?.delivered || 0, color: "#4ADE80" },
+        ].map((s) => (
+          <div key={s.label} className="card-surface p-4" style={{ borderLeft: `4px solid ${s.color}` }}>
+            <div className="text-[#8A8B8C] text-xs font-body uppercase tracking-wider">{s.label}</div>
+            <div className="text-2xl font-display font-bold text-white mt-1">{s.value}</div>
+          </div>
         ))}
       </div>
 
-      {/* Search + Add */}
+      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
-          <input
-            type="text"
-            value={orderSearch}
-            onChange={(e) => setOrderSearch(e.target.value)}
-            placeholder="Search orders..."
-            className="input-field w-full pl-10"
-          />
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {statusTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="px-3 py-1.5 rounded-lg text-xs font-body font-medium whitespace-nowrap transition-colors cursor-pointer"
+              style={{
+                backgroundColor: activeTab === tab.key ? "rgba(212,168,67,0.15)" : "#0A0A0B",
+                color: activeTab === tab.key ? "#D4A843" : "#8A8B8C",
+                border: activeTab === tab.key ? "1px solid rgba(212,168,67,0.3)" : "1px solid #222324",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-        <button
-          onClick={() => { setShowForm(true); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> New Order
-        </button>
+        <input
+          type="text"
+          value={orderSearch}
+          onChange={(e) => setOrderSearch(e.target.value)}
+          placeholder="Search orders..."
+          className="input-field w-full sm:w-64"
+        />
       </div>
 
       {/* Orders List */}
       <div className="space-y-3">
-        {filteredOrders.length === 0 && (
-          <div className="card-surface p-8 text-center text-[#8A8B8C]">
-            <ShoppingBag className="w-8 h-8 mx-auto mb-3 opacity-50" />
-            <p>No orders found</p>
+        {myOrders.length === 0 && (
+          <div className="card-surface p-8 text-center text-[#8A8B8C] text-sm">
+            No orders found.
           </div>
         )}
-        {filteredOrders.map((order: any) => {
-          const customer = getCustomer(order);
+        {myOrders.map((order: any) => {
           const isExpanded = expandedOrder === order.id;
+          const customer = (customers || []).find((c: any) => String(c.id) === String(order.customerId));
+          const total = calcOrderTotal(order);
+          const totalWithVat = calcOrderTotalWithVat(order);
+          const statusInfo = STATUS_LABELS[order.status] || { label: order.status, color: "#8A8B8C" };
           const hasInvoice = liveInvoiceOrderIds.has(Number(order.id));
-          const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
-          const invoiceNumber = matchedInvoice?.invoiceNumber || "";
-          const statusConfig = STATUS_LABELS[order.status] || { label: order.status, color: "#8A8B8C" };
-          const canEdit = canEditOrder(order);
-          const canCancel = canCancelOrder(order);
-          const canProgress = canProgressOrder(order);
-          const isQuote = order.orderType === "quote";
-          const quoteStatusConfig = STATUS_LABELS[order.status] || { label: order.status, color: "#8A8B8C" };
 
           return (
             <div key={order.id} className="card-surface overflow-hidden">
               {/* Order Header */}
               <div
-                className="p-4 flex items-center justify-between cursor-pointer"
+                className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer"
                 onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
               >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${statusConfig.color}15` }}>
-                    {order.orderType === "sample" ? <FlaskConical className="w-5 h-5" style={{ color: statusConfig.color }} /> :
-                     isQuote ? <FileText className="w-5 h-5" style={{ color: statusConfig.color }} /> :
-                     <Package className="w-5 h-5" style={{ color: statusConfig.color }} />}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${statusInfo.color}15` }}>
+                    <Package className="w-5 h-5" style={{ color: statusInfo.color }} />
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-display font-semibold text-white">{order.orderNumber}</span>
-                      <span className="status-badge text-xs" style={{ backgroundColor: `${statusConfig.color}20`, color: statusConfig.color }}>
-                        {statusConfig.label}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display font-semibold text-white">{order.orderNumber || `#${order.id}`}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}>
+                        {statusInfo.label}
                       </span>
-                      {order.orderType === "sample" && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843" }}>Sample</span>}
-                      {isQuote && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#6366F1" }}>Quote</span>}
-                      {hasInvoice && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(74,222,128,0.15)", color: "#4ADE80" }}><FileText className="w-3 h-3" /> {invoiceNumber}</span>}
-                      {!hasInvoice && order.status !== "cancelled" && order.orderType !== "sample" && order.orderType !== "quote" && (
-                        <span className="status-badge text-xs" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>NO INVOICE</span>
+                      {order.orderType === "sample" && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843" }}>
+                          Sample
+                        </span>
+                      )}
+                      {order.orderType === "quote" && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#6366F1" }}>
+                          Quote
+                        </span>
                       )}
                     </div>
-                    <div className="text-sm text-[#8A8B8C] mt-0.5 truncate">
-                      {customer?.name || order.customerName || "Unknown"} · {order.salesRepName || "No rep"} · {new Date(order.createdAt).toLocaleDateString("en-ZA")}
+                    <div className="text-xs text-[#8A8B8C] mt-0.5">
+                      {customer?.name || order.customerName || "Unknown"} · {(order.paymentTerms || "").replace("_", " ")} · {new Date(order.createdAt).toLocaleDateString("en-ZA")}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="font-display font-semibold text-white">R {safeNum(order.total).toFixed(2)}</span>
-                  {isExpanded ? <ChevronUp className="w-4 h-4 text-[#8A8B8C]" /> : <ChevronDown className="w-4 h-4 text-[#8A8B8C]" />}
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="font-display font-semibold text-white">{formatCurrency(totalWithVat)}</div>
+                    <div className="text-xs text-[#8A8B8C]">incl. VAT</div>
+                  </div>
+                  <ChevronDown className={`w-5 h-5 text-[#8A8B8C] transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
               </div>
 
@@ -1303,65 +1019,113 @@ export default function OrdersPage() {
                 <div className="border-t" style={{ borderColor: "#222324" }}>
                   <div className="p-4 space-y-4">
                     {/* Order Info */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                      <div><div className="text-[#8A8B8C] text-xs">Customer</div><div className="text-white font-medium">{customer?.name || order.customerName || "N/A"}</div></div>
-                      <div><div className="text-[#8A8B8C] text-xs">Customer Code</div><div className="text-white font-medium">{customer?.customerCode || "N/A"}</div></div>
-                      <div><div className="text-[#8A8B8C] text-xs">Sales Rep</div><div className="text-white font-medium">{order.salesRepName || "N/A"}</div></div>
-                      <div><div className="text-[#8A8B8C] text-xs">Date</div><div className="text-white font-medium">{new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-                      <div><div className="text-[#8A8B8C] text-xs">Payment Terms</div><div className="text-white font-medium">{order.paymentTerms === "cod" ? "Cash on Delivery" : order.paymentTerms === "7_days" ? "7 Days" : order.paymentTerms === "14_days" ? "14 Days" : order.paymentTerms === "30_days" ? "30 Days" : order.paymentTerms || "N/A"}</div></div>
-                      <div><div className="text-[#8A8B8C] text-xs">Price Tier</div><div className="text-white font-medium">{(order.priceTier || "wholesale").toUpperCase()}</div></div>
-                      <div className="col-span-2"><div className="text-[#8A8B8C] text-xs">Delivery Address</div><div className="text-white font-medium">{order.deliveryAddress || customer?.physicalAddress || "N/A"}{customer?.city ? `, ${customer.city}` : ""}</div></div>
-                      {order.notes && <div className="col-span-2"><div className="text-[#8A8B8C] text-xs">Notes</div><div className="text-white font-medium italic">{order.notes}</div></div>}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <div className="text-[#8A8B8C] text-xs">Customer</div>
+                        <div className="text-white font-body">{customer?.name || order.customerName || "N/A"}</div>
+                        <div className="text-[#8A8B8C] text-xs mt-0.5">{customer?.contactPerson || order.contactPerson || ""}</div>
+                      </div>
+                      <div>
+                        <div className="text-[#8A8B8C] text-xs">Delivery Address</div>
+                        <div className="text-white font-body">{order.deliveryAddress || customer?.deliveryAddress || "N/A"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[#8A8B8C] text-xs">Sales Rep</div>
+                        <div className="text-white font-body">{order.salesRepName || "N/A"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[#8A8B8C] text-xs">Notes</div>
+                        <div className="text-white font-body">{order.notes || "—"}</div>
+                      </div>
                     </div>
 
-                    {/* Items */}
-                    <div>
-                      <div className="text-xs text-[#8A8B8C] mb-2">Order Items</div>
-                      <div className="space-y-2">
-                        {(order.items || []).map((item: any, idx: number) => {
-                          const stock = (stockItems || []).find((s) => String(s.id) === String(item.stockItemId));
-                          return (
-                            <div key={idx} className="flex items-center justify-between p-2 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "rgba(212,168,67,0.1)" }}>
-                                  <Tag className="w-4 h-4 text-[#D4A843]" />
-                                </div>
-                                <div>
-                                  <div className="text-sm font-medium text-white">{item.productName || stock?.productName || "Unknown"}</div>
-                                  <div className="text-xs text-[#8A8B8C]">{item.productCode || stock?.productCode || "N/A"} · {item.unitLabel || item.unit || "each"}</div>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm font-display font-semibold text-white">{item.quantity} × R {safeNum(item.unitPrice).toFixed(2)}</div>
-                                <div className="text-xs text-[#8A8B8C]">= R {safeNum(item.lineTotal).toFixed(2)}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    {/* Items Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-[#8A8B8C] text-xs" style={{ borderBottom: "1px solid #222324" }}>
+                            <th className="pb-2">Product</th>
+                            <th className="pb-2 text-center">Qty</th>
+                            <th className="pb-2 text-right">Unit Price</th>
+                            <th className="pb-2 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(order.items || []).map((it: any, idx: number) => {
+                            const stock = (stockItems || []).find((s: any) => s.id === it.stockItemId);
+                            const unitLabel = getUnitLabel(it.stockItemId, it.unit);
+                            const price = it.unitPrice || it.priceAtOrder || 0;
+                            const lineTotal = price * safeNum(it.quantity);
+                            return (
+                              <tr key={idx} className="text-white" style={{ borderBottom: "1px solid #18191A" }}>
+                                <td className="py-2">{stock?.productName || "Product"}{it.unit && it.unit !== "each" ? <span className="text-[#8A8B8C] text-xs"> ({unitLabel})</span> : ""}</td>
+                                <td className="py-2 text-center">{it.quantity}</td>
+                                <td className="py-2 text-right">R {price.toFixed(2)}</td>
+                                <td className="py-2 text-right font-display">R {lineTotal.toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
 
                     {/* Totals */}
                     <div className="flex justify-end">
                       <div className="text-right space-y-1">
-                        <div className="text-sm text-[#8A8B8C]">Subtotal: <span className="text-white font-display">R {safeNum(order.subtotal).toFixed(2)}</span></div>
-                        <div className="text-sm text-[#8A8B8C]">VAT (15%): <span className="text-white font-display">R {safeNum(order.vat).toFixed(2)}</span></div>
-                        <div className="text-lg font-display font-bold text-[#D4A843]">Total: R {safeNum(order.total).toFixed(2)}</div>
+                        <div className="text-sm text-[#8A8B8C]">Subtotal: <span className="text-white font-display">{formatCurrency(total)}</span></div>
+                        <div className="text-sm text-[#8A8B8C]">VAT (15%): <span className="text-white font-display">{formatCurrency(total * 0.15)}</span></div>
+                        <div className="text-lg font-display font-bold text-white">Total: {formatCurrency(totalWithVat)}</div>
                       </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-wrap gap-2">
-                      {canEdit && (
-                        <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                          <Pencil className="w-3 h-3" /> Edit
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {/* Print buttons */}
+                      <button onClick={() => handlePrint(order)} className="btn-secondary text-xs flex items-center gap-1.5">
+                        <Printer className="w-3 h-3" /> Print Order
+                      </button>
+                      <button onClick={() => handlePrintDeliveryNote(order)} className="btn-secondary text-xs flex items-center gap-1.5">
+                        <Truck className="w-3 h-3" /> Delivery Note
+                      </button>
+
+                      {/* Invoice button */}
+                      <GenerateInvoiceButton orderId={order.id} />
+
+                      {/* Status transitions */}
+                      {order.status === "pending" && (
+                        <button
+                          onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })}
+                          className="btn-secondary text-xs flex items-center gap-1.5"
+                          style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}
+                        >
+                          <ShoppingBag className="w-3 h-3" /> Start Picking
                         </button>
                       )}
-                      {canCancel && (
+                      {order.status === "picking" && (
+                        <button
+                          onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })}
+                          className="btn-secondary text-xs flex items-center gap-1.5"
+                          style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}
+                        >
+                          <CheckCircle className="w-3 h-3" /> Mark Ready
+                        </button>
+                      )}
+                      {order.status === "ready" && (
+                        <button
+                          onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })}
+                          className="btn-secondary text-xs flex items-center gap-1.5"
+                          style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}
+                        >
+                          <Truck className="w-3 h-3" /> Mark Delivered
+                        </button>
+                      )}
+
+                      {/* Cancel / Restore */}
+                      {order.status !== "cancelled" && order.status !== "delivered" && order.status !== "sample_delivered" && (
                         <button
                           onClick={() => {
-                            if (confirm(`Cancel order ${order.orderNumber}?`)) {
-                              updateStatus.mutate({ id: order.id, status: "cancelled" });
+                            if (confirm("Cancel this order? Stock will be restored.")) {
+                              deleteOrder.mutate(order.id);
                             }
                           }}
                           className="btn-secondary text-xs flex items-center gap-1.5"
@@ -1370,76 +1134,35 @@ export default function OrdersPage() {
                           <Ban className="w-3 h-3" /> Cancel
                         </button>
                       )}
-                      {canProgress && (
-                        <>
-                          {order.status === "pending" && (
-                            <button onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}>
-                              <Package className="w-3 h-3" /> Mark Picking
-                            </button>
-                          )}
-                          {order.status === "picking" && (
-                            <button onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(245,158,11,0.3)", color: "#F59E0B" }}>
-                              <CheckCircle className="w-3 h-3" /> Mark Ready
-                            </button>
-                          )}
-                          {order.status === "ready" && (
-                            <button onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })} className="btn-secondary text-xs flex items-center gap-1.5" style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}>
-                              <Truck className="w-3 h-3" /> Mark Delivered
-                            </button>
-                          )}
-                        </>
+                      {order.status === "cancelled" && (
+                        <button
+                          onClick={() => restoreOrder.mutate(order.id)}
+                          className="btn-secondary text-xs flex items-center gap-1.5"
+                          style={{ borderColor: "rgba(245,158,11,0.3)", color: "#F59E0B" }}
+                        >
+                          <RotateCcw className="w-3 h-3" /> Restore
+                        </button>
                       )}
-                      {/* Quote actions */}
-                      {isQuote && isAdmin && order.status !== "converted" && order.status !== "rejected" && (
-                        <>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Convert quote ${order.orderNumber} to an order?`)) {
-                                convertQuoteToOrder.mutate({ quoteId: order.id });
-                              }
-                            }}
-                            className="btn-secondary text-xs flex items-center gap-1.5"
-                            style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}
-                          >
-                            <CheckCircle className="w-3 h-3" /> Convert to Order
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Reject quote ${order.orderNumber}?`)) {
-                                updateStatus.mutate({ id: order.id, status: "rejected" });
-                              }
-                            }}
-                            className="btn-secondary text-xs flex items-center gap-1.5"
-                            style={{ borderColor: "rgba(239,68,68,0.3)", color: "#EF4444" }}
-                          >
-                            <Ban className="w-3 h-3" /> Reject
-                          </button>
-                        </>
-                      )}
-                      {!isQuote && (
-                        <>
-                          <button onClick={() => printPickingSlip(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                            <Printer className="w-3 h-3" /> Picking Slip
-                          </button>
-                          <GenerateInvoiceButton orderId={order.id} />
-                          {hasInvoice && (
-                            <>
-                              <button onClick={() => printInvoice(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                                <Printer className="w-3 h-3" /> Print Invoice
-                              </button>
-                              <button onClick={() => emailInvoice(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                                <Mail className="w-3 h-3" /> Email Invoice
-                              </button>
-                            </>
-                          )}
-                        </>
-                      )}
-                      {isQuote && (
-                        <button onClick={() => printQuote(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                          <Printer className="w-3 h-3" /> Print Quote
+
+                      {/* Edit */}
+                      {(isAdmin || isSuperAdmin) && order.status !== "delivered" && order.status !== "cancelled" && order.status !== "sample_delivered" && (
+                        <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs flex items-center gap-1.5">
+                          <Pencil className="w-3 h-3" /> Edit
                         </button>
                       )}
                     </div>
+
+                    {/* Invoice status */}
+                    {!hasInvoice && order.status !== "cancelled" && order.status !== "quote" && (
+                      <div className="text-xs text-[#EF4444] flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> No invoice generated
+                      </div>
+                    )}
+                    {hasInvoice && (
+                      <div className="text-xs text-[#4ADE80] flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Invoice generated
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1451,19 +1174,19 @@ export default function OrdersPage() {
       {/* Order Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={() => setShowForm(false)}>
-          <div className="card-surface w-full sm:max-w-2xl sm:mx-4 max-h-[90vh] flex flex-col" style={{ borderRadius: "16px 16px 0 0" }} onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b flex-shrink-0" style={{ borderColor: "#222324" }}>
-              <h2 className="font-display font-semibold text-white text-lg">
-                {editingOrder ? `Edit Order — ${editingOrder.orderNumber}` : "New Order"}
-              </h2>
+          <div
+            className="card-surface w-full sm:max-w-2xl sm:mx-4 max-h-[90vh] overflow-y-auto"
+            style={{ borderRadius: "16px 16px 0 0" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b" style={{ backgroundColor: "#18191A", borderColor: "#222324" }}>
+              <h2 className="text-lg font-display font-semibold text-white">{editingOrder ? "Edit Order" : "New Order"}</h2>
               <button onClick={() => setShowForm(false)} className="p-2 rounded-full hover:bg-[#222324] cursor-pointer">
                 <X className="w-5 h-5 text-[#8A8B8C]" />
               </button>
             </div>
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto flex-1" style={{ maxHeight: "calc(90vh - 80px)" }}>
+            <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Order Type */}
               <div>
                 <label className="label-text block mb-2">Order Type *</label>
@@ -1473,7 +1196,16 @@ export default function OrdersPage() {
                     { key: "sample", label: "Sample", icon: FlaskConical },
                     { key: "quote", label: "Quote", icon: FileText },
                   ].map((type) => (
-                    <button key={type.key} type="button" onClick={() => setFormData({ ...formData, orderType: type.key as any })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.orderType === type.key ? "rgba(212,168,67,0.1)" : "#0A0A0B", border: formData.orderType === type.key ? "2px solid #D4A843" : "2px solid #222324" }}>
+                    <button
+                      key={type.key}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, orderType: type.key as any })}
+                      className="p-3 rounded-xl text-center transition-all cursor-pointer"
+                      style={{
+                        backgroundColor: formData.orderType === type.key ? "rgba(212,168,67,0.15)" : "#0A0A0B",
+                        border: formData.orderType === type.key ? "2px solid #D4A843" : "2px solid #222324",
+                      }}
+                    >
                       <type.icon className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === type.key ? "#D4A843" : "#8A8B8C" }} />
                       <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === type.key ? "#D4A843" : "#8A8B8C" }}>{type.label}</div>
                     </button>
@@ -1484,47 +1216,78 @@ export default function OrdersPage() {
               {/* Customer */}
               <div className="relative">
                 <label className="label-text block mb-1.5">Customer *</label>
-                <div className="relative">
-                  <input
-                    ref={customerInputRef}
-                    type="text"
-                    value={customerSearch}
-                    onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
-                    onFocus={() => setShowCustomerDropdown(true)}
-                    placeholder="Search customers..."
-                    className="input-field w-full"
-                    autoComplete="off"
-                  />
-                  {showCustomerDropdown && filteredCustomers.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 rounded-lg border overflow-hidden max-h-60 overflow-y-auto" style={{ backgroundColor: "#18191A", borderColor: "#222324" }}>
-                      {filteredCustomers.map((c: any) => (
+                <input
+                  ref={customerInputRef}
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  placeholder="Search customer..."
+                  className="input-field w-full"
+                  autoComplete="off"
+                />
+                {showCustomerDropdown && (
+                  <div className="absolute z-20 w-full mt-1 card-surface max-h-48 overflow-y-auto" style={{ border: "1px solid #222324" }}>
+                    {(customers || [])
+                      .filter((c: any) => {
+                        if (!customerSearch.trim()) return true;
+                        const q = customerSearch.toLowerCase();
+                        return (c.name || "").toLowerCase().includes(q) || (c.contactPerson || "").toLowerCase().includes(q);
+                      })
+                      .map((c: any) => (
                         <div
                           key={c.id}
-                          onClick={() => handleCustomerSelect(c.id)}
-                          className="p-3 cursor-pointer hover:bg-[#222324] border-b"
-                          style={{ borderColor: "#222324" }}
+                          onClick={() => {
+                            setFormData({ ...formData, customerId: c.id });
+                            setCustomerSearch(c.name);
+                            setShowCustomerDropdown(false);
+                          }}
+                          className="p-2 hover:bg-[#222324] cursor-pointer text-sm"
                         >
-                          <div className="text-sm font-medium text-white">{c.name}</div>
-                          <div className="text-xs text-[#8A8B8C]">{c.customerCode || "N/A"} · {c.city || "N/A"}</div>
+                          <div className="text-white">{c.name}</div>
+                          <div className="text-[#8A8B8C] text-xs">{c.contactPerson} · {c.paymentTerms?.replace("_", " ")}</div>
                         </div>
                       ))}
-                    </div>
-                  )}
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Terms */}
+              <div>
+                <label className="label-text block mb-2">Payment Terms *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { key: "cod", label: "COD" },
+                    { key: "7_days", label: "7 Days" },
+                    { key: "14_days", label: "14 Days" },
+                    { key: "30_days", label: "30 Days" },
+                  ].map((term) => (
+                    <button
+                      key={term.key}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, paymentTerms: term.key as any })}
+                      className="p-3 rounded-xl text-center transition-all cursor-pointer"
+                      style={{
+                        backgroundColor: formData.paymentTerms === term.key ? "rgba(212,168,67,0.15)" : "#0A0A0B",
+                        border: formData.paymentTerms === term.key ? "2px solid #D4A843" : "2px solid #222324",
+                      }}
+                    >
+                      <div className="text-sm font-display font-semibold" style={{ color: formData.paymentTerms === term.key ? "#D4A843" : "#8A8B8C" }}>{term.label}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Payment Terms & Price Tier */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label-text block mb-1.5">Payment Terms *</label>
-                  <select value={formData.paymentTerms} onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value as any })} className="input-field w-full">
-                    <option value="cod">Cash on Delivery</option>
-                    <option value="7_days">7 Days</option>
-                    <option value="14_days">14 Days</option>
-                    <option value="30_days">30 Days</option>
-                  </select>
-                </div>
-                {formData.orderType !== "sample" && (
+              {/* Pricing Tier */}
+              <div>
+                {formData.orderType === "sample" ? (
+                  <div className="p-3 rounded-lg" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.15)" }}>
+                    <div className="flex items-center gap-2">
+                      <FlaskConical className="w-4 h-4 text-[#D4A843]" />
+                      <span className="text-sm text-[#D4A843] font-body">Sample orders use Corporate pricing</span>
+                    </div>
+                  </div>
+                ) : (
                   <div>
                     <label className="label-text block mb-2">Pricing Tier *</label>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

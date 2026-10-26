@@ -2,6 +2,48 @@ import { localApi } from "./localApi";
 
 localApi.init();
 
+function getSalesReps(): any[] {
+  try {
+    const raw = localStorage.getItem("sgf_salesReps");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((r: any) => {
+          if (typeof r === "string") return { name: r, isActive: true };
+          return { name: r?.name || String(r || ""), isActive: r?.isActive !== false };
+        }).filter((r: any) => r.name);
+      }
+    }
+  } catch { /* ignore */ }
+  return [
+    { name: "Adeli", isActive: true },
+    { name: "Inhouse", isActive: true },
+    { name: "Michael", isActive: true },
+    { name: "Nkosana", isActive: true },
+    { name: "Tebogo Bila", isActive: true },
+  ];
+}
+
+function getStartOfWeek(d: Date): Date {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getStartOfMonth(d: Date): Date {
+  const date = new Date(d);
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function formatDateShort(d: Date): string {
+  return d.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short" });
+}
+
 export async function localTrpcCall(path: string, input?: any): Promise<any> {
   const parts = path.split(".");
   const endpoint = parts.slice(1).join("."); // Remove "app." prefix
@@ -104,9 +146,64 @@ export async function localTrpcCall(path: string, input?: any): Promise<any> {
 
     // ===== SALES REPS =====
     case "salesRep.list":
-      return [];
-    case "salesRep.getStats":
-      return { total: 0, active: 0, inactive: 0 };
+      return getSalesReps();
+
+    case "salesRep.getStats": {
+      const reps = getSalesReps();
+      const allOrders = localApi.orders.list();
+      const allCustomers = localApi.customers.list();
+      const repStats = reps.map((rep: any) => {
+        const repName = rep.name;
+        const repCustomers = allCustomers.filter((c: any) => c.salesRepName === repName);
+        const repOrders = allOrders.filter((o: any) => o.salesRepName === repName);
+        const totalSales = repOrders.reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0);
+        return {
+          name: repName,
+          customers: repCustomers.length,
+          orders: repOrders.length,
+          totalSales,
+          status: rep.isActive !== false ? "active" : "inactive",
+        };
+      });
+      return { repStats };
+    }
+
+    case "salesRep.getSalesBreakdown": {
+      const reps = getSalesReps();
+      const allOrders = localApi.orders.list();
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = getStartOfWeek(now);
+      const monthStart = getStartOfMonth(now);
+
+      const repSales = reps.map((rep: any) => {
+        const repName = rep.name;
+        const repOrders = allOrders.filter((o: any) => o.salesRepName === repName);
+        const todayAmount = repOrders
+          .filter((o: any) => new Date(o.createdAt || o.orderDate || 0) >= todayStart)
+          .reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0);
+        const weekAmount = repOrders
+          .filter((o: any) => new Date(o.createdAt || o.orderDate || 0) >= weekStart)
+          .reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0);
+        const monthAmount = repOrders
+          .filter((o: any) => new Date(o.createdAt || o.orderDate || 0) >= monthStart)
+          .reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0);
+        return { repName, monthAmount, weekAmount, todayAmount };
+      });
+
+      const today = repSales.map((r: any) => ({ repName: r.repName, amount: r.todayAmount }));
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const weekRange = `${formatDateShort(weekStart)} - ${formatDateShort(weekEnd)}`;
+      const month = now.toLocaleDateString("en-ZA", { month: "long", year: "numeric" });
+      const totals = {
+        today: repSales.reduce((sum: number, r: any) => sum + r.todayAmount, 0),
+        week: repSales.reduce((sum: number, r: any) => sum + r.weekAmount, 0),
+        month: repSales.reduce((sum: number, r: any) => sum + r.monthAmount, 0),
+      };
+
+      return { today, weekRange, month, repSales, totals };
+    }
 
     default:
       console.warn("[localTrpc] Unhandled endpoint:", endpoint, "input:", input);

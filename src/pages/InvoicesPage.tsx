@@ -541,7 +541,8 @@ export default function InvoicesPage() {
 
   /* ── Print Receipt ── */
   function printReceipt(r: any) {
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const cfg = getCompanyConfig(r.invoiceNumber?.startsWith("RC") ? "recircle" : "sgf");
+    const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html><head><title>Receipt ${r.receiptNumber}</title>
@@ -570,7 +571,7 @@ export default function InvoicesPage() {
       <body>
         <div class="header">
           <img src="${logoUrl}" onerror="this.style.display='none'" />
-          <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &nbsp;|&nbsp; sales@supremeglobalfoods.co.za &nbsp;|&nbsp; Tel: ${getCompanyConfig(invCompany).contact.phone}<br/>VAT Reg: 4150254441 &nbsp;|&nbsp; Reg No: 2015/123456/07</div>
+          <div class="subtitle">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; ${cfg.contact.email} &nbsp;|&nbsp; Tel: ${cfg.contact.phone}<br/>VAT Reg: ${cfg.vatNumber} &nbsp;|&nbsp; Reg No: ${cfg.regNumber}</div>
           <div class="title">Payment Receipt</div>
         </div>
 

@@ -837,10 +837,11 @@ export default function OrdersPage() {
   }
 
   function printPickingSlip(order: any) {
+    const cfg = getCompanyConfig((order.company || "sgf") as any);
     const customer = getCustomer(order);
     const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
     const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const logoUrl = `${window.location.origin}${cfg.logo}`;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
@@ -848,30 +849,30 @@ export default function OrdersPage() {
 <style>
   @media print { body { padding: 0; } .no-print { display: none; } }
   body { font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #D4A843; padding-bottom: 15px; }
+  .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid ${cfg.documentColor}; padding-bottom: 15px; }
   .logo-img { height: 55px; margin-bottom: 4px; }
-  .logo-fallback { font-size: 28px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
+  .logo-fallback { font-size: 28px; font-weight: bold; color: ${cfg.documentColor}; letter-spacing: 1px; display: none; }
   .subtitle { color: #666; font-size: 12px; margin-top: 4px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
+  .doc-title { text-align: center; color: ${cfg.documentColor}; font-size: 22px; font-weight: bold; margin: 15px 0; letter-spacing: 2px; }
   .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
   .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
   .value { font-size: 14px; font-weight: 600; margin-top: 3px; color: #222; }
-  .inv-num { color: #D4A843; font-size: 16px; }
+  .inv-num { color: ${cfg.documentColor}; font-size: 16px; }
   table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-  th { background: #D4A843; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  th { background: ${cfg.documentColor}; color: white; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
   td { padding: 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
   .badge-sample { background: #FFF3E0; color: #E65100; }
-  .footer { margin-top: 40px; border-top: 2px solid #D4A843; padding-top: 20px; }
+  .footer { margin-top: 40px; border-top: 2px solid ${cfg.documentColor}; padding-top: 20px; }
   .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
   .sig-line { border-bottom: 1px solid #333; height: 40px; margin-top: 8px; }
   .sig-label { font-size: 11px; color: #666; margin-top: 6px; }
 </style></head><body>
   <div class="header">
     <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington road, Wadeville, Germiston, 1422 &middot; sales@supremeglobalfoods.co.za</div>
-    <div class="subtitle">Tel: ${getCompanyConfig((order.company || "sgf") as any).contact.phone}</div>
+    <div id="logo-fb" class="logo-fallback">${cfg.name}</div>
+    <div class="subtitle">${cfg.address} &middot; ${cfg.email}</div>
+    <div class="subtitle">Tel: ${cfg.contact.phone}</div>
   </div>
   <div class="doc-title">FACTORY PICKING SLIP</div>
   <div style="text-align:center;margin-bottom:15px;">
@@ -881,7 +882,7 @@ export default function OrdersPage() {
     <div class="info-block"><div class="label">Invoice Number</div><div class="value inv-num">${invoiceNumber}</div></div>
     <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
     <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:#D4A843;font-weight:700;">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
+    <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:${cfg.documentColor};font-weight:700;">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
     <div class="info-block"><div class="label">Contact Person</div><div class="value">${customer?.contactPerson || "N/A"}</div></div>
@@ -917,8 +918,9 @@ export default function OrdersPage() {
 
   /** Print a professional quote document on Supreme Global Foods stationery */
   function printQuote(order: any) {
+    const cfg = getCompanyConfig((order.company || "sgf") as any);
     const customer = getCustomer(order);
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const logoUrl = `${window.location.origin}${cfg.logo}`;
     const validUntil = new Date(order.createdAt);
     validUntil.setDate(validUntil.getDate() + 30);
     const w = window.open("", "_blank");
@@ -929,43 +931,43 @@ export default function OrdersPage() {
   @page { size: A4; margin: 10mm; }
   @media print { body { padding: 0; } .no-print { display: none; } }
   body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
-  .header { text-align: center; margin-bottom: 12px; border-bottom: 3px solid #D4A843; padding-bottom: 10px; }
+  .header { text-align: center; margin-bottom: 12px; border-bottom: 3px solid ${cfg.documentColor}; padding-bottom: 10px; }
   .logo-img { height: 45px; margin-bottom: 2px; }
-  .logo-fallback { font-size: 24px; font-weight: bold; color: #D4A843; letter-spacing: 1px; display: none; }
+  .logo-fallback { font-size: 24px; font-weight: bold; color: ${cfg.documentColor}; letter-spacing: 1px; display: none; }
   .subtitle { color: #666; font-size: 11px; margin-top: 2px; }
-  .doc-title { text-align: center; color: #D4A843; font-size: 20px; font-weight: bold; margin: 10px 0; letter-spacing: 2px; }
+  .doc-title { text-align: center; color: ${cfg.documentColor}; font-size: 20px; font-weight: bold; margin: 10px 0; letter-spacing: 2px; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #6366F1; color: white; }
   .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
   .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
   .value { font-size: 12px; font-weight: 600; margin-top: 2px; color: #222; }
   .full-width { grid-column: 1 / -1; }
   table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th { background: #D4A843; color: white; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  th { background: ${cfg.documentColor}; color: white; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
   td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
   .text-right { text-align: right; }
-  .totals { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border-left: 4px solid #D4A843; }
+  .totals { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border-left: 4px solid ${cfg.documentColor}; }
   .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
-  .total-final { font-size: 16px; font-weight: bold; color: #D4A843; border-top: 2px solid #D4A843; padding-top: 6px; margin-top: 4px; }
+  .total-final { font-size: 16px; font-weight: bold; color: ${cfg.documentColor}; border-top: 2px solid ${cfg.documentColor}; padding-top: 6px; margin-top: 4px; }
   .terms { margin-top: 14px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
-  .terms-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .terms-title { font-size: 11px; font-weight: bold; color: ${cfg.documentColor}; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
   .terms-text { font-size: 10px; color: #666; line-height: 1.5; }
   .footer { margin-top: 16px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
   .banking { margin-top: 12px; padding: 10px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; }
-  .banking-title { font-size: 11px; font-weight: bold; color: #D4A843; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .banking-title { font-size: 11px; font-weight: bold; color: ${cfg.documentColor}; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
   .banking-row { display: grid; grid-template-columns: 120px 1fr; font-size: 11px; padding: 2px 0; }
   .banking-label { color: #888; }
   .banking-value { color: #333; font-weight: 600; }
 </style></head><body>
   <div class="header">
     <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
-    <div id="logo-fb" class="logo-fallback">SUPREME GLOBAL FOODS</div>
-    <div class="subtitle">28 Nagington Road, Wadeville, Germiston, 1422</div>
-    <div class="subtitle">sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888</div>
+    <div id="logo-fb" class="logo-fallback">${cfg.name}</div>
+    <div class="subtitle">${cfg.address}</div>
+    <div class="subtitle">${cfg.email} &middot; Tel: ${cfg.contact.phone}</div>
   </div>
   <div class="doc-title">QUOTATION</div>
   <div style="text-align:center;margin-bottom:10px;"><span class="badge">QUOTE</span></div>
   <div class="info-section">
-    <div><div class="label">Quote Number</div><div class="value" style="color:#D4A843;font-size:14px;">${order.orderNumber}</div></div>
+    <div><div class="label">Quote Number</div><div class="value" style="color:${cfg.documentColor};font-size:14px;">${order.orderNumber}</div></div>
     <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
     <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
     <div><div class="label">Prepared By</div><div class="value">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
@@ -1005,7 +1007,7 @@ export default function OrdersPage() {
     <div class="total-row"><span>VAT (15%)</span><span>R ${safeNum(order.vatAmount).toFixed(2)}</span></div>
     <div class="total-row total-final"><span>QUOTE TOTAL</span><span>R ${safeNum(order.total).toFixed(2)}</span></div>
   </div>
-  ${order.notes ? `<div style="margin-top:10px;padding:8px;background:#fff8e1;border-radius:6px;border-left:3px solid #D4A843;"><div class="label">Notes</div><div style="font-size:11px;color:#666;font-style:italic;margin-top:2px;">${order.notes}</div></div>` : ""}
+  ${order.notes ? `<div style="margin-top:10px;padding:8px;background:#fff8e1;border-radius:6px;border-left:3px solid ${cfg.documentColor};"><div class="label">Notes</div><div style="font-size:11px;color:#666;font-style:italic;margin-top:2px;">${order.notes}</div></div>` : ""}
   <div class="banking">
     <div class="banking-title">Banking Details</div>
     <div class="banking-row"><div class="banking-label">Bank Name</div><div class="banking-value">${banking?.bankName || "N/A"}</div></div>
@@ -1039,16 +1041,18 @@ export default function OrdersPage() {
 
   /** Generate a mailto: link with quote summary for email sending */
   function sendQuoteEmail(order: any) {
+    const cfg = getCompanyConfig((order.company || "sgf") as any);
+    const banking = cfg.banking;
     const customer = getCustomer(order);
     const customerEmail = customer?.email || "";
     const customerName = customer?.name || "Valued Customer";
-    const subject = encodeURIComponent(`Quotation ${order.orderNumber} — Supreme Global Foods`);
+    const subject = encodeURIComponent(`Quotation ${order.orderNumber} — ${cfg.name}`);
     const itemsList = (order.items || []).map((item: any) =>
       `• ${item.productName} (${item.productCode || "N/A"}) — ${item.quantity} ${item.unit || "each"} × R${safeNum(item.unitPrice).toFixed(2)} = R${safeNum(item.lineTotal).toFixed(2)}`
     ).join("\n");
     const body = encodeURIComponent(
       `Dear ${customerName},\n\n` +
-      `Please find below your quotation from Supreme Global Foods.\n\n` +
+      `Please find below your quotation from ${cfg.name}.\n\n` +
       `QUOTE NUMBER: ${order.orderNumber}\n` +
       `DATE: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}\n` +
       `VALID UNTIL: ${new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-ZA")}\n` +
@@ -1066,9 +1070,9 @@ export default function OrdersPage() {
       `Branch Code: ${banking?.branchCode || "N/A"}\n\n` +
       `To accept this quote, please reply to this email or contact your sales representative.\n\n` +
       `Kind regards,\n` +
-      `${customer?.salesRepName || order.salesRepName || "Supreme Global Foods Team"}\n` +
-      `sales@supremeglobalfoods.co.za | Tel: 061 478 8888\n\n` +
-      `—\nSupreme Global Foods (Pty) Ltd\n28 Nagington Road, Wadeville, Germiston, 1422`
+      `${customer?.salesRepName || order.salesRepName || cfg.name + " Team"}\n` +
+      `${cfg.email} | Tel: ${cfg.contact.phone}\n\n` +
+      `—\n${cfg.name}\n${cfg.address}`
     );
     const mailtoLink = `mailto:${customerEmail}?subject=${subject}&body=${body}`;
     window.location.href = mailtoLink;

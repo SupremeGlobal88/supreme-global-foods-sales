@@ -103,6 +103,7 @@ export default function SalesRepReportsPage() {
   // ─── Print Report ───
   function printReport() {
     if (!filteredReport) return;
+    const cfg = getCompanyConfig("sgf");
     const w = window.open("", "_blank");
     if (!w) return;
 
@@ -155,7 +156,7 @@ export default function SalesRepReportsPage() {
           </div>
         </div>
         <div class="footer">
-          Supreme Global Foods | 28 Nagington road, Wadeville, Germiston | ${getCompanyConfig("sgf").contact.phone}
+          ${cfg.name} | ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} | ${cfg.contact.phone}
         </div>
         <script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},200);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script>
       </body></html>`);
@@ -164,6 +165,7 @@ export default function SalesRepReportsPage() {
 
   // ─── Print Rep Detail ───
   function printRepDetail(rep: any) {
+    const cfg = getCompanyConfig("sgf");
     const w = window.open("", "_blank");
     if (!w) return;
 
@@ -229,7 +231,7 @@ export default function SalesRepReportsPage() {
         <table><thead><tr>
           <th>#</th><th>From</th><th>To</th><th style="text-align:right;">Distance (km)</th>
         </tr></thead><tbody>${routeRows}</tbody></table>
-        <div class="footer">Supreme Global Foods | 28 Nagington road, Wadeville</div>
+        <div class="footer">${cfg.name} | ${cfg.address.street}, ${cfg.address.city}</div>
         <script>(function(){var d=false;function p(){if(!d){d=true;setTimeout(function(){window.print();},200);}}if(document.readyState==='complete')p();else window.onload=p;setTimeout(p,2000);})();</script>
       </body></html>`);
     w.document.close();

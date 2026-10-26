@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage, getBankingDetails } from "@/lib/dataService";
+import { getCompanyConfig } from "@/lib/companyConfig";
 import CustomerSearchDropdown from "@/components/CustomerSearchDropdown";
 import DatePicker from "@/components/DatePicker";
 import {
@@ -29,35 +30,36 @@ function getCompanyPhone(): string {
       if (saved.phone) return saved.phone;
     }
   } catch { /* ignore */ }
-  return "061 478 8888";
+  return getCompanyConfig("sgf").contact.phone;
 }
 
 function getReminderTemplates(): Record<string, { subject: string; body: string }> {
   const phone = getCompanyPhone();
+  const companyName = getCompanyConfig("sgf").name;
   return {
     pre_due: {
       subject: "Payment Reminder - Invoice {invoiceNumber}",
-      body: `Dear {customerName},\n\nThis is a friendly reminder that your invoice {invoiceNumber} for R {amount} is due on {dueDate}.\n\nPlease ensure payment is arranged to avoid any inconvenience.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nThank you for your continued business.\n\nSupreme Global Foods`,
+      body: `Dear {customerName},\n\nThis is a friendly reminder that your invoice {invoiceNumber} for R {amount} is due on {dueDate}.\n\nPlease ensure payment is arranged to avoid any inconvenience.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nThank you for your continued business.\n\n${companyName}`,
     },
     days_1_2: {
       subject: "Friendly Reminder - Outstanding Invoice {invoiceNumber}",
-      body: `Dear {customerName},\n\nWe noticed that invoice {invoiceNumber} for R {amount} is now {daysOverdue} day(s) overdue.\n\nIf payment has already been made, please disregard this notice and send us proof of payment.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact us if you need to discuss payment arrangements.\n\nSupreme Global Foods`,
+      body: `Dear {customerName},\n\nWe noticed that invoice {invoiceNumber} for R {amount} is now {daysOverdue} day(s) overdue.\n\nIf payment has already been made, please disregard this notice and send us proof of payment.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact us if you need to discuss payment arrangements.\n\n${companyName}`,
     },
     days_3_5: {
       subject: "Urgent: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on ${phone} to discuss.\n\nSupreme Global Foods`,
+      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe kindly request immediate payment or a call to arrange a payment plan.\n\nOutstanding balance: R {balanceDue}\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nPlease contact our accounts department on ${phone} to discuss.\n\n${companyName}`,
     },
     days_6_10: {
       subject: "FOLLOW-UP REQUIRED - Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-      body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nTo continue enjoying our services, please arrange payment or contact us to discuss a payment plan.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: ${phone}\n\nSupreme Global Foods`,
+      body: `Dear {customerName},\n\nDespite our previous reminders, invoice {invoiceNumber} for R {amount} remains unpaid and is now {daysOverdue} days overdue.\n\nOutstanding balance: R {balanceDue}\n\nTo continue enjoying our services, please arrange payment or contact us to discuss a payment plan.\n\nBanking Details:\n{bankingDetails}\nQuote: {invoiceNumber}\n\nContact: ${phone}\n\n${companyName}`,
     },
     days_11_20: {
       subject: "URGENT FOLLOW-UP - Invoice {invoiceNumber}",
-      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have attempted to contact you on several occasions without success.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently to resolve this matter: ${phone}\n\nSupreme Global Foods`,
+      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have attempted to contact you on several occasions without success.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently to resolve this matter: ${phone}\n\n${companyName}`,
     },
     days_21_plus: {
       subject: "URGENT: Invoice {invoiceNumber} - {daysOverdue} Days Overdue",
-      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have been unable to reach you despite several attempts.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: ${phone}\n\nSupreme Global Foods`,
+      body: `Dear {customerName},\n\nInvoice {invoiceNumber} for R {amount} is now {daysOverdue} days overdue.\n\nWe have been unable to reach you despite several attempts.\n\nOUTSTANDING: R {balanceDue}\n\nPlease contact management urgently: ${phone}\n\n${companyName}`,
     },
   };
 }

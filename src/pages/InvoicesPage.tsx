@@ -221,7 +221,7 @@ export default function InvoicesPage() {
     const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setPayInvId(inv.id);
     setPayInvNumber(inv.invoiceNumber);
-    setPayCustName(inv.customer?.name || "N/A");
+    setPayCustName(inv.customerName || inv.customer?.name || "N/A");
     setPayAmt(bal > 0 ? String(bal) : "");
     setEditPayId(0);
     setShowPayForm(true);
@@ -263,7 +263,7 @@ export default function InvoicesPage() {
     setAllocInvId(inv.id);
     setAllocInvNumber(inv.invoiceNumber);
     setAllocCustId(custId);
-    setAllocCustName(inv.customer?.name || "Customer");
+    setAllocCustName(inv.customerName || inv.customer?.name || "Customer");
     const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
     setAllocBal(bal);
     setAllocAmt("");
@@ -339,7 +339,7 @@ export default function InvoicesPage() {
     // Corporate customers are source-of-truth for corporate data — try them FIRST.
     // The customers array may have an incomplete mirrored copy that shadows the full record.
     const liveById = (corporateCustomers || []).find((c: any) => c.id == inv.customerId) || (customers || []).find((c: any) => c.id == inv.customerId);
-    const liveByName = !liveById && inv.customer?.name ? (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) || (customers || []).find((c: any) => c.name == inv.customer.name) : null;
+    const liveByName = !liveById && (inv.customerName || inv.customer?.name) ? (corporateCustomers || []).find((c: any) => c.name == (inv.customerName || inv.customer?.name)) || (customers || []).find((c: any) => c.name == (inv.customerName || inv.customer?.name)) : null;
     const cust = liveById || liveByName || inv.customer || {};
     // Derive company from invoice number prefix — this is the source of truth.
     // The stored inv.company field may be incorrect due to legacy data or sync issues.
@@ -933,7 +933,7 @@ export default function InvoicesPage() {
     // Corporate customers are source-of-truth for corporate data — try them FIRST.
     // The customers array may have an incomplete mirrored copy that shadows the full record.
     const liveById = (corporateCustomers || []).find((c: any) => c.id == inv.customerId) || (customers || []).find((c: any) => c.id == inv.customerId);
-    const liveByName = !liveById && inv.customer?.name ? (corporateCustomers || []).find((c: any) => c.name == inv.customer.name) || (customers || []).find((c: any) => c.name == inv.customer.name) : null;
+    const liveByName = !liveById && (inv.customerName || inv.customer?.name) ? (corporateCustomers || []).find((c: any) => c.name == (inv.customerName || inv.customer?.name)) || (customers || []).find((c: any) => c.name == (inv.customerName || inv.customer?.name)) : null;
     const cust = liveById || liveByName || inv.customer || {};
     if (!cust?.email) { alert("Customer has no email address."); return; }
     const subject = encodeURIComponent(`Tax Invoice ${inv.invoiceNumber} - ${cust.name || ""}`);
@@ -1109,7 +1109,7 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || (customers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
+                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customerName || inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || (customers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.poNumber || inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {displayTot.toFixed(2)}</td>
@@ -1282,7 +1282,7 @@ export default function InvoicesPage() {
                                     </div>
                                     {isAdmin && (
                                       <div className="flex gap-1">
-                                        <button onClick={() => openEditPay(inv.id, inv.invoiceNumber, inv.customer?.name, p)} className="p-1.5 rounded hover:bg-[#222324]" title="Edit"><Pencil className="w-3 h-3 text-[#D4A843]" /></button>
+                                        <button onClick={() => openEditPay(inv.id, inv.invoiceNumber, inv.customerName || inv.customer?.name, p)} className="p-1.5 rounded hover:bg-[#222324]" title="Edit"><Pencil className="w-3 h-3 text-[#D4A843]" /></button>
                                         <button onClick={() => { if (confirm("Delete this payment?")) delPay.mutate({ invoiceId: inv.id, paymentId: p.id }); }} className="p-1.5 rounded hover:bg-[#222324]" title="Delete"><Trash2 className="w-3 h-3 text-[#EF4444]" /></button>
                                       </div>
                                     )}

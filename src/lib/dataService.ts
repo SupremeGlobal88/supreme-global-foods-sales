@@ -1531,6 +1531,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
         invoiceNumber,
         deliveryNoteNumber: `DN-${order.orderNumber}`,
         customerId: order.customerId,
+        customerName: order.customerName || (customers.find((c) => c.id == order.customerId)?.name) || "",
         customer: customers.find((c) => c.id == order.customerId) || null,
         subtotal,
         vatAmount,
@@ -1741,6 +1742,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       deliveryNoteNumber,
       company: invCompany,
       customerId: order.customerId,
+      customerName: customer?.name || order.customerName || "",
       customer: customer || null,
       subtotal: isSample ? subtotal : subtotal,
       vatAmount: isSample ? vatAmount : vatAmount,
@@ -2790,10 +2792,12 @@ export const dataService = {
         }
       }
       
+      const customerRecord = customers.find((c) => c.id == data.customerId);
       const newOrder = {
         ...data,
         id: Date.now(),
         orderNumber,
+        customerName: customerRecord?.name || "",
         status: isQuote ? "draft" : "pending",
         items,
         subtotal,
@@ -3233,6 +3237,7 @@ export const dataService = {
         status: "sent",
         invoiceDate: now,
         dueDate: now,
+        customerName: customer?.name || "",
         customer: customer || null,
         subtotal: data.subtotal || 0,
         vatAmount: data.vatAmount || 0,
@@ -3997,6 +4002,7 @@ export const dataService = {
           orderNumber: hist.orderNumber || hist.invoiceNumber,
           orderId: null,
           customerId: customerId || 0,
+          customerName: customerId ? (customers.find((c) => c.id == customerId)?.name || "") : "",
           customer: customerId ? customers.find((c) => c.id == customerId) : null,
           customerCode: hist.customerCode || null, // PRESERVE Sage customerCode for statement matching
           items: hist.items || [],
@@ -5769,6 +5775,7 @@ export const dataService = {
         deliveryNoteNumber: `DN-${poRef}`,
         company: invCompany,
         customerId: mainCustomerId,
+        customerName: richCustomer?.name || po.corporateCustomerName || "",
         customer: richCustomer,
         subtotal,
         vatAmount,

@@ -11,16 +11,13 @@ import {
   ShoppingBag, Pencil, RotateCcw, Info, Search, FileText, Mail,
   Shield,
 } from "lucide-react";
-
 const sampleOverrideRef = { current: false };
-
 const PRICE_TIERS = [
   { key: "corporate", label: "Corporate", color: "#D4A843" },
   { key: "bulk", label: "Bulk", color: "#6366F1" },
   { key: "wholesale", label: "Wholesale", color: "#4ADE80" },
   { key: "retail", label: "Retail", color: "#F59E0B" },
 ];
-
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: "Pending", color: "#F59E0B" },
   picking: { label: "Picking", color: "#6366F1" },
@@ -34,12 +31,10 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   rejected: { label: "Rejected", color: "#EF4444" },
   converted: { label: "Converted", color: "#D4A843" },
 };
-
 function safeNum(n: any, fallback = 0): number {
   const val = Number(n);
   return Number.isFinite(val) ? val : fallback;
 }
-
 function GenerateInvoiceButton({ orderId }: { orderId: number }) {
   const [busy, setBusy] = useState(false);
   const utils = trpc.useUtils();
@@ -94,7 +89,6 @@ function GenerateInvoiceButton({ orderId }: { orderId: number }) {
     </button>
   );
 }
-
 function ProductPickerModal({
   isOpen,
   onClose,
@@ -112,7 +106,6 @@ function ProductPickerModal({
 }) {
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     if (isOpen) {
       setSearch("");
@@ -122,9 +115,7 @@ function ProductPickerModal({
       }
     }
   }, [isOpen]);
-
   if (!isOpen) return null;
-
   const filtered = (stockItems || [])
     .filter((s) => {
       if (!search.trim()) return true;
@@ -142,7 +133,6 @@ function ProductPickerModal({
       if (availA <= 0 && availB > 0) return 1;
       return (a.productName || "").localeCompare(b.productName || "");
     });
-
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
       <div
@@ -245,7 +235,6 @@ function ProductPickerModal({
     </div>
   );
 }
-
 const statusTabs = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
@@ -256,38 +245,31 @@ const statusTabs = [
   { key: "sample", label: "Samples" },
   { key: "quotes", label: "Quotes" },
 ];
-
 export default function OrdersPage() {
   const { user } = useAuth();
   const { isAdmin, isSalesRep, isSuperAdmin, role } = useRole();
   const myRepName = user?.name || "";
   const banking = getBankingDetails();
   const utils = trpc.useUtils();
-
   const [activeTab, setActiveTab] = useState("all");
   const [orderSearch, setOrderSearch] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
   const [formData, setFormData] = useState({
-    customerId: 0,
-    orderType: "regular" as "regular" | "sample" | "quote",
+    customerId: 0, orderType: "regular" as "regular" | "sample" | "quote",
     paymentTerms: "cod" as "cod" | "7_days" | "14_days" | "30_days",
     priceTier: "wholesale" as "corporate" | "bulk" | "wholesale" | "retail",
-    deliveryAddress: "",
-    notes: "",
-    items: [] as { stockItemId: number; quantity: number; unitPrice?: number; conversion?: number; unitLabel?: string }[],
+    deliveryAddress: "", notes: "",
+    items: [] as { stockItemId: number; quantity: number; unitPrice?: number }[],
   });
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerInputRef = useRef<HTMLInputElement>(null);
-
   const [adminOverride, setAdminOverride] = useState(false);
   const [adminPin, setAdminPin] = useState("");
-
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [productPickerIndex, setProductPickerIndex] = useState<number>(0);
-
   const { data: orders } = trpc.order.list.useQuery(undefined, {
     refetchInterval: 5000,
     refetchOnMount: "always",
@@ -299,33 +281,21 @@ export default function OrdersPage() {
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: stats } = trpc.order.getStats.useQuery();
-
-  // Track which orders have real invoices (SGF/RC prefix) so we don't offer to regenerate
   const [liveInvoiceOrderIds, setLiveInvoiceOrderIds] = useState<Set<number>>(new Set());
   useEffect(() => {
     function refresh() {
       const allInv = dataService.invoice.list();
-      const ids = new Set(
-        allInv
-          .filter((i: any) => i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC"))
-          .map((i: any) => Number(i.orderId))
-      );
+      const ids = new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC")).map((i: any) => Number(i.orderId)));
       setLiveInvoiceOrderIds(ids);
     }
     refresh();
     const interval = setInterval(refresh, 3000);
     window.addEventListener("firebaseDataReceived", refresh);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("firebaseDataReceived", refresh);
-    };
+    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
   }, []);
-
   const { data: customerSpecialPrices } = trpc.specialPrice.listByCustomer.useQuery(
-    { customerId: formData.customerId },
-    { enabled: formData.customerId > 0 }
+    { customerId: formData.customerId }, { enabled: formData.customerId > 0 }
   );
-
   const updateStatus = trpc.order.updateStatus.useMutation({
     onSuccess: async () => {
       reloadFromStorage();
@@ -339,13 +309,9 @@ export default function OrdersPage() {
       await utils.sampleReport.getAll.invalidate();
     },
   });
-
   const createOrder = trpc.order.create.useMutation({
     onSuccess: async () => {
-      setShowForm(false);
-      setEditingOrder(null);
-      sampleOverrideRef.current = false;
-      resetForm();
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
       reloadFromStorage();
       utils.order.list.invalidate();
       utils.order.getStats.invalidate();
@@ -361,18 +327,12 @@ export default function OrdersPage() {
       console.error("[createOrder] error:", err);
     },
     onSettled: () => {
-      setShowForm(false);
-      setEditingOrder(null);
-      sampleOverrideRef.current = false;
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
     },
   });
-
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
-      setShowForm(false);
-      setEditingOrder(null);
-      sampleOverrideRef.current = false;
-      resetForm();
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm();
       reloadFromStorage();
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
@@ -388,12 +348,9 @@ export default function OrdersPage() {
       console.error("[updateOrder] error:", err);
     },
     onSettled: () => {
-      setShowForm(false);
-      setEditingOrder(null);
-      sampleOverrideRef.current = false;
+      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
     },
   });
-
   const deleteOrder = trpc.order.delete.useMutation({
     onSuccess: () => {
       utils.order.list.invalidate();
@@ -403,7 +360,6 @@ export default function OrdersPage() {
       alert("Failed to delete order: " + (err.message || "Unknown error"));
     },
   });
-
   const allCustomers = useMemo(() => {
     const merged = [...(customers || [])];
     const corpList = (customers || []).filter((c: any) => c.customerType === "corporate");
@@ -412,7 +368,6 @@ export default function OrdersPage() {
     });
     return merged;
   }, [customers]);
-
   const filteredCustomers = useMemo(() => {
     if (!customerSearch.trim()) return allCustomers;
     const q = customerSearch.toLowerCase();
@@ -423,12 +378,9 @@ export default function OrdersPage() {
       (c.phone || "").toLowerCase().includes(q)
     );
   }, [allCustomers, customerSearch]);
-
   const selectedCustomer = useMemo(() => {
     return allCustomers.find((c: any) => c.id === formData.customerId);
   }, [allCustomers, formData.customerId]);
-
-  // Track committed stock (non-delivered/non-cancelled orders)
   const committedStock = useMemo(() => {
     const map: Record<number, number> = {};
     (orders || []).forEach((order: any) => {
@@ -443,7 +395,6 @@ export default function OrdersPage() {
     });
     return map;
   }, [orders]);
-
   const availableStock = useMemo(() => {
     const map: Record<number, number> = {};
     (stockItems || []).forEach((item: any) => {
@@ -454,7 +405,6 @@ export default function OrdersPage() {
     });
     return map;
   }, [stockItems, committedStock]);
-
   const productOrderStatuses = useMemo(() => {
     const map: Record<number, { orderNumber: string; qty: number }[]> = {};
     (orders || []).forEach((order: any) => {
@@ -467,7 +417,6 @@ export default function OrdersPage() {
     });
     return map;
   }, [orders]);
-
   function getUnitPrice(stockItemId: number, tier: string, customPrice?: number): number {
     if (customPrice !== undefined && customPrice > 0) return customPrice;
     const item = (stockItems || []).find((s: any) => Number(s.id) === stockItemId);
@@ -480,11 +429,9 @@ export default function OrdersPage() {
       default: return Number(item.wholesalePrice) || 0;
     }
   }
-
   function getEffectivePrice(stockItemId: number, customPrice?: number): number {
     return getUnitPrice(stockItemId, formData.priceTier, customPrice);
   }
-
   function getPriceBreakdown(stockItemId: number, quantity: number) {
     const unitPrice = getEffectivePrice(stockItemId);
     const subtotal = unitPrice * quantity;
@@ -492,39 +439,27 @@ export default function OrdersPage() {
     const total = subtotal + vat;
     return { unitPrice, subtotal, vat, total, basePrice: unitPrice };
   }
-
   function resetForm() {
     setFormData({
-      customerId: 0,
-      orderType: "regular",
-      paymentTerms: "cod",
-      priceTier: "wholesale",
-      deliveryAddress: "",
-      notes: "",
+      customerId: 0, orderType: "regular", paymentTerms: "cod",
+      priceTier: "wholesale", deliveryAddress: "", notes: "",
       items: [],
     });
     setCustomerSearch("");
     setAdminOverride(false);
     setAdminPin("");
   }
-
   function canPlaceOrder(): { valid: boolean; error?: string } {
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
     if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
     if (formData.orderType === "quote") return { valid: true };
-
     for (const item of validItems) {
       const stockId = item.stockItemId;
       const avail = availableStock[stockId] || 0;
       const conversion = item.conversion || 1;
       const requestedQty = item.quantity * conversion;
-
-      if (avail <= 0) {
-        const s = (stockItems || []).find((x: any) => Number(x.id) === stockId);
-        return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` };
-      }
-
+      if (avail <= 0) { const s = (stockItems || []).find((x: any) => Number(x.id) === stockId); return { valid: false, error: `${s?.productName || "Product"} is OUT OF STOCK.` }; }
       if (formData.orderType === "sample") {
         const existing = (orders || []).some((o: any) =>
           o.id !== editingOrder?.id &&
@@ -532,29 +467,17 @@ export default function OrdersPage() {
           o.orderType === "sample" &&
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
-        if (existing) {
-          const s = (stockItems || []).find((x: any) => Number(x.id) === stockId);
-          return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` };
-        }
-        if (item.quantity > 1 && !sampleOverrideRef.current) {
-          return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
-        }
+        if (existing) { const s = (stockItems || []).find((x: any) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
+        if (item.quantity > 1 && !sampleOverrideRef.current) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
       } else {
-        if (requestedQty > avail) {
-          const s = (stockItems || []).find((x: any) => Number(x.id) === stockId);
-          return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} units)` };
-        }
+        if (requestedQty > avail) { const s = (stockItems || []).find((x: any) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} units)` }; }
       }
     }
-
-    // CUSTOMER ACCOUNT CHECK: validate active status, credit limit, COD overdue
-    const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
+    const customer = (customers || []).find((c: any) => c.id === formData.customerId);
     if (customer) {
-      // Check inactive
       if (customer.isActive === false && !isSuperAdmin && !adminOverride) {
         return { valid: false, error: `Customer account is INACTIVE. Only Super Admin can place orders for inactive customers.` };
       }
-      // Check credit limit (non-COD only)
       const creditLimit = Number(customer.creditLimit || 0);
       if (creditLimit > 0 && formData.paymentTerms !== "cod") {
         const outstanding = (invoices || [])
@@ -564,7 +487,6 @@ export default function OrdersPage() {
           return { valid: false, error: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Only Super Admin can override.` };
         }
       }
-      // Check COD overdue (2 days)
       if (formData.paymentTerms === "cod") {
         const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
         const unpaidCOD = (invoices || [])
@@ -580,15 +502,10 @@ export default function OrdersPage() {
         }
       }
     }
-
     return { valid: true };
   }
-
   function startEditOrder(order: any) {
     setEditingOrder(order);
-    sampleOverrideRef.current = order?.orderType === "sample" && user?.role === "super_admin";
-    setAdminOverride(false);
-    setAdminPin("");
     setFormData({
       customerId: order.customerId || 0,
       orderType: order.orderType || "regular",
@@ -600,22 +517,17 @@ export default function OrdersPage() {
         stockItemId: Number(item.stockItemId) || 0,
         quantity: Number(item.quantity) || 0,
         unitPrice: item.unitPrice ? Number(item.unitPrice) : undefined,
-        conversion: item.conversion || 1,
-        unitLabel: item.unitLabel || "Each",
       })),
     });
     setCustomerSearch(order.customer?.name || "");
+    setAdminOverride(order.superAdminOverride || false);
+    setAdminPin("");
     setShowForm(true);
   }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const check = editingOrder ? canEditOrderBasic() : canPlaceOrder();
-    if (!check.valid) {
-      alert(check.error);
-      return;
-    }
-
+    if (!check.valid) { alert(check.error); return; }
     const payload: any = {
       customerId: formData.customerId,
       orderType: formData.orderType,
@@ -629,40 +541,29 @@ export default function OrdersPage() {
           stockItemId: i.stockItemId,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
-          conversion: i.conversion || 1,
-          unitLabel: i.unitLabel || "Each",
         })),
     };
-
-    // Only set salesRepName on NEW orders. On edit, preserve original.
-    // Use the customer's assigned sales rep, not the logged-in user.
     if (!editingOrder) {
-      const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
       payload.salesRepName = customer?.salesRepName || user?.name || "";
-      // Pass admin override flag for below-corporate pricing approval
       if (adminOverride) {
         payload.adminApproved = true;
       }
-      // Pass super admin override for customer blocking (inactive, credit limit, COD overdue)
-      if (adminOverride && adminPin) {
+      if (isSuperAdmin && adminOverride && adminPin) {
         payload.superAdminOverride = true;
       }
     }
-
     if (editingOrder) {
       updateOrder.mutate({ id: editingOrder.id, data: payload });
     } else {
       createOrder.mutate(payload);
     }
   }
-
   function canEditOrderBasic(): { valid: boolean; error?: string } {
     if (formData.customerId === 0) return { valid: false, error: "Select a customer" };
     const validItems = formData.items.filter((i) => i.stockItemId > 0 && i.quantity > 0);
     if (validItems.length === 0) return { valid: false, error: "Add at least one item" };
     return { valid: true };
   }
-
   function canEditOrder(order: any): boolean {
     if (order.orderType === "quote") {
       if (order.status === "converted" || order.status === "rejected") return false;
@@ -670,7 +571,6 @@ export default function OrdersPage() {
     }
     return isAdmin;
   }
-
   function canCancelOrder(order: any): boolean {
     if (order.orderType === "quote") {
       if (order.status === "converted" || order.status === "rejected") return false;
@@ -678,18 +578,15 @@ export default function OrdersPage() {
     }
     return isAdmin && order.status !== "cancelled";
   }
-
   function canProgressOrder(order: any): boolean {
     if (order.orderType === "quote") return false;
     if (!isAdmin) return false;
     if (order.status === "delivered" || order.status === "cancelled") return false;
     return true;
   }
-
   function getCustomer(order: any) {
     return allCustomers.find((c: any) => c.id === order.customerId);
   }
-
   const tabCounts = useMemo(() => {
     const counts: Record<string, number> = { all: (orders || []).length };
     statusTabs.forEach((tab) => {
@@ -704,7 +601,6 @@ export default function OrdersPage() {
     });
     return counts;
   }, [orders]);
-
   const filteredOrders = useMemo(() => {
     let list = [...(orders || [])];
     if (activeTab !== "all") {
@@ -729,18 +625,15 @@ export default function OrdersPage() {
     }
     return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [orders, activeTab, orderSearch]);
-
   const subtotal = useMemo(() => {
     return formData.items.reduce((sum, item) => {
       const price = getEffectivePrice(item.stockItemId, item.unitPrice);
       return sum + (item.quantity * price);
     }, 0);
   }, [formData.items, formData.priceTier, stockItems, customerSpecialPrices]);
-
   const vatRate = 0.15;
   const vatAmount = subtotal * vatRate;
   const totalWithVat = subtotal + vatAmount;
-
   if (!orders) {
     return (
       <div className="space-y-4">
@@ -749,7 +642,6 @@ export default function OrdersPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -764,7 +656,6 @@ export default function OrdersPage() {
           <Plus className="w-4 h-4" /> New Order
         </button>
       </div>
-
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((tab) => (
           <button
@@ -780,7 +671,6 @@ export default function OrdersPage() {
           </button>
         ))}
       </div>
-
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8B8C]" />
         <input
@@ -791,7 +681,6 @@ export default function OrdersPage() {
           className="input-field pl-10 w-full"
         />
       </div>
-
       <div className="space-y-2">
         {filteredOrders.length === 0 && (
           <div className="text-center py-12 text-[#8A8B8C]">
@@ -800,13 +689,11 @@ export default function OrdersPage() {
             <p className="text-sm mt-1">{orderSearch ? "Try adjusting your search" : "Create your first order to get started"}</p>
           </div>
         )}
-
         {filteredOrders.map((order: any) => {
           const customer = getCustomer(order);
           const isQuote = order.orderType === "quote";
           const isSample = order.orderType === "sample";
           const isExpanded = expandedOrder === order.id;
-
           return (
             <div key={order.id} className="card overflow-hidden">
               <div
@@ -845,7 +732,6 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
-
               {isExpanded && (
                 <div className="px-4 pb-4 border-t" style={{ borderColor: "#222324" }}>
                   <div className="mt-3 space-y-2">
@@ -871,7 +757,6 @@ export default function OrdersPage() {
                       <span className="text-[#D4A843]">R {safeNum(order.totalAmount).toFixed(2)}</span>
                     </div>
                   </div>
-
                   <div className="mt-4 flex flex-wrap gap-2">
                     {canProgressOrder(order) && (
                       <button
@@ -911,7 +796,6 @@ export default function OrdersPage() {
           );
         })}
       </div>
-
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={() => { setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); }}>
           <div className="card-surface w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -926,7 +810,6 @@ export default function OrdersPage() {
                 <X className="w-5 h-5 text-[#8A8B8C]" />
               </button>
             </div>
-
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white">Customer</label>
@@ -977,7 +860,6 @@ export default function OrdersPage() {
                   </div>
                 )}
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-white">Order Type</label>
@@ -1017,7 +899,6 @@ export default function OrdersPage() {
                   </select>
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white">Delivery Address</label>
                 <input
@@ -1028,7 +909,6 @@ export default function OrdersPage() {
                   className="input-field w-full"
                 />
               </div>
-
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white">Notes</label>
                 <textarea
@@ -1039,8 +919,6 @@ export default function OrdersPage() {
                   className="input-field w-full"
                 />
               </div>
-
-              {/* Admin Override — below-corporate pricing or customer blocking */}
               {isAdmin && formData.orderType !== "sample" && formData.orderType !== "quote" && (
                 <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.3)" }}>
                   <div className="flex items-start gap-2 mb-2">
@@ -1076,7 +954,6 @@ export default function OrdersPage() {
                   )}
                 </div>
               )}
-
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-white">Items</label>
@@ -1085,7 +962,7 @@ export default function OrdersPage() {
                     onClick={() => {
                       setFormData((prev) => ({
                         ...prev,
-                        items: [...prev.items, { stockItemId: 0, quantity: 1, conversion: 1, unitLabel: "Each" }],
+                        items: [...prev.items, { stockItemId: 0, quantity: 1 }],
                       }));
                     }}
                     className="btn-secondary text-xs flex items-center gap-1"
@@ -1093,13 +970,11 @@ export default function OrdersPage() {
                     <Plus className="w-3 h-3" /> Add Item
                   </button>
                 </div>
-
                 {formData.items.map((item, idx) => {
                   const stock = (stockItems || []).find((s: any) => s.id == item.stockItemId);
                   const avail = availableStock[item.stockItemId] || 0;
                   const isOutOfStock = avail <= 0 && item.stockItemId > 0;
                   const { basePrice, total } = getPriceBreakdown(item.stockItemId, item.quantity || 0);
-
                   return (
                     <div key={idx} className="flex flex-col sm:flex-row gap-3 p-3 bg-[#18191A] rounded-lg">
                       <div className="flex-1 min-w-0">
@@ -1177,12 +1052,10 @@ export default function OrdersPage() {
                     </div>
                   );
                 })}
-
                 {formData.items.length === 0 && (
                   <div className="text-center py-6 text-[#8A8B8C] text-sm">No items added. Click "Add Item" to start.</div>
                 )}
               </div>
-
               <div className="border-t pt-4 space-y-2" style={{ borderColor: "#222324" }}>
                 <div className="flex justify-between text-sm">
                   <span className="text-[#8A8B8C]">Subtotal</span>
@@ -1197,7 +1070,6 @@ export default function OrdersPage() {
                   <span className="text-[#D4A843]">R {totalWithVat.toFixed(2)}</span>
                 </div>
               </div>
-
               {(() => {
                 const validation = canPlaceOrder();
                 if (!validation.valid) {
@@ -1210,14 +1082,13 @@ export default function OrdersPage() {
                 }
                 return null;
               })()}
-
               <button
                 type="submit"
                 disabled={createOrder.isPending || updateOrder.isPending || !canPlaceOrder().valid}
                 className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {createOrder.isPending || updateOrder.isPending ? (
-                  <span className="animate-pulse">Processing...</span>
+                  <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Processing...</span>
                 ) : editingOrder ? (
                   "Update Order"
                 ) : (
@@ -1228,7 +1099,6 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
-
       <ProductPickerModal
         isOpen={productPickerOpen}
         onClose={() => setProductPickerOpen(false)}

@@ -117,7 +117,8 @@ export default function StockPage() {
   // Print Daily Invoiced Stock Report to PDF
   function printReport() {
     if (!dailyReport || !dailyReport.items) return;
-    const logoUrl = `${window.location.origin}/sgf-logo.png`;
+    const cfg = getCompanyConfig("sgf");
+    const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
     const period = dailyReport.from === dailyReport.to ? dailyReport.from : `${dailyReport.from} to ${dailyReport.to}`;
 
     const rows = dailyReport.items.map((item: any) => `
@@ -164,7 +165,7 @@ export default function StockPage() {
           <img src="${logoUrl}" onerror="this.style.display='none'" />
           <h1>Daily Invoiced Stock Report</h1>
           <div class="sub">${period} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>
-          <div class="sub">28 Nagington road, Wadeville, Germiston &nbsp;|&nbsp; Tel: ${getCompanyConfig("sgf").contact.phone}</div>
+          <div class="sub">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode} &nbsp;|&nbsp; Tel: ${cfg.contact.phone}</div>
         </div>
         <div class="summary">
           <div class="summary-box"><div class="label">Total Lines</div><div class="value">${dailyReport.totalLines}</div></div>

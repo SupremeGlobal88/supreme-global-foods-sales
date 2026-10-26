@@ -918,6 +918,41 @@ export default function OrdersPage() {
                   className="input-field w-full"
                 />
               </div>
+              {isAdmin && formData.orderType !== "sample" && formData.orderType !== "quote" && (
+                <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.3)" }}>
+                  <div className="flex items-start gap-2 mb-2">
+                    <Shield className="w-4 h-4 text-[#D4A843] flex-shrink-0 mt-0.5" />
+                    <div className="text-[#D4A843]">
+                      <strong>Admin Override</strong>
+                      <div className="text-xs mt-1 opacity-80">Check and enter PIN to bypass inactive / credit-limit / COD restrictions</div>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={adminOverride}
+                      onChange={(e) => { setAdminOverride(e.target.checked); if (!e.target.checked) setAdminPin(""); }}
+                      className="w-4 h-4 rounded accent-[#D4A843]"
+                    />
+                    <span className="text-[#E8E8E9] text-xs">I am a Super Admin — override restrictions</span>
+                  </label>
+                  {adminOverride && (
+                    <div className="mt-2">
+                      <label className="label-text block mb-1 text-xs">Enter your PIN to approve</label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={adminPin}
+                        onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="Enter PIN"
+                        className="input-field w-32 text-sm"
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-white">Items</label>

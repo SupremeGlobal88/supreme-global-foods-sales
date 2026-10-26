@@ -399,15 +399,15 @@ export default function OrdersPage() {
       utils.sampleReport.getAll.invalidate();
     },
     onError: (err: any) => {
-      alert("Failed to update order: " + (err.message || "Unknown error"));
-      console.error("[updateOrder] error:", err);
+      alert("Update failed: " + (err.message || "Unknown error"));
     },
     onSettled: () => {
       setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
     },
   });
-  const deleteOrder = trpc.order.delete.useMutation({
-    onSuccess: async () => {
+  const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
+    onSuccess: async (data) => {
+      reloadFromStorage();
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
       await utils.salesRep.getStats.invalidate();
@@ -415,466 +415,210 @@ export default function OrdersPage() {
       await utils.stock.search.invalidate();
       await utils.stock.list.invalidate();
       await utils.stock.getStats.invalidate();
-      await utils.sampleReport.getAll.invalidate();
+      await utils.invoice.list.invalidate();
+      if (data?.order) {
+        alert(`Quote converted to order ${data.order.orderNumber} successfully!`);
+      }
     },
-  });
-  const restoreOrder = trpc.order.restore.useMutation({
-    onSuccess: async () => {
-      await utils.order.list.invalidate();
-      await utils.order.getStats.invalidate();
-      await utils.salesRep.getStats.invalidate();
-      await utils.salesRep.getSalesBreakdown.invalidate();
-      await utils.stock.search.invalidate();
-      await utils.stock.list.invalidate();
-      await utils.stock.getStats.invalidate();
-      await utils.sampleReport.getAll.invalidate();
+    onError: (err: any) => {
+      alert("Failed to convert quote: " + (err.message || "Unknown error"));
     },
   });
 
-  const { data: salesReps } = trpc.salesRep.list.useQuery(undefined, {
-    refetchInterval: 5000,
-    refetchOnMount: "always",
-  });
-
-  // ── stock availability (SOH minus committed quantities) ──
-  const availableStock = useMemo(() => {
+  // Build committed stock map: for each product, total qty in non-delivered/cancelled orders
+  const committedStock = useMemo(() => {
     const map: Record<number, number> = {};
-    (stockItems || []).forEach((s) => { map[s.id] = safeNum(s.quantity); });
-    // Subtract committed quantities from non-delivered, non-cancelled orders
-    (orders || []).forEach((o: any) => {
-      if (o.status === "delivered" || o.status === "cancelled" || o.status === "sample_delivered") return;
-      (o.items || []).forEach((it: any) => {
-        const id = Number(it.stockItemId);
-        if (!id) return;
-        const conversion = it.conversion || 1;
-        const qtyInKg = safeNum(it.quantity) * conversion;
-        map[id] = safeNum(map[id]) - qtyInKg;
-      });
-    });
-    return map;
-  }, [stockItems, orders]);
-
-  // ── in-progress orders per product (for stock commitment display) ──
-  const productOrderStatuses = useMemo(() => {
-    const map: Record<number, { orderNumber: string; qty: number; status: string }[]> = {};
-    (orders || []).forEach((o: any) => {
-      if (o.status === "delivered" || o.status === "cancelled" || o.status === "sample_delivered") return;
-      (o.items || []).forEach((it: any) => {
-        const id = Number(it.stockItemId);
-        if (!id) return;
-        if (!map[id]) map[id] = [];
-        map[id].push({ orderNumber: o.orderNumber || `#${o.id}`, qty: it.quantity, status: o.status });
-      });
-    });
+    (orders || [])
+      .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
+      .flatMap((o) => o.items || [])
+      .forEach((item: any) => { map[item.stockItemId] = (map[item.stockItemId] || 0) + (item.quantity || 0); });
     return map;
   }, [orders]);
 
-  function getTierPrice(stockItemId: number): number {
-    const item = (stockItems || []).find((s) => s.id === stockItemId);
-    if (!item) return 0;
-    switch (formData.priceTier) {
-      case "corporate": return safeNum(item.corporatePrice);
-      case "bulk": return safeNum(item.bulkPrice);
-      case "wholesale": return safeNum(item.wholesalePrice);
-      case "retail": return safeNum(item.retailPrice);
-      default: return safeNum(item.wholesalePrice);
-    }
-  }
+  // Available = current SOH (stock already deducted at order creation).
+  // Stock is physically deducted in order.create and stays deducted through
+  // the entire lifecycle. Only cancelled orders restore stock.
+  // committedStock is used for display/info only, NOT for availability calc.
+  const availableStock = useMemo(() => {
+    const map: Record<number, number> = {};
+    (stockItems || []).forEach((s) => {
+      map[s.id] = s.quantity || 0;
+    });
+    return map;
+  }, [stockItems]);
 
-  function getEffectivePrice(stockItemId: number, customPrice?: number): number {
-    if (customPrice && customPrice > 0) return customPrice;
-    const special = (customerSpecialPrices || []).find((sp: any) => sp.stockItemId === stockItemId);
-    if (special && Number(special.price) > 0) return Number(special.price);
-    return getTierPrice(stockItemId);
-  }
-
-  function getUnitLabel(stockItemId: number, unit?: string): string {
-    const item = (stockItems || []).find((s) => s.id === stockItemId);
-    if (!item || !unit || unit === "each") return "unit";
-    const u = (item.sellingUnits || []).find((x: any) => x.unit === unit);
-    return u?.label || unit;
-  }
-
-  function formatCurrency(n: number) {
-    return "R " + n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
+  // For each product, get the active order statuses consuming that stock
+  const productOrderStatuses = useMemo(() => {
+    const map: Record<number, Array<{ orderNumber: string; status: string; qty: number }>> = {};
+    (orders || [])
+      .filter((o) => o.status !== "delivered" && o.status !== "cancelled" && o.status !== "sample_delivered")
+      .forEach((o) => {
+        (o.items || []).forEach((item: any) => {
+          if (!map[item.stockItemId]) map[item.stockItemId] = [];
+          map[item.stockItemId].push({ orderNumber: o.orderNumber, status: o.status, qty: item.quantity });
+        });
+      });
+    return map;
+  }, [orders]);
 
   function resetForm() {
     setFormData({ customerId: 0, orderType: "regular", paymentTerms: "cod", priceTier: "wholesale", deliveryAddress: "", notes: "", items: [] });
     setCustomerSearch("");
+    setShowCustomerDropdown(false);
     setAdminOverride(false);
     setAdminPin("");
-    setShowCustomerDropdown(false);
   }
 
-  // ── build filtered orders list ──
-  const filteredOrders = useMemo(() => {
-    let list = (orders || []).filter((o: any) => {
-      if (!o || typeof o !== "object") return false;
-      if (activeTab === "all") return true;
-      if (activeTab === "sample") return o.orderType === "sample";
-      if (activeTab === "quotes") return o.orderType === "quote";
-      return o.status === activeTab;
-    });
-    if (orderSearch.trim()) {
-      const q = orderSearch.toLowerCase();
-      list = list.filter((o: any) =>
-        (o.orderNumber || "").toLowerCase().includes(q) ||
-        (o.customerName || "").toLowerCase().includes(q) ||
-        String(o.id).includes(q)
-      );
+  function getTierPrice(stockItemId: number | string, tier?: string): number {
+    const stock = (stockItems || []).find((s) => String(s.id) === String(stockItemId));
+    if (!stock) return 0;
+    // Sample orders ALWAYS use corporate price tier regardless of formData.priceTier
+    const effectiveTier = formData.orderType === "sample" ? "corporate" : (tier || formData.priceTier);
+    let rawPrice: number;
+    switch (effectiveTier) {
+      case "corporate": rawPrice = Number(stock.corporatePrice); break;
+      case "bulk": rawPrice = Number(stock.bulkPrice); break;
+      case "retail": rawPrice = Number(stock.retailPrice); break;
+      default: rawPrice = Number(stock.wholesalePrice); break;
     }
-    // Sort: pending first, then by date desc
-    return list.sort((a: any, b: any) => {
-      const aPending = a.status === "pending" ? 1 : 0;
-      const bPending = b.status === "pending" ? 1 : 0;
-      if (aPending !== bPending) return bPending - aPending;
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    });
-  }, [orders, activeTab, orderSearch]);
-
-  // ── totals for an order ──
-  function calcOrderTotal(order: any) {
-    return (order.items || []).reduce((sum: number, it: any) => {
-      const price = it.unitPrice || it.priceAtOrder || 0;
-      return sum + price * safeNum(it.quantity);
-    }, 0);
-  }
-
-  function calcOrderTotalWithVat(order: any) {
-    const sub = calcOrderTotal(order);
-    const vat = sub * 0.15;
-    return sub + vat;
-  }
-
-  // ── validation helper ──
-  function canPlaceOrder(): { valid: boolean; error?: string } {
-    if (formData.items.length === 0) return { valid: false, error: "Add at least one item." };
-    for (const it of formData.items) {
-      if (!it.stockItemId) return { valid: false, error: "Select a product for every item." };
-      if (!it.quantity || it.quantity < 1) return { valid: false, error: "Quantity must be at least 1." };
-    }
-
-    // CUSTOMER ACCOUNT CHECK
-    const customer = (customers || []).find((c) => String(c.id) === String(formData.customerId));
-    if (customer) {
-      if (customer.isActive === false && !isSuperAdmin && !adminOverride) {
-        return { valid: false, error: "Customer account is inactive. Contact admin." };
+    // If loaded price is 0 or missing, fall back to STATIC_PRODUCTS (source of truth)
+    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+      let staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => String(p.id) === String(stockItemId) || p.productCode === stock.productCode);
+      if (!staticProd && stock.productCode) {
+        staticProd = (staticData.STATIC_PRODUCTS || []).find((p: any) => p.productCode === stock.productCode);
       }
-      const creditLimit = safeNum(customer.creditLimit);
-      const outstanding = safeNum(customer.balanceOutstanding);
-      if (creditLimit > 0 && formData.paymentTerms !== "cod") {
+      if (staticProd) {
+        switch (effectiveTier) {
+          case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
+          case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
+          case "retail": rawPrice = Number(staticProd.retailPrice); break;
+          default: rawPrice = Number(staticProd.wholesalePrice); break;
+        }
+      }
+    }
+    return Number.isFinite(rawPrice) ? rawPrice : 0;
+  }
+
+  // Price helpers for the selected tier with special pricing
+  function getUnitPrice(stockItemId: number | string, tier?: string): number {
+    const special = (customerSpecialPrices || []).find(
+      (sp: any) => String(sp.stockItemId) === String(stockItemId)
+    );
+    if (special && Number.isFinite(Number(special.price)) && Number(special.price) > 0) {
+      return Number(special.price);
+    }
+    return getTierPrice(stockItemId, tier);
+  }
+
+  function getPriceBreakdown(stockItemId: number | string, qty: number, tier?: string) {
+    const basePrice = getUnitPrice(stockItemId, tier);
+    return { basePrice, total: basePrice * qty };
+  }
+
+  const subtotal = useMemo(() => {
+    return (formData.items || []).reduce((sum, it) => {
+      const price = getUnitPrice(it.stockItemId);
+      return sum + price * (it.quantity || 0);
+    }, 0);
+  }, [formData.items, stockItems, customerSpecialPrices, formData.priceTier]);
+
+  const vatRate = getCompanyConfig().vatRate || 0.15;
+  const vatAmount = subtotal * vatRate;
+  const totalWithVat = subtotal + vatAmount;
+
+  const allCustomers = useMemo(() => {
+    const regular = (customers || []).map((c: any) => ({ ...c, _type: "regular" }));
+    const corporate = (customers || [])
+      .filter((c: any) => c.type === "corporate")
+      .map((c: any) => ({ ...c, _type: "corporate" }));
+    // Merge, preferring corporate entries for deduplication
+    const map = new Map<string, any>();
+    regular.forEach((c: any) => { if (c.name) map.set(c.name.toLowerCase(), c); });
+    corporate.forEach((c: any) => { if (c.name) map.set(c.name.toLowerCase(), c); });
+    return Array.from(map.values());
+  }, [customers]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return allCustomers.slice(0, 50);
+    const q = customerSearch.toLowerCase();
+    return allCustomers
+      .filter((c: any) =>
+        c.name?.toLowerCase().includes(q) ||
+        c.contactPerson?.toLowerCase().includes(q) ||
+        c.phone?.includes(q)
+      )
+      .slice(0, 50);
+  }, [allCustomers, customerSearch]);
+
+  const selectedCustomer = useMemo(() => {
+    return allCustomers.find((c: any) => c.id == formData.customerId);
+  }, [allCustomers, formData.customerId]);
+
+  function canPlaceOrder(): { ok: boolean; message?: string } {
+    if (!formData.customerId) return { ok: false, message: "Please select a customer" };
+    if (!formData.items.length) return { ok: false, message: "Please add at least one item" };
+    if (formData.items.some((it) => !it.stockItemId || (it.quantity || 0) <= 0)) {
+      return { ok: false, message: "Please select a product and enter a valid quantity for every item" };
+    }
+
+    const customer = allCustomers.find((c: any) => c.id == formData.customerId);
+    if (!customer) return { ok: false, message: "Customer not found" };
+
+    // Block inactive customers unless super admin or admin override
+    if (customer.isActive === false && !isSuperAdmin && !adminOverride) {
+      return { ok: false, message: "This customer is inactive. Please activate the customer before placing an order, or use admin override." };
+    }
+
+    // Credit limit check for non-super-admins (unless admin override)
+    if (!isSuperAdmin && !adminOverride) {
+      const creditLimit = Number(customer.creditLimit) || 0;
+      if (creditLimit > 0) {
+        const allOrders = orders || [];
+        const customerOrders = allOrders.filter((o: any) => o.customerId == customer.id && o.status !== "cancelled");
+        const outstanding = customerOrders.reduce((sum: number, o: any) => {
+          const invs = (invoices || []).filter((i: any) => i.orderId == o.id && i.status !== "cancelled" && i.status !== "paid");
+          return sum + invs.reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
+        }, 0);
         if (outstanding >= creditLimit && !isSuperAdmin && !adminOverride) {
-          return { valid: false, error: `Credit limit exceeded (R${outstanding.toFixed(2)} / R${creditLimit.toFixed(2)}).` };
-        }
-      }
-      if (formData.paymentTerms === "cod") {
-        const unpaidCOD = (invoices || []).filter((inv: any) =>
-          String(inv.customerId) === String(customer.id) &&
-          inv.paymentTerms === "cod" &&
-          inv.status !== "paid" &&
-          inv.status !== "cancelled"
-        );
-        if (unpaidCOD.length > 0 && !isSuperAdmin && !adminOverride) {
-          return { valid: false, error: `This COD customer has ${unpaidCOD.length} unpaid COD invoice(s). Please settle before placing a new COD order.` };
+          return { ok: false, message: `Credit limit exceeded. Outstanding: R ${outstanding.toFixed(2)}, Limit: R ${creditLimit.toFixed(2)}. Please settle outstanding invoices or use admin override.` };
         }
       }
     }
 
-    const total = formData.items.reduce((sum, it) => {
-      const price = getEffectivePrice(it.stockItemId, it.unitPrice);
-      return sum + price * safeNum(it.quantity);
-    }, 0);
-    if (total <= 0) return { valid: false, error: "Order total must be greater than zero." };
+    // COD overdue check for non-super-admins (unless admin override)
+    if (!isSuperAdmin && !adminOverride) {
+      const allOrders = orders || [];
+      const customerOrders = allOrders.filter((o: any) => o.customerId == customer.id && o.status !== "cancelled");
+      const unpaidCOD = customerOrders.filter((o: any) => {
+        if (o.paymentTerms !== "cod") return false;
+        const invs = (invoices || []).filter((i: any) => i.orderId == o.id && i.status !== "cancelled" && i.status !== "paid");
+        return invs.length > 0;
+      }).filter((o: any) => {
+        const orderDate = new Date(o.createdAt || o.orderDate || Date.now());
+        const now = new Date();
+        const daysDiff = (now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+        return daysDiff > 2;
+      });
+      if (unpaidCOD.length > 0 && !isSuperAdmin && !adminOverride) {
+        return { ok: false, message: `This customer has ${unpaidCOD.length} unpaid COD invoice(s) older than 2 days. Please settle before placing a new order, or use admin override.` };
+      }
+    }
 
-    // Admin override: below-corporate pricing
-    if (formData.orderType !== "sample" && formData.orderType !== "quote") {
-      const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-      const belowItems: string[] = [];
-      for (const item of validItems) {
-        if (item.unitPrice && item.unitPrice > 0) {
-          const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-          if (stock) {
-            const conversion = item.conversion || 1;
-            const corporateFloor = Number(stock.corporatePrice || 0) * conversion;
-            if (corporateFloor > 0 && item.unitPrice < corporateFloor * 0.99) {
-              belowItems.push(`${stock.productName}: R${item.unitPrice.toFixed(2)} (floor R${corporateFloor.toFixed(2)})`);
-            }
-          }
+    // Stock availability check (skip for super admin with override)
+    if (!isSuperAdmin || !adminOverride) {
+      for (const it of formData.items) {
+        const avail = availableStock[it.stockItemId] || 0;
+        if ((it.quantity || 0) > avail) {
+          return { ok: false, message: `Insufficient stock for item ${it.stockItemId}. Available: ${avail}, Requested: ${it.quantity}` };
         }
       }
-      if (belowItems.length > 0 && !isAdmin && !adminOverride) {
-        return { valid: false, error: `Below corporate floor: ${belowItems.join(" | ")}. Admin PIN required.` };
-      }
     }
 
-    if (adminOverride) {
-      if (!adminPin || adminPin.length < 4) {
-        return { valid: false, error: "Enter a valid admin PIN (min 4 digits)." };
-      }
-    }
-
-    return { valid: true };
+    return { ok: true };
   }
 
-  const orderCheck = useMemo(() => canPlaceOrder(), [formData, customers, stockItems, invoices, isAdmin, isSuperAdmin, adminOverride, adminPin]);
-
-  function handleAddItem() {
-    setFormData((prev) => ({ ...prev, items: [...prev.items, { stockItemId: 0, quantity: 1, unitPrice: undefined }] }));
-  }
-  function handleRemoveItem(index: number) {
-    setFormData((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
-  }
-  function handleUpdateItem(index: number, field: string, value: any) {
-    setFormData((prev) => {
-      const updated = [...prev.items];
-      updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, items: updated };
-    });
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!orderCheck.valid) return;
-
-    const payload: any = {
-      ...formData,
-      customerId: Number(formData.customerId),
-      items: formData.items.map((it) => ({
-        stockItemId: Number(it.stockItemId),
-        quantity: Number(it.quantity),
-        unitPrice: it.unitPrice,
-        unit: it.unit || "each",
-        conversion: it.conversion || 1,
-      })),
-      status: "pending",
-    };
-
-    if (adminOverride && adminPin) {
-      payload.superAdminOverride = true;
-    }
-
-    if (editingOrder) {
-      updateOrder.mutate({ id: editingOrder.id, data: payload });
-    } else {
-      createOrder.mutate(payload);
-    }
-  }
-
-  function handlePrint(order: any) {
-    const company = getCompanyConfig();
-    const customer = (customers || []).find((c: any) => String(c.id) === String(order.customerId));
-    const rep = (salesReps || []).find((r: any) => String(r.id) === String(order.salesRepId));
-    const repName = rep?.name || order.salesRepName || "";
-    const repCell = rep?.cell || "";
-
-    const subtotal = (order.items || []).reduce((sum: number, it: any) => {
-      const price = it.unitPrice || it.priceAtOrder || 0;
-      return sum + price * safeNum(it.quantity);
-    }, 0);
-    const vat = subtotal * 0.15;
-    const total = subtotal + vat;
-
-    const itemsHtml = (order.items || []).map((it: any) => {
-      const stock = (stockItems || []).find((s: any) => s.id === it.stockItemId);
-      const unitLabel = getUnitLabel(it.stockItemId, it.unit);
-      const price = it.unitPrice || it.priceAtOrder || 0;
-      const lineTotal = price * safeNum(it.quantity);
-      return `
-        <tr>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;">${stock?.productName || "Product"}${it.unit && it.unit !== "each" ? ` <span style="color:#888;font-size:11px;">(${unitLabel})</span>` : ""}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center;">${it.quantity}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right;">R ${price.toFixed(2)}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right;">R ${lineTotal.toFixed(2)}</td>
-        </tr>
-      `;
-    }).join("");
-
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Order ${order.orderNumber || order.id}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
-            .header { border-bottom: 2px solid #D4A843; padding-bottom: 12px; margin-bottom: 16px; }
-            .header h1 { margin: 0; font-size: 22px; color: #D4A843; }
-            .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-            th { background: #f8f8f8; padding: 8px; font-size: 12px; text-align: left; border-bottom: 2px solid #ddd; }
-            .totals { text-align: right; font-size: 14px; margin-top: 8px; }
-            .totals strong { font-size: 16px; color: #D4A843; }
-            .footer { margin-top: 24px; font-size: 11px; color: #777; border-top: 1px solid #eee; padding-top: 8px; }
-            .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; margin-left: 8px; }
-            .banking { background: #f8f8f8; padding: 10px; border-radius: 6px; font-size: 12px; margin-top: 12px; }
-            .banking strong { color: #D4A843; }
-            .vat-row { color: #666; font-size: 13px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${company.name}</h1>
-            <div style="font-size:12px;color:#555;">${company.registrationNumber || ""} | ${company.vatNumber || ""}</div>
-            <div style="font-size:12px;color:#555;">${company.address || ""}</div>
-            <div style="font-size:12px;color:#555;">${company.email || ""} | ${company.phone || ""}</div>
-          </div>
-
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-            <div>
-              <strong style="font-size:16px;">ORDER ${order.orderNumber || order.id}</strong>
-              <span class="status-badge" style="background:${STATUS_LABELS[order.status]?.color || "#ccc"}22;color:${STATUS_LABELS[order.status]?.color || "#ccc"};">${STATUS_LABELS[order.status]?.label || order.status}</span>
-            </div>
-            <div style="text-align:right;font-size:12px;color:#555;">
-              <div>Date: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}</div>
-              <div>Payment: ${(order.paymentTerms || "").replace("_", " ")}</div>
-            </div>
-          </div>
-
-          <div class="meta">
-            <strong>Customer:</strong> ${customer?.name || order.customerName || "N/A"}<br/>
-            <strong>Delivery:</strong> ${order.deliveryAddress || customer?.deliveryAddress || "N/A"}<br/>
-            <strong>Sales Rep:</strong> ${repName}${repCell ? ` | ${repCell}` : ""}
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th style="text-align:center;">Qty</th>
-                <th style="text-align:right;">Unit Price</th>
-                <th style="text-align:right;">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-
-          <div class="totals">
-            <div>Subtotal: R ${subtotal.toFixed(2)}</div>
-            <div class="vat-row">VAT (15%): R ${vat.toFixed(2)}</div>
-            <div><strong>Total: R ${total.toFixed(2)}</strong></div>
-          </div>
-
-          <div class="banking">
-            <strong>Banking Details</strong><br/>
-            Bank: ${banking.bankName || "N/A"}<br/>
-            Account: ${banking.accountNumber || "N/A"}<br/>
-            Branch: ${banking.branchCode || "N/A"}<br/>
-            Account Name: ${banking.accountName || "N/A"}
-          </div>
-
-          <div class="footer">
-            ${company.name} — Order generated from Supreme Global Foods Sales App<br/>
-            Thank you for your business!
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => printWindow.print(), 300);
-  }
-
-  function handlePrintDeliveryNote(order: any) {
-    const company = getCompanyConfig();
-    const customer = (customers || []).find((c: any) => String(c.id) === String(order.customerId));
-    const rep = (salesReps || []).find((r: any) => String(r.id) === String(order.salesRepId));
-    const repName = rep?.name || order.salesRepName || "";
-    const repCell = rep?.cell || "";
-
-    const itemsHtml = (order.items || []).map((it: any) => {
-      const stock = (stockItems || []).find((s: any) => s.id === it.stockItemId);
-      const unitLabel = getUnitLabel(it.stockItemId, it.unit);
-      return `
-        <tr>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;">${stock?.productName || "Product"}${it.unit && it.unit !== "each" ? ` <span style="color:#888;font-size:11px;">(${unitLabel})</span>` : ""}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center;">${it.quantity}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right;">R ${(it.unitPrice || it.priceAtOrder || 0).toFixed(2)}</td>
-        </tr>
-      `;
-    }).join("");
-
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Delivery Note ${order.orderNumber || order.id}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
-            .header { border-bottom: 2px solid #4ADE80; padding-bottom: 12px; margin-bottom: 16px; }
-            .header h1 { margin: 0; font-size: 22px; color: #4ADE80; }
-            .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-            th { background: #f8f8f8; padding: 8px; font-size: 12px; text-align: left; border-bottom: 2px solid #ddd; }
-            .footer { margin-top: 24px; font-size: 11px; color: #777; border-top: 1px solid #eee; padding-top: 8px; }
-            .signature { margin-top: 40px; display: flex; justify-content: space-between; }
-            .signature-box { width: 200px; border-top: 1px solid #333; padding-top: 4px; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${company.name}</h1>
-            <div style="font-size:12px;color:#555;">${company.registrationNumber || ""} | ${company.vatNumber || ""}</div>
-            <div style="font-size:12px;color:#555;">${company.address || ""}</div>
-          </div>
-
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-            <div>
-              <strong style="font-size:16px;">DELIVERY NOTE — ${order.orderNumber || order.id}</strong>
-            </div>
-            <div style="text-align:right;font-size:12px;color:#555;">
-              <div>Date: ${new Date(order.createdAt).toLocaleDateString("en-ZA")}</div>
-            </div>
-          </div>
-
-          <div class="meta">
-            <strong>Customer:</strong> ${customer?.name || order.customerName || "N/A"}<br/>
-            <strong>Delivery Address:</strong> ${order.deliveryAddress || customer?.deliveryAddress || "N/A"}<br/>
-            <strong>Sales Rep:</strong> ${repName}${repCell ? ` | ${repCell}` : ""}
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th style="text-align:center;">Qty</th>
-                <th style="text-align:right;">Unit Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-
-          <div class="signature">
-            <div class="signature-box">Received By<br/><span style="font-size:10px;color:#888;">Name & Signature</span></div>
-            <div class="signature-box">Date Received</div>
-          </div>
-
-          <div class="footer">
-            ${company.name} — Delivery Note generated from Supreme Global Foods Sales App
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => printWindow.print(), 300);
-  }
-
-  // ── START EDIT ORDER ──
   function startEditOrder(order: any) {
     setEditingOrder(order);
-    const mappedItems = (order.items || []).map((it: any) => ({
-      stockItemId: it.stockItemId,
-      quantity: it.quantity,
-      unitPrice: it.unitPrice,
-      unit: it.unit || "each",
-      conversion: it.conversion || 1,
-    }));
     setFormData({
       customerId: order.customerId,
       orderType: order.orderType || "regular",
@@ -882,288 +626,520 @@ export default function OrdersPage() {
       priceTier: order.priceTier || "wholesale",
       deliveryAddress: order.deliveryAddress || "",
       notes: order.notes || "",
-      items: mappedItems,
+      items: (order.items || []).map((it: any) => ({
+        stockItemId: it.stockItemId,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+      })),
     });
-    setCustomerSearch(order.customerName || "");
+    const cust = allCustomers.find((c: any) => c.id == order.customerId);
+    setCustomerSearch(cust?.name || "");
     setAdminOverride(false);
     setAdminPin("");
+    sampleOverrideRef.current = false;
     setShowForm(true);
   }
 
-  // ── Sales rep view: filter to own orders ──
-  const myOrders = useMemo(() => {
-    if (isAdmin || isSuperAdmin) return filteredOrders;
-    return filteredOrders.filter((o: any) => {
-      const repNameMatch = (o.salesRepName || "").toLowerCase().trim() === myRepName.toLowerCase().trim();
-      const repIdMatch = user && String(o.salesRepId) === String(user.id);
-      return repNameMatch || repIdMatch;
+  // Print picking slip
+  function printPickingSlip(order: any) {
+    const items = (order.items || []).map((it: any) => {
+      const stock = (stockItems || []).find((s) => s.id == it.stockItemId);
+      return { ...it, productName: stock?.productName || "Unknown", productCode: stock?.productCode || "" };
     });
-  }, [filteredOrders, isAdmin, isSuperAdmin, myRepName, user]);
+    const customer = allCustomers.find((c: any) => c.id == order.customerId);
+    const company = getCompanyConfig();
+    const html = `
+      <html><head><title>Picking Slip ${order.orderNumber}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+        h2 { margin-bottom: 5px; }
+        .meta { margin-bottom: 15px; font-size: 13px; color: #666; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f5f5f5; }
+        .footer { margin-top: 20px; font-size: 12px; color: #888; }
+      </style></head><body>
+      <h2>Picking Slip — ${order.orderNumber}</h2>
+      <div class="meta">
+        <strong>Customer:</strong> ${customer?.name || "N/A"}<br/>
+        <strong>Date:</strong> ${new Date(order.createdAt || Date.now()).toLocaleString()}<br/>
+        <strong>Status:</strong> ${order.status}<br/>
+        <strong>Delivery:</strong> ${order.deliveryAddress || "Collect"}
+      </div>
+      <table>
+        <tr><th>Code</th><th>Product</th><th>Qty</th><th>Unit</th></tr>
+        ${items.map((it: any) => `<tr><td>${it.productCode}</td><td>${it.productName}</td><td>${it.quantity}</td><td>${it.unit || "each"}</td></tr>`).join("")}
+      </table>
+      <div class="footer">Printed from ${company.name} on ${new Date().toLocaleString()}</div>
+      </body></html>
+    `;
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); w.print(); }
+  }
+
+  // Print quote
+  function printQuote(order: any) {
+    const items = (order.items || []).map((it: any) => {
+      const stock = (stockItems || []).find((s) => s.id == it.stockItemId);
+      return { ...it, productName: stock?.productName || "Unknown", productCode: stock?.productCode || "" };
+    });
+    const customer = allCustomers.find((c: any) => c.id == order.customerId);
+    const company = getCompanyConfig();
+    const subtotal = items.reduce((sum: number, it: any) => sum + (it.unitPrice || 0) * (it.quantity || 0), 0);
+    const vat = subtotal * vatRate;
+    const total = subtotal + vat;
+    const html = `
+      <html><head><title>Quote ${order.orderNumber}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+        .header { border-bottom: 2px solid #D4A843; padding-bottom: 10px; margin-bottom: 20px; }
+        h2 { margin: 0; color: #D4A843; }
+        .meta { font-size: 13px; color: #666; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f5f5f5; }
+        .totals { margin-top: 15px; text-align: right; font-size: 14px; }
+        .total { font-size: 18px; font-weight: bold; color: #D4A843; }
+        .footer { margin-top: 30px; font-size: 12px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+        .validity { background: #fff8e1; padding: 10px; border-left: 4px solid #D4A843; margin-top: 15px; font-size: 13px; }
+      </style></head><body>
+      <div class="header">
+        <h2>${company.name}</h2>
+        <div class="meta">${company.address || ""}<br/>Tel: ${company.phone || ""} | Email: ${company.email || ""}</div>
+      </div>
+      <h3>QUOTATION — ${order.orderNumber}</h3>
+      <div class="meta">
+        <strong>Customer:</strong> ${customer?.name || "N/A"}<br/>
+        <strong>Contact:</strong> ${customer?.contactPerson || "N/A"}<br/>
+        <strong>Date:</strong> ${new Date(order.createdAt || Date.now()).toLocaleDateString()}<br/>
+        <strong>Valid for:</strong> 30 days
+      </div>
+      <table>
+        <tr><th>Code</th><th>Product</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
+        ${items.map((it: any) => {
+          const lineTotal = (it.unitPrice || 0) * (it.quantity || 0);
+          return `<tr><td>${it.productCode}</td><td>${it.productName}</td><td>${it.quantity}</td><td>R ${(it.unitPrice || 0).toFixed(2)}</td><td>R ${lineTotal.toFixed(2)}</td></tr>`;
+        }).join("")}
+      </table>
+      <div class="totals">
+        <div>Subtotal: R ${subtotal.toFixed(2)}</div>
+        <div>VAT (${(vatRate * 100).toFixed(0)}%): R ${vat.toFixed(2)}</div>
+        <div class="total">Total: R ${total.toFixed(2)}</div>
+      </div>
+      <div class="validity">This quotation is valid for 30 days from the date of issue. Prices are subject to change thereafter.</div>
+      <div class="footer">Thank you for your business!<br/>Banking: ${banking.bankName || ""} | Acc: ${banking.accountNumber || ""} | Branch: ${banking.branchCode || ""}</div>
+      </body></html>
+    `;
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); w.print(); }
+  }
+
+  // Send quote via email
+  async function sendQuoteEmail(order: any) {
+    const customer = allCustomers.find((c: any) => c.id == order.customerId);
+    if (!customer?.email) {
+      alert("Customer has no email address. Please add an email first.");
+      return;
+    }
+    const items = (order.items || []).map((it: any) => {
+      const stock = (stockItems || []).find((s) => s.id == it.stockItemId);
+      return { ...it, productName: stock?.productName || "Unknown", productCode: stock?.productCode || "" };
+    });
+    const company = getCompanyConfig();
+    const subtotal = items.reduce((sum: number, it: any) => sum + (it.unitPrice || 0) * (it.quantity || 0), 0);
+    const vat = subtotal * vatRate;
+    const total = subtotal + vat;
+
+    const subject = encodeURIComponent(`Quotation ${order.orderNumber} from ${company.name}`);
+    const body = encodeURIComponent(
+      `Dear ${customer.contactPerson || customer.name},\n\n` +
+      `Please find your quotation below:\n\n` +
+      `Quote Ref: ${order.orderNumber}\n` +
+      `Date: ${new Date(order.createdAt || Date.now()).toLocaleDateString()}\n` +
+      `Valid for: 30 days\n\n` +
+      `Items:\n` +
+      items.map((it: any) => `• ${it.productName} (${it.productCode}) — Qty: ${it.quantity} @ R ${(it.unitPrice || 0).toFixed(2)} = R ${((it.unitPrice || 0) * it.quantity).toFixed(2)}`).join("\n") +
+      `\n\nSubtotal: R ${subtotal.toFixed(2)}\n` +
+      `VAT (${(vatRate * 100).toFixed(0)}%): R ${vat.toFixed(2)}\n` +
+      `Total: R ${total.toFixed(2)}\n\n` +
+      `Banking Details:\n` +
+      `Bank: ${banking.bankName || "N/A"}\n` +
+      `Account: ${banking.accountNumber || "N/A"}\n` +
+      `Branch: ${banking.branchCode || "N/A"}\n\n` +
+      `Thank you for your business!\n` +
+      `${company.name}\n${company.phone || ""}\n${company.email || ""}`
+    );
+    window.location.href = `mailto:${customer.email}?subject=${subject}&body=${body}`;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const validation = canPlaceOrder();
+    if (!validation.ok) {
+      alert(validation.message);
+      return;
+    }
+    try {
+      const payload: any = {
+        customerId: formData.customerId,
+        orderType: formData.orderType,
+        paymentTerms: formData.paymentTerms,
+        priceTier: formData.priceTier,
+        deliveryAddress: formData.deliveryAddress,
+        notes: formData.notes,
+        items: formData.items.map((it) => ({
+          stockItemId: it.stockItemId,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+        })),
+      };
+      if (editingOrder) {
+        await updateOrder.mutateAsync({ id: editingOrder.id, ...payload });
+      } else {
+        // Super admin override flag — send when adminOverride checkbox is checked and PIN entered
+        if (adminOverride && adminPin) {
+          payload.superAdminOverride = true;
+        }
+        await createOrder.mutateAsync(payload);
+      }
+    } catch (err: any) {
+      alert("Order submission failed: " + (err.message || "Unknown error"));
+    }
+  }
+
+  const filteredOrders = useMemo(() => {
+    let list = (orders || []);
+    if (activeTab === "quotes") {
+      list = list.filter((o) => o.orderType === "quote");
+    } else if (activeTab === "sample") {
+      list = list.filter((o) => o.orderType === "sample");
+    } else if (activeTab !== "all") {
+      list = list.filter((o) => o.status === activeTab);
+    }
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      list = list.filter((o) =>
+        o.orderNumber?.toLowerCase().includes(q) ||
+        o.customerName?.toLowerCase().includes(q) ||
+        o.status?.toLowerCase().includes(q)
+      );
+    }
+    return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  }, [orders, activeTab, orderSearch]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, pending: 0, picking: 0, ready: 0, delivered: 0, cancelled: 0, sample: 0, quotes: 0 };
+    (orders || []).forEach((o) => {
+      counts.all++;
+      if (o.status) counts[o.status] = (counts[o.status] || 0) + 1;
+      if (o.orderType === "sample") counts.sample++;
+      if (o.orderType === "quote") counts.quotes++;
+    });
+    return counts;
+  }, [orders]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-white">Orders</h1>
-          <p className="text-[#8A8B8C] text-sm mt-1">Manage orders, quotes & samples</p>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-2xl font-display font-bold text-white">Orders</h1>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setShowForm(true); setEditingOrder(null); resetForm(); sampleOverrideRef.current = false; }}
+            className="btn-primary flex items-center gap-2"
+          >
             <Plus className="w-4 h-4" /> New Order
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Pending", value: stats?.pending || 0, color: "#F59E0B" },
-          { label: "Picking", value: stats?.picking || 0, color: "#6366F1" },
-          { label: "Ready", value: stats?.ready || 0, color: "#4ADE80" },
-          { label: "Delivered", value: stats?.delivered || 0, color: "#4ADE80" },
-        ].map((s) => (
-          <div key={s.label} className="card-surface p-4" style={{ borderLeft: `4px solid ${s.color}` }}>
-            <div className="text-[#8A8B8C] text-xs font-body uppercase tracking-wider">{s.label}</div>
-            <div className="text-2xl font-display font-bold text-white mt-1">{s.value}</div>
+      <div className="card-surface">
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            {statusTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === tab.key
+                    ? "bg-[#D4A843] text-[#0A0A0B]"
+                    : "bg-[#18191A] text-[#8A8B8C] hover:text-white"
+                }`}
+              >
+                {tab.label} ({tabCounts[tab.key] || 0})
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {statusTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className="px-3 py-1.5 rounded-lg text-xs font-body font-medium whitespace-nowrap transition-colors cursor-pointer"
-              style={{
-                backgroundColor: activeTab === tab.key ? "rgba(212,168,67,0.15)" : "#0A0A0B",
-                color: activeTab === tab.key ? "#D4A843" : "#8A8B8C",
-                border: activeTab === tab.key ? "1px solid rgba(212,168,67,0.3)" : "1px solid #222324",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8B8C]" />
+            <input
+              type="text"
+              placeholder="Search orders..."
+              value={orderSearch}
+              onChange={(e) => setOrderSearch(e.target.value)}
+              className="input-field w-full pl-10"
+            />
+          </div>
         </div>
-        <input
-          type="text"
-          value={orderSearch}
-          onChange={(e) => setOrderSearch(e.target.value)}
-          placeholder="Search orders..."
-          className="input-field w-full sm:w-64"
-        />
       </div>
 
-      {/* Orders List */}
       <div className="space-y-3">
-        {myOrders.length === 0 && (
-          <div className="card-surface p-8 text-center text-[#8A8B8C] text-sm">
-            No orders found.
+        {filteredOrders.length === 0 && (
+          <div className="card-surface p-8 text-center text-[#8A8B8C]">
+            <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-lg font-medium">No orders found</p>
+            <p className="text-sm mt-1">{activeTab === "all" ? "Get started by creating your first order" : `No ${activeTab} orders`}</p>
           </div>
         )}
-        {myOrders.map((order: any) => {
+
+        {filteredOrders.map((order) => {
           const isExpanded = expandedOrder === order.id;
-          const customer = (customers || []).find((c: any) => String(c.id) === String(order.customerId));
-          const total = calcOrderTotal(order);
-          const totalWithVat = calcOrderTotalWithVat(order);
           const statusInfo = STATUS_LABELS[order.status] || { label: order.status, color: "#8A8B8C" };
-          const hasInvoice = liveInvoiceOrderIds.has(Number(order.id));
+          const isQuote = order.orderType === "quote";
+          const isSample = order.orderType === "sample";
+          const customer = allCustomers.find((c: any) => c.id == order.customerId);
+          const orderInvoices = (invoices || []).filter((i: any) => i.orderId == order.id);
+          const hasCancelledInvoice = orderInvoices.some((i: any) => i.status === "cancelled");
+          const hasActiveInvoice = orderInvoices.some((i: any) => i.status !== "cancelled" && (i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC")));
 
           return (
-            <div key={order.id} className="card-surface overflow-hidden">
-              {/* Order Header */}
+            <div key={order.id} className="card-surface">
               <div
-                className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer"
+                className="flex items-center justify-between p-4 cursor-pointer"
                 onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${statusInfo.color}15` }}>
-                    <Package className="w-5 h-5" style={{ color: statusInfo.color }} />
-                  </div>
+                  {isQuote ? <FileText className="w-5 h-5 text-[#6366F1]" /> : isSample ? <FlaskConical className="w-5 h-5 text-[#D4A843]" /> : <ShoppingBag className="w-5 h-5 text-[#D4A843]" />}
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-display font-semibold text-white">{order.orderNumber || `#${order.id}`}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: `${statusInfo.color}20`, color: statusInfo.color }}>
+                      <span className="font-display font-semibold text-white">{order.orderNumber}</span>
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{ backgroundColor: statusInfo.color + "20", color: statusInfo.color }}
+                      >
                         {statusInfo.label}
                       </span>
-                      {order.orderType === "sample" && (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: "rgba(212,168,67,0.15)", color: "#D4A843" }}>
-                          Sample
-                        </span>
-                      )}
-                      {order.orderType === "quote" && (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: "rgba(99,102,241,0.15)", color: "#6366F1" }}>
+                      {isQuote && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#6366F1]/20 text-[#6366F1]">
                           Quote
                         </span>
                       )}
+                      {isSample && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#D4A843]/20 text-[#D4A843]">
+                          Sample
+                        </span>
+                      )}
+                      {hasCancelledInvoice && order.status !== "cancelled" && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#F59E0B]/20 text-[#F59E0B]">
+                          NEEDS CANCEL
+                        </span>
+                      )}
+                      {/* "NO INVOICE" badge: only for delivered orders that have NO active invoice */}
+                      {order.status === "delivered" && !hasActiveInvoice && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#EF4444]/20 text-[#EF4444]">
+                          NO INVOICE
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-[#8A8B8C] mt-0.5">
-                      {customer?.name || order.customerName || "Unknown"} · {(order.paymentTerms || "").replace("_", " ")} · {new Date(order.createdAt).toLocaleDateString("en-ZA")}
-                    </div>
+                    <p className="text-sm text-[#8A8B8C] mt-0.5">{customer?.name || order.customerName || "Unknown"} • {new Date(order.createdAt || Date.now()).toLocaleDateString()}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="font-display font-semibold text-white">{formatCurrency(totalWithVat)}</div>
-                    <div className="text-xs text-[#8A8B8C]">incl. VAT</div>
-                  </div>
-                  <ChevronDown className={`w-5 h-5 text-[#8A8B8C] transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                <div className="flex items-center gap-2">
+                  <span className="font-display font-semibold text-[#D4A843]">
+                    R {Number(order.total || 0).toFixed(2)}
+                  </span>
+                  {isExpanded ? <ChevronUp className="w-5 h-5 text-[#8A8B8C]" /> : <ChevronDown className="w-5 h-5 text-[#8A8B8C]" />}
                 </div>
               </div>
 
-              {/* Expanded Details */}
               {isExpanded && (
-                <div className="border-t" style={{ borderColor: "#222324" }}>
-                  <div className="p-4 space-y-4">
-                    {/* Order Info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <div className="text-[#8A8B8C] text-xs">Customer</div>
-                        <div className="text-white font-body">{customer?.name || order.customerName || "N/A"}</div>
-                        <div className="text-[#8A8B8C] text-xs mt-0.5">{customer?.contactPerson || order.contactPerson || ""}</div>
-                      </div>
-                      <div>
-                        <div className="text-[#8A8B8C] text-xs">Delivery Address</div>
-                        <div className="text-white font-body">{order.deliveryAddress || customer?.deliveryAddress || "N/A"}</div>
-                      </div>
-                      <div>
-                        <div className="text-[#8A8B8C] text-xs">Sales Rep</div>
-                        <div className="text-white font-body">{order.salesRepName || "N/A"}</div>
-                      </div>
-                      <div>
-                        <div className="text-[#8A8B8C] text-xs">Notes</div>
-                        <div className="text-white font-body">{order.notes || "—"}</div>
-                      </div>
+                <div className="border-t p-4 space-y-4" style={{ borderColor: "#222324" }}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-[#8A8B8C]">Customer</span>
+                      <p className="font-medium text-white">{customer?.name || order.customerName || "N/A"}</p>
                     </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Contact</span>
+                      <p className="font-medium text-white">{customer?.contactPerson || "N/A"}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Payment Terms</span>
+                      <p className="font-medium text-white capitalize">{(order.paymentTerms || "cod").replace("_", " ")}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Price Tier</span>
+                      <p className="font-medium text-white capitalize">{order.priceTier || "wholesale"}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Delivery</span>
+                      <p className="font-medium text-white">{order.deliveryAddress || "Collect from warehouse"}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Sales Rep</span>
+                      <p className="font-medium text-white">{order.salesRepName || myRepName || "N/A"}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Created</span>
+                      <p className="font-medium text-white">{new Date(order.createdAt || Date.now()).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#8A8B8C]">Subtotal / VAT / Total</span>
+                      <p className="font-medium text-white">R {Number(order.subtotal || 0).toFixed(2)} / R {Number(order.vatAmount || 0).toFixed(2)} / R {Number(order.total || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
 
-                    {/* Items Table */}
+                  {order.notes && (
+                    <div className="bg-[#18191A] rounded-lg p-3">
+                      <span className="text-[#8A8B8C] text-sm">Notes</span>
+                      <p className="text-sm text-white mt-1">{order.notes}</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="text-sm font-medium text-white mb-2">Items</h4>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-left text-[#8A8B8C] text-xs" style={{ borderBottom: "1px solid #222324" }}>
-                            <th className="pb-2">Product</th>
-                            <th className="pb-2 text-center">Qty</th>
-                            <th className="pb-2 text-right">Unit Price</th>
-                            <th className="pb-2 text-right">Total</th>
+                          <tr className="border-b" style={{ borderColor: "#222324" }}>
+                            <th className="text-left py-2 text-[#8A8B8C] font-medium">Product</th>
+                            <th className="text-left py-2 text-[#8A8B8C] font-medium">Code</th>
+                            <th className="text-right py-2 text-[#8A8B8C] font-medium">Qty</th>
+                            <th className="text-right py-2 text-[#8A8B8C] font-medium">Unit Price</th>
+                            <th className="text-right py-2 text-[#8A8B8C] font-medium">Total</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(order.items || []).map((it: any, idx: number) => {
-                            const stock = (stockItems || []).find((s: any) => s.id === it.stockItemId);
-                            const unitLabel = getUnitLabel(it.stockItemId, it.unit);
-                            const price = it.unitPrice || it.priceAtOrder || 0;
-                            const lineTotal = price * safeNum(it.quantity);
+                          {(order.items || []).map((item: any, idx: number) => {
+                            const stock = (stockItems || []).find((s) => s.id == item.stockItemId);
                             return (
-                              <tr key={idx} className="text-white" style={{ borderBottom: "1px solid #18191A" }}>
-                                <td className="py-2">{stock?.productName || "Product"}{it.unit && it.unit !== "each" ? <span className="text-[#8A8B8C] text-xs"> ({unitLabel})</span> : ""}</td>
-                                <td className="py-2 text-center">{it.quantity}</td>
-                                <td className="py-2 text-right">R {price.toFixed(2)}</td>
-                                <td className="py-2 text-right font-display">R {lineTotal.toFixed(2)}</td>
+                              <tr key={idx} className="border-b" style={{ borderColor: "#18191A" }}>
+                                <td className="py-2 text-white">{stock?.productName || "Unknown"}</td>
+                                <td className="py-2 text-[#8A8B8C] font-mono-data">{stock?.productCode || "N/A"}</td>
+                                <td className="py-2 text-right text-white">{item.quantity}</td>
+                                <td className="py-2 text-right text-white">R {Number(item.unitPrice || 0).toFixed(2)}</td>
+                                <td className="py-2 text-right text-[#D4A843] font-display">R {Number((item.unitPrice || 0) * item.quantity).toFixed(2)}</td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
                     </div>
+                  </div>
 
-                    {/* Totals */}
-                    <div className="flex justify-end">
-                      <div className="text-right space-y-1">
-                        <div className="text-sm text-[#8A8B8C]">Subtotal: <span className="text-white font-display">{formatCurrency(total)}</span></div>
-                        <div className="text-sm text-[#8A8B8C]">VAT (15%): <span className="text-white font-display">{formatCurrency(total * 0.15)}</span></div>
-                        <div className="text-lg font-display font-bold text-white">Total: {formatCurrency(totalWithVat)}</div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      {/* Print buttons */}
-                      <button onClick={() => handlePrint(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                        <Printer className="w-3 h-3" /> Print Order
+                  <div className="flex flex-wrap gap-2">
+                    {/* Status update buttons */}
+                    {order.status === "pending" && (
+                      <button
+                        onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })}
+                        className="btn-secondary text-xs flex items-center gap-1.5"
+                      >
+                        <Package className="w-3 h-3" /> Start Picking
                       </button>
-                      <button onClick={() => handlePrintDeliveryNote(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                        <Truck className="w-3 h-3" /> Delivery Note
+                    )}
+                    {order.status === "picking" && (
+                      <button
+                        onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })}
+                        className="btn-secondary text-xs flex items-center gap-1.5"
+                      >
+                        <CheckCircle className="w-3 h-3" /> Mark Ready
                       </button>
+                    )}
+                    {order.status === "ready" && (
+                      <button
+                        onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })}
+                        className="btn-secondary text-xs flex items-center gap-1.5"
+                      >
+                        <Truck className="w-3 h-3" /> Mark Delivered
+                      </button>
+                    )}
+                    {(order.status === "pending" || order.status === "picking") && (
+                      <button
+                        onClick={() => {
+                          if (confirm("Cancel this order? Stock will be restored.")) {
+                            updateStatus.mutate({ id: order.id, status: "cancelled" });
+                          }
+                        }}
+                        className="btn-secondary text-xs flex items-center gap-1.5"
+                        style={{ borderColor: "rgba(239,68,68,0.5)", color: "#EF4444" }}
+                      >
+                        <Ban className="w-3 h-3" /> Cancel
+                      </button>
+                    )}
 
-                      {/* Invoice button */}
-                      <GenerateInvoiceButton orderId={order.id} />
+                    {/* Print Picking Slip */}
+                    <button
+                      onClick={() => printPickingSlip(order)}
+                      className="btn-secondary text-xs flex items-center gap-1.5"
+                    >
+                      <Printer className="w-3 h-3" /> Picking Slip
+                    </button>
 
-                      {/* Status transitions */}
-                      {order.status === "pending" && (
-                        <button
-                          onClick={() => updateStatus.mutate({ id: order.id, status: "picking" })}
-                          className="btn-secondary text-xs flex items-center gap-1.5"
-                          style={{ borderColor: "rgba(99,102,241,0.3)", color: "#6366F1" }}
-                        >
-                          <ShoppingBag className="w-3 h-3" /> Start Picking
-                        </button>
-                      )}
-                      {order.status === "picking" && (
-                        <button
-                          onClick={() => updateStatus.mutate({ id: order.id, status: "ready" })}
-                          className="btn-secondary text-xs flex items-center gap-1.5"
-                          style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}
-                        >
-                          <CheckCircle className="w-3 h-3" /> Mark Ready
-                        </button>
-                      )}
-                      {order.status === "ready" && (
-                        <button
-                          onClick={() => updateStatus.mutate({ id: order.id, status: "delivered" })}
-                          className="btn-secondary text-xs flex items-center gap-1.5"
-                          style={{ borderColor: "rgba(74,222,128,0.3)", color: "#4ADE80" }}
-                        >
-                          <Truck className="w-3 h-3" /> Mark Delivered
-                        </button>
-                      )}
+                    {/* Generate Invoice (only for non-quotes) */}
+                    {!isQuote && <GenerateInvoiceButton orderId={order.id} />}
 
-                      {/* Cancel / Restore */}
-                      {order.status !== "cancelled" && order.status !== "delivered" && order.status !== "sample_delivered" && (
+                    {/* Quote actions */}
+                    {isQuote && order.status !== "converted" && (
+                      <>
+                        <button
+                          onClick={() => printQuote(order)}
+                          className="btn-secondary text-xs flex items-center gap-1.5"
+                        >
+                          <Printer className="w-3 h-3" /> Print Quote
+                        </button>
+                        <button
+                          onClick={() => sendQuoteEmail(order)}
+                          className="btn-secondary text-xs flex items-center gap-1.5"
+                        >
+                          <Mail className="w-3 h-3" /> Email Quote
+                        </button>
                         <button
                           onClick={() => {
-                            if (confirm("Cancel this order? Stock will be restored.")) {
-                              deleteOrder.mutate(order.id);
+                            if (confirm("Convert this quote to a regular order?")) {
+                              convertQuoteToOrder.mutate({ id: order.id });
                             }
                           }}
-                          className="btn-secondary text-xs flex items-center gap-1.5"
-                          style={{ borderColor: "rgba(239,68,68,0.3)", color: "#EF4444" }}
+                          className="btn-primary text-xs flex items-center gap-1.5"
                         >
-                          <Ban className="w-3 h-3" /> Cancel
+                          <RotateCcw className="w-3 h-3" /> Convert to Order
                         </button>
-                      )}
-                      {order.status === "cancelled" && (
-                        <button
-                          onClick={() => restoreOrder.mutate(order.id)}
-                          className="btn-secondary text-xs flex items-center gap-1.5"
-                          style={{ borderColor: "rgba(245,158,11,0.3)", color: "#F59E0B" }}
-                        >
-                          <RotateCcw className="w-3 h-3" /> Restore
-                        </button>
-                      )}
-
-                      {/* Edit */}
-                      {(isAdmin || isSuperAdmin) && order.status !== "delivered" && order.status !== "cancelled" && order.status !== "sample_delivered" && (
-                        <button onClick={() => startEditOrder(order)} className="btn-secondary text-xs flex items-center gap-1.5">
-                          <Pencil className="w-3 h-3" /> Edit
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Invoice status */}
-                    {!hasInvoice && order.status !== "cancelled" && order.status !== "quote" && (
-                      <div className="text-xs text-[#EF4444] flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> No invoice generated
-                      </div>
+                      </>
                     )}
-                    {hasInvoice && (
-                      <div className="text-xs text-[#4ADE80] flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> Invoice generated
-                      </div>
-                    )}
+
+                    {/* Edit button */}
+                    <button
+                      onClick={() => startEditOrder(order)}
+                      className="btn-secondary text-xs flex items-center gap-1.5"
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </button>
                   </div>
+
+                  {/* Invoice list for this order */}
+                  {orderInvoices.length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="text-sm font-medium text-white mb-2">Invoices</h4>
+                      <div className="space-y-1">
+                        {orderInvoices.map((inv: any) => (
+                          <div key={inv.id} className="flex items-center justify-between bg-[#18191A] rounded-lg px-3 py-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-[#D4A843]" />
+                              <span className="text-white font-mono-data">{inv.invoiceNumber}</span>
+                              <span
+                                className="px-2 py-0.5 rounded-full text-xs"
+                                style={{
+                                  backgroundColor: inv.status === "paid" ? "rgba(74,222,128,0.2)" : inv.status === "cancelled" ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.2)",
+                                  color: inv.status === "paid" ? "#4ADE80" : inv.status === "cancelled" ? "#EF4444" : "#F59E0B",
+                                }}
+                              >
+                                {inv.status}
+                              </span>
+                            </div>
+                            <span className="text-[#D4A843] font-display">R {Number(inv.total || 0).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1173,342 +1149,312 @@ export default function OrdersPage() {
 
       {/* Order Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={() => setShowForm(false)}>
-          <div
-            className="card-surface w-full sm:max-w-2xl sm:mx-4 max-h-[90vh] overflow-y-auto"
-            style={{ borderRadius: "16px 16px 0 0" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b" style={{ backgroundColor: "#18191A", borderColor: "#222324" }}>
-              <h2 className="text-lg font-display font-semibold text-white">{editingOrder ? "Edit Order" : "New Order"}</h2>
-              <button onClick={() => setShowForm(false)} className="p-2 rounded-full hover:bg-[#222324] cursor-pointer">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.8)" }}>
+          <div className="card-surface w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: "#222324" }}>
+              <h2 className="text-xl font-display font-bold text-white">
+                {editingOrder ? "Edit Order" : "New Order"}
+              </h2>
+              <button
+                onClick={() => { setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false; resetForm(); }}
+                className="p-2 rounded-full hover:bg-[#222324] cursor-pointer"
+              >
                 <X className="w-5 h-5 text-[#8A8B8C]" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
-              {/* Order Type */}
-              <div>
-                <label className="label-text block mb-2">Order Type *</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { key: "regular", label: "Regular", icon: ShoppingBag },
-                    { key: "sample", label: "Sample", icon: FlaskConical },
-                    { key: "quote", label: "Quote", icon: FileText },
-                  ].map((type) => (
-                    <button
-                      key={type.key}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, orderType: type.key as any })}
-                      className="p-3 rounded-xl text-center transition-all cursor-pointer"
-                      style={{
-                        backgroundColor: formData.orderType === type.key ? "rgba(212,168,67,0.15)" : "#0A0A0B",
-                        border: formData.orderType === type.key ? "2px solid #D4A843" : "2px solid #222324",
-                      }}
-                    >
-                      <type.icon className="w-5 h-5 mx-auto mb-1" style={{ color: formData.orderType === type.key ? "#D4A843" : "#8A8B8C" }} />
-                      <div className="text-sm font-display font-semibold" style={{ color: formData.orderType === type.key ? "#D4A843" : "#8A8B8C" }}>{type.label}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Customer */}
-              <div className="relative">
-                <label className="label-text block mb-1.5">Customer *</label>
-                <input
-                  ref={customerInputRef}
-                  type="text"
-                  value={customerSearch}
-                  onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
-                  onFocus={() => setShowCustomerDropdown(true)}
-                  placeholder="Search customer..."
-                  className="input-field w-full"
-                  autoComplete="off"
-                />
-                {showCustomerDropdown && (
-                  <div className="absolute z-20 w-full mt-1 card-surface max-h-48 overflow-y-auto" style={{ border: "1px solid #222324" }}>
-                    {(customers || [])
-                      .filter((c: any) => {
-                        if (!customerSearch.trim()) return true;
-                        const q = customerSearch.toLowerCase();
-                        return (c.name || "").toLowerCase().includes(q) || (c.contactPerson || "").toLowerCase().includes(q);
-                      })
-                      .map((c: any) => (
+            <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              {/* Customer selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white">Customer</label>
+                <div className="relative">
+                  <input
+                    ref={customerInputRef}
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    placeholder="Search customer..."
+                    className="input-field w-full"
+                    autoComplete="off"
+                  />
+                  {showCustomerDropdown && (
+                    <div className="absolute z-10 w-full mt-1 card-surface max-h-60 overflow-y-auto" style={{ border: "1px solid #222324" }}>
+                      {filteredCustomers.length === 0 && (
+                        <div className="p-3 text-sm text-[#8A8B8C]">No customers found</div>
+                      )}
+                      {filteredCustomers.map((c: any) => (
                         <div
-                          key={c.id}
+                          key={`${c._type}-${c.id}`}
                           onClick={() => {
-                            setFormData({ ...formData, customerId: c.id });
-                            setCustomerSearch(c.name);
+                            setFormData((prev) => ({ ...prev, customerId: c.id }));
+                            setCustomerSearch(c.name || "");
                             setShowCustomerDropdown(false);
                           }}
-                          className="p-2 hover:bg-[#222324] cursor-pointer text-sm"
+                          className="p-3 hover:bg-[#222324] cursor-pointer border-b"
+                          style={{ borderColor: "#18191A" }}
                         >
-                          <div className="text-white">{c.name}</div>
-                          <div className="text-[#8A8B8C] text-xs">{c.contactPerson} · {c.paymentTerms?.replace("_", " ")}</div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white font-medium">{c.name}</span>
+                            <span className="text-xs text-[#8A8B8C]">{c._type === "corporate" ? "Corporate" : "Regular"}</span>
+                          </div>
+                          <div className="text-xs text-[#8A8B8C] mt-0.5">{c.contactPerson} • {c.phone}</div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+                {selectedCustomer && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-[#8A8B8C]">Selected:</span>
+                    <span className="text-white font-medium">{selectedCustomer.name}</span>
+                    {selectedCustomer.isActive === false && (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-[#EF4444]/20 text-[#EF4444]">INACTIVE</span>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Payment Terms */}
-              <div>
-                <label className="label-text block mb-2">Payment Terms *</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { key: "cod", label: "COD" },
-                    { key: "7_days", label: "7 Days" },
-                    { key: "14_days", label: "14 Days" },
-                    { key: "30_days", label: "30 Days" },
-                  ].map((term) => (
-                    <button
-                      key={term.key}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, paymentTerms: term.key as any })}
-                      className="p-3 rounded-xl text-center transition-all cursor-pointer"
-                      style={{
-                        backgroundColor: formData.paymentTerms === term.key ? "rgba(212,168,67,0.15)" : "#0A0A0B",
-                        border: formData.paymentTerms === term.key ? "2px solid #D4A843" : "2px solid #222324",
-                      }}
-                    >
-                      <div className="text-sm font-display font-semibold" style={{ color: formData.paymentTerms === term.key ? "#D4A843" : "#8A8B8C" }}>{term.label}</div>
-                    </button>
-                  ))}
+              {/* Order type, payment terms, price tier */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Order Type</label>
+                  <select
+                    value={formData.orderType}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, orderType: e.target.value as any }))}
+                    className="input-field w-full"
+                  >
+                    <option value="regular">Regular</option>
+                    <option value="sample">Sample</option>
+                    <option value="quote">Quote</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Payment Terms</label>
+                  <select
+                    value={formData.paymentTerms}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, paymentTerms: e.target.value as any }))}
+                    className="input-field w-full"
+                  >
+                    <option value="cod">COD</option>
+                    <option value="7_days">7 Days</option>
+                    <option value="14_days">14 Days</option>
+                    <option value="30_days">30 Days</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">Price Tier</label>
+                  <select
+                    value={formData.priceTier}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, priceTier: e.target.value as any }))}
+                    className="input-field w-full"
+                  >
+                    {PRICE_TIERS.map((t) => (
+                      <option key={t.key} value={t.key}>{t.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {/* Pricing Tier */}
-              <div>
-                {formData.orderType === "sample" ? (
-                  <div className="p-3 rounded-lg" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.15)" }}>
+              {/* Admin override for below-corporate pricing */}
+              {formData.priceTier !== "corporate" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="adminOverride"
+                      checked={adminOverride}
+                      onChange={(e) => { setAdminOverride(e.target.checked); if (!e.target.checked) setAdminPin(""); }}
+                      className="w-4 h-4 rounded border-[#333334] bg-[#18191A] text-[#D4A843] focus:ring-[#D4A843]"
+                    />
+                    <label htmlFor="adminOverride" className="text-sm text-white cursor-pointer">
+                      Admin Override (below corporate pricing)
+                    </label>
+                  </div>
+                  {adminOverride && (
                     <div className="flex items-center gap-2">
-                      <FlaskConical className="w-4 h-4 text-[#D4A843]" />
-                      <span className="text-sm text-[#D4A843] font-body">Sample orders use Corporate pricing</span>
+                      <input
+                        type="password"
+                        value={adminPin}
+                        onChange={(e) => setAdminPin(e.target.value)}
+                        placeholder="Enter admin PIN"
+                        className="input-field w-48"
+                      />
+                      <span className="text-xs text-[#8A8B8C]">Required for below-corporate pricing</span>
                     </div>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="label-text block mb-2">Pricing Tier *</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {PRICE_TIERS.map((tier) => (
-                        <button key={tier.key} type="button" onClick={() => setFormData({ ...formData, priceTier: tier.key as any })} className="p-3 rounded-xl text-center transition-all cursor-pointer" style={{ backgroundColor: formData.priceTier === tier.key ? `${tier.color}20` : "#0A0A0B", border: formData.priceTier === tier.key ? `2px solid ${tier.color}` : "2px solid #222324" }}>
-                          <DollarSign className="w-5 h-5 mx-auto mb-1" style={{ color: tier.color }} />
-                          <div className="text-sm font-display font-semibold" style={{ color: formData.priceTier === tier.key ? tier.color : "#8A8B8C" }}>{tier.label}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {formData.customerId > 0 && (customerSpecialPrices || []).length > 0 && (
-                <div className="p-3 rounded-lg flex items-center gap-2" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.15)" }}>
-                  <Tag className="w-4 h-4 text-[#D4A843]" />
-                  <span className="text-sm text-[#D4A843] font-body">{(customerSpecialPrices || []).length} special price(s) active</span>
+                  )}
                 </div>
               )}
 
-              {/* Order Items */}
-              <div>
-                <label className="label-text block mb-2">Order Items</label>
-                <div className="space-y-3">
-                  {formData.items.map((item, index) => {
-                    const product = Number(item.stockItemId) > 0 ? (stockItems || []).find((s) => String(s.id) === String(item.stockItemId)) : null;
-                    const sellingUnits = product?.sellingUnits || [];
-                    const hasMultipleUnits = sellingUnits.length > 1;
-                    const selectedUnit = hasMultipleUnits ? sellingUnits.find((u: any) => u.unit === item.unit) : null;
-                    const conversion = item.conversion || 1;
-                    const effectivePrice = getEffectivePrice(item.stockItemId, item.unitPrice);
-                    const hasSpecial = Number(item.stockItemId) > 0 && !!(customerSpecialPrices || []).find((sp: any) => String(sp.stockItemId) === String(item.stockItemId));
-                    const isCustom = item.unitPrice && item.unitPrice > 0;
-                    const tierPrice = getTierPrice(item.stockItemId);
-                    const availSOH = availableStock[Number(item.stockItemId)] || 0;
-                    const availInUnit = Math.floor(availSOH / conversion);
-                    const inProgressOrders = productOrderStatuses[Number(item.stockItemId)] || [];
+              {/* Delivery address */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white">Delivery Address</label>
+                <input
+                  type="text"
+                  value={formData.deliveryAddress}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, deliveryAddress: e.target.value }))}
+                  placeholder="Leave blank for warehouse collection"
+                  className="input-field w-full"
+                />
+              </div>
 
-                    return (
-                      <div key={index} className="p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B", border: availSOH <= 0 && Number(item.stockItemId) > 0 ? "1px solid #EF4444" : "1px solid #222324" }}>
-                        <div className="flex gap-3 mb-2">
-                          {/* Mobile-friendly product picker */}
+              {/* Notes */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Any special instructions..."
+                  rows={2}
+                  className="input-field w-full"
+                />
+              </div>
+
+              {/* Items */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-white">Items</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        items: [...prev.items, { stockItemId: 0, quantity: 1 }],
+                      }));
+                    }}
+                    className="btn-secondary text-xs flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> Add Item
+                  </button>
+                </div>
+
+                {formData.items.map((item, idx) => {
+                  const stock = (stockItems || []).find((s) => s.id == item.stockItemId);
+                  const avail = availableStock[item.stockItemId] || 0;
+                  const isOutOfStock = avail <= 0 && item.stockItemId > 0;
+                  const { basePrice, total } = getPriceBreakdown(item.stockItemId, item.quantity || 0);
+
+                  return (
+                    <div key={idx} className="flex flex-col sm:flex-row gap-3 p-3 bg-[#18191A] rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => { setProductPickerIndex(index); setProductPickerOpen(true); }}
-                            className="input-field flex-1 text-left flex items-center justify-between cursor-pointer"
-                            style={{ minHeight: 40 }}
+                            onClick={() => {
+                              setProductPickerIndex(idx);
+                              setProductPickerOpen(true);
+                            }}
+                            className="flex-1 text-left input-field py-2 px-3 min-h-[40px] flex items-center gap-2"
                           >
-                            <span className={item.stockItemId > 0 ? "text-[#E8E8E9]" : "text-[#8A8B8C]"}>
-                              {item.stockItemId > 0
-                                ? product?.productName || "Select product..."
-                                : "Select product..."}
-                            </span>
-                            <ChevronDown className="w-4 h-4 text-[#8A8B8C] flex-shrink-0" />
-                          </button>
-                          {/* Unit selector for products with multiple selling units */}
-                          {hasMultipleUnits && formData.orderType !== "sample" && (
-                            <select
-                              value={item.unit || "each"}
-                              onChange={(e) => {
-                                const unit = sellingUnits.find((u: any) => u.unit === e.target.value);
-                                if (unit) {
-                                  const updated = [...formData.items];
-                                  updated[index] = {
-                                    ...updated[index],
-                                    unit: unit.unit,
-                                    conversion: unit.conversion,
-                                    unitLabel: unit.label,
-                                    unitPrice: 0, // reset custom price so tier price recalculates
-                                  };
-                                  setFormData({ ...formData, items: updated });
-                                }
-                              }}
-                              className="input-field w-32 text-xs"
-                            >
-                              {sellingUnits.map((u: any) => (
-                                <option key={u.unit} value={u.unit}>{u.label}</option>
-                              ))}
-                            </select>
-                          )}
-                          {(() => {
-                            const allowEdit = !(formData.orderType === "sample" && editingOrder && !sampleOverrideRef.current);
-                            if (!allowEdit) {
-                              return <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>{item.quantity}</div>;
-                            }
-                            return <input type="number" value={item.quantity} onChange={(e) => handleUpdateItem(index, "quantity", parseInt(e.target.value) || 1)} className="input-field w-20" min={1} max={(editingOrder && isAdmin) ? undefined : (availInUnit > 0 ? availInUnit : undefined)} />;
-                          })()}
-                          <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 hover:text-[#EF4444] cursor-pointer"><X className="w-4 h-4 text-[#8A8B8C]" /></button>
-                        </div>
-                        {item.stockItemId > 0 && (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs text-[#8A8B8C]">Available Stock:</span>
-                              <span className={`text-sm font-display font-semibold ${availSOH <= 0 ? "text-[#EF4444]" : "text-[#4ADE80]"}`}>
-                                {availSOH} kg
-                                {hasMultipleUnits && (
-                                  <span className="text-[#8A8B8C] font-normal"> ({availInUnit} {selectedUnit?.label || "units"})</span>
-                                )}
-                                {availSOH <= 0 && <span className="ml-2"><AlertTriangle className="w-3 h-3 inline" /> OUT OF STOCK</span>}
-                              </span>
-                            </div>
-                            {/* In-progress orders for this product */}
-                            {inProgressOrders.length > 0 && (
-                              <div className="p-2 rounded-lg" style={{ backgroundColor: "rgba(99, 102, 241, 0.06)", border: "1px solid rgba(99, 102, 241, 0.15)" }}>
-                                <div className="text-xs text-[#6366F1] mb-1"><Info className="w-3 h-3 inline mr-1" />Stock committed by other orders:</div>
-                                {inProgressOrders.map((io: any, idx: number) => (
-                                  <div key={idx} className="flex items-center justify-between text-xs">
-                                    <span className="text-[#8A8B8C]">{io.orderNumber}</span>
-                                    <span className="font-mono-data" style={{ color: STATUS_LABELS[io.status]?.color }}>{io.qty} units — {STATUS_LABELS[io.status]?.label || io.status}</span>
-                                  </div>
-                                ))}
-                              </div>
+                            {stock ? (
+                              <>
+                                <span
+                                  className="w-2 h-2 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: isOutOfStock ? "#EF4444" : "#4ADE80" }}
+                                />
+                                <span className="truncate">{stock.productName}</span>
+                                <span className="text-[#8A8B8C] text-xs flex-shrink-0">({stock.productCode})</span>
+                              </>
+                            ) : (
+                              <span className="text-[#8A8B8C]">Click to select product...</span>
                             )}
-                            <div className="flex items-center gap-4 flex-wrap">
-                              {formData.orderType === "sample" ? (
-                                // Sample orders: show ONLY corporate price, no custom input, no special badge
-                                <div className="flex items-center gap-2 text-xs">
-                                  <span className="text-[#8A8B8C]">corporate:</span>
-                                  <span className="font-display" style={{ color: "#D4A843" }}>
-                                    R {(tierPrice * conversion).toFixed(2)}
-                                    {hasMultipleUnits && <span className="text-[#8A8B8C] font-normal text-[10px]"> / {selectedUnit?.label || "unit"}</span>}
-                                  </span>
-                                  <span className="text-[#8A8B8C] text-[10px]">(Sample — Corporate Price)</span>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex items-center gap-2 text-xs">
-                                    <span className="text-[#8A8B8C]">{formData.priceTier}:</span>
-                                    <span className="font-display" style={{ color: PRICE_TIERS.find((t) => t.key === formData.priceTier)?.color }}>
-                                      R {(tierPrice * conversion).toFixed(2)}
-                                      {hasMultipleUnits && <span className="text-[#8A8B8C] font-normal text-[10px]"> / {selectedUnit?.label || "unit"}</span>}
-                                    </span>
-                                  </div>
-                                  {hasSpecial && !isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}><Tag className="w-3 h-3" /> Special: R {(effectivePrice * conversion).toFixed(2)}</span>}
-                                  <div className="flex items-center gap-2 ml-auto">
-                                    <span className="text-xs text-[#8A8B8C]">Custom Price (R):</span>
-                                    <input type="number" step="0.01" value={item.unitPrice || ""} onChange={(e) => handleUpdateItem(index, "unitPrice", parseFloat(e.target.value) || 0)} className="input-field w-28 text-sm" placeholder={`${(effectivePrice * conversion).toFixed(2)}`} min={0} />
-                                    {isCustom && <span className="status-badge text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "#6366F1" }}>Custom</span>}
-                                  </div>
-                                </>
-                              )}
-                              <div className="font-display font-semibold text-sm text-white">= R {((item.unitPrice || effectivePrice * conversion) * item.quantity).toFixed(2)}</div>
-                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                items: prev.items.filter((_, i) => i !== idx),
+                              }));
+                            }}
+                            className="p-2 text-[#EF4444] hover:bg-[#EF4444]/10 rounded-lg flex-shrink-0"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {stock && (
+                          <div className="flex items-center gap-4 mt-2 text-xs">
+                            <span className={isOutOfStock ? "text-[#EF4444]" : "text-[#4ADE80]"}>
+                              {avail} available
+                            </span>
+                            <span className="text-[#8A8B8C]">SOH: {stock.quantity || 0}</span>
+                            {productOrderStatuses[item.stockItemId]?.length > 0 && (
+                              <span className="text-[#8A8B8C]">
+                                In orders: {productOrderStatuses[item.stockItemId].map((o: any) => `${o.orderNumber}(${o.qty})`).join(", ")}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-                <button type="button" onClick={handleAddItem} className="btn-secondary text-xs mt-3"><Plus className="w-3 h-3" /> Add Item</button>
-              </div>
-
-              <div>
-                <label className="label-text block mb-1.5">Delivery Address</label>
-                <textarea value={formData.deliveryAddress} onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })} className="input-field" rows={2} />
-              </div>
-              <div><label className="label-text block mb-1.5">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field" rows={2} /></div>
-
-              {!orderCheck.valid && formData.items.length > 0 && (
-                <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444" }}><AlertTriangle className="w-4 h-4 inline mr-2" />{orderCheck.error}</div>
-              )}
-
-              {/* Admin Override — below-corporate pricing or customer blocking */}
-              {(() => {
-                if (formData.orderType === "sample" || formData.orderType === "quote" || !isAdmin) return null;
-                const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
-                const belowItems: string[] = [];
-                for (const item of validItems) {
-                  if (item.unitPrice && item.unitPrice > 0) {
-                    const stock = (stockItems || []).find((s) => Number(s.id) === Number(item.stockItemId));
-                    if (stock) {
-                      const conversion = item.conversion || 1;
-                      const corporateFloor = Number(stock.corporatePrice || 0) * conversion;
-                      if (corporateFloor > 0 && item.unitPrice < corporateFloor * 0.99) {
-                        belowItems.push(`${stock.productName}: R${item.unitPrice.toFixed(2)} (floor R${corporateFloor.toFixed(2)})`);
-                      }
-                    }
-                  }
-                }
-                if (belowItems.length === 0) return null;
-                return (
-                  <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
-                    <div className="flex items-start gap-2 mb-2">
-                      <AlertTriangle className="w-4 h-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
-                      <div className="text-[#F59E0B]">
-                        <strong>Below Corporate Floor Detected</strong>
-                        <div className="text-xs mt-1 opacity-80">{belowItems.join(" | ")}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-24">
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const qty = parseInt(e.target.value) || 0;
+                              setFormData((prev) => {
+                                const newItems = [...prev.items];
+                                newItems[idx] = { ...newItems[idx], quantity: qty };
+                                return { ...prev, items: newItems };
+                              });
+                            }}
+                            className="input-field w-full text-center"
+                          />
+                        </div>
+                        <div className="w-28 text-right">
+                          <div className="text-sm text-[#8A8B8C]">R {basePrice.toFixed(2)}</div>
+                          <div className="text-sm font-display font-semibold text-[#D4A843]">R {total.toFixed(2)}</div>
+                        </div>
                       </div>
                     </div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={adminOverride}
-                        onChange={(e) => { setAdminOverride(e.target.checked); if (!e.target.checked) setAdminPin(""); }}
-                        className="w-4 h-4 rounded accent-[#D4A843]"
-                      />
-                      <span className="text-[#E8E8E9] text-xs">I am a Super Admin — approve this below-corporate pricing</span>
-                    </label>
-                    {adminOverride && (
-                      <div className="mt-2">
-                        <label className="label-text block mb-1 text-xs">Enter your PIN to approve</label>
-                        <input
-                          type="password"
-                          inputMode="numeric"
-                          maxLength={6}
-                          value={adminPin}
-                          onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                          placeholder="Enter PIN"
-                          className="input-field w-32 text-sm"
-                          autoComplete="off"
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
+                  );
+                })}
+
+                {formData.items.length === 0 && (
+                  <div className="text-center py-6 text-[#8A8B8C] text-sm">No items added. Click "Add Item" to start.</div>
+                )}
+              </div>
+
+              {/* Totals */}
+              <div className="border-t pt-4 space-y-2" style={{ borderColor: "#222324" }}>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#8A8B8C]">Subtotal</span>
+                  <span className="text-white font-display">R {subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#8A8B8C]">VAT ({(vatRate * 100).toFixed(0)}%)</span>
+                  <span className="text-white font-display">R {vatAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-display font-bold">
+                  <span className="text-white">Total</span>
+                  <span className="text-[#D4A843]">R {totalWithVat.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Validation warnings */}
+              {(() => {
+                const validation = canPlaceOrder();
+                if (!validation.ok) {
+                  return (
+                    <div className="flex items-center gap-2 p-3 bg-[#EF4444]/10 border rounded-lg" style={{ borderColor: "rgba(239,68,68,0.3)" }}>
+                      <AlertTriangle className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
+                      <span className="text-sm text-[#EF4444]">{validation.message}</span>
+                    </div>
+                  );
+                }
+                return null;
               })()}
 
-              <button type="submit" className="btn-primary w-full justify-center" disabled={!orderCheck.valid || createOrder.isPending || updateOrder.isPending}>
+              {/* Submit button */}
+              <button
+                type="submit"
+                disabled={createOrder.isPending || updateOrder.isPending || !canPlaceOrder().ok}
+                className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
+              >
                 {createOrder.isPending || updateOrder.isPending ? (
-                  <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Processing...</span>
+                  <span className="animate-pulse">Processing...</span>
                 ) : editingOrder ? (
                   "Update Order"
                 ) : (
@@ -1519,6 +1465,21 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
+
+      <ProductPickerModal
+        isOpen={productPickerOpen}
+        onClose={() => setProductPickerOpen(false)}
+        onSelect={(id) => {
+          setFormData((prev) => {
+            const newItems = [...prev.items];
+            newItems[productPickerIndex] = { ...newItems[productPickerIndex], stockItemId: id };
+            return { ...prev, items: newItems };
+          });
+        }}
+        stockItems={stockItems || []}
+        availableStock={availableStock}
+        selectedId={formData.items[productPickerIndex]?.stockItemId || 0}
+      />
     </div>
   );
 }

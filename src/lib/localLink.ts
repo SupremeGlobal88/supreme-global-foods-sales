@@ -465,13 +465,13 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "checkIn.getDailyReport":
-        result = dataService.checkIn.getDailyReport(input);
+        result = dataService.checkIn.getDailyReport(input?.date);
         break;
       case "checkIn.getWeeklyReport":
-        result = dataService.checkIn.getWeeklyReport(input);
+        result = dataService.checkIn.getWeeklyReport(input?.year, input?.week);
         break;
       case "checkIn.getMonthlyReport":
-        result = dataService.checkIn.getMonthlyReport(input);
+        result = dataService.checkIn.getMonthlyReport(input?.year, input?.month);
         break;
       case "checkIn.getAARate":
         result = dataService.checkIn.getAARate();

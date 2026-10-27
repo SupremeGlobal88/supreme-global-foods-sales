@@ -4204,7 +4204,11 @@ export const dataService = {
         sageOutstanding,
       };
     },
-  },
+  
+    generateInvoiceForOrder,
+    matchBankPayments,
+    parseBankStatement,
+    allocateBankPayments,},
 
   appointment: {
     list: () => appointments.map((a) => ({
@@ -4378,7 +4382,9 @@ export const dataService = {
       });
       return buildRepReport(monthCheckins, "monthly", now, targetYear, targetMonth);
     },
-  },
+  
+    getAARate,
+    setAARate,},
 
   followUpAction: {
     list: () => followUpActions.map((fa) => ({

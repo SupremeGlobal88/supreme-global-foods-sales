@@ -171,7 +171,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "stock.bulkUpload": {
-        result = dataService.stock.bulkUpload(input);
+        result = dataService.stock.bulkCreate(input);
         if (result?.success) {
           const items = dataService.stock.list();
           for (const item of items) {
@@ -281,7 +281,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "order.delete": {
-        result = dataService.order.delete(input);
+        result = dataService.order.update({ id: input, data: { deleted: true, deletedAt: new Date().toISOString() } });
         if (result?.success) {
           reloadFromStorage(["sgf_orders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 0 } }));
@@ -301,7 +301,7 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.order.checkExistingSample(input);
         break;
       case "order.generateInvoice": {
-        result = dataService.order.generateInvoice(input);
+        result = dataService.invoice.generateInvoiceForOrder(input);
         if (result) {
           await pushInvoice(result);
           reloadFromStorage(["sgf_invoices"]);
@@ -310,7 +310,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "order.generateMissingInvoices": {
-        result = dataService.order.generateMissingInvoices();
+        result = dataService.order.repairOrders();
         if (result?.invoices) {
           for (const inv of result.invoices) {
             try { await pushInvoice(inv); } catch { /* ignore */ }
@@ -345,18 +345,18 @@ export async function localLinkHandler(path: string, input: any) {
       case "invoice.create": { result = dataService.invoice.create(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.update": { const { id, data } = input; result = dataService.invoice.updateInvoice({ id, data }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.delete": { result = dataService.invoice.delete(input); if (result?.success) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.markAsPaid": { result = dataService.invoice.markAsPaid(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.send": { result = dataService.invoice.send(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.generatePDF": result = dataService.invoice.generatePDF(input); break;
-      case "invoice.applyCreditNote": { result = dataService.invoice.applyCreditNote(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.markAsPaid": { result = dataService.invoice.updateStatus({ id: input, status: "paid" }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.send": { result = dataService.invoice.updateStatus({ id: input, status: "sent" }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.generatePDF": result = dataService.invoice.getById(input); break;
+      case "invoice.applyCreditNote": { result = dataService.invoice.allocateCredit(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.getCreditNotes": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getCreditNotes(input); break;
       case "invoice.recordPayment": { result = dataService.invoice.recordPayment(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.updatePaymentStatus": { result = dataService.invoice.updatePaymentStatus(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.updatePaymentStatus": { result = dataService.invoice.updateStatus(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.fixDraftInvoices": { result = fixDraftInvoicesForDeliveredOrders(); if (result) { for (const inv of result.fixedInvoices) { try { await pushInvoice(inv); } catch { /* ignore */ } } reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.fixedInvoices?.length || 0 } })); } break; }
       case "invoice.fixSageDates": { result = fixSageInvoiceDates(); if (result) { reloadFromStorage(); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 0 } })); } break; }
-      case "invoice.bulkUpdate": { result = dataService.invoice.bulkUpdate(input); if (result?.success) { const invoices = dataService.invoice.list(); for (const inv of invoices) { try { await pushInvoice(inv); } catch { /* ignore */ } } reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.addCreditNote": { result = dataService.invoice.addCreditNote(input); if (result) { await pushCreditNote(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.generateForPO": { result = dataService.invoice.generateInvoiceForPO(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.bulkUpdate": { result = dataService.invoice.bulkHistoricalImport(input); if (result?.success) { const invoices = dataService.invoice.list(); for (const inv of invoices) { try { await pushInvoice(inv); } catch { /* ignore */ } } reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.addCreditNote": { result = dataService.invoice.createCreditNote(input); if (result) { await pushCreditNote(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.generateForPO": { result = dataService.invoice.generateInvoiceForPO(input?.poId || input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
 
       // ================================================================
       //  QUOTES
@@ -366,10 +366,10 @@ export async function localLinkHandler(path: string, input: any) {
       case "quote.getById": await smartSync("orders", "sgf_orders"); result = dataService.quote.getById(input); break;
       case "quote.getStats": await smartSync("orders", "sgf_orders"); result = dataService.quote.getStats(input || {}); break;
       case "quote.getByCustomerId": await smartSync("orders", "sgf_orders"); result = dataService.quote.getByCustomerId(input); break;
-      case "quote.create": { result = dataService.quote.create(input); await pushOrder(result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
+      case "quote.create": { result = dataService.order.create({ ...input, type: "quote" }); await pushOrder(result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); break; }
       case "quote.update": { const { id: qid, data: qdata } = input; result = dataService.quote.update({ id: qid, data: qdata }); if (result) { await pushOrder(result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); } break; }
-      case "quote.delete": { result = dataService.quote.delete(input); if (result?.success) { await pushOrder(result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); } break; }
-      case "quote.convertToOrder": { result = dataService.quote.convertToOrder(input); if (result) { await pushOrder(result); reloadFromStorage(["sgf_orders", "sgf_invoices", "sgf_products"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); } break; }
+      case "quote.delete": { result = dataService.order.update({ id: input, data: { deleted: true } }); if (result?.success) { await pushOrder(result); reloadFromStorage(["sgf_orders"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); } break; }
+      case "quote.convertToOrder": { result = dataService.order.convertQuoteToOrder(input); if (result) { await pushOrder(result); reloadFromStorage(["sgf_orders", "sgf_invoices", "sgf_products"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } })); } break; }
 
       // ================================================================
       //  APPOINTMENTS
@@ -423,13 +423,13 @@ export async function localLinkHandler(path: string, input: any) {
       // ================================================================
       case "checkIn.list":
         await smartSync("checkins", "sgf_checkins");
-        result = dataService.checkIn.list();
+        result = dataService.checkin.list();
         break;
       case "checkIn.getStats":
-        result = dataService.checkIn.getStats();
+        result = dataService.checkin.getStats();
         break;
       case "checkIn.create": {
-        result = dataService.checkIn.create(input);
+        result = dataService.checkin.create(input);
         if (result) {
           await pushCheckin(result);
           reloadFromStorage(["sgf_checkins"]);
@@ -439,7 +439,7 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "checkIn.update": {
         const { id: ciid, data: cidata } = input;
-        result = dataService.checkIn.update({ id: ciid, data: cidata });
+        result = dataService.checkin.update({ id: ciid, data: cidata });
         if (result) {
           await pushCheckin(result);
           reloadFromStorage(["sgf_checkins"]);
@@ -448,7 +448,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "checkIn.delete": {
-        result = dataService.checkIn.delete(input);
+        result = dataService.checkin.delete(input);
         if (result?.success) {
           reloadFromStorage(["sgf_checkins"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkins", count: 0 } }));
@@ -456,7 +456,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "checkIn.checkout": {
-        result = dataService.checkIn.checkout(input);
+        result = dataService.checkin.checkout(input);
         if (result) {
           await pushCheckin(result);
           reloadFromStorage(["sgf_checkins"]);
@@ -465,19 +465,19 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "checkIn.getDailyReport":
-        result = dataService.checkIn.getDailyReport(input?.date);
+        result = dataService.checkin.getDailyReport(input?.date);
         break;
       case "checkIn.getWeeklyReport":
-        result = dataService.checkIn.getWeeklyReport(input?.year, input?.week);
+        result = dataService.checkin.getWeeklyReport(input?.year, input?.week);
         break;
       case "checkIn.getMonthlyReport":
-        result = dataService.checkIn.getMonthlyReport(input?.year, input?.month);
+        result = dataService.checkin.getMonthlyReport(input?.year, input?.month);
         break;
       case "checkIn.getAARate":
-        result = dataService.checkIn.getAARate();
+        result = dataService.checkin.getAARate();
         break;
       case "checkIn.setAARate": {
-        result = dataService.checkIn.setAARate(input);
+        result = dataService.checkin.setAARate(input);
         if (result) {
           await pushCheckin(result);
           reloadFromStorage(["sgf_checkins"]);

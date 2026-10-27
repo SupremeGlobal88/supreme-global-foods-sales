@@ -411,6 +411,24 @@ export async function pushAccountHold(hold: any): Promise<void> {
   await queuePush(path, hold);
 }
 
+export async function pushCustomer(customer: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  const path = getDbPath("customers");
+  await queuePush(path, customer);
+}
+
+export async function pushPackingList(pl: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  const path = getDbPath("packingListLines");
+  await queuePush(path, pl);
+}
+
+export async function pushAudit(audit: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  const path = getDbPath("audits");
+  await queuePush(path, audit);
+}
+
 export async function pushSpecialPrice(sp: any): Promise<void> {
   if (!isFirebaseReady()) return;
   const path = getDbPath("specialPrices");

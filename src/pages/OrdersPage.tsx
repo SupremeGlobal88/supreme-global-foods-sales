@@ -841,7 +841,7 @@ export default function OrdersPage() {
     const customer = getCustomer(order);
     const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
     const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
-    const logoUrl = `${window.location.origin}${cfg.logo}`;
+    const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
@@ -871,7 +871,7 @@ export default function OrdersPage() {
   <div class="header">
     <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
     <div id="logo-fb" class="logo-fallback">${cfg.name}</div>
-    <div class="subtitle">${cfg.address} &middot; ${cfg.email}</div>
+    <div class="subtitle">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} ${cfg.address.postalCode} &middot; ${cfg.contact.email}</div>
     <div class="subtitle">Tel: ${cfg.contact.phone}</div>
   </div>
   <div class="doc-title">FACTORY PICKING SLIP</div>
@@ -920,7 +920,7 @@ export default function OrdersPage() {
   function printQuote(order: any) {
     const cfg = getCompanyConfig((order.company || "sgf") as any);
     const customer = getCustomer(order);
-    const logoUrl = `${window.location.origin}${cfg.logo}`;
+    const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
     const validUntil = new Date(order.createdAt);
     validUntil.setDate(validUntil.getDate() + 30);
     const w = window.open("", "_blank");
@@ -961,8 +961,8 @@ export default function OrdersPage() {
   <div class="header">
     <img class="logo-img" src="${logoUrl}" onerror="this.style.display='none';document.getElementById('logo-fb').style.display='block'" />
     <div id="logo-fb" class="logo-fallback">${cfg.name}</div>
-    <div class="subtitle">${cfg.address}</div>
-    <div class="subtitle">${cfg.email} &middot; Tel: ${cfg.contact.phone}</div>
+    <div class="subtitle">${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} ${cfg.address.postalCode}</div>
+    <div class="subtitle">${cfg.contact.email} &middot; Tel: ${cfg.contact.phone}</div>
   </div>
   <div class="doc-title">QUOTATION</div>
   <div style="text-align:center;margin-bottom:10px;"><span class="badge">QUOTE</span></div>
@@ -1028,8 +1028,8 @@ export default function OrdersPage() {
     </div>
   </div>
   <div class="footer">
-    Supreme Global Foods (Pty) Ltd &middot; 28 Nagington Road, Wadeville, Germiston, 1422<br/>
-    sales@supremeglobalfoods.co.za &middot; Tel: 061 478 8888<br/>
+    ${cfg.legalName} &middot; ${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province}, ${cfg.address.postalCode}<br/>
+    ${cfg.contact.email} &middot; Tel: ${cfg.contact.phone}<br/>
     <em>This is a quotation and not a tax invoice. No VAT registration number is shown on quotations.</em>
   </div>
   <script>
@@ -1071,8 +1071,8 @@ export default function OrdersPage() {
       `To accept this quote, please reply to this email or contact your sales representative.\n\n` +
       `Kind regards,\n` +
       `${customer?.salesRepName || order.salesRepName || cfg.name + " Team"}\n` +
-      `${cfg.email} | Tel: ${cfg.contact.phone}\n\n` +
-      `—\n${cfg.name}\n${cfg.address}`
+      `${cfg.contact.email} | Tel: ${cfg.contact.phone}\n\n` +
+      `—\n${cfg.name}\n${cfg.address.street}, ${cfg.address.city}, ${cfg.address.province} ${cfg.address.postalCode}`
     );
     const mailtoLink = `mailto:${customerEmail}?subject=${subject}&body=${body}`;
     window.location.href = mailtoLink;

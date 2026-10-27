@@ -426,6 +426,7 @@ export async function removeSpecialPrice(id: number): Promise<void> {
 // ── Pull / sync ──────────────────────────────────────────────────────────────
 export async function pullFromCloud(): Promise<Record<string, number>> {
   if (!isFirebaseReady()) return {};
+  const { get, ref } = require("firebase/database");
   const counts: Record<string, number> = {};
 
   const pullType = async (path: string, storageKey: string, postProcess?: (items: any[]) => any[]) => {

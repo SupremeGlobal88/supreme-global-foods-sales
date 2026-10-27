@@ -699,7 +699,7 @@ export default function OrdersPage() {
         { id: 10, name: "David", pin: "8888" },
       ];
       const defaultUser = DEFAULT_USERS.find((u) =>
-        u.id === user?.id ||
+        String(u.id) === String(user?.id) ||
         (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
       );
       if (defaultUser) effectivePin = defaultUser.pin;
@@ -720,7 +720,7 @@ export default function OrdersPage() {
           if (rawUsers) {
             const allUsers = JSON.parse(rawUsers);
             const dbUser = allUsers.find((u: any) =>
-              u.id === user?.id ||
+              String(u.id) === String(user?.id) ||
               (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
             );
             if (dbUser?.pin != null) effectivePin = String(dbUser.pin);
@@ -1755,3 +1755,4 @@ export default function OrdersPage() {
     </div>
   );
 }
+

@@ -84,7 +84,7 @@ export const appRouter = t.router({
     applyOverpaymentCredit: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     getCustomerCreditBalance: t.procedure.input((val: unknown) => val as number).query(() => 0 as number),
     createOrderFromInvoice: t.procedure.input((val: unknown) => val as number).mutation(({ input }) => dataService.order.createFromInvoice(input)),
-    generateForPO: t.procedure.input((val: unknown) => val as number).mutation(() => "" as string),
+    generateForPO: t.procedure.input((val: unknown) => val as number).mutation(({ input }) => dataService.invoice.generateInvoiceForPO(input)),
   }),
   appointment: t.router({
     list: t.procedure.query(() => [] as any[]),

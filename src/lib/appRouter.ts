@@ -65,6 +65,8 @@ export const appRouter = t.router({
     editPayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     deletePayment: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
     allocateBankPayments: t.procedure.input((val: unknown) => val as any[]).mutation(() => ({} as any)),
+    matchBankPayments: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.invoice.matchBankPayments(input)),
+    parseBankStatement: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.invoice.parseBankStatement(input)),
     delete: t.procedure.input((val: unknown) => val as number).mutation(() => ({} as any)),
     getCustomerStatement: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),
     getReceipts: t.procedure.query(() => [] as any[]),
@@ -131,9 +133,13 @@ export const appRouter = t.router({
     stats: t.procedure.query(() => ({} as any)),
   }),
   audit: t.router({
-    list: t.procedure.query(() => [] as any[]),
-    getCustomerDeletions: t.procedure.query(() => [] as any[]),
-    getAddressChanges: t.procedure.query(() => [] as any[]),
+    list: t.procedure.query(() => dataService.audit.list()),
+    getCustomerDeletions: t.procedure.query(() => dataService.audit.getCustomerDeletions()),
+    getAddressChanges: t.procedure.query(() => dataService.audit.getAddressChanges()),
+    getStats: t.procedure.query(() => dataService.audit.getStats()),
+    getFullTrail: t.procedure.query(() => [] as any[]),
+    getMissedAppointments: t.procedure.query(() => [] as any[]),
+    getCheckInReport: t.procedure.query(() => [] as any[]),
   }),
   followUp: t.router({
     list: t.procedure.query(() => [] as any[]),
@@ -199,4 +205,7 @@ export const appRouter = t.router({
   }),
 });
 
-export type AppRouter = typeof appRouter;
+  customerFollowUp: t.router({
+    getAllFollowUps: t.procedure.query(() => [] as any[]),
+  }),
+  export type AppRouter = typeof appRouter;

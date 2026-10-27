@@ -79,6 +79,15 @@ function setConnectionState(connected: boolean) {
 }
 
 // ── Config helpers ───────────────────────────────────────────────────────────
+
+export function getConfigFromStorage(): any {
+  try {
+    const cfg = localStorage.getItem("firebase_config");
+    return cfg ? JSON.parse(cfg) : null;
+  } catch {
+    return null;
+  }
+}
 export function getFirebaseConfig(): { configured: boolean; projectId?: string } {
   try {
     const cfg = localStorage.getItem("firebase_config");

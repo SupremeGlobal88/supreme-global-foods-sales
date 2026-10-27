@@ -244,7 +244,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "customer.getCustomersNeedingFollowUp":
-        result = dataService.customer.getCustomersNeedingFollowUp(input);
+        result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10);
         break;
 
       // ================================================================
@@ -652,7 +652,7 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.collections.getStats();
         break;
       case "collections.getCustomerPaymentHistory":
-        result = dataService.collections.getCustomerPaymentHistory(input);
+        result = dataService.collections.getCustomerPaymentHistory(input?.customerId || input);
         break;
       case "collections.getFollowUpsDue":
         result = dataService.collections.getFollowUpsDue();

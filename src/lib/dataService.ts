@@ -4781,6 +4781,9 @@ export const dataService = {
       overdue: followUps.filter((fu) => fu.followUpDate < new Date().toISOString() && fu.status === "pending").length,
     }),
   },
+  customerFollowUp: {
+    getAllFollowUps: () => followUps,
+  },
 
   collections: {
     getOverdueInvoices: () => {
@@ -5032,6 +5035,40 @@ export const dataService = {
     list: () => auditLog,
     getCustomerDeletions: () => auditLog.filter((entry) => entry.entityType === "customer" && entry.action === "DELETE"),
     getAddressChanges: () => auditLog.filter((entry) => entry.action === "UPDATE_ADDRESS"),
+    getStats: () => ({
+      totalEntries: auditLog.length,
+      byAction: auditLog.reduce((acc: Record<string, number>, entry: any) => {
+        acc[entry.action] = (acc[entry.action] || 0) + 1;
+        return acc;
+      }, {}),
+      byEntityType: auditLog.reduce((acc: Record<string, number>, entry: any) => {
+        acc[entry.entityType] = (acc[entry.entityType] || 0) + 1;
+        return acc;
+      }, {}),
+      last7Days: auditLog.filter((e: any) => e.timestamp && new Date(e.timestamp) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length,
+    }),
+    getFullTrail: () => auditLog,
+    getMissedAppointments: () => {
+      const now = new Date();
+      return appointments.filter((a: any) => {
+        const apptDate = a.date ? new Date(a.date) : null;
+        const isPast = apptDate && apptDate < now;
+        const status = a.status?.toLowerCase() || "";
+        return isPast && (status === "no_show" || status === "cancelled" || status === "missed" || status === "pending");
+      });
+    },
+    getCheckInReport: () => {
+      const today = new Date().toISOString().split("T")[0];
+      return {
+        today: checkins.filter((c: any) => c.date?.startsWith(today)).length,
+        total: checkins.length,
+        byUser: checkins.reduce((acc: Record<string, number>, c: any) => {
+          const user = c.userName || c.userId || "Unknown";
+          acc[user] = (acc[user] || 0) + 1;
+          return acc;
+        }, {}),
+      };
+    },
   },
 
   /* ─── User Management with Roles ─── */

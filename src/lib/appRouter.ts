@@ -142,10 +142,10 @@ export const appRouter = t.router({
     getCheckInReport: t.procedure.query(() => [] as any[]),
   }),
   followUp: t.router({
-    list: t.procedure.query(() => [] as any[]),
-    listAll: t.procedure.input((val: unknown) => val as { days?: number }).query(() => [] as any[]),
-    getStats: t.procedure.query(() => ({} as any)),
-    update: t.procedure.input((val: unknown) => val as any).mutation(() => ({} as any)),
+    list: t.procedure.query(() => dataService.followUp.list()),
+    listAll: t.procedure.input((val: unknown) => val as { days?: number }).query(({ input }) => dataService.followUp.listAll(input?.days)),
+    getStats: t.procedure.query(() => dataService.followUp.getStats()),
+    update: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.followUp.update(input)),
   }),
   sampleReport: t.router({
     getByCustomer: t.procedure.input((val: unknown) => val as any).query(() => ({} as any)),

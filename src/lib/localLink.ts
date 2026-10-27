@@ -614,7 +614,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       case "followUp.listAll":
         await smartSync("followUps", "sgf_followUps");
-        result = dataService.followUp.listAll(input || { days: 7 });
+        result = dataService.followUp.listAll(input?.days || 7);
         break;
       case "followUp.getStats":
         result = dataService.followUp.getStats();

@@ -1,5 +1,6 @@
 import type { AppRouter } from "./appRouter";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
+import { observable } from "@trpc/server/observable";
 import {
   dataService,
   reloadFromStorage,
@@ -881,4 +882,20 @@ export async function localLinkHandler(path: string, input: any) {
     console.error(`[localLink] Error handling ${path}:`, err);
     throw err;
   }
+}
+
+export function createLocalLink() {
+  return () =>
+    ({ op }: any) =>
+      observable((observer) => {
+        (async () => {
+          try {
+            const result = await localLinkHandler(op.path, op.input);
+            observer.next({ result: { type: "data", data: result } });
+            observer.complete();
+          } catch (err: any) {
+            observer.error(err);
+          }
+        })();
+      });
 }

@@ -97,8 +97,7 @@ export default function App() {
     repairInvoiceCompanies();
     repairPurchaseOrderCompanies();
 
-    // Cloud-first: Pull from cloud in BACKGROUND without blocking UI
-    (async () => {
+    const doBackgroundPull = async () => {
       try {
         if (isFirebaseReady()) {
           console.log("[Sync] Background cloud pull starting...");
@@ -120,14 +119,25 @@ export default function App() {
       } catch (e) {
         console.warn("[Sync] Background pull error:", e);
       }
-    })();
+    };
+
+    // Attempt immediate background pull (may fail if Firebase not ready yet)
+    doBackgroundPull();
+
+    // When Firebase finishes lazy-loading, set up real-time sync and pull again
+    const onFirebaseReady = () => {
+      console.log("[Sync] Firebase ready — setting up real-time listeners and pulling cloud data");
+      initAutoSync();
+      doBackgroundPull();
+    };
+    window.addEventListener("firebaseReady", onFirebaseReady);
 
     // Show loading screen for max 3 seconds
     const safetyTimer = setTimeout(() => {
       setIsCloudReady(true);
     }, 3000);
 
-    return () => { unsub(); clearTimeout(safetyTimer); };
+    return () => { unsub(); clearTimeout(safetyTimer); window.removeEventListener("firebaseReady", onFirebaseReady); };
   }, []);
 
   // POST-LOGIN SYNC

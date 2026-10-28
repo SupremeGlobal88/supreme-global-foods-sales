@@ -129,6 +129,10 @@ export function initFirebase(userConfig?: any): boolean {
         appId: cfg.appId,
       });
       db = getDatabase(app);
+      // Flush any pushes that were queued before Firebase was ready
+      flushPendingPushes();
+      // Notify the app so initAutoSync can set up real-time listeners immediately
+      window.dispatchEvent(new CustomEvent("firebaseReady"));
       const { onValue, ref } = fb;
       onValue(ref(db, ".info/connected"), (snap: any) => {
         setConnectionState(snap.val() === true);
@@ -148,10 +152,15 @@ export function isFirebaseReady(): boolean {
 export async function flushPendingPushes(): Promise<void> {
   if (isProcessingPushes || pendingPushes.length === 0) return;
   isProcessingPushes = true;
+  const fb = await getFirebase();
+  if (!fb || !db) {
+    isProcessingPushes = false;
+    // Retry when Firebase becomes ready — do NOT drop the batch
+    setTimeout(() => { if (!isProcessingPushes) flushPendingPushes(); }, 3000);
+    return;
+  }
   const batch = [...pendingPushes];
   pendingPushes = [];
-  const fb = await getFirebase();
-  if (!fb || !db) { isProcessingPushes = false; return; }
   const { set, ref, push, update, remove } = fb;
   for (const op of batch) {
     try {
@@ -997,31 +1006,47 @@ export function registerDataServiceRefresh(fn: RefreshFn): void {
 // ============================================================================
 export function initAutoSync(): () => void {
   if (autoSyncInitialized) return autoSyncCleanup || (() => {});
-  autoSyncInitialized = true;
 
   const unsubs: (() => void)[] = [];
-  unsubs.push(subscribeToCustomers(handleReceived("customers", "sgf_customers")));
-  unsubs.push(subscribeToStock(handleReceived("products", "sgf_products")));
-  unsubs.push(subscribeToOrders(handleReceived("orders", "sgf_orders")));
-  unsubs.push(subscribeToCheckins(handleReceived("checkins", "sgf_checkins")));
-  unsubs.push(subscribeToAppointments(handleReceived("appointments", "sgf_appointments")));
-  unsubs.push(subscribeToInvoices(handleReceived("invoices", "sgf_invoices")));
-  unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions", "sgf_followUpActions")));
-  unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
-  unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
-  unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
-  unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps")));
-  unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
-  unsubs.push(subscribeToCollectionNotes(handleReceived("collectionNotes", "sgf_collectionNotes")));
-  unsubs.push(subscribeToCollectionPromises(handleReceived("collectionPromises", "sgf_collectionPromises")));
-  unsubs.push(subscribeToAccountHolds(handleReceived("accountHolds", "sgf_accountHolds")));
-  unsubs.push(subscribeToSpecialPrices(handleReceived("specialPrices", "sgf_specialPrices")));
-  // ═══ CORPORATE MODULE — real-time subscriptions
-  unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
-  unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));
-  unsubs.push(subscribeToBarrels(handleReceived("barrels", "sgf_barrels")));
-  unsubs.push(subscribeToCOCs(handleReceived("certificatesOfCompliance", "sgf_cocs")));
-  unsubs.push(subscribeToPackingListLines(handleReceived("packingListLines", "sgf_packingListLines")));
+
+  const setupSubscriptions = () => {
+    if (!isFirebaseReady()) return false;
+    unsubs.push(subscribeToCustomers(handleReceived("customers", "sgf_customers")));
+    unsubs.push(subscribeToStock(handleReceived("products", "sgf_products")));
+    unsubs.push(subscribeToOrders(handleReceived("orders", "sgf_orders")));
+    unsubs.push(subscribeToCheckins(handleReceived("checkins", "sgf_checkins")));
+    unsubs.push(subscribeToAppointments(handleReceived("appointments", "sgf_appointments")));
+    unsubs.push(subscribeToInvoices(handleReceived("invoices", "sgf_invoices")));
+    unsubs.push(subscribeToFollowUpActions(handleReceived("followUpActions", "sgf_followUpActions")));
+    unsubs.push(subscribeToFollowUps(handleReceived("followUps", "sgf_followUps")));
+    unsubs.push(subscribeToReceipts(handleReceived("receipts", "sgf_receipts")));
+    unsubs.push(subscribeToUsers(handleReceived("users", "sgf_users")));
+    unsubs.push(subscribeToSalesReps(handleReceived("salesReps", "sgf_salesReps")));
+    unsubs.push(subscribeToCreditNotes(handleReceived("creditNotes", "sgf_creditNotes")));
+    unsubs.push(subscribeToCollectionNotes(handleReceived("collectionNotes", "sgf_collectionNotes")));
+    unsubs.push(subscribeToCollectionPromises(handleReceived("collectionPromises", "sgf_collectionPromises")));
+    unsubs.push(subscribeToAccountHolds(handleReceived("accountHolds", "sgf_accountHolds")));
+    unsubs.push(subscribeToSpecialPrices(handleReceived("specialPrices", "sgf_specialPrices")));
+    // ═══ CORPORATE MODULE — real-time subscriptions
+    unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
+    unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));
+    unsubs.push(subscribeToBarrels(handleReceived("barrels", "sgf_barrels")));
+    unsubs.push(subscribeToCOCs(handleReceived("certificatesOfCompliance", "sgf_cocs")));
+    unsubs.push(subscribeToPackingListLines(handleReceived("packingListLines", "sgf_packingListLines")));
+    return true;
+  };
+
+  const tryInit = () => {
+    if (autoSyncInitialized) return;
+    if (setupSubscriptions()) {
+      autoSyncInitialized = true;
+      if (initRetryTimer) { clearTimeout(initRetryTimer); initRetryTimer = null; }
+    } else {
+      initRetryTimer = setTimeout(tryInit, 2000);
+    }
+  };
+
+  tryInit();
 
   autoSyncCleanup = () => {
     autoSyncInitialized = false;

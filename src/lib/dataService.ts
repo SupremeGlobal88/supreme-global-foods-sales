@@ -316,30 +316,24 @@ function load() {
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
     const DEFAULT_USERS = [
-      { id: 1, name: "Collin", email: "collin@supremeglobalfoods.co.za", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
-      { id: 2, name: "Adeli", email: "adeli@supremeglobalfoods.co.za", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
-      { id: 3, name: "Inhouse", email: "inhouse@supremeglobalfoods.co.za", role: "sales_rep", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
-      { id: 4, name: "Michael", email: "michael@supremeglobalfoods.co.za", role: "sales_rep", pin: "3333", isActive: true, createdAt: new Date().toISOString() },
-      { id: 5, name: "Nkosana", email: "nkosana@supremeglobalfoods.co.za", role: "sales_rep", pin: "4444", isActive: true, createdAt: new Date().toISOString() },
-      { id: 6, name: "Tebogo Bila", email: "tebogo@supremeglobalfoods.co.za", role: "sales_rep", pin: "6666", isActive: true, createdAt: new Date().toISOString() },
-      { id: 7, name: "Aggie", email: "aggie@supremeglobalfoods.co.za", role: "admin", pin: "1018", isActive: true, createdAt: new Date().toISOString() },
-      { id: 8, name: "Ronald", email: "ronald@supremeglobalfoods.co.za", role: "super_admin", pin: "2581", isActive: true, createdAt: new Date().toISOString() },
-      { id: 9, name: "Jolene", email: "jolene@supremeglobalfoods.co.za", role: "admin", pin: "7777", isActive: true, createdAt: new Date().toISOString() },
-      { id: 10, name: "David", email: "david@supremeglobalfoods.co.za", role: "super_admin", pin: "8888", isActive: true, createdAt: new Date().toISOString() },
+      { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
+      { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
+      { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
+      { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333", isActive: true, createdAt: new Date().toISOString() },
+      { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444", isActive: true, createdAt: new Date().toISOString() },
+      { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666", isActive: true, createdAt: new Date().toISOString() },
+      { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018", isActive: true, createdAt: new Date().toISOString() },
+      { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581", isActive: true, createdAt: new Date().toISOString() },
+      { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777", isActive: true, createdAt: new Date().toISOString() },
+      { id: 10, name: "David", email: "", role: "super_admin", pin: "8888", isActive: true, createdAt: new Date().toISOString() },
     ];
     if (!users || users.length === 0) {
       users = [...DEFAULT_USERS];
       saveItem("sgf_users", users);
-    } else {
-      let added = false;
-      for (const du of DEFAULT_USERS) {
-        if (!users.find((existing: any) => existing.name?.toLowerCase() === du.name.toLowerCase())) {
-          users.push(du);
-          added = true;
-        }
-      }
-      if (added) saveItem("sgf_users", users);
     }
+    // NOTE: Do NOT re-add default users here. If an admin deleted a user,
+    // they must stay deleted. Re-adding causes "jumping back" bug.
+    // Defaults are only injected on first load when users array is empty.
   } catch { /* ignore */ }
 
   // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
@@ -374,25 +368,17 @@ function load() {
 
   // AUTO-LINK: Match Sage invoices to customers by customerCode.
   // This runs on every startup so ALL devices get linked Sage invoices
-  // without needing to click "Re-link Sage Invoices".
-  try {
-    const sageInvoices = invoices.filter((inv) => inv.source === "sage" || inv.isSageInvoice);
-    let linkedCount = 0;
-    for (const inv of sageInvoices) {
-      if (!inv.customerId && inv.customerCode) {
-        const matched = customers.find((c) => c.customerCode === inv.customerCode);
-        if (matched) {
-          inv.customerId = matched.id;
-          inv.customer = { name: matched.name };
-          linkedCount++;
-        }
-      }
-    }
-    if (linkedCount > 0) {
-      saveItem("sgf_invoices", invoices);
-      console.log(`[AutoLink] Linked ${linkedCount} Sage invoice(s) to customers`);
-    }
-  } catch (e) { console.error("[load] auto-link failed:", e); }
+  // without needing to click "Re-link" button in Settings.
+  try { autoLinkSageInvoices(); } catch { /* ignore */ }
+
+  // FIX: Activate invoices stuck in draft for delivered/ready orders.
+  // This fixes the bug where === vs == caused activateInvoiceFromOrder to fail.
+  try { fixDraftInvoicesForDeliveredOrders(); } catch { /* ignore */ }
+
+  // FIX: Repair cancelled invoices that still have a non-zero balanceDue.
+  // When an invoice is cancelled, balanceDue must be 0 so it doesn't show
+  // in collections. If balanceDue > 0, zero it out and sync to Firebase.
+  try { repairCancelledInvoices(); } catch { /* ignore */ }
 
   // CORPORATE DATA
   try {
@@ -1262,121 +1248,375 @@ export const dataService = {
       saveItem("sgf_packingListLines", packingListLines);
       return { success: true };
     },
-    getByPO: (poId: number) => packingListLines.filter((p) => p.poId == poId),
+    getByPO: (poId: number) => packingListLines.filter((p) => p.purchaseOrderId == poId),
     getByInvoice: (invoiceId: number) => packingListLines.filter((p) => p.invoiceId == invoiceId),
+  },
+
+  /** Generate an invoice from a Purchase Order (corporate customer).
+   *  Exposed on dataService so localLink can call it via dataService.generateInvoiceForPO */
+  generateInvoiceForPO: (poId: number) => {
+    // ACQUIRE LOCK: prevent concurrent generation
+    if (invoiceGenerationLock) {
+      console.warn("[generateInvoiceForPO] LOCKED — another invoice is being generated.");
+      return null;
+    }
+    invoiceGenerationLock = true;
+
+    try {
+      load(); // ensure fresh data
+      const po = purchaseOrders.find((p) => p.id == poId);
+      if (!po) {
+        console.warn("[generateInvoiceForPO] PO not found:", poId);
+        return null;
+      }
+
+      // Calculate totals from PO line items
+      const items = po.lineItems || [];
+      const subtotal = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice || 0), 0);
+      // Check if corporate customer is VAT exempt
+      const corpCustomer = corporateCustomers.find((c) => c.id == po.corporateCustomerId);
+      const vatRate = corpCustomer?.vatExempt ? 0 : 0.15;
+      const vatAmount = subtotal * vatRate;
+      const total = subtotal + vatAmount;
+
+      // Resolve the main customer ID from the linked corporate customer
+      const mainCustomerId = corpCustomer?.linkedCustomerId || po.corporateCustomerId;
+      const mainCustomer = customers.find((c) => c.id == mainCustomerId);
+
+      // Build a rich customer object — prefer linked main customer, fallback to corp customer fields
+      const richCustomer = mainCustomer || {
+        name: po.corporateCustomerName || corpCustomer?.name || "Corporate Customer",
+        contactPerson: corpCustomer?.contactPerson || "",
+        phone: corpCustomer?.phone || "",
+        email: corpCustomer?.email || "",
+        physicalAddress: corpCustomer?.deliveryAddress || corpCustomer?.physicalAddress || "",
+        city: corpCustomer?.city || "",
+        province: corpCustomer?.province || "",
+        postalCode: corpCustomer?.postalCode || "",
+        vatNumber: corpCustomer?.vatNumber || "",
+        salesRepName: corpCustomer?.salesRepName || "",
+      };
+
+      // Reference for PO number
+      const poRef = po.poNumber || `PO-${po.id}`;
+
+      // Check if invoice already exists for this PO
+      const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+
+      // Get corporate customer for payment terms
+      const paymentTerms = corpCustomer?.paymentTerms || po.paymentTerms || "30_days";
+      const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
+
+      if (existingIdx >= 0) {
+        const existing = invoices[existingIdx];
+        const amountPaid = Number(existing.amountPaid || 0);
+        const newBalanceDue = total - amountPaid;
+        invoices[existingIdx] = {
+          ...existing,
+          subtotal,
+          vatAmount,
+          vatRate,
+          total,
+          totalAmount: total,
+          balanceDue: newBalanceDue,
+          paymentTerms,
+          customerId: mainCustomerId,
+          customer: richCustomer,
+          deliveryNoteNumber: existing.deliveryNoteNumber || `DN-${poRef}`,
+          items: items.map((item: any) => ({
+            description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.quantity * item.unitPrice,
+          })),
+          updatedAt: new Date().toISOString(),
+          notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
+        };
+        saveItem("sgf_invoices", invoices);
+        return existing.invoiceNumber;
+      }
+
+      // Create new invoice
+      const now = new Date();
+      const dueDate = new Date(now);
+      dueDate.setDate(dueDate.getDate() + days);
+
+      const invCompany = po.company || "sgf";
+      let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
+      const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
+      let safetyCounter = 0;
+      while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
+        const match = invoiceNumber.match(/(SGF|RC)(\d+)/);
+        if (match) {
+          const prefix = match[1];
+          const n = parseInt(match[2]) + 1;
+          invoiceNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
+        }
+        safetyCounter++;
+      }
+
+      const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+
+      invoices.push({
+        id: nextInvId,
+        purchaseOrderId: po.id,
+        poNumber: po.poNumber,
+        orderNumber: poRef,
+        invoiceNumber,
+        deliveryNoteNumber: `DN-${poRef}`,
+        company: invCompany,
+        customerId: mainCustomerId,
+        customerName: richCustomer?.name || po.corporateCustomerName || "",
+        customer: richCustomer,
+        subtotal,
+        vatAmount,
+        vatRate,
+        total,
+        totalAmount: total,
+        balanceDue: total,
+        amountPaid: 0,
+        status: "draft",
+        paymentTerms,
+        invoiceDate: now.toISOString(),
+        dueDate: dueDate.toISOString(),
+        notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
+        items: items.map((item: any) => ({
+          description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.quantity * item.unitPrice,
+        })),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      });
+      saveItem("sgf_invoices", invoices);
+      return invoiceNumber;
+    } catch (err) {
+      console.error("[generateInvoiceForPO] CRASH:", err);
+      return null;
+    } finally {
+      invoiceGenerationLock = false;
+    }
   },
 };
 
-// ═══════════════════════════════════════════════════════════════
-//  HELPER FUNCTIONS — Direct exports for pages
-// ═══════════════════════════════════════════════════════════════
+/** Reset all transaction data (orders, invoices, receipts, etc.) but keep users, customers, products, settings */
+export function resetTransactionData(): void {
+  orders = [];
+  invoices = [];
+  receipts = [];
+  creditNotes = [];
+  appointments = [];
+  checkins = [];
+  followUps = [];
+  followUpActions = [];
+  specialPrices = [];
+  collectionNotes = [];
+  collectionPromises = [];
+  accountHolds = [];
+  auditLog = [];
 
-/** Calculate the effective price for a customer-product combination.
- *  Priority: special price > customer tier price > base price */
-export function getEffectivePrice(product: any, customer: any): number {
-  if (!product) return 0;
-
-  // Check special prices first
-  const special = specialPrices.find(
-    (sp: any) => sp.customerId == customer?.id && sp.productId == product.id && sp.isActive !== false
-  );
-  if (special?.price != null) return special.price;
-
-  // Customer tier pricing
-  const tier = customer?.priceTier || "wholesale";
-  switch (tier) {
-    case "corporate": return product.corporatePrice || product.wholesalePrice || 0;
-    case "bulk": return product.bulkPrice || product.wholesalePrice || 0;
-    case "retail": return product.retailPrice || product.wholesalePrice || 0;
-    case "wholesale":
-    default: return product.wholesalePrice || 0;
-  }
+  const keysToRemove = [
+    "sgf_orders", "sgf_invoices", "sgf_receipts", "sgf_creditNotes", "sgf_appointments",
+    "sgf_checkins", "sgf_specialPrices", "sgf_auditLog", "sgf_followUps",
+    "sgf_followUpActions", "sgf_collectionNotes", "sgf_collectionPromises",
+    "sgf_accountHolds",
+  ];
+  keysToRemove.forEach(k => localStorage.removeItem(k));
 }
 
-/** Get the next available invoice number for a company code.
- *  Format: INV-{companyCode}-{sequence} */
-export function getNextInvoiceNumberForCompany(companyCode: string): string {
-  const prefix = `INV-${companyCode}-`;
-  const existingNumbers = invoices
-    .filter((inv) => inv.invoiceNumber?.startsWith(prefix))
-    .map((inv) => {
-      const match = inv.invoiceNumber.match(/-(\d+)$/);
-      return match ? parseInt(match[1], 10) : 0;
-    });
-  const maxNum = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
-  return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
+/** Clear only appointments and check-ins */
+export function clearAppointmentsAndCheckins(): void {
+  appointments = [];
+  checkins = [];
+  removeStorageItem("sgf_appointments");
+  removeStorageItem("sgf_checkins");
 }
 
-/** Generate an invoice from a purchase order.
- *  CRITICAL FIX: Added catch block and PO not found logging.
- *  Prevents silent failures when PO is missing or exceptions occur. */
-export function generateInvoiceForPO(poId: number): string | null {
-  // Prevent concurrent invoice generation
-  if (invoiceGenerationLock) {
-    console.warn("[generateInvoiceForPO] Lock active — another invoice is being generated.");
-    return null;
-  }
-  invoiceGenerationLock = true;
-
+/** Full factory reset — clears EVERYTHING and reloads defaults */
+export function factoryReset(): void {
+  // Step 1: Disconnect Firebase to prevent re-download
   try {
-    load(); // ensure fresh data
-    const po = purchaseOrders.find((p) => p.id == poId);
-    if (!po) {
-      console.warn("[generateInvoiceForPO] PO not found:", poId);
-      return null;
-    }
-
-    const customer = corporateCustomers.find((c) => c.id == po.customerId);
-    const companyCode = customer?.companyCode || "GEN";
-    const invoiceNumber = getNextInvoiceNumberForCompany(companyCode);
-
-    const newInvoice = {
-      id: invoices.length > 0 ? Math.max(...invoices.map((i) => i.id || 0)) + 1 : 1,
-      invoiceNumber,
-      poId: po.id,
-      customerId: po.customerId,
-      customer: customer ? { name: customer.name, companyCode: customer.companyCode } : po.customer,
-      items: (po.items || []).map((item: any) => ({
-        ...item,
-        productId: item.productId || item.id,
-        productName: item.productName || item.description,
-      })),
-      subtotal: po.subtotal || 0,
-      vat: po.vat || 0,
-      total: po.total || 0,
-      status: "draft",
-      balanceDue: po.total || 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    invoices.push(newInvoice);
-    saveItem("sgf_invoices", invoices);
-
-    // Update PO status
-    const poIdx = purchaseOrders.findIndex((p) => p.id == poId);
-    if (poIdx >= 0) {
-      purchaseOrders[poIdx].status = "invoiced";
-      purchaseOrders[poIdx].invoiceId = newInvoice.id;
-      purchaseOrders[poIdx].updatedAt = new Date().toISOString();
-      saveItem("sgf_purchaseOrders", purchaseOrders);
-    }
-
-    return invoiceNumber;
-  } catch (err) {
-    console.error("[generateInvoiceForPO] CRASH:", err);
-    return null;
-  } finally {
-    invoiceGenerationLock = false;
-  }
+    const { disconnectFirebase } = require("./firebaseSync");
+    if (disconnectFirebase) disconnectFirebase();
+  } catch { /* ignore if firebaseSync not loaded */ }
+  localStorage.setItem("sgf_firebase_disconnected", "true");
+  // Step 2: Clear all localStorage
+  const allKeys = Object.keys(localStorage).filter(k => k.startsWith("sgf_"));
+  allKeys.forEach(k => localStorage.removeItem(k));
+  // Step 3: Keep disconnect flag set (re-add after clearing)
+  localStorage.setItem("sgf_firebase_disconnected", "true");
+  // Step 4: Reset ALL in-memory arrays including users
+  orders = []; invoices = []; receipts = []; creditNotes = []; appointments = []; checkins = [];
+  followUps = []; followUpActions = []; specialPrices = [];
+  collectionNotes = []; collectionPromises = []; accountHolds = []; auditLog = []; users = [];
+  // Step 5: Reset customers and products back to original static defaults
+  customers = getStaticCustomers();
+  products = getStaticProducts();
+  // Step 6: Re-create default users
+  load();
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  BACKWARD COMPATIBILITY EXPORTS
-// ═══════════════════════════════════════════════════════════════
+/**
+ * DIRECT LOGIN — bypasses tRPC/localLink entirely.
+ * Called directly from Login.tsx. Checks hardcoded defaults first.
+ */
+export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string; pin?: string } | null {
+  const DEFAULT_USERS = [
+    { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580" },
+    { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111" },
+    { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222" },
+    { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333" },
+    { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444" },
+    { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666" },
+    { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018" },
+    { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581" },
+    { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777" },
+    { id: 10, name: "David", email: "", role: "super_admin", pin: "8888" },
+  ];
 
-/** Legacy direct array access — use dataService methods instead */
-export { customers, products, orders, invoices, appointments, checkins, users, specialPrices };
+  const ADMIN_ALIASES = ["admin", "administrator", "superadmin"];
+  const typedName = name.toLowerCase().trim();
+  const typedPin = String(pin); // Normalize: Firebase may store PIN as number
 
-/** Special exports for router / page direct access */
-export { getEffectivePrice, getNextInvoiceNumberForCompany, generateInvoiceForPO };
+  // 1. Check stored users FIRST (so User Management additions work without code changes)
+  try {
+    const raw = getStorageItem("sgf_users");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      // Exact name match
+      const found = stored.find(
+        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
+      );
+      if (found) {
+        const hardcoded = DEFAULT_USERS.find((u) => u.id == found.id || u.name.toLowerCase() === found.name?.toLowerCase());
+        const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
+        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
+      }
+      // Admin alias match — check if any stored user has this PIN and is admin
+      if (ADMIN_ALIASES.includes(typedName)) {
+        const adminFound = stored.find(
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
+        );
+        if (adminFound) {
+          const hardcoded = DEFAULT_USERS.find((u) => u.id == adminFound.id || u.name.toLowerCase() === adminFound.name?.toLowerCase());
+          const resolvedPin = adminFound.pin != null ? adminFound.pin : hardcoded?.pin;
+          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: resolvedPin };
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 2. Allow "admin" as a generic alias — match against ANY hardcoded admin/super_admin PIN
+  if (ADMIN_ALIASES.includes(typedName)) {
+    // First check stored users for admin alias (new PIN may have been changed)
+    let storedAdminFound: any = null;
+    try {
+      const raw = getStorageItem("sgf_users");
+      if (raw) {
+        const stored = JSON.parse(raw);
+        storedAdminFound = stored.find(
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
+        );
+      }
+    } catch { /* ignore */ }
+    if (storedAdminFound) {
+      return { id: storedAdminFound.id, name: storedAdminFound.name, email: storedAdminFound.email, role: storedAdminFound.role, pin: storedAdminFound.pin };
+    }
+
+    // Only fall back to hardcoded if no stored admin with different PIN exists
+    let storedAdminWithDifferentPin = false;
+    try {
+      const raw = getStorageItem("sgf_users");
+      if (raw) {
+        const stored = JSON.parse(raw);
+        storedAdminWithDifferentPin = stored.some(
+          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) !== typedPin && x.isActive !== false
+        );
+      }
+    } catch { /* ignore */ }
+
+    if (!storedAdminWithDifferentPin) {
+      const adminMatch = DEFAULT_USERS.find(
+        (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
+      );
+      if (adminMatch) {
+        return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
+      }
+    }
+  }
+
+  // 3. Check hardcoded defaults (fallback — survives data clears)
+  // BUT only if the user does NOT exist in stored data with a different PIN.
+  // This prevents old hardcoded PINs from working after a PIN change.
+  let storedUserWithDifferentPin: any = null;
+  try {
+    const raw = getStorageItem("sgf_users");
+    if (raw) {
+      const stored = JSON.parse(raw);
+      storedUserWithDifferentPin = stored.find(
+        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) !== typedPin && x.isActive !== false
+      );
+    }
+  } catch { /* ignore */ }
+
+  if (!storedUserWithDifferentPin) {
+    const fromDefaults = DEFAULT_USERS.find(
+      (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
+    );
+    if (fromDefaults) {
+      // Do NOT re-add missing default users here — if an admin deleted a user,
+      // they must stay deleted. Re-adding causes "jumping back" bug.
+      // Defaults are only injected on first app load when users array is empty.
+      return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role, pin: fromDefaults.pin };
+    }
+  }
+
+  return null;
+}
+
+// NOTE: load() is already called at line 143 after all module-level variables are declared.
+// Do NOT call load() again here — it would overwrite in-memory data with stale localStorage.
+
+function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number, _isSample: boolean = false): number {
+  // CRITICAL: Sample orders must ALWAYS use corporate price.
+  // Do NOT apply special/customer prices to sample orders, even if a
+  // special price exists for this customer+product combination.
+  if (!_isSample) {
+    const sp = specialPrices.find((p) => p.customerId == customerId && p.stockItemId == stockItemId);
+    if (sp) return Number(sp.specialPrice);
+  }
+  const stock = products.find((p) => p.id == stockItemId);
+  if (!stock) return 0;
+  let rawPrice: number;
+  switch (priceTier) {
+    case "corporate": rawPrice = Number(stock.corporatePrice); break;
+    case "bulk": rawPrice = Number(stock.bulkPrice); break;
+    case "retail": rawPrice = Number(stock.retailPrice); break;
+    default: rawPrice = Number(stock.wholesalePrice); break;
+  }
+  // Fallback to STATIC_PRODUCTS if loaded price is 0
+  if (rawPrice <= 0) {
+    const staticProd = STATIC_PRODUCTS.find((p: any) =>
+      p.id == stockItemId ||
+      (stock.productCode && p.productCode === stock.productCode) ||
+      (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim())
+    );
+    if (staticProd) {
+      switch (priceTier) {
+        case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
+        case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
+        case "retail": rawPrice = Number(staticProd.retailPrice); break;
+        default: rawPrice = Number(staticProd.wholesalePrice); break;
+      }
+    }
+  }
+  return rawPrice;
+}
+
+// Repair corrupted orders on module load (fixes orders created during the reloadFromStorage bug)
+try {
+  dataService.order.repairOrders();
+} catch (e) {
+  console.error("[dataService] Order repair failed:", e);
+}

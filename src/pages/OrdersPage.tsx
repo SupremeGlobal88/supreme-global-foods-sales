@@ -38,7 +38,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 /** Dedicated component for Generate Invoice button.
- *  Uses tRPC useQuery with 5s polling so React auto-re-renders
+ *  Uses tRPC useQuery with 30s polling so React auto-re-renders
  *  when invoices change from other devices. This guarantees the
  *  button always shows correct state after any admin generates. */
 function safeNum(n: any, fallback = 0): number {
@@ -53,13 +53,13 @@ function GenerateInvoiceButton({
   const [busy, setBusy] = useState(false);
   const utils = trpc.useUtils();
 
-  // Use tRPC useQuery — ALWAYS fetch fresh on mount + poll every 5s
+  // Use tRPC useQuery — fetch fresh on mount + poll every 30s
   // The button only mounts when an order is EXPANDED, so refetchOnMount
   // guarantees we see the latest invoices from other admins
   const { data: liveInvoices } = trpc.invoice.list.useQuery(undefined, {
-    refetchInterval: 5000,
+    refetchInterval: 30000,
     refetchOnMount: "always",
-    staleTime: 0,
+    staleTime: 30000,
   });
 
   const hasInvoice = (liveInvoices || []).some(
@@ -317,30 +317,27 @@ export default function OrdersPage() {
   const [productPickerIndex, setProductPickerIndex] = useState<number>(0);
 
   const { data: orders } = trpc.order.list.useQuery(undefined, {
-    refetchInterval: 5000,
+    refetchInterval: 30000,
     refetchOnMount: "always",
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
   });
   const { data: invoices } = trpc.invoice.list.useQuery(undefined, {
-    refetchInterval: 5000,
+    refetchInterval: 30000,
     refetchOnMount: "always",
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
   });
   const { data: customers } = trpc.customer.search.useQuery({ query: " " });
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
   const { data: stats } = trpc.order.getStats.useQuery();
 
   // Direct dataService check — bypasses tRPC cache for "NO INVOICE" detection
-  const [liveInvoiceOrderIds, setLiveInvoiceOrderIds] = useState<Set<number>>(new Set());
-  useEffect(() => {
-    function refresh() {
-      const allInv = dataService.invoice.list();
-      const ids = new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC")).map((i: any) => Number(i.orderId)));
-      setLiveInvoiceOrderIds(ids);
-    }
-    refresh();
-    const interval = setInterval(refresh, 3000);
-    window.addEventListener("firebaseDataReceived", refresh);
-    return () => { clearInterval(interval); window.removeEventListener("firebaseDataReceived", refresh); };
-  }, []);
+  // Use useMemo instead of useEffect+setInterval to avoid constant re-renders
+  const liveInvoiceOrderIds = useMemo(() => {
+    const allInv = dataService.invoice.list();
+    return new Set(allInv.filter((i: any) => i.invoiceNumber?.startsWith("SGF") || i.invoiceNumber?.startsWith("RC")).map((i: any) => Number(i.orderId)));
+  }, [invoices]);
 
   const { data: customerSpecialPrices } = trpc.specialPrice.listByCustomer.useQuery(
     { customerId: formData.customerId }, { enabled: formData.customerId > 0 }
@@ -380,10 +377,7 @@ export default function OrdersPage() {
       alert("Failed to place order: " + (err.message || "Unknown error. Please check console for details."));
       console.error("[createOrder] error:", err);
     },
-    onSettled: () => {
-      // Safety net: always re-enable the form regardless of success/failure
-      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
-    },
+    // REMOVED onSettled — it was closing the form on error, preventing users from fixing input
   });
   const updateOrder = trpc.order.update.useMutation({
     onSuccess: async () => {
@@ -401,9 +395,7 @@ export default function OrdersPage() {
     onError: (err: any) => {
       alert("Update failed: " + (err.message || "Unknown error"));
     },
-    onSettled: () => {
-      setShowForm(false); setEditingOrder(null); sampleOverrideRef.current = false;
-    },
+    // REMOVED onSettled — it was closing the form on error, preventing users from fixing input
   });
   const convertQuoteToOrder = trpc.order.convertQuoteToOrder.useMutation({
     onSuccess: async (data) => {
@@ -532,7 +524,12 @@ export default function OrdersPage() {
 
   function handleOpenCustomerDropdown() {
     setShowCustomerDropdown(true);
-    setCustomerSearch("");
+    // FIX: Only clear search if no customer is selected. Previously this
+    // unconditionally wiped the search, causing the required input to fail
+    // validation when users clicked back into the field.
+    if (!formData.customerId || Number(formData.customerId) === 0) {
+      setCustomerSearch("");
+    }
     setTimeout(() => customerInputRef.current?.focus(), 50);
   }
 
@@ -763,6 +760,14 @@ export default function OrdersPage() {
         unitLabel: item.unitLabel || "Each"
       }))
     };
+    // FIX: For sample orders, explicitly zero out all amounts so the order
+    // displays as R 0.00 and doesn't carry over stale subtotal values.
+    if (formData.orderType === "sample") {
+      payload.totalAmount = 0;
+      payload.subtotal = 0;
+      payload.vatAmount = 0;
+      payload.total = 0;
+    }
     // Only set salesRepName on NEW orders. On edit, preserve original.
     // Use the customer's assigned sales rep, not the logged-in user.
     if (!editingOrder) {

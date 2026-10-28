@@ -7,6 +7,7 @@ import {
   fixDraftInvoicesForDeliveredOrders,
   fixSageInvoiceDates,
 } from "./dataService";
+import { DATA_SERVICE_EXTRAS_LOADED } from "./dataServiceExtras";
 import { getStorageItem, setStorageItem } from "./compressedStorage";
 import {
   pushOrder,

@@ -2,1258 +2,1633 @@ import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
 
 // ═══════════════════════════════════════════════════════════════
-//  SALES REP DATA MODEL — Object-based with full metadata
+//  SUPREME GLOBAL FOODS — UNIFIED DATA SERVICE (v2.1)
+//  Single source of truth: localStorage + optional Firebase sync
 // ═══════════════════════════════════════════════════════════════
 
-type SalesRep = {
+// ─── Types ───
+
+export interface User {
+  id: number;
+  name: string;
+  email?: string;
+  pin: string;
+  role: "admin" | "sales_rep" | "driver" | "checker" | "viewer";
+  isActive: boolean;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  vatNumber?: string;
+  regNumber?: string;
+  paymentTerms: string;
+  creditLimit: number;
+  currentBalance: number;
+  salesRep?: string;
+  priceTier?: string;
+  tags?: string[];
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CorporateCustomer {
+  id: number;
+  companyName: string;
+  tradingName?: string;
+  regNumber?: string;
+  vatNumber?: string;
+  address?: string;
+  deliveryAddress?: string;
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  paymentTerms: string;
+  creditLimit: number;
+  currentBalance: number;
+  status: string;
+  linkedCustomerId?: number;
+  vatExempt: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Product {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  category?: string;
+  unit: string;
+  price: number;
+  costPrice?: number;
+  vatRate: number;
+  stockQuantity: number;
+  minStockLevel: number;
+  maxStockLevel: number;
+  reorderPoint: number;
+  reorderQuantity: number;
+  barcode?: string;
+  supplier?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderLineItem {
+  id: number;
+  productId: number;
+  productName: string;
+  productCode: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  total: number;
+  vatRate: number;
+  notes?: string;
+  deliveredQty?: number;
+}
+
+export interface Order {
+  id: number;
+  orderNumber: string;
+  customerId: number;
+  customerName: string;
+  orderDate: string;
+  deliveryDate?: string;
+  status: string;
+  paymentStatus: string;
+  paymentTerms: string;
+  subtotal: number;
+  vatAmount: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  lineItems: OrderLineItem[];
+  notes?: string;
+  salesRep?: string;
+  deliveryAddress?: string;
+  contactPhone?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: number;
+  sageInvoiceNumber?: string;
+}
+
+export interface InvoiceLineItem {
+  id: number;
+  productId: number;
+  productName: string;
+  productCode: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  total: number;
+  vatRate: number;
+}
+
+export interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  orderId?: number;
+  orderNumber?: string;
+  purchaseOrderId?: number;
+  poNumber?: string;
+  customerId: number;
+  customerName: string;
+  invoiceDate: string;
+  dueDate: string;
+  status: string;
+  paymentStatus: string;
+  subtotal: number;
+  vatAmount: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  lineItems: InvoiceLineItem[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: number;
+  sageInvoiceNumber?: string;
+}
+
+export interface Receipt {
+  id: number;
+  receiptNumber: string;
+  invoiceId: number;
+  invoiceNumber: string;
+  customerId: number;
+  customerName: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate: string;
+  reference?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy: number;
+}
+
+export interface CreditNote {
+  id: number;
+  creditNoteNumber: string;
+  invoiceId: number;
+  invoiceNumber: string;
+  customerId: number;
+  customerName: string;
+  amount: number;
+  reason: string;
+  status: string;
+  createdAt: string;
+  createdBy: number;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  poNumber: string;
+  corporateCustomerId: number;
+  customerName: string;
+  orderDate: string;
+  deliveryDate?: string;
+  status: string;
+  paymentStatus: string;
+  paymentTerms: string;
+  subtotal: number;
+  vatAmount: number;
+  total: number;
+  lineItems: OrderLineItem[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: number;
+}
+
+export interface DeliveryNote {
+  id: number;
+  dnNumber: string;
+  purchaseOrderId: number;
+  poNumber: string;
+  customerId: number;
+  customerName: string;
+  deliveryDate: string;
+  status: string;
+  lineItems: OrderLineItem[];
+  createdAt: string;
+  createdBy: number;
+}
+
+export interface StockItem {
+  id: number;
+  productId: number;
+  productName: string;
+  productCode: string;
+  quantity: number;
+  location?: string;
+  batchNumber?: string;
+  expiryDate?: string;
+  movementType: string;
+  reference?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy: number;
+}
+
+export interface SpecialPrice {
+  id: number;
+  customerId: number;
+  productId: number;
+  specialPrice: number;
+  startDate?: string;
+  endDate?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CollectionNote {
+  id: number;
+  customerId: number;
+  customerName: string;
+  invoiceId?: number;
+  invoiceNumber?: string;
+  amount: number;
+  note: string;
+  followUpDate?: string;
+  status: string;
+  createdAt: string;
+  createdBy: number;
+}
+
+export interface CollectionPromise {
+  id: number;
+  customerId: number;
+  customerName: string;
+  invoiceId?: number;
+  invoiceNumber?: string;
+  promisedAmount: number;
+  promisedDate: string;
+  status: string;
+  createdAt: string;
+  createdBy: number;
+}
+
+export interface AccountHold {
+  id: number;
+  customerId: number;
+  customerName: string;
+  holdType: string;
+  reason: string;
+  placedBy: number;
+  placedAt: string;
+  releasedAt?: string;
+  releasedBy?: number;
+  status: string;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  entityType: string;
+  entityId: number;
+  details?: string;
+  performedBy: number;
+  performedByName?: string;
+  performedAt: string;
+  ipAddress?: string;
+}
+
+export interface SalesRep {
   name: string;
   email?: string;
   phone?: string;
   region?: string;
   vehicleReg?: string;
   isActive?: boolean;
-};
-
-// Default sales reps as objects (not strings) — backward-compatible migration
-let SALES_REPS: SalesRep[] = [
-  { name: "Adeli", isActive: true },
-  { name: "Inhouse", isActive: true },
-  { name: "Michael", isActive: true },
-  { name: "Nkosana", isActive: true },
-  { name: "Tebogo Bila", isActive: true },
-];
-
-// Load from localStorage with backward compat for old string arrays
-function loadSalesRepsFromStorage(): SalesRep[] {
-  try {
-    const stored = getStorageItem("sgf_salesReps");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((r: any): SalesRep => {
-          // Legacy: stored as plain string
-          if (typeof r === "string") return { name: r, isActive: true };
-          // Current: stored as object
-          return {
-            name: r?.name || String(r || ""),
-            email: r?.email || "",
-            phone: r?.phone || "",
-            region: r?.region || "",
-            vehicleReg: r?.vehicleReg || "",
-            isActive: r?.isActive !== false,
-          };
-        }).filter((r: SalesRep) => r.name);
-      }
-    }
-  } catch { /* ignore */ }
-  return [...SALES_REPS];
 }
 
-// Initialize from storage on module load
-try {
-  const loaded = loadSalesRepsFromStorage();
-  if (loaded.length > 0) {
-    SALES_REPS = loaded;
-  }
-} catch { /* keep defaults */ }
-
-function saveSalesReps() {
-  try { setStorageItem("sgf_salesReps", JSON.stringify(SALES_REPS)); } catch { /* ignore */ }
+export interface SampleReport {
+  id: number;
+  customerId: number;
+  customerName: string;
+  productId: number;
+  productName: string;
+  quantity: number;
+  givenDate: string;
+  feedback?: string;
+  convertedToOrder: boolean;
+  orderId?: number;
+  createdAt: string;
+  createdBy: number;
 }
 
-/** Read current sales reps from localStorage (includes Firebase-synced reps).
- *  Returns full SalesRep objects. Backward-compatible with legacy string arrays. */
-function getCurrentSalesReps(): SalesRep[] {
-  try {
-    const raw = getStorageItem("sgf_salesReps");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((r: any): SalesRep => {
-          if (typeof r === "string") return { name: r, isActive: true };
-          return {
-            name: r?.name || String(r || ""),
-            email: r?.email || "",
-            phone: r?.phone || "",
-            region: r?.region || "",
-            vehicleReg: r?.vehicleReg || "",
-            isActive: r?.isActive !== false,
-          };
-        }).filter((r: SalesRep) => r.name);
-      }
-    }
-  } catch { /* ignore */ }
-  // Fallback: return in-memory copy
-  return SALES_REPS.map((r) => ({ ...r }));
+export interface Appointment {
+  id: number;
+  customerId: number;
+  customerName: string;
+  salesRep: string;
+  appointmentDate: string;
+  purpose?: string;
+  notes?: string;
+  status: string;
+  createdAt: string;
+  createdBy: number;
 }
 
-/** Get fresh static customer data */
-function getStaticCustomers() {
-  return [...STATIC_CUSTOMERS.map((c: any) => ({
-    ...c,
-    salesRepName: c.salesRepName || "",
-  }))];
+export interface FollowUp {
+  id: number;
+  customerId: number;
+  customerName: string;
+  salesRep: string;
+  followUpDate: string;
+  type: string;
+  notes?: string;
+  status: string;
+  createdAt: string;
+  createdBy: number;
 }
 
-/** Get fresh static product data */
-function getStaticProducts() {
-  return [...STATIC_PRODUCTS.map((p: any) => ({ ...p }))];
+export interface COCReport {
+  id: number;
+  customerId: number;
+  customerName: string;
+  cocNumber: string;
+  issueDate: string;
+  expiryDate: string;
+  status: string;
+  createdAt: string;
+  createdBy: number;
 }
 
-// In-memory storage
-let customers = getStaticCustomers();
-let products = getStaticProducts();
-let orders = [] as any[];
-let invoices = [] as any[];
-let appointments = [] as any[];
-let checkins = [] as any[];
-let specialPrices = [] as any[];
-let auditLog = [] as any[];
-let followUps = [] as any[];
-let followUpActions = [] as any[];
-let collectionNotes = [] as any[];
-let collectionPromises = [] as any[];
-let accountHolds = [] as any[];
-let receipts = [] as any[];
-let creditNotes = [] as any[];
-let users = [] as any[];
-// ─── CORPORATE MODULE DATA ───
-let corporateCustomers = [] as any[];
-let purchaseOrders = [] as any[];
-let barrels = [] as any[];
-let certificatesOfCompliance = [] as any[];
-let packingListLines = [] as any[];
+export interface PackingList {
+  id: number;
+  plNumber: string;
+  orderId: number;
+  orderNumber: string;
+  customerId: number;
+  customerName: string;
+  packedDate: string;
+  status: string;
+  lineItems: OrderLineItem[];
+  createdAt: string;
+  createdBy: number;
+}
 
-/** Global lock to prevent concurrent invoice generation.
- *  When two "Generate Invoice" buttons are clicked rapidly,
- *  both reads happen before either push — causing duplicate numbers.
- *  This lock ensures only one invoice is generated at a time. */
+// ─── In-memory state ───
+
+let users: User[] = [];
+let customers: Customer[] = [];
+let corporateCustomers: CorporateCustomer[] = [];
+let products: Product[] = [];
+let orders: Order[] = [];
+let invoices: Invoice[] = [];
+let receipts: Receipt[] = [];
+let creditNotes: CreditNote[] = [];
+let purchaseOrders: PurchaseOrder[] = [];
+let deliveryNotes: DeliveryNote[] = [];
+let stockItems: StockItem[] = [];
+let specialPrices: SpecialPrice[] = [];
+let collectionNotes: CollectionNote[] = [];
+let collectionPromises: CollectionPromise[] = [];
+let accountHolds: AccountHold[] = [];
+let auditLog: AuditLogEntry[] = [];
+let salesReps: SalesRep[] = [];
+let sampleReports: SampleReport[] = [];
+let appointments: Appointment[] = [];
+let followUps: FollowUp[] = [];
+let cocReports: COCReport[] = [];
+let packingLists: PackingList[] = [];
+
+let currentUser: User | null = null;
 let invoiceGenerationLock = false;
 
-/** Validate array: must be non-empty array with items that have expected shape */
-function isValidArray(data: any, minLength: number, requiredKey?: string): boolean {
-  if (!Array.isArray(data)) return false;
-  if (data.length < minLength) return false;
-  if (requiredKey && !data[0][requiredKey]) return false;
-  return true;
+// ─── Storage keys ───
+const STORAGE_KEYS = {
+  users: "sgf_users",
+  customers: "sgf_customers",
+  corporateCustomers: "sgf_corporateCustomers",
+  products: "sgf_products",
+  orders: "sgf_orders",
+  invoices: "sgf_invoices",
+  receipts: "sgf_receipts",
+  creditNotes: "sgf_creditNotes",
+  purchaseOrders: "sgf_purchaseOrders",
+  deliveryNotes: "sgf_deliveryNotes",
+  stockItems: "sgf_stockItems",
+  specialPrices: "sgf_specialPrices",
+  collectionNotes: "sgf_collectionNotes",
+  collectionPromises: "sgf_collectionPromises",
+  accountHolds: "sgf_accountHolds",
+  auditLog: "sgf_auditLog",
+  salesReps: "sgf_salesReps",
+  sampleReports: "sgf_sampleReports",
+  appointments: "sgf_appointments",
+  followUps: "sgf_followUps",
+  cocReports: "sgf_cocReports",
+  packingLists: "sgf_packingLists",
+  currentUser: "sgf_currentUser",
+};
+
+// ─── Helpers ───
+
+function generateId(): number {
+  return Date.now() + Math.floor(Math.random() * 1000);
 }
 
-/** Repair product prices by matching against STATIC_PRODUCTS seed data.
- *  Matches by productCode (exact), then id (exact), then productName (normalized).
- *  Returns { count: number of products repaired, repaired: array of repaired products }. */
-function repairProductPrices(productList: any[]): { count: number; repaired: any[] } {
-  let pricesRestored = 0;
-  const repairedProducts: any[] = [];
-  for (const prod of productList) {
-    const hasAnyPrice = Number(prod.wholesalePrice) > 0 || Number(prod.corporatePrice) > 0 || Number(prod.bulkPrice) > 0 || Number(prod.retailPrice) > 0;
-    if (hasAnyPrice) continue;
-
-    let match: any = null;
-    // 1. Match by productCode (most reliable)
-    if (prod.productCode) {
-      match = STATIC_PRODUCTS.find((s: any) => s.productCode === prod.productCode);
-    }
-    // 1b. Renamed-format match: bulk uploads may store the size+name in productCode
-    // (e.g. productCode "20 MEGA LONG VALUE") and append color to productName
-    // (e.g. "MEGA LONG VALUE Brown"). In that case productCode equals the static
-    // productName and color identifies the variant.
-    if (!match && prod.productCode) {
-      const codeNorm = String(prod.productCode).toLowerCase().trim().replace(/\s+/g, " ");
-      const colorNorm = String(prod.color || "").toLowerCase().trim();
-      match = STATIC_PRODUCTS.find((s: any) =>
-        String(s.productName || "").toLowerCase().trim().replace(/\s+/g, " ") === codeNorm &&
-        (!colorNorm || String(s.color || "").toLowerCase().trim() === colorNorm)
-      );
-    }
-    // 2. Match by id
-    if (!match && prod.id != null) {
-      match = STATIC_PRODUCTS.find((s: any) => s.id == prod.id);
-    }
-    // 3. Match by normalized productName
-    if (!match && prod.productName) {
-      const normalizedName = String(prod.productName).toLowerCase().trim().replace(/\s+/g, " ");
-      match = STATIC_PRODUCTS.find((s: any) => {
-        const seedName = String(s.productName || "").toLowerCase().trim().replace(/\s+/g, " ");
-        return seedName === normalizedName;
-      });
-    }
-
-    if (match) {
-      prod.wholesalePrice = match.wholesalePrice;
-      prod.corporatePrice = match.corporatePrice;
-      prod.bulkPrice = match.bulkPrice;
-      prod.retailPrice = match.retailPrice;
-      prod.costPrice = match.costPrice;
-      // CRITICAL: Update timestamp so mergeWithCloudData() treats repaired
-      // product as NEWER than Firebase's stale 0-price version. Without this,
-      // Firebase overwrites the repaired prices back to 0.
-      prod.updatedAt = new Date().toISOString();
-      pricesRestored++;
-      repairedProducts.push(prod);
-    }
-  }
-  return { count: pricesRestored, repaired: repairedProducts };
+function generateOrderNumber(): string {
+  return `ORD-${Date.now().toString(36).toUpperCase()}`;
 }
 
-/** Auto-repair quotes that were incorrectly changed to orders via Edit.
- *  A broken quote has: QTE- prefix, orderType !== "quote", status !== "converted".
- *  Resets them back to proper quotes so the Convert to Order flow works.
- *  Returns count of repaired quotes. */
-function repairBrokenQuotes(): number {
-  let repaired = 0;
-  for (const order of orders) {
-    const orderNum = String(order.orderNumber || "");
-    const isQuotePrefix = orderNum.toUpperCase().startsWith("QTE-");
-    const isQuoteType = order.orderType === "quote";
-    const isConverted = order.status === "converted";
-
-    // Broken: QTE- prefix but NOT a quote type AND not already converted
-    if (isQuotePrefix && !isQuoteType && !isConverted) {
-      order.orderType = "quote";
-      order.status = "draft";
-      // Restore stock that was incorrectly deducted when changed to "regular"
-      // (quotes never deduct stock, so if it was treated as an order, stock was deducted)
-      if (order.items && Array.isArray(order.items)) {
-        for (const item of order.items) {
-          if (item.stockItemId != null && item.quantity != null) {
-            const product = products.find((p) => p.id == item.stockItemId);
-            if (product) {
-              product.quantity = (product.quantity || 0) + item.quantity;
-            }
-          }
-        }
-      }
-      repaired++;
-      console.log(`[QuoteRepair] Reset ${orderNum} back to quote (was orderType="${order.orderType}")`);
-    }
-  }
-  if (repaired > 0) {
-    saveItem("sgf_products", products);
-  }
-  return repaired;
+function generateInvoiceNumber(): string {
+  return `INV-${Date.now().toString(36).toUpperCase()}`;
 }
 
-function load() {
-  // Helper: safely load a data array from storage
-  function safeLoadArray(key: string): any[] | null {
+function generatePONumber(): string {
+  return `PO-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function generateDNNumber(): string {
+  return `DN-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function generateReceiptNumber(): string {
+  return `RCP-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function generateCreditNoteNumber(): string {
+  return `CN-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function generatePLNumber(): string {
+  return `PL-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function generateCOCNumber(): string {
+  return `COC-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function getNextId(items: any[]): number {
+  if (items.length === 0) return 1;
+  return Math.max(...items.map((i) => i.id || 0)) + 1;
+}
+
+function now(): string {
+  return new Date().toISOString();
+}
+
+// ─── Load / Save ───
+
+export function reloadFromStorage(keys?: string[]): void {
+  const loadArray = (key: string, fallback: any[] = []) => {
     try {
       const raw = getStorageItem(key);
-      if (!raw) return null;
+      if (!raw) return fallback;
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : null;
-    } catch (e) {
-      console.error(`[load] FAILED to parse ${key}:`, e);
-      return null;
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
     }
+  };
+
+  const allKeys = keys || Object.values(STORAGE_KEYS);
+
+  if (allKeys.includes(STORAGE_KEYS.users) || !keys) users = loadArray(STORAGE_KEYS.users);
+  if (allKeys.includes(STORAGE_KEYS.customers) || !keys) customers = loadArray(STORAGE_KEYS.customers);
+  if (allKeys.includes(STORAGE_KEYS.corporateCustomers) || !keys) corporateCustomers = loadArray(STORAGE_KEYS.corporateCustomers);
+  if (allKeys.includes(STORAGE_KEYS.products) || !keys) products = loadArray(STORAGE_KEYS.products);
+  if (allKeys.includes(STORAGE_KEYS.orders) || !keys) orders = loadArray(STORAGE_KEYS.orders);
+  if (allKeys.includes(STORAGE_KEYS.invoices) || !keys) invoices = loadArray(STORAGE_KEYS.invoices);
+  if (allKeys.includes(STORAGE_KEYS.receipts) || !keys) receipts = loadArray(STORAGE_KEYS.receipts);
+  if (allKeys.includes(STORAGE_KEYS.creditNotes) || !keys) creditNotes = loadArray(STORAGE_KEYS.creditNotes);
+  if (allKeys.includes(STORAGE_KEYS.purchaseOrders) || !keys) purchaseOrders = loadArray(STORAGE_KEYS.purchaseOrders);
+  if (allKeys.includes(STORAGE_KEYS.deliveryNotes) || !keys) deliveryNotes = loadArray(STORAGE_KEYS.deliveryNotes);
+  if (allKeys.includes(STORAGE_KEYS.stockItems) || !keys) stockItems = loadArray(STORAGE_KEYS.stockItems);
+  if (allKeys.includes(STORAGE_KEYS.specialPrices) || !keys) specialPrices = loadArray(STORAGE_KEYS.specialPrices);
+  if (allKeys.includes(STORAGE_KEYS.collectionNotes) || !keys) collectionNotes = loadArray(STORAGE_KEYS.collectionNotes);
+  if (allKeys.includes(STORAGE_KEYS.collectionPromises) || !keys) collectionPromises = loadArray(STORAGE_KEYS.collectionPromises);
+  if (allKeys.includes(STORAGE_KEYS.accountHolds) || !keys) accountHolds = loadArray(STORAGE_KEYS.accountHolds);
+  if (allKeys.includes(STORAGE_KEYS.auditLog) || !keys) auditLog = loadArray(STORAGE_KEYS.auditLog);
+  if (allKeys.includes(STORAGE_KEYS.salesReps) || !keys) {
+    const loaded = loadArray(STORAGE_KEYS.salesReps);
+    if (loaded.length > 0) salesReps = loaded;
   }
+  if (allKeys.includes(STORAGE_KEYS.sampleReports) || !keys) sampleReports = loadArray(STORAGE_KEYS.sampleReports);
+  if (allKeys.includes(STORAGE_KEYS.appointments) || !keys) appointments = loadArray(STORAGE_KEYS.appointments);
+  if (allKeys.includes(STORAGE_KEYS.followUps) || !keys) followUps = loadArray(STORAGE_KEYS.followUps);
+  if (allKeys.includes(STORAGE_KEYS.cocReports) || !keys) cocReports = loadArray(STORAGE_KEYS.cocReports);
+  if (allKeys.includes(STORAGE_KEYS.packingLists) || !keys) packingLists = loadArray(STORAGE_KEYS.packingLists);
 
-  try {
-    // CUSTOMERS: load from localStorage if it's a valid array.
-    // NEVER discard synced data due to length checks or missing keys.
-    // Only fall back to static if localStorage is empty or corrupted.
-    const c = safeLoadArray("sgf_customers");
-    if (c && c.length > 0) customers = c;
-    else customers = getStaticCustomers();
-
-    // PRODUCTS: same approach — trust localStorage if it's a valid array
-    const p = safeLoadArray("sgf_products");
-    if (p && p.length > 0) {
-      products = p;
-      // PRICE REPAIR: If loaded products have 0 prices, restore from STATIC_PRODUCTS seed
-      const priceRepair = repairProductPrices(products);
-      if (priceRepair.count > 0) {
-        saveItem("sgf_products", products);
-        console.log(`[PriceRepair] Restored prices for ${priceRepair.count} products from seed data`);
-        // Notify Firebase sync to push repaired products to cloud
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products: priceRepair.repaired, count: priceRepair.count } }));
-        }
-      }
-    } else products = getStaticProducts();
-
-    // TRANSACTION DATA: always load if present (user-generated, never replace with static)
-    const o = safeLoadArray("sgf_orders");
-    if (o) orders = o;
-
-    // AUTO-REPAIR: Fix quotes that were incorrectly changed to orders via Edit.
-    // When someone edits a quote and changes orderType from "quote" to "regular",
-    // the record keeps the QTE- prefix and "Draft" status but behaves like an order.
-    // This repair resets them back to proper quotes so they can be converted correctly.
-    const repairedQuotes = repairBrokenQuotes();
-    if (repairedQuotes > 0) {
-      console.log(`[QuoteRepair] Auto-repaired ${repairedQuotes} broken quote(s)`);
-      saveItem("sgf_orders", orders);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("sgf:quotesRepaired", { detail: { count: repairedQuotes } }));
-      }
+  if (allKeys.includes(STORAGE_KEYS.currentUser) || !keys) {
+    try {
+      const raw = getStorageItem(STORAGE_KEYS.currentUser);
+      currentUser = raw ? JSON.parse(raw) : null;
+    } catch {
+      currentUser = null;
     }
-
-    const i = safeLoadArray("sgf_invoices");
-    if (i) invoices = i;
-    const a = safeLoadArray("sgf_appointments");
-    if (a) appointments = a;
-    const ci = safeLoadArray("sgf_checkins");
-    if (ci) checkins = ci;
-    const s = safeLoadArray("sgf_specialPrices");
-    if (s) specialPrices = s;
-    const log = safeLoadArray("sgf_auditLog");
-    auditLog = log || [];
-    const fu = safeLoadArray("sgf_followUps");
-    followUps = fu || [];
-    const fa = safeLoadArray("sgf_followUpActions");
-    followUpActions = fa || [];
-    const cn = safeLoadArray("sgf_collectionNotes");
-    collectionNotes = cn || [];
-    const cp = safeLoadArray("sgf_collectionPromises");
-    collectionPromises = cp || [];
-    const ah = safeLoadArray("sgf_accountHolds");
-    accountHolds = ah || [];
-    const rc = safeLoadArray("sgf_receipts");
-    receipts = rc || [];
-    const crn = safeLoadArray("sgf_creditNotes");
-    creditNotes = crn || [];
-    // USERS: always load and merge with defaults
-    const u = safeLoadArray("sgf_users");
-    if (u) users = u;
-    const DEFAULT_USERS = [
-      { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580", isActive: true, createdAt: new Date().toISOString() },
-      { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
-      { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
-      { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333", isActive: true, createdAt: new Date().toISOString() },
-      { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444", isActive: true, createdAt: new Date().toISOString() },
-      { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666", isActive: true, createdAt: new Date().toISOString() },
-      { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018", isActive: true, createdAt: new Date().toISOString() },
-      { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581", isActive: true, createdAt: new Date().toISOString() },
-      { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777", isActive: true, createdAt: new Date().toISOString() },
-      { id: 10, name: "David", email: "", role: "super_admin", pin: "8888", isActive: true, createdAt: new Date().toISOString() },
-    ];
-    if (!users || users.length === 0) {
-      users = [...DEFAULT_USERS];
-      saveItem("sgf_users", users);
-    }
-    // NOTE: Do NOT re-add default users here. If an admin deleted a user,
-    // they must stay deleted. Re-adding causes "jumping back" bug.
-    // Defaults are only injected on first load when users array is empty.
-  } catch { /* ignore */ }
-
-  // DEDUPLICATE: Remove duplicate orders and invoices caused by sync bugs
-  try { deduplicateAll(); } catch (e) { console.error("[load] deduplicateAll failed:", e); }
-
-  // AUTO-CLEANUP: Remove invoices linked to quotes (quotes should never have invoices).
-  // This fixes the bug where editing a quote and changing orderType to "normal"
-  // generated an invoice that persisted even after the quote was repaired.
-  try {
-    const beforeCleanup = invoices.length;
-    const toRemove: number[] = [];
-    for (let idx = 0; idx < invoices.length; idx++) {
-      const inv = invoices[idx];
-      const linkedOrderNum = String(inv.orderNumber || "");
-      if (linkedOrderNum.toUpperCase().startsWith("QTE-")) {
-        toRemove.push(idx);
-        console.log(`[InvoiceCleanup] Removing invoice ${inv.invoiceNumber} linked to quote ${linkedOrderNum}`);
-      }
-    }
-    // Remove in reverse order to keep indices valid
-    for (let i = toRemove.length - 1; i >= 0; i--) {
-      invoices.splice(toRemove[i], 1);
-    }
-    if (toRemove.length > 0) {
-      saveItem("sgf_invoices", invoices);
-      console.log(`[InvoiceCleanup] Removed ${toRemove.length} invoice(s) linked to quotes`);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
-      }
-    }
-  } catch (e) { console.error("[load] invoice cleanup failed:", e); }
-
-  // AUTO-LINK: Match Sage invoices to customers by customerCode.
-  // This runs on every startup so ALL devices get linked Sage invoices
-  // without needing to click "Re-link" button in Settings.
-  try { autoLinkSageInvoices(); } catch { /* ignore */ }
-
-  // FIX: Activate invoices stuck in draft for delivered/ready orders.
-  // This fixes the bug where === vs == caused activateInvoiceFromOrder to fail.
-  try { fixDraftInvoicesForDeliveredOrders(); } catch { /* ignore */ }
-
-  // FIX: Repair cancelled invoices that still have a non-zero balanceDue.
-  // When an invoice is cancelled, balanceDue must be 0 so it doesn't show
-  // in collections. If balanceDue > 0, zero it out and sync to Firebase.
-  try { repairCancelledInvoices(); } catch { /* ignore */ }
-
-  // CORPORATE DATA
-  try {
-    const cc = safeLoadArray("sgf_corporateCustomers");
-    if (cc) corporateCustomers = cc;
-  } catch { /* ignore */ }
-  try {
-    const po = safeLoadArray("sgf_purchaseOrders");
-    if (po) purchaseOrders = po;
-  } catch { /* ignore */ }
-  try {
-    const b = safeLoadArray("sgf_barrels");
-    if (b) barrels = b;
-  } catch { /* ignore */ }
-  try {
-    const coc = safeLoadArray("sgf_certificatesOfCompliance");
-    if (coc) certificatesOfCompliance = coc;
-  } catch { /* ignore */ }
-  try {
-    const pl = safeLoadArray("sgf_packingListLines");
-    if (pl) packingListLines = pl;
-  } catch { /* ignore */ }
-}
-
-function deduplicateAll() {
-  // Deduplicate orders by id, keeping the newest updatedAt
-  const seenOrders = new Map<number, any>();
-  for (const o of orders) {
-    const id = Number(o.id);
-    if (!seenOrders.has(id)) {
-      seenOrders.set(id, o);
-    } else {
-      const existing = seenOrders.get(id);
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-      const newTime = new Date(o.updatedAt || o.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenOrders.set(id, o);
-      }
-    }
-  }
-  if (seenOrders.size < orders.length) {
-    orders = Array.from(seenOrders.values());
-    saveItem("sgf_orders", orders);
-  }
-
-  // Deduplicate invoices by id, keeping newest
-  const seenInvoices = new Map<number, any>();
-  for (const i of invoices) {
-    const id = Number(i.id);
-    if (!seenInvoices.has(id)) {
-      seenInvoices.set(id, i);
-    } else {
-      const existing = seenInvoices.get(id);
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-      const newTime = new Date(i.updatedAt || i.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenInvoices.set(id, i);
-      }
-    }
-  }
-  if (seenInvoices.size < invoices.length) {
-    invoices = Array.from(seenInvoices.values());
-    saveItem("sgf_invoices", invoices);
-  }
-
-  // Deduplicate appointments by id
-  const seenAppointments = new Map<number, any>();
-  for (const a of appointments) {
-    const id = Number(a.id);
-    if (!seenAppointments.has(id)) {
-      seenAppointments.set(id, a);
-    } else {
-      const existing = seenAppointments.get(id);
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-      const newTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenAppointments.set(id, a);
-      }
-    }
-  }
-  if (seenAppointments.size < appointments.length) {
-    appointments = Array.from(seenAppointments.values());
-    saveItem("sgf_appointments", appointments);
-  }
-
-  // Deduplicate checkins by id
-  const seenCheckins = new Map<number, any>();
-  for (const c of checkins) {
-    const id = Number(c.id);
-    if (!seenCheckins.has(id)) {
-      seenCheckins.set(id, c);
-    } else {
-      const existing = seenCheckins.get(id);
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-      const newTime = new Date(c.updatedAt || c.createdAt || 0).getTime();
-      if (newTime > existingTime) {
-        seenCheckins.set(id, c);
-      }
-    }
-  }
-  if (seenCheckins.size < checkins.length) {
-    checkins = Array.from(seenCheckins.values());
-    saveItem("sgf_checkins", checkins);
   }
 }
 
-/** Save an item to localStorage with cloud sync trigger */
-function saveItem(key: string, value: any) {
+function saveToStorage(key: string, data: any): void {
   try {
-    setStorageItem(key, JSON.stringify(value));
-    // Trigger cloud sync event
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("sgf:dataChanged", { detail: { key } }));
-    }
+    setStorageItem(key, JSON.stringify(data));
   } catch (e) {
-    console.error(`[saveItem] FAILED to save ${key}:`, e);
+    console.warn(`[dataService] Failed to save ${key}:`, e);
   }
 }
 
-/** Reload all data from localStorage into memory */
-export function reloadFromStorage() {
-  load();
+// ─── Initialization ───
+
+function initData(): void {
+  reloadFromStorage();
+
+  // Seed default users if none exist
+  if (users.length === 0) {
+    users = [
+      { id: 1, name: "Admin", pin: "1234", role: "admin", isActive: true, createdAt: now() },
+      { id: 2, name: "Sales", pin: "0000", role: "sales_rep", isActive: true, createdAt: now() },
+    ];
+    saveToStorage(STORAGE_KEYS.users, users);
+  }
+
+  // Seed static customers if none exist
+  if (customers.length === 0) {
+    customers = STATIC_CUSTOMERS.map((c, i) => ({ ...c, id: i + 1, createdAt: now(), updatedAt: now() }));
+    saveToStorage(STORAGE_KEYS.customers, customers);
+  }
+
+  // Seed static products if none exist
+  if (products.length === 0) {
+    products = STATIC_PRODUCTS.map((p, i) => ({ ...p, id: i + 1, createdAt: now(), updatedAt: now() }));
+    saveToStorage(STORAGE_KEYS.products, products);
+  }
 }
 
-// Initial load
-load();
+initData();
 
 // ═══════════════════════════════════════════════════════════════
-//  DATA SERVICE — tRPC router-compatible API
+//  DATA SERVICE API
 // ═══════════════════════════════════════════════════════════════
 
 export const dataService = {
+  // ─── Users ───
+  user: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      return users;
+    },
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      return users.find((u) => u.id === id) || null;
+    },
+    getByPin: (pin: string) => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      return users.find((u) => u.pin === pin) || null;
+    },
+    create: (data: Omit<User, "id" | "createdAt">) => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      const user: User = { ...data, id: getNextId(users), createdAt: now() };
+      users.push(user);
+      saveToStorage(STORAGE_KEYS.users, users);
+      return user;
+    },
+    update: (id: number, data: Partial<User>) => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      const idx = users.findIndex((u) => u.id === id);
+      if (idx === -1) return null;
+      users[idx] = { ...users[idx], ...data };
+      saveToStorage(STORAGE_KEYS.users, users);
+      return users[idx];
+    },
+    delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      users = users.filter((u) => u.id !== id);
+      saveToStorage(STORAGE_KEYS.users, users);
+      return true;
+    },
+    me: () => {
+      reloadFromStorage([STORAGE_KEYS.currentUser]);
+      return currentUser;
+    },
+    resetPin: (id: number, newPin: string) => {
+      reloadFromStorage([STORAGE_KEYS.users]);
+      const idx = users.findIndex((u) => u.id === id);
+      if (idx === -1) return null;
+      users[idx].pin = newPin;
+      saveToStorage(STORAGE_KEYS.users, users);
+      return users[idx];
+    },
+  },
+
+  // ─── Customers ───
   customer: {
-    list: () => customers,
-    search: ({ query }: { query: string }) => {
-      const q = (query || "").toLowerCase().trim();
-      if (!q || q === " ") return customers;
-      return customers.filter((c: any) =>
-        (c.name || "").toLowerCase().includes(q) ||
-        (c.contactPerson || "").toLowerCase().includes(q) ||
-        (c.phone || "").toLowerCase().includes(q) ||
-        (c.email || "").toLowerCase().includes(q) ||
-        (c.customerCode || "").toLowerCase().includes(q) ||
-        (c.physicalAddress || "").toLowerCase().includes(q) ||
-        (c.city || "").toLowerCase().includes(q) ||
-        (c.businessName || "").toLowerCase().includes(q)
-      );
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
+      return customers;
     },
-    getById: (id: number) => customers.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newId = customers.length > 0 ? Math.max(...customers.map((c) => c.id || 0)) + 1 : 1;
-      const newCustomer = {
-        ...data,
-        id: newId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      customers.push(newCustomer);
-      saveItem("sgf_customers", customers);
-      return newCustomer;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
+      return customers.find((c) => c.id === id) || null;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = customers.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        customers[idx] = { ...customers[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_customers", customers);
-        return customers[idx];
-      }
-      return null;
+    create: (data: Omit<Customer, "id" | "createdAt" | "updatedAt">) => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
+      const customer: Customer = { ...data, id: getNextId(customers), createdAt: now(), updatedAt: now() };
+      customers.push(customer);
+      saveToStorage(STORAGE_KEYS.customers, customers);
+      return customer;
+    },
+    update: (id: number, data: Partial<Customer>) => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
+      const idx = customers.findIndex((c) => c.id === id);
+      if (idx === -1) return null;
+      customers[idx] = { ...customers[idx], ...data, updatedAt: now() };
+      saveToStorage(STORAGE_KEYS.customers, customers);
+      return customers[idx];
     },
     delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
       customers = customers.filter((c) => c.id !== id);
-      saveItem("sgf_customers", customers);
-      return { success: true };
+      saveToStorage(STORAGE_KEYS.customers, customers);
+      return true;
     },
-    getSalesReps: () => {
-      const reps = new Set<string>();
-      customers.forEach((c: any) => { if (c.salesRepName) reps.add(c.salesRepName); });
-      // Also include in-memory sales reps
-      SALES_REPS.forEach((r) => { if (r.name) reps.add(r.name); });
-      return Array.from(reps).sort();
-    },
-    getStats: () => {
-      const total = customers.length;
-      const active = customers.filter((c: any) => c.status === "active").length;
-      const inactive = customers.filter((c: any) => c.status === "inactive").length;
-      return { total, active, inactive };
-    },
-    getCustomersNeedingFollowUp: ({ days }: { days: number }) => {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
-      return customers
-        .filter((c: any) => {
-          if (c.status !== "active") return false;
-          const lastOrderDate = c.lastOrderDate ? new Date(c.lastOrderDate) : null;
-          return !lastOrderDate || lastOrderDate < cutoff;
-        })
-        .map((c: any) => ({
-          ...c,
-          daysSinceLastOrder: c.lastOrderDate
-            ? Math.floor((new Date().getTime() - new Date(c.lastOrderDate).getTime()) / (1000 * 60 * 60 * 24))
-            : 999,
-        }))
-        .sort((a: any, b: any) => b.daysSinceLastOrder - a.daysSinceLastOrder);
-    },
-  },
-
-  product: {
-    list: () => products,
-    getById: (id: number) => products.find((p) => p.id == id) || null,
-    create: (data: any) => {
-      const newId = products.length > 0 ? Math.max(...products.map((p) => p.id || 0)) + 1 : 1;
-      const newProduct = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      products.push(newProduct);
-      saveItem("sgf_products", products);
-      return newProduct;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = products.findIndex((p) => p.id == id);
-      if (idx >= 0) {
-        products[idx] = { ...products[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_products", products);
-        return products[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      products = products.filter((p) => p.id !== id);
-      saveItem("sgf_products", products);
-      return { success: true };
-    },
-    search: ({ query }: { query: string }) => {
-      const q = (query || "").toLowerCase().trim();
-      if (!q) return products;
-      return products.filter((p: any) =>
-        (p.productName || "").toLowerCase().includes(q) ||
-        (p.productCode || "").toLowerCase().includes(q) ||
-        (p.category || "").toLowerCase().includes(q) ||
-        (p.description || "").toLowerCase().includes(q)
+    search: (query: string) => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
+      const q = query.toLowerCase();
+      return customers.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.email?.toLowerCase().includes(q) ||
+          c.phone?.toLowerCase().includes(q) ||
+          c.vatNumber?.toLowerCase().includes(q)
       );
     },
-    getByCategory: ({ category }: { category: string }) => {
-      return products.filter((p: any) => (p.category || "").toLowerCase() === category.toLowerCase());
+    bulkUpload: (items: Omit<Customer, "id" | "createdAt" | "updatedAt">[]) => {
+      reloadFromStorage([STORAGE_KEYS.customers]);
+      const newCustomers = items.map((item) => ({
+        ...item,
+        id: getNextId(customers),
+        createdAt: now(),
+        updatedAt: now(),
+      }));
+      customers.push(...newCustomers);
+      saveToStorage(STORAGE_KEYS.customers, customers);
+      return newCustomers;
     },
-    getCategories: () => {
-      const cats = new Set<string>();
-      products.forEach((p: any) => { if (p.category) cats.add(p.category); });
-      return Array.from(cats).sort();
-    },
-    getLowStock: () => {
-      return products.filter((p: any) => p.quantity != null && p.quantity <= (p.minStock || 10));
-    },
-    getStats: () => {
-      const total = products.length;
-      const lowStock = products.filter((p: any) => p.quantity != null && p.quantity <= (p.minStock || 10)).length;
-      const outOfStock = products.filter((p: any) => p.quantity === 0).length;
-      return { total, lowStock, outOfStock };
+    bulkCreate: (items: Omit<Customer, "id" | "createdAt" | "updatedAt">[]) => {
+      return dataService.customer.bulkUpload(items);
     },
   },
 
+  // ─── Corporate Customers ───
+  corporateCustomer: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.corporateCustomers]);
+      return corporateCustomers;
+    },
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.corporateCustomers]);
+      return corporateCustomers.find((c) => c.id === id) || null;
+    },
+    create: (data: Omit<CorporateCustomer, "id" | "createdAt" | "updatedAt">) => {
+      reloadFromStorage([STORAGE_KEYS.corporateCustomers]);
+      const customer: CorporateCustomer = { ...data, id: getNextId(corporateCustomers), createdAt: now(), updatedAt: now() };
+      corporateCustomers.push(customer);
+      saveToStorage(STORAGE_KEYS.corporateCustomers, corporateCustomers);
+      return customer;
+    },
+    update: (id: number, data: Partial<CorporateCustomer>) => {
+      reloadFromStorage([STORAGE_KEYS.corporateCustomers]);
+      const idx = corporateCustomers.findIndex((c) => c.id === id);
+      if (idx === -1) return null;
+      corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: now() };
+      saveToStorage(STORAGE_KEYS.corporateCustomers, corporateCustomers);
+      return corporateCustomers[idx];
+    },
+    delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.corporateCustomers]);
+      corporateCustomers = corporateCustomers.filter((c) => c.id !== id);
+      saveToStorage(STORAGE_KEYS.corporateCustomers, corporateCustomers);
+      return true;
+    },
+    search: (query: string) => {
+      reloadFromStorage([STORAGE_KEYS.corporateCustomers]);
+      const q = query.toLowerCase();
+      return corporateCustomers.filter(
+        (c) =>
+          c.companyName.toLowerCase().includes(q) ||
+          c.tradingName?.toLowerCase().includes(q) ||
+          c.contactName?.toLowerCase().includes(q) ||
+          c.contactEmail?.toLowerCase().includes(q)
+      );
+    },
+  },
+
+  // ─── Products ───
+  product: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      return products;
+    },
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      return products.find((p) => p.id === id) || null;
+    },
+    create: (data: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      const product: Product = { ...data, id: getNextId(products), createdAt: now(), updatedAt: now() };
+      products.push(product);
+      saveToStorage(STORAGE_KEYS.products, products);
+      return product;
+    },
+    update: (id: number, data: Partial<Product>) => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      const idx = products.findIndex((p) => p.id === id);
+      if (idx === -1) return null;
+      products[idx] = { ...products[idx], ...data, updatedAt: now() };
+      saveToStorage(STORAGE_KEYS.products, products);
+      return products[idx];
+    },
+    delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      products = products.filter((p) => p.id !== id);
+      saveToStorage(STORAGE_KEYS.products, products);
+      return true;
+    },
+    search: (query: string) => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      const q = query.toLowerCase();
+      return products.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.code.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q)
+      );
+    },
+    bulkUpload: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
+      reloadFromStorage([STORAGE_KEYS.products]);
+      const newProducts = items.map((item) => ({
+        ...item,
+        id: getNextId(products),
+        createdAt: now(),
+        updatedAt: now(),
+      }));
+      products.push(...newProducts);
+      saveToStorage(STORAGE_KEYS.products, products);
+      return newProducts;
+    },
+  },
+
+  // ─── Orders ───
   order: {
-    list: () => orders,
-    getById: (id: number) => orders.find((o) => o.id == id) || null,
-    create: (data: any) => {
-      const newId = orders.length > 0 ? Math.max(...orders.map((o) => o.id || 0)) + 1 : 1;
-      const newOrder = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      orders.push(newOrder);
-      saveItem("sgf_orders", orders);
-      return newOrder;
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
+      return orders;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = orders.findIndex((o) => o.id == id);
-      if (idx >= 0) {
-        orders[idx] = { ...orders[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_orders", orders);
-        return orders[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
+      return orders.find((o) => o.id === id) || null;
+    },
+    create: (data: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt" | "status" | "paymentStatus" | "amountPaid" | "balanceDue">) => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
+      const order: Order = {
+        ...data,
+        id: getNextId(orders),
+        orderNumber: generateOrderNumber(),
+        status: "pending",
+        paymentStatus: "unpaid",
+        amountPaid: 0,
+        balanceDue: data.total,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      orders.push(order);
+      saveToStorage(STORAGE_KEYS.orders, orders);
+      return order;
+    },
+    update: (id: number, data: Partial<Order>) => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
+      const idx = orders.findIndex((o) => o.id === id);
+      if (idx === -1) return null;
+      orders[idx] = { ...orders[idx], ...data, updatedAt: now() };
+      saveToStorage(STORAGE_KEYS.orders, orders);
+      return orders[idx];
     },
     delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
       orders = orders.filter((o) => o.id !== id);
-      saveItem("sgf_orders", orders);
-      return { success: true };
+      saveToStorage(STORAGE_KEYS.orders, orders);
+      return true;
     },
-    getByCustomer: (customerId: number) => orders.filter((o) => o.customerId == customerId),
-    getBySalesRep: (salesRepName: string) => orders.filter((o) => o.salesRepName === salesRepName),
-    getStats: () => {
-      const total = orders.length;
-      const totalValue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-      const today = new Date().toDateString();
-      const todayOrders = orders.filter((o) => new Date(o.createdAt).toDateString() === today);
-      return { total, totalValue, today: todayOrders.length, todayValue: todayOrders.reduce((sum, o) => sum + (o.total || 0), 0) };
+    generateInvoiceForOrder: (orderId: number) => {
+      reloadFromStorage([STORAGE_KEYS.orders, STORAGE_KEYS.invoices, STORAGE_KEYS.customers, STORAGE_KEYS.products]);
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return null;
+
+      const existingInvoice = invoices.find((i) => i.orderId === orderId);
+      if (existingInvoice) return existingInvoice.invoiceNumber;
+
+      const customer = customers.find((c) => c.id === order.customerId);
+      const vatRate = customer?.vatNumber ? 0.15 : 0;
+
+      const invoice: Invoice = {
+        id: getNextId(invoices),
+        invoiceNumber: generateInvoiceNumber(),
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        invoiceDate: now().split("T")[0],
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        status: "draft",
+        paymentStatus: "unpaid",
+        subtotal: order.subtotal,
+        vatAmount: order.vatAmount,
+        total: order.total,
+        amountPaid: 0,
+        balanceDue: order.total,
+        lineItems: order.lineItems.map((item) => ({ ...item, id: generateId() })),
+        notes: order.notes,
+        createdAt: now(),
+        updatedAt: now(),
+        createdBy: order.createdBy,
+      };
+
+      invoices.push(invoice);
+      saveToStorage(STORAGE_KEYS.invoices, invoices);
+
+      order.status = "invoiced";
+      order.updatedAt = now();
+      saveToStorage(STORAGE_KEYS.orders, orders);
+
+      return invoice.invoiceNumber;
+    },
+    convertQuoteToOrder: (quoteId: number) => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
+      const quote = orders.find((o) => o.id === quoteId && o.status === "quote");
+      if (!quote) return null;
+      quote.status = "pending";
+      quote.orderNumber = generateOrderNumber();
+      quote.updatedAt = now();
+      saveToStorage(STORAGE_KEYS.orders, orders);
+      return quote;
+    },
+    checkExistingSample: (customerId: number, productId: number) => {
+      reloadFromStorage([STORAGE_KEYS.sampleReports]);
+      return sampleReports.find((s) => s.customerId === customerId && s.productId === productId && !s.convertedToOrder);
+    },
+    repairOrders: () => {
+      reloadFromStorage([STORAGE_KEYS.orders]);
+      let fixed = 0;
+      orders.forEach((order) => {
+        if (!order.lineItems) {
+          order.lineItems = [];
+          fixed++;
+        }
+        if (!order.amountPaid) order.amountPaid = 0;
+        if (!order.balanceDue) order.balanceDue = order.total || 0;
+      });
+      if (fixed > 0) saveToStorage(STORAGE_KEYS.orders, orders);
+      return fixed;
+    },
+    createFromInvoice: (invoiceId: number) => {
+      reloadFromStorage([STORAGE_KEYS.invoices, STORAGE_KEYS.orders]);
+      const invoice = invoices.find((i) => i.id === invoiceId);
+      if (!invoice) return null;
+      const order: Order = {
+        id: getNextId(orders),
+        orderNumber: generateOrderNumber(),
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        orderDate: now().split("T")[0],
+        status: "pending",
+        paymentStatus: "unpaid",
+        paymentTerms: "30_days",
+        subtotal: invoice.subtotal,
+        vatAmount: invoice.vatAmount,
+        total: invoice.total,
+        amountPaid: 0,
+        balanceDue: invoice.total,
+        lineItems: invoice.lineItems.map((item) => ({ ...item, deliveredQty: 0 })),
+        notes: invoice.notes,
+        createdAt: now(),
+        updatedAt: now(),
+        createdBy: invoice.createdBy,
+      };
+      orders.push(order);
+      saveToStorage(STORAGE_KEYS.orders, orders);
+      return order;
     },
   },
 
+  // ─── Invoices ───
   invoice: {
-    list: () => invoices,
-    getById: (id: number) => invoices.find((i) => i.id == id) || null,
-    create: (data: any) => {
-      const newId = invoices.length > 0 ? Math.max(...invoices.map((i) => i.id || 0)) + 1 : 1;
-      const newInvoice = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      invoices.push(newInvoice);
-      saveItem("sgf_invoices", invoices);
-      return newInvoice;
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      return invoices;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = invoices.findIndex((i) => i.id == id);
-      if (idx >= 0) {
-        invoices[idx] = { ...invoices[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_invoices", invoices);
-        return invoices[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      return invoices.find((i) => i.id === id) || null;
+    },
+    create: (data: Omit<Invoice, "id" | "invoiceNumber" | "createdAt" | "updatedAt" | "status" | "paymentStatus" | "amountPaid" | "balanceDue">) => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      const invoice: Invoice = {
+        ...data,
+        id: getNextId(invoices),
+        invoiceNumber: generateInvoiceNumber(),
+        status: "draft",
+        paymentStatus: "unpaid",
+        amountPaid: 0,
+        balanceDue: data.total,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      invoices.push(invoice);
+      saveToStorage(STORAGE_KEYS.invoices, invoices);
+      return invoice;
+    },
+    update: (id: number, data: Partial<Invoice>) => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      const idx = invoices.findIndex((i) => i.id === id);
+      if (idx === -1) return null;
+      invoices[idx] = { ...invoices[idx], ...data, updatedAt: now() };
+      saveToStorage(STORAGE_KEYS.invoices, invoices);
+      return invoices[idx];
     },
     delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
       invoices = invoices.filter((i) => i.id !== id);
-      saveItem("sgf_invoices", invoices);
-      return { success: true };
+      saveToStorage(STORAGE_KEYS.invoices, invoices);
+      return true;
     },
-    getByCustomer: (customerId: number) => invoices.filter((i) => i.customerId == customerId),
-    getStats: () => {
-      const total = invoices.length;
-      const totalValue = invoices.reduce((sum, i) => sum + (i.total || 0), 0);
-      const unpaid = invoices.filter((i) => (i.balanceDue || 0) > 0).length;
-      const unpaidValue = invoices.filter((i) => (i.balanceDue || 0) > 0).reduce((sum, i) => sum + (i.balanceDue || 0), 0);
-      return { total, totalValue, unpaid, unpaidValue };
-    },
-  },
-
-  appointment: {
-    list: () => appointments,
-    getById: (id: number) => appointments.find((a) => a.id == id) || null,
-    create: (data: any) => {
-      const newId = appointments.length > 0 ? Math.max(...appointments.map((a) => a.id || 0)) + 1 : 1;
-      const newAppointment = {
-        ...data,
-        id: newId,
-        status: "scheduled",
-        reminderSent: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      appointments.push(newAppointment);
-      saveItem("sgf_appointments", appointments);
-      return newAppointment;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = appointments.findIndex((a) => a.id == id);
-      if (idx >= 0) {
-        appointments[idx] = { ...appointments[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_appointments", appointments);
-        return appointments[idx];
-      }
-      return null;
-    },
-    updateStatus: ({ id, status }: { id: number; status: string }) => {
-      const idx = appointments.findIndex((a) => a.id == id);
-      if (idx >= 0) {
-        appointments[idx].status = status;
-        appointments[idx].updatedAt = new Date().toISOString();
-        // reset reminder on reschedule so it triggers again
-        if (status === "rescheduled") {
-          appointments[idx].reminderSent = false;
+    generateMissingInvoices: () => {
+      reloadFromStorage([STORAGE_KEYS.orders, STORAGE_KEYS.invoices]);
+      let generated = 0;
+      orders.forEach((order) => {
+        if (order.status === "delivered" && !invoices.some((i) => i.orderId === order.id)) {
+          dataService.order.generateInvoiceForOrder(order.id);
+          generated++;
         }
-        saveItem("sgf_appointments", appointments);
-        return appointments[idx];
-      }
-      return null;
+      });
+      return generated;
     },
-    delete: (id: number) => {
-      appointments = appointments.filter((a) => a.id !== id);
-      saveItem("sgf_appointments", appointments);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => appointments.filter((a) => a.customerId == customerId),
-    getBySalesRep: (salesRepName: string) => appointments.filter((a) => a.salesRepName === salesRepName),
-    getStats: () => {
-      const total = appointments.length;
-      const today = new Date().toDateString();
-      const todayAppointments = appointments.filter((a) => new Date(a.appointmentDate).toDateString() === today);
-      return { total, today: todayAppointments.length };
-    },
-  },
-
-  checkIn: {
-    list: () => checkins,
-    getById: (id: number) => checkins.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newId = checkins.length > 0 ? Math.max(...checkins.map((c) => c.id || 0)) + 1 : 1;
-      const newItem = {
-        ...data,
-        id: newId,
-        status: "checked_in",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    createCreditNote: (invoiceId: number, amount: number, reason: string) => {
+      reloadFromStorage([STORAGE_KEYS.invoices, STORAGE_KEYS.creditNotes]);
+      const invoice = invoices.find((i) => i.id === invoiceId);
+      if (!invoice) return null;
+      const creditNote: CreditNote = {
+        id: getNextId(creditNotes),
+        creditNoteNumber: generateCreditNoteNumber(),
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        amount,
+        reason,
+        status: "active",
+        createdAt: now(),
+        createdBy: currentUser?.id || 0,
       };
-      checkins.push(newItem);
-      saveItem("sgf_checkins", checkins);
-
-      // If linked to an appointment, update appointment status to in_progress
-      if (newItem.appointmentId) {
-        const apptIdx = appointments.findIndex((a) => a.id == newItem.appointmentId);
-        if (apptIdx >= 0) {
-          appointments[apptIdx].status = "in_progress";
-          appointments[apptIdx].checkedInAt = newItem.createdAt;
-          appointments[apptIdx].updatedAt = new Date().toISOString();
-          saveItem("sgf_appointments", appointments);
+      creditNotes.push(creditNote);
+      saveToStorage(STORAGE_KEYS.creditNotes, creditNotes);
+      return creditNote;
+    },
+    getNextInvoiceNumber: () => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      return generateInvoiceNumber();
+    },
+    getNextInvoiceNumberForCompany: (companyCode: string) => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      const count = invoices.filter((i) => i.invoiceNumber?.startsWith(companyCode)).length + 1;
+      return `${companyCode}-${count.toString().padStart(4, "0")}`;
+    },
+    autoLinkSageInvoices: () => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      let linked = 0;
+      invoices.forEach((inv) => {
+        if (!inv.sageInvoiceNumber && inv.invoiceNumber) {
+          inv.sageInvoiceNumber = `SAGE-${inv.invoiceNumber}`;
+          linked++;
         }
-      }
-
-      return newItem;
+      });
+      if (linked > 0) saveToStorage(STORAGE_KEYS.invoices, invoices);
+      return linked;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = checkins.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        checkins[idx] = { ...checkins[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_checkins", checkins);
-        return checkins[idx];
-      }
-      return null;
-    },
-    checkout: ({ id, notes, outcome, outcomeNotes }: { id: number; notes?: string; outcome?: string; outcomeNotes?: string }) => {
-      const idx = checkins.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        const now = new Date().toISOString();
-        const createdAt = new Date(checkins[idx].createdAt || now);
-        const checkedOutAt = new Date(now);
-        const durationMinutes = Math.round((checkedOutAt.getTime() - createdAt.getTime()) / (1000 * 60));
-
-        checkins[idx].status = "checked_out";
-        checkins[idx].checkedOutAt = now;
-        checkins[idx].durationMinutes = durationMinutes;
-        if (notes) checkins[idx].checkoutNotes = notes;
-        if (outcome) checkins[idx].outcome = outcome;
-        if (outcomeNotes) checkins[idx].outcomeNotes = outcomeNotes;
-        checkins[idx].updatedAt = now;
-        saveItem("sgf_checkins", checkins);
-
-        // If linked to an appointment, update appointment status to completed
-        if (checkins[idx].appointmentId) {
-          const apptIdx = appointments.findIndex((a) => a.id == checkins[idx].appointmentId);
-          if (apptIdx >= 0) {
-            appointments[apptIdx].status = "completed";
-            appointments[apptIdx].checkedOutAt = checkins[idx].checkedOutAt;
-            appointments[apptIdx].durationMinutes = checkins[idx].durationMinutes;
-            if (outcome) appointments[apptIdx].outcome = outcome;
-            if (outcomeNotes) appointments[apptIdx].outcomeNotes = outcomeNotes;
-            appointments[apptIdx].updatedAt = now;
-            saveItem("sgf_appointments", appointments);
+    fixDraftInvoicesForDeliveredOrders: () => {
+      reloadFromStorage([STORAGE_KEYS.invoices, STORAGE_KEYS.orders]);
+      let fixed = 0;
+      invoices.forEach((inv) => {
+        if (inv.status === "draft" && inv.orderId) {
+          const order = orders.find((o) => o.id === inv.orderId);
+          if (order && order.status === "delivered") {
+            inv.status = "sent";
+            fixed++;
           }
         }
-
-        return checkins[idx];
-      }
-      return null;
+      });
+      if (fixed > 0) saveToStorage(STORAGE_KEYS.invoices, invoices);
+      return fixed;
     },
-    delete: (id: number) => {
-      checkins = checkins.filter((c) => c.id !== id);
-      saveItem("sgf_checkins", checkins);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => checkins.filter((c) => c.customerId == customerId),
-    getBySalesRep: (salesRepName: string) => checkins.filter((c) => c.salesRepName === salesRepName),
-    getStats: () => {
-      const total = checkins.length;
-      const checkedIn = checkins.filter((c) => c.status === "checked_in").length;
-      const checkedOut = checkins.filter((c) => c.status === "checked_out").length;
-      return { total, checkedIn, checkedOut };
-    },
-  },
-
-  specialPrice: {
-    list: () => specialPrices,
-    getById: (id: number) => specialPrices.find((s) => s.id == id) || null,
-    create: (data: any) => {
-      const newId = specialPrices.length > 0 ? Math.max(...specialPrices.map((s) => s.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      specialPrices.push(newItem);
-      saveItem("sgf_specialPrices", specialPrices);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = specialPrices.findIndex((s) => s.id == id);
-      if (idx >= 0) {
-        specialPrices[idx] = { ...specialPrices[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_specialPrices", specialPrices);
-        return specialPrices[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      specialPrices = specialPrices.filter((s) => s.id !== id);
-      saveItem("sgf_specialPrices", specialPrices);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => specialPrices.filter((s) => s.customerId == customerId),
-  },
-
-  auditLog: {
-    list: () => auditLog,
-    create: (data: any) => {
-      const newId = auditLog.length > 0 ? Math.max(...auditLog.map((a) => a.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString() };
-      auditLog.push(newItem);
-      saveItem("sgf_auditLog", auditLog);
-      return newItem;
-    },
-    getByEntity: ({ entityType, entityId }: { entityType: string; entityId: number }) => {
-      return auditLog.filter((a) => a.entityType === entityType && a.entityId == entityId);
+    repairCancelledInvoices: () => {
+      reloadFromStorage([STORAGE_KEYS.invoices]);
+      let fixed = 0;
+      invoices.forEach((inv) => {
+        if (inv.status === "cancelled" && inv.paymentStatus === "paid") {
+          inv.paymentStatus = "unpaid";
+          inv.amountPaid = 0;
+          inv.balanceDue = inv.total;
+          fixed++;
+        }
+      });
+      if (fixed > 0) saveToStorage(STORAGE_KEYS.invoices, invoices);
+      return fixed;
     },
   },
 
-  followUp: {
-    list: () => followUps,
-    create: (data: any) => {
-      const newId = followUps.length > 0 ? Math.max(...followUps.map((f) => f.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      followUps.push(newItem);
-      saveItem("sgf_followUps", followUps);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = followUps.findIndex((f) => f.id == id);
-      if (idx >= 0) {
-        followUps[idx] = { ...followUps[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_followUps", followUps);
-        return followUps[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      followUps = followUps.filter((f) => f.id !== id);
-      saveItem("sgf_followUps", followUps);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => followUps.filter((f) => f.customerId == customerId),
-  },
-
-  followUpAction: {
-    list: () => followUpActions,
-    create: (data: any) => {
-      const newId = followUpActions.length > 0 ? Math.max(...followUpActions.map((f) => f.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      followUpActions.push(newItem);
-      saveItem("sgf_followUpActions", followUpActions);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = followUpActions.findIndex((f) => f.id == id);
-      if (idx >= 0) {
-        followUpActions[idx] = { ...followUpActions[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_followUpActions", followUpActions);
-        return followUpActions[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      followUpActions = followUpActions.filter((f) => f.id !== id);
-      saveItem("sgf_followUpActions", followUpActions);
-      return { success: true };
-    },
-    getByFollowUp: (followUpId: number) => followUpActions.filter((f) => f.followUpId == followUpId),
-  },
-
-  collectionNote: {
-    list: () => collectionNotes,
-    create: (data: any) => {
-      const newId = collectionNotes.length > 0 ? Math.max(...collectionNotes.map((c) => c.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      collectionNotes.push(newItem);
-      saveItem("sgf_collectionNotes", collectionNotes);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = collectionNotes.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        collectionNotes[idx] = { ...collectionNotes[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_collectionNotes", collectionNotes);
-        return collectionNotes[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      collectionNotes = collectionNotes.filter((c) => c.id !== id);
-      saveItem("sgf_collectionNotes", collectionNotes);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => collectionNotes.filter((c) => c.customerId == customerId),
-  },
-
-  collectionPromise: {
-    list: () => collectionPromises,
-    create: (data: any) => {
-      const newId = collectionPromises.length > 0 ? Math.max(...collectionPromises.map((c) => c.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      collectionPromises.push(newItem);
-      saveItem("sgf_collectionPromises", collectionPromises);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = collectionPromises.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        collectionPromises[idx] = { ...collectionPromises[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_collectionPromises", collectionPromises);
-        return collectionPromises[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      collectionPromises = collectionPromises.filter((c) => c.id !== id);
-      saveItem("sgf_collectionPromises", collectionPromises);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => collectionPromises.filter((c) => c.customerId == customerId),
-  },
-
-  accountHold: {
-    list: () => accountHolds,
-    create: (data: any) => {
-      const newId = accountHolds.length > 0 ? Math.max(...accountHolds.map((a) => a.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      accountHolds.push(newItem);
-      saveItem("sgf_accountHolds", accountHolds);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = accountHolds.findIndex((a) => a.id == id);
-      if (idx >= 0) {
-        accountHolds[idx] = { ...accountHolds[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_accountHolds", accountHolds);
-        return accountHolds[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      accountHolds = accountHolds.filter((a) => a.id !== id);
-      saveItem("sgf_accountHolds", accountHolds);
-      return { success: true };
-    },
-    getByCustomer: (customerId: number) => accountHolds.filter((a) => a.customerId == customerId),
-  },
-
+  // ─── Receipts ───
   receipt: {
-    list: () => receipts,
-    getById: (id: number) => receipts.find((r) => r.id == id) || null,
-    create: (data: any) => {
-      const newId = receipts.length > 0 ? Math.max(...receipts.map((r) => r.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      receipts.push(newItem);
-      saveItem("sgf_receipts", receipts);
-      return newItem;
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.receipts]);
+      return receipts;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = receipts.findIndex((r) => r.id == id);
-      if (idx >= 0) {
-        receipts[idx] = { ...receipts[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_receipts", receipts);
-        return receipts[idx];
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.receipts]);
+      return receipts.find((r) => r.id === id) || null;
+    },
+    create: (data: Omit<Receipt, "id" | "receiptNumber" | "createdAt">) => {
+      reloadFromStorage([STORAGE_KEYS.receipts, STORAGE_KEYS.invoices]);
+      const receipt: Receipt = {
+        ...data,
+        id: getNextId(receipts),
+        receiptNumber: generateReceiptNumber(),
+        createdAt: now(),
+      };
+      receipts.push(receipt);
+      saveToStorage(STORAGE_KEYS.receipts, receipts);
+
+      // Update invoice payment status
+      const invoice = invoices.find((i) => i.id === data.invoiceId);
+      if (invoice) {
+        invoice.amountPaid = (invoice.amountPaid || 0) + data.amount;
+        invoice.balanceDue = Math.max(0, invoice.total - invoice.amountPaid);
+        invoice.paymentStatus = invoice.balanceDue <= 0 ? "paid" : "partial";
+        invoice.updatedAt = now();
+        saveToStorage(STORAGE_KEYS.invoices, invoices);
       }
-      return null;
+
+      return receipt;
     },
     delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.receipts]);
       receipts = receipts.filter((r) => r.id !== id);
-      saveItem("sgf_receipts", receipts);
-      return { success: true };
+      saveToStorage(STORAGE_KEYS.receipts, receipts);
+      return true;
     },
-    getByCustomer: (customerId: number) => receipts.filter((r) => r.customerId == customerId),
-    getByInvoice: (invoiceId: number) => receipts.filter((r) => r.invoiceId == invoiceId),
+    recordPayment: (invoiceId: number, amount: number, paymentMethod: string, reference?: string, notes?: string) => {
+      reloadFromStorage([STORAGE_KEYS.invoices, STORAGE_KEYS.receipts]);
+      const invoice = invoices.find((i) => i.id === invoiceId);
+      if (!invoice) return null;
+
+      const receipt: Receipt = {
+        id: getNextId(receipts),
+        receiptNumber: generateReceiptNumber(),
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        amount,
+        paymentMethod,
+        paymentDate: now().split("T")[0],
+        reference,
+        notes,
+        createdAt: now(),
+        createdBy: currentUser?.id || 0,
+      };
+      receipts.push(receipt);
+      saveToStorage(STORAGE_KEYS.receipts, receipts);
+
+      invoice.amountPaid = (invoice.amountPaid || 0) + amount;
+      invoice.balanceDue = Math.max(0, invoice.total - invoice.amountPaid);
+      invoice.paymentStatus = invoice.balanceDue <= 0 ? "paid" : "partial";
+      invoice.updatedAt = now();
+      saveToStorage(STORAGE_KEYS.invoices, invoices);
+
+      return receipt;
+    },
+    getReceipts: (invoiceId: number) => {
+      reloadFromStorage([STORAGE_KEYS.receipts]);
+      return receipts.filter((r) => r.invoiceId === invoiceId);
+    },
+    getCustomerPaymentHistory: (customerId: number) => {
+      reloadFromStorage([STORAGE_KEYS.receipts, STORAGE_KEYS.invoices]);
+      const customerReceipts = receipts.filter((r) => r.customerId === customerId);
+      const customerInvoices = invoices.filter((i) => i.customerId === customerId);
+      return { receipts: customerReceipts, invoices: customerInvoices };
+    },
   },
 
+  // ─── Credit Notes ───
   creditNote: {
-    list: () => creditNotes,
-    getById: (id: number) => creditNotes.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newId = creditNotes.length > 0 ? Math.max(...creditNotes.map((c) => c.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      creditNotes.push(newItem);
-      saveItem("sgf_creditNotes", creditNotes);
-      return newItem;
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.creditNotes]);
+      return creditNotes;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = creditNotes.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        creditNotes[idx] = { ...creditNotes[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_creditNotes", creditNotes);
-        return creditNotes[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.creditNotes]);
+      return creditNotes.find((c) => c.id === id) || null;
     },
-    delete: (id: number) => {
-      creditNotes = creditNotes.filter((c) => c.id !== id);
-      saveItem("sgf_creditNotes", creditNotes);
-      return { success: true };
+    createCreditNote: (invoiceId: number, amount: number, reason: string) => {
+      return dataService.invoice.createCreditNote(invoiceId, amount, reason);
     },
-    getByCustomer: (customerId: number) => creditNotes.filter((c) => c.customerId == customerId),
-    getByInvoice: (invoiceId: number) => creditNotes.filter((c) => c.invoiceId == invoiceId),
-  },
-
-  user: {
-    list: () => users,
-    getById: (id: number) => users.find((u) => u.id == id) || null,
-    getByPin: (pin: string) => users.find((u) => u.pin === pin) || null,
-    create: (data: any) => {
-      const newId = users.length > 0 ? Math.max(...users.map((u) => u.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      users.push(newItem);
-      saveItem("sgf_users", users);
-      return newItem;
+    getCreditNotes: (invoiceId: number) => {
+      reloadFromStorage([STORAGE_KEYS.creditNotes]);
+      return creditNotes.filter((c) => c.invoiceId === invoiceId);
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = users.findIndex((u) => u.id == id);
-      if (idx >= 0) {
-        users[idx] = { ...users[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_users", users);
-        return users[idx];
-      }
-      return null;
+    refundCreditNote: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.creditNotes]);
+      const idx = creditNotes.findIndex((c) => c.id === id);
+      if (idx === -1) return null;
+      creditNotes[idx].status = "refunded";
+      saveToStorage(STORAGE_KEYS.creditNotes, creditNotes);
+      return creditNotes[idx];
     },
-    delete: (id: number) => {
-      users = users.filter((u) => u.id !== id);
-      saveItem("sgf_users", users);
-      return { success: true };
-    },
-    getByRole: (role: string) => users.filter((u) => u.role === role),
-    getStats: () => {
-      const total = users.length;
-      const active = users.filter((u: any) => u.isActive).length;
-      return { total, active };
+    voidCreditNote: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.creditNotes]);
+      const idx = creditNotes.findIndex((c) => c.id === id);
+      if (idx === -1) return null;
+      creditNotes[idx].status = "voided";
+      saveToStorage(STORAGE_KEYS.creditNotes, creditNotes);
+      return creditNotes[idx];
     },
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  //  CORPORATE MODULE
-  // ═══════════════════════════════════════════════════════════════
-
-  corporateCustomer: {
-    list: () => corporateCustomers,
-    getById: (id: number) => corporateCustomers.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newId = corporateCustomers.length > 0 ? Math.max(...corporateCustomers.map((c) => c.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      corporateCustomers.push(newItem);
-      saveItem("sgf_corporateCustomers", corporateCustomers);
-      return newItem;
-    },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = corporateCustomers.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_corporateCustomers", corporateCustomers);
-        return corporateCustomers[idx];
-      }
-      return null;
-    },
-    delete: (id: number) => {
-      corporateCustomers = corporateCustomers.filter((c) => c.id !== id);
-      saveItem("sgf_corporateCustomers", corporateCustomers);
-      return { success: true };
-    },
-    getByCompanyCode: (code: string) => corporateCustomers.find((c) => c.companyCode === code) || null,
-  },
-
+  // ─── Purchase Orders ───
   purchaseOrder: {
-    list: () => purchaseOrders,
-    getById: (id: number) => purchaseOrders.find((po) => po.id == id) || null,
-    create: (data: any) => {
-      const newId = purchaseOrders.length > 0 ? Math.max(...purchaseOrders.map((po) => po.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      purchaseOrders.push(newItem);
-      saveItem("sgf_purchaseOrders", purchaseOrders);
-      return newItem;
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.purchaseOrders]);
+      return purchaseOrders;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = purchaseOrders.findIndex((po) => po.id == id);
-      if (idx >= 0) {
-        purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_purchaseOrders", purchaseOrders);
-        return purchaseOrders[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.purchaseOrders]);
+      return purchaseOrders.find((po) => po.id === id) || null;
+    },
+    create: (data: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt" | "updatedAt" | "status" | "paymentStatus">) => {
+      reloadFromStorage([STORAGE_KEYS.purchaseOrders]);
+      const po: PurchaseOrder = {
+        ...data,
+        id: getNextId(purchaseOrders),
+        poNumber: generatePONumber(),
+        status: "pending",
+        paymentStatus: "unpaid",
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      purchaseOrders.push(po);
+      saveToStorage(STORAGE_KEYS.purchaseOrders, purchaseOrders);
+      return po;
+    },
+    update: (id: number, data: Partial<PurchaseOrder>) => {
+      reloadFromStorage([STORAGE_KEYS.purchaseOrders]);
+      const idx = purchaseOrders.findIndex((po) => po.id === id);
+      if (idx === -1) return null;
+      purchaseOrders[idx] = { ...purchaseOrders[idx], ...data, updatedAt: now() };
+      saveToStorage(STORAGE_KEYS.purchaseOrders, purchaseOrders);
+      return purchaseOrders[idx];
     },
     delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.purchaseOrders]);
       purchaseOrders = purchaseOrders.filter((po) => po.id !== id);
-      saveItem("sgf_purchaseOrders", purchaseOrders);
-      return { success: true };
+      saveToStorage(STORAGE_KEYS.purchaseOrders, purchaseOrders);
+      return true;
     },
-    getByCustomer: (customerId: number) => purchaseOrders.filter((po) => po.customerId == customerId),
-    getByStatus: (status: string) => purchaseOrders.filter((po) => po.status === status),
   },
 
-  barrel: {
-    list: () => barrels,
-    getById: (id: number) => barrels.find((b) => b.id == id) || null,
-    create: (data: any) => {
-      const newId = barrels.length > 0 ? Math.max(...barrels.map((b) => b.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      barrels.push(newItem);
-      saveItem("sgf_barrels", barrels);
-      return newItem;
+  // ─── Delivery Notes ───
+  deliveryNote: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.deliveryNotes]);
+      return deliveryNotes;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = barrels.findIndex((b) => b.id == id);
-      if (idx >= 0) {
-        barrels[idx] = { ...barrels[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_barrels", barrels);
-        return barrels[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.deliveryNotes]);
+      return deliveryNotes.find((dn) => dn.id === id) || null;
+    },
+    create: (data: Omit<DeliveryNote, "id" | "dnNumber" | "createdAt" | "status">) => {
+      reloadFromStorage([STORAGE_KEYS.deliveryNotes]);
+      const dn: DeliveryNote = {
+        ...data,
+        id: getNextId(deliveryNotes),
+        dnNumber: generateDNNumber(),
+        status: "pending",
+        createdAt: now(),
+      };
+      deliveryNotes.push(dn);
+      saveToStorage(STORAGE_KEYS.deliveryNotes, deliveryNotes);
+      return dn;
+    },
+    update: (id: number, data: Partial<DeliveryNote>) => {
+      reloadFromStorage([STORAGE_KEYS.deliveryNotes]);
+      const idx = deliveryNotes.findIndex((dn) => dn.id === id);
+      if (idx === -1) return null;
+      deliveryNotes[idx] = { ...deliveryNotes[idx], ...data };
+      saveToStorage(STORAGE_KEYS.deliveryNotes, deliveryNotes);
+      return deliveryNotes[idx];
     },
     delete: (id: number) => {
-      barrels = barrels.filter((b) => b.id !== id);
-      saveItem("sgf_barrels", barrels);
-      return { success: true };
+      reloadFromStorage([STORAGE_KEYS.deliveryNotes]);
+      deliveryNotes = deliveryNotes.filter((dn) => dn.id !== id);
+      saveToStorage(STORAGE_KEYS.deliveryNotes, deliveryNotes);
+      return true;
     },
-    getByPO: (poId: number) => barrels.filter((b) => b.poId == poId),
-    getByStatus: (status: string) => barrels.filter((b) => b.status === status),
   },
 
-  certificateOfCompliance: {
-    list: () => certificatesOfCompliance,
-    getById: (id: number) => certificatesOfCompliance.find((c) => c.id == id) || null,
-    create: (data: any) => {
-      const newId = certificatesOfCompliance.length > 0 ? Math.max(...certificatesOfCompliance.map((c) => c.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      certificatesOfCompliance.push(newItem);
-      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
-      return newItem;
+  // ─── Stock ───
+  stock: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.stockItems]);
+      return stockItems;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = certificatesOfCompliance.findIndex((c) => c.id == id);
-      if (idx >= 0) {
-        certificatesOfCompliance[idx] = { ...certificatesOfCompliance[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
-        return certificatesOfCompliance[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.stockItems]);
+      return stockItems.find((s) => s.id === id) || null;
+    },
+    create: (data: Omit<StockItem, "id" | "createdAt">) => {
+      reloadFromStorage([STORAGE_KEYS.stockItems]);
+      const item: StockItem = { ...data, id: getNextId(stockItems), createdAt: now() };
+      stockItems.push(item);
+      saveToStorage(STORAGE_KEYS.stockItems, stockItems);
+      return item;
+    },
+    update: (id: number, data: Partial<StockItem>) => {
+      reloadFromStorage([STORAGE_KEYS.stockItems]);
+      const idx = stockItems.findIndex((s) => s.id === id);
+      if (idx === -1) return null;
+      stockItems[idx] = { ...stockItems[idx], ...data };
+      saveToStorage(STORAGE_KEYS.stockItems, stockItems);
+      return stockItems[idx];
     },
     delete: (id: number) => {
-      certificatesOfCompliance = certificatesOfCompliance.filter((c) => c.id !== id);
-      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
-      return { success: true };
+      reloadFromStorage([STORAGE_KEYS.stockItems]);
+      stockItems = stockItems.filter((s) => s.id !== id);
+      saveToStorage(STORAGE_KEYS.stockItems, stockItems);
+      return true;
     },
-    getByPO: (poId: number) => certificatesOfCompliance.filter((c) => c.poId == poId),
+    getMovements: (productId: number) => {
+      reloadFromStorage([STORAGE_KEYS.stockItems]);
+      return stockItems.filter((s) => s.productId === productId);
+    },
   },
 
-  packingList: {
-    list: () => packingListLines,
-    getById: (id: number) => packingListLines.find((p) => p.id == id) || null,
-    create: (data: any) => {
-      const newId = packingListLines.length > 0 ? Math.max(...packingListLines.map((p) => p.id || 0)) + 1 : 1;
-      const newItem = { ...data, id: newId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      packingListLines.push(newItem);
-      saveItem("sgf_packingListLines", packingListLines);
-      return newItem;
+  // ─── Special Prices ───
+  specialPrice: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      return specialPrices;
     },
-    update: ({ id, data }: { id: number; data: any }) => {
-      const idx = packingListLines.findIndex((p) => p.id == id);
-      if (idx >= 0) {
-        packingListLines[idx] = { ...packingListLines[idx], ...data, updatedAt: new Date().toISOString() };
-        saveItem("sgf_packingListLines", packingListLines);
-        return packingListLines[idx];
-      }
-      return null;
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      return specialPrices.find((s) => s.id === id) || null;
+    },
+    create: (data: Omit<SpecialPrice, "id" | "createdAt">) => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      const sp: SpecialPrice = { ...data, id: getNextId(specialPrices), createdAt: now() };
+      specialPrices.push(sp);
+      saveToStorage(STORAGE_KEYS.specialPrices, specialPrices);
+      return sp;
+    },
+    update: (id: number, data: Partial<SpecialPrice>) => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      const idx = specialPrices.findIndex((s) => s.id === id);
+      if (idx === -1) return null;
+      specialPrices[idx] = { ...specialPrices[idx], ...data };
+      saveToStorage(STORAGE_KEYS.specialPrices, specialPrices);
+      return specialPrices[idx];
     },
     delete: (id: number) => {
-      packingListLines = packingListLines.filter((p) => p.id !== id);
-      saveItem("sgf_packingListLines", packingListLines);
-      return { success: true };
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      specialPrices = specialPrices.filter((s) => s.id !== id);
+      saveToStorage(STORAGE_KEYS.specialPrices, specialPrices);
+      return true;
     },
-    getByPO: (poId: number) => packingListLines.filter((p) => p.purchaseOrderId == poId),
-    getByInvoice: (invoiceId: number) => packingListLines.filter((p) => p.invoiceId == invoiceId),
+    getForCustomer: (customerId: number) => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      return specialPrices.filter((s) => s.customerId === customerId && s.isActive);
+    },
+    getForCustomerProduct: (customerId: number, productId: number) => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      return specialPrices.find((s) => s.customerId === customerId && s.productId === productId && s.isActive) || null;
+    },
+    bulkUpload: (items: Omit<SpecialPrice, "id" | "createdAt">[]) => {
+      reloadFromStorage([STORAGE_KEYS.specialPrices]);
+      const newItems = items.map((item) => ({
+        ...item,
+        id: getNextId(specialPrices),
+        createdAt: now(),
+      }));
+      specialPrices.push(...newItems);
+      saveToStorage(STORAGE_KEYS.specialPrices, specialPrices);
+      return newItems;
+    },
   },
 
-  /** Generate an invoice from a Purchase Order (corporate customer).
-   *  Exposed on dataService so localLink can call it via dataService.generateInvoiceForPO */
+  // ─── Collection Notes ───
+  collectionNote: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.collectionNotes]);
+      return collectionNotes;
+    },
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.collectionNotes]);
+      return collectionNotes.find((c) => c.id === id) || null;
+    },
+    create: (data: Omit<CollectionNote, "id" | "createdAt" | "status">) => {
+      reloadFromStorage([STORAGE_KEYS.collectionNotes]);
+      const note: CollectionNote = { ...data, id: getNextId(collectionNotes), status: "open", createdAt: now() };
+      collectionNotes.push(note);
+      saveToStorage(STORAGE_KEYS.collectionNotes, collectionNotes);
+      return note;
+    },
+    update: (id: number, data: Partial<CollectionNote>) => {
+      reloadFromStorage([STORAGE_KEYS.collectionNotes]);
+      const idx = collectionNotes.findIndex((c) => c.id === id);
+      if (idx === -1) return null;
+      collectionNotes[idx] = { ...collectionNotes[idx], ...data };
+      saveToStorage(STORAGE_KEYS.collectionNotes, collectionNotes);
+      return collectionNotes[idx];
+    },
+    delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.collectionNotes]);
+      collectionNotes = collectionNotes.filter((c) => c.id !== id);
+      saveToStorage(STORAGE_KEYS.collectionNotes, collectionNotes);
+      return true;
+    },
+    addNote: (data: Omit<CollectionNote, "id" | "createdAt" | "status">) => {
+      return dataService.collectionNote.create(data);
+    },
+  },
+
+  // ─── Collection Promises ───
+  collectionPromise: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.collectionPromises]);
+      return collectionPromises;
+    },
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.collectionPromises]);
+      return collectionPromises.find((c) => c.id === id) || null;
+    },
+    create: (data: Omit<CollectionPromise, "id" | "createdAt" | "status">) => {
+      reloadFromStorage([STORAGE_KEYS.collectionPromises]);
+      const promise: CollectionPromise = { ...data, id: getNextId(collectionPromises), status: "pending", createdAt: now() };
+      collectionPromises.push(promise);
+      saveToStorage(STORAGE_KEYS.collectionPromises, collectionPromises);
+      return promise;
+    },
+    update: (id: number, data: Partial<CollectionPromise>) => {
+      reloadFromStorage([STORAGE_KEYS.collectionPromises]);
+      const idx = collectionPromises.findIndex((c) => c.id === id);
+      if (idx === -1) return null;
+      collectionPromises[idx] = { ...collectionPromises[idx], ...data };
+      saveToStorage(STORAGE_KEYS.collectionPromises, collectionPromises);
+      return collectionPromises[idx];
+    },
+    delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.collectionPromises]);
+      collectionPromises = collectionPromises.filter((c) => c.id !== id);
+      saveToStorage(STORAGE_KEYS.collectionPromises, collectionPromises);
+      return true;
+    },
+    recordPromise: (data: Omit<CollectionPromise, "id" | "createdAt" | "status">) => {
+      return dataService.collectionPromise.create(data);
+    },
+  },
+
+  // ─── Account Holds ───
+  accountHold: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.accountHolds]);
+      return accountHolds;
+    },
+    getById: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.accountHolds]);
+      return accountHolds.find((a) => a.id === id) || null;
+    },
+    create: (data: Omit<AccountHold, "id" | "placedAt" | "status">) => {
+      reloadFromStorage([STORAGE_KEYS.accountHolds]);
+      const hold: AccountHold = { ...data, id: getNextId(accountHolds), status: "active", placedAt: now() };
+      accountHolds.push(hold);
+      saveToStorage(STORAGE_KEYS.accountHolds, accountHolds);
+      return hold;
+    },
+    update: (id: number, data: Partial<AccountHold>) => {
+      reloadFromStorage([STORAGE_KEYS.accountHolds]);
+      const idx = accountHolds.findIndex((a) => a.id === id);
+      if (idx === -1) return null;
+      accountHolds[idx] = { ...accountHolds[idx], ...data };
+      saveToStorage(STORAGE_KEYS.accountHolds, accountHolds);
+      return accountHolds[idx];
+    },
+    delete: (id: number) => {
+      reloadFromStorage([STORAGE_KEYS.accountHolds]);
+      accountHolds = accountHolds.filter((a) => a.id !== id);
+      saveToStorage(STORAGE_KEYS.accountHolds, accountHolds);
+      return true;
+    },
+    placeHold: (data: Omit<AccountHold, "id" | "placedAt" | "status">) => {
+      return dataService.accountHold.create(data);
+    },
+    releaseHold: (id: number, releasedBy: number) => {
+      reloadFromStorage([STORAGE_KEYS.accountHolds]);
+      const idx = accountHolds.findIndex((a) => a.id === id);
+      if (idx === -1) return null;
+      accountHolds[idx].status = "released";
+      accountHolds[idx].releasedAt = now();
+      accountHolds[idx].releasedBy = releasedBy;
+      saveToStorage(STORAGE_KEYS.accountHolds, accountHolds);
+      return accountHolds[idx];
+    },
+  },
+
+  // ─── Audit Log ───
+  auditLog: {
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.auditLog]);
+      return auditLog;
+    },
+    create: (data: Omit<AuditLogEntry, "id" | "performedAt">) => {
+      reloadFromStorage([STORAGE_KEYS.auditLog]);
+      const entry: AuditLogEntry = { ...data, id: getNextId(auditLog), performedAt: now() };
+      auditLog.push(entry);
+      saveToStorage(STORAGE_KEYS.auditLog, auditLog);
+      return entry;
+    },
+    getByEntity: (entityType: string, entityId: number) => {
+      reloadFromStorage([STORAGE_KEYS.auditLog]);
+      return auditLog.filter((a) => a.entityType === entityType && a.entityId === entityId);
+    },
+  },
+
+  // ─── Dashboard ───
+  dashboard: {
+    getStats: () => {
+      reloadFromStorage();
+      const today = new Date().toISOString().split("T")[0];
+      const todayOrders = orders.filter((o) => o.orderDate === today);
+      const todayInvoices = invoices.filter((i) => i.invoiceDate === today);
+      const todayReceipts = receipts.filter((r) => r.paymentDate === today);
+
+      return {
+        totalCustomers: customers.length,
+        totalProducts: products.length,
+        totalOrders: orders.length,
+        totalInvoices: invoices.length,
+        totalReceipts: receipts.length,
+        pendingOrders: orders.filter((o) => o.status === "pending").length,
+        overdueInvoices: invoices.filter((i) => i.paymentStatus === "unpaid" && i.dueDate < today).length,
+        todayOrders: todayOrders.length,
+        todayRevenue: todayReceipts.reduce((sum, r) => sum + r.amount, 0),
+        outstandingBalance: invoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0),
+        lowStockProducts: products.filter((p) => p.stockQuantity <= p.reorderPoint).length,
+      };
+    },
+  },
+
+  // ─── Sales Rep ───
+  salesRep: {
+    getStats: (salesRepName: string) => {
+      reloadFromStorage([STORAGE_KEYS.orders, STORAGE_KEYS.invoices, STORAGE_KEYS.customers]);
+      const repOrders = orders.filter((o) => o.salesRep === salesRepName);
+      const repInvoices = invoices.filter((i) => i.customerName && orders.some((o) => o.customerName === i.customerName && o.salesRep === salesRepName));
+      return {
+        totalOrders: repOrders.length,
+        totalRevenue: repInvoices.reduce((sum, i) => sum + i.total, 0),
+        totalCustomers: customers.filter((c) => c.salesRep === salesRepName).length,
+        pendingOrders: repOrders.filter((o) => o.status === "pending").length,
+      };
+    },
+    list: () => {
+      reloadFromStorage([STORAGE_KEYS.salesReps]);
+      return salesReps;
+    },
+  },
+
+  // ─── Collections ───
+  collections: {
+    getStats: () => {
+      reloadFromStorage([STORAGE_KEYS.invoices, STORAGE_KEYS.receipts, STORAGE_KEYS.collectionNotes, STORAGE_KEYS.collectionPromises]);
+      const today = new Date().toISOString().split("T")[0];
+      return {
+        totalOutstanding: invoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0),
+        overdueAmount: invoices.filter((i) => i.paymentStatus === "unpaid" && i.dueDate < today).reduce((sum, i) => sum + (i.balanceDue || 0), 0),
+        todayCollections: receipts.filter((r) => r.paymentDate === today).reduce((sum, r) => sum + r.amount, 0),
+        openCollectionNotes: collectionNotes.filter((c) => c.status === "open").length,
+        pendingPromises: collectionPromises.filter((c) => c.status === "pending" && c.promisedDate >= today).length,
+      };
+    },
+  },
+
+  // ─── COC ───
+  coc: {
+    getStats: () => {
+      reloadFromStorage([STORAGE_KEYS.cocReports]);
+      return {
+        totalCOCs: cocReports.length,
+        activeCOCs: cocReports.filter((c) => c.status === "active").length,
+        expiredCOCs: cocReports.filter((c) => c.status === "expired").length,
+      };
+    },
+  },
+
+  // ─── Sample Reports ───
+  sampleReport: {
+    getReport: () => {
+      reloadFromStorage([STORAGE_KEYS.sampleReports]);
+      return sampleReports;
+    },
+    create: (data: Omit<SampleReport, "id" | "createdAt">) => {
+      reloadFromStorage([STORAGE_KEYS.sampleReports]);
+      const report: SampleReport = { ...data, id: getNextId(sampleReports), createdAt: now() };
+      sampleReports.push(report);
+      saveToStorage(STORAGE_KEYS.sampleReports, sampleReports);
+      return report;
+    },
+    update: (id: number, data: Partial<SampleReport>) => {
+      reloadFromStorage([STORAGE_KEYS.sampleReports]);
+      const idx = sampleReports.findIndex((s) => s.id === id);
+      if (idx === -1) return null;
+      sampleReports[idx] = { ...sampleReports[idx], ...data };
+      saveToStorage(STORAGE_KEYS.sampleReports, sampleReports);
+      return sampleReports[idx];
+    },
+  },
+
+  // ─── Checkin ───
+  checkin: {
+    getAARate: () => {
+      try {
+        const rate = getStorageItem("sgf_aa_rate");
+        return rate ? parseFloat(rate) : 0.15;
+      } catch {
+        return 0.15;
+      }
+    },
+    setAARate: (rate: number) => {
+      setStorageItem("sgf_aa_rate", String(rate));
+      return rate;
+    },
+  },
+
+  // ─── Utilities ───
+  deduplicateAll: () => {
+    const dedupe = <T extends { id?: number }>(items: T[]): T[] => {
+      const seen = new Set<number>();
+      return items.filter((item) => {
+        if (!item.id || seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+    };
+
+    reloadFromStorage();
+    users = dedupe(users);
+    customers = dedupe(customers);
+    corporateCustomers = dedupe(corporateCustomers);
+    products = dedupe(products);
+    orders = dedupe(orders);
+    invoices = dedupe(invoices);
+    receipts = dedupe(receipts);
+    creditNotes = dedupe(creditNotes);
+    purchaseOrders = dedupe(purchaseOrders);
+    deliveryNotes = dedupe(deliveryNotes);
+    stockItems = dedupe(stockItems);
+    specialPrices = dedupe(specialPrices);
+    collectionNotes = dedupe(collectionNotes);
+    collectionPromises = dedupe(collectionPromises);
+    accountHolds = dedupe(accountHolds);
+    auditLog = dedupe(auditLog);
+    sampleReports = dedupe(sampleReports);
+    appointments = dedupe(appointments);
+    followUps = dedupe(followUps);
+    cocReports = dedupe(cocReports);
+    packingLists = dedupe(packingLists);
+
+    Object.values(STORAGE_KEYS).forEach((key) => {
+      if (key === STORAGE_KEYS.currentUser) return;
+      saveToStorage(key, eval(key.replace("sgf_", "")));
+    });
+
+    return true;
+  },
+
+  // ─── generateInvoiceForPO (standalone method) ───
   generateInvoiceForPO: (poId: number) => {
     // ACQUIRE LOCK: prevent concurrent generation
     if (invoiceGenerationLock) {
@@ -1263,11 +1638,20 @@ export const dataService = {
     invoiceGenerationLock = true;
 
     try {
-      load(); // ensure fresh data
+      reloadFromStorage([STORAGE_KEYS.purchaseOrders, STORAGE_KEYS.invoices, STORAGE_KEYS.corporateCustomers, STORAGE_KEYS.customers]);
       const po = purchaseOrders.find((p) => p.id == poId);
       if (!po) {
         console.warn("[generateInvoiceForPO] PO not found:", poId);
         return null;
+      }
+
+      const poRef = po.poNumber || `PO-${po.id}`;
+
+      // Check if invoice already exists for this PO
+      const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+      if (existingIdx >= 0) {
+        console.warn("[generateInvoiceForPO] Invoice already exists for", poRef);
+        return invoices[existingIdx].invoiceNumber;
       }
 
       // Calculate totals from PO line items
@@ -1283,114 +1667,55 @@ export const dataService = {
       const mainCustomerId = corpCustomer?.linkedCustomerId || po.corporateCustomerId;
       const mainCustomer = customers.find((c) => c.id == mainCustomerId);
 
-      // Build a rich customer object — prefer linked main customer, fallback to corp customer fields
-      const richCustomer = mainCustomer || {
-        name: po.corporateCustomerName || corpCustomer?.name || "Corporate Customer",
-        contactPerson: corpCustomer?.contactPerson || "",
-        phone: corpCustomer?.phone || "",
-        email: corpCustomer?.email || "",
-        physicalAddress: corpCustomer?.deliveryAddress || corpCustomer?.physicalAddress || "",
-        city: corpCustomer?.city || "",
-        province: corpCustomer?.province || "",
-        postalCode: corpCustomer?.postalCode || "",
-        vatNumber: corpCustomer?.vatNumber || "",
-        salesRepName: corpCustomer?.salesRepName || "",
-      };
-
-      // Reference for PO number
-      const poRef = po.poNumber || `PO-${po.id}`;
-
-      // Check if invoice already exists for this PO
-      const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
-
       // Get corporate customer for payment terms
       const paymentTerms = corpCustomer?.paymentTerms || po.paymentTerms || "30_days";
-      const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
-
-      if (existingIdx >= 0) {
-        const existing = invoices[existingIdx];
-        const amountPaid = Number(existing.amountPaid || 0);
-        const newBalanceDue = total - amountPaid;
-        invoices[existingIdx] = {
-          ...existing,
-          subtotal,
-          vatAmount,
-          vatRate,
-          total,
-          totalAmount: total,
-          balanceDue: newBalanceDue,
-          paymentTerms,
-          customerId: mainCustomerId,
-          customer: richCustomer,
-          deliveryNoteNumber: existing.deliveryNoteNumber || `DN-${poRef}`,
-          items: items.map((item: any) => ({
-            description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            lineTotal: item.quantity * item.unitPrice,
-          })),
-          updatedAt: new Date().toISOString(),
-          notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
-        };
-        saveItem("sgf_invoices", invoices);
-        return existing.invoiceNumber;
-      }
-
-      // Create new invoice
-      const now = new Date();
-      const dueDate = new Date(now);
+      const days = parseInt(paymentTerms.replace(/\D/g, "")) || 30;
+      const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + days);
 
-      const invCompany = po.company || "sgf";
-      let invoiceNumber = getNextInvoiceNumberForCompany(invCompany);
-      const existingNumbers = new Set(invoices.map((i) => i.invoiceNumber));
-      let safetyCounter = 0;
-      while (existingNumbers.has(invoiceNumber) && safetyCounter < 100) {
-        const match = invoiceNumber.match(/(SGF|RC)(\d+)/);
-        if (match) {
-          const prefix = match[1];
-          const n = parseInt(match[2]) + 1;
-          invoiceNumber = prefix === "RC" ? `RC${String(n).padStart(4, "0")}` : `SGF${n}`;
-        }
-        safetyCounter++;
-      }
-
-      const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
-
-      invoices.push({
-        id: nextInvId,
+      const invoice: Invoice = {
+        id: getNextId(invoices),
+        invoiceNumber: generateInvoiceNumber(),
         purchaseOrderId: po.id,
         poNumber: po.poNumber,
-        orderNumber: poRef,
-        invoiceNumber,
-        deliveryNoteNumber: `DN-${poRef}`,
-        company: invCompany,
         customerId: mainCustomerId,
-        customerName: richCustomer?.name || po.corporateCustomerName || "",
-        customer: richCustomer,
+        customerName: mainCustomer?.name || corpCustomer?.companyName || po.customerName,
+        invoiceDate: new Date().toISOString().split("T")[0],
+        dueDate: dueDate.toISOString().split("T")[0],
+        status: "draft",
+        paymentStatus: "unpaid",
         subtotal,
         vatAmount,
-        vatRate,
         total,
-        totalAmount: total,
-        balanceDue: total,
         amountPaid: 0,
-        status: "draft",
-        paymentTerms,
-        invoiceDate: now.toISOString(),
-        dueDate: dueDate.toISOString(),
-        notes: `Invoice for PO ${po.poNumber} | Customer: ${po.corporateCustomerName || ""}`,
-        items: items.map((item: any) => ({
-          description: `${item.customerStockCode || ""} - ${item.customerDescription || ""}`,
+        balanceDue: total,
+        lineItems: items.map((item: any) => ({
+          id: generateId(),
+          productId: item.productId,
+          productName: item.productName,
+          productCode: item.productCode,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
-          lineTotal: item.quantity * item.unitPrice,
+          discount: item.discount || 0,
+          total: (item.quantity * item.unitPrice) * (1 - (item.discount || 0) / 100),
+          vatRate,
         })),
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      });
-      saveItem("sgf_invoices", invoices);
-      return invoiceNumber;
+        notes: `Generated from ${poRef}`,
+        createdAt: now(),
+        updatedAt: now(),
+        createdBy: currentUser?.id || 0,
+      };
+
+      invoices.push(invoice);
+      saveToStorage(STORAGE_KEYS.invoices, invoices);
+
+      // Update PO status
+      po.status = "invoiced";
+      po.updatedAt = now();
+      saveToStorage(STORAGE_KEYS.purchaseOrders, purchaseOrders);
+
+      console.log("[generateInvoiceForPO] Invoice created:", invoice.invoiceNumber, "for", poRef);
+      return invoice.invoiceNumber;
     } catch (err) {
       console.error("[generateInvoiceForPO] CRASH:", err);
       return null;
@@ -1400,223 +1725,32 @@ export const dataService = {
   },
 };
 
-/** Reset all transaction data (orders, invoices, receipts, etc.) but keep users, customers, products, settings */
-export function resetTransactionData(): void {
-  orders = [];
-  invoices = [];
-  receipts = [];
-  creditNotes = [];
-  appointments = [];
-  checkins = [];
-  followUps = [];
-  followUpActions = [];
-  specialPrices = [];
-  collectionNotes = [];
-  collectionPromises = [];
-  accountHolds = [];
-  auditLog = [];
+// ─── Standalone exports for backward compatibility ───
 
-  const keysToRemove = [
-    "sgf_orders", "sgf_invoices", "sgf_receipts", "sgf_creditNotes", "sgf_appointments",
-    "sgf_checkins", "sgf_specialPrices", "sgf_auditLog", "sgf_followUps",
-    "sgf_followUpActions", "sgf_collectionNotes", "sgf_collectionPromises",
-    "sgf_accountHolds",
-  ];
-  keysToRemove.forEach(k => localStorage.removeItem(k));
-}
+export { reloadFromStorage, generateId, getNextId, now };
 
-/** Clear only appointments and check-ins */
-export function clearAppointmentsAndCheckins(): void {
-  appointments = [];
-  checkins = [];
-  removeStorageItem("sgf_appointments");
-  removeStorageItem("sgf_checkins");
-}
-
-/** Full factory reset — clears EVERYTHING and reloads defaults */
-export function factoryReset(): void {
-  // Step 1: Disconnect Firebase to prevent re-download
-  try {
-    const { disconnectFirebase } = require("./firebaseSync");
-    if (disconnectFirebase) disconnectFirebase();
-  } catch { /* ignore if firebaseSync not loaded */ }
-  localStorage.setItem("sgf_firebase_disconnected", "true");
-  // Step 2: Clear all localStorage
-  const allKeys = Object.keys(localStorage).filter(k => k.startsWith("sgf_"));
-  allKeys.forEach(k => localStorage.removeItem(k));
-  // Step 3: Keep disconnect flag set (re-add after clearing)
-  localStorage.setItem("sgf_firebase_disconnected", "true");
-  // Step 4: Reset ALL in-memory arrays including users
-  orders = []; invoices = []; receipts = []; creditNotes = []; appointments = []; checkins = [];
-  followUps = []; followUpActions = []; specialPrices = [];
-  collectionNotes = []; collectionPromises = []; accountHolds = []; auditLog = []; users = [];
-  // Step 5: Reset customers and products back to original static defaults
-  customers = getStaticCustomers();
-  products = getStaticProducts();
-  // Step 6: Re-create default users
-  load();
-}
-
-/**
- * DIRECT LOGIN — bypasses tRPC/localLink entirely.
- * Called directly from Login.tsx. Checks hardcoded defaults first.
- */
-export function directAuthenticate(name: string, pin: string): { id: number; name: string; email: string; role: string; pin?: string } | null {
-  const DEFAULT_USERS = [
-    { id: 1, name: "Collin", email: "", role: "super_admin", pin: "2580" },
-    { id: 2, name: "Adeli", email: "", role: "sales_rep", pin: "1111" },
-    { id: 3, name: "Inhouse", email: "", role: "sales_rep", pin: "2222" },
-    { id: 4, name: "Michael", email: "", role: "sales_rep", pin: "3333" },
-    { id: 5, name: "Nkosana", email: "", role: "sales_rep", pin: "4444" },
-    { id: 6, name: "Tebogo Bila", email: "", role: "sales_rep", pin: "6666" },
-    { id: 7, name: "Aggie", email: "", role: "admin", pin: "1018" },
-    { id: 8, name: "Ronald", email: "", role: "super_admin", pin: "2581" },
-    { id: 9, name: "Jolene", email: "", role: "admin", pin: "7777" },
-    { id: 10, name: "David", email: "", role: "super_admin", pin: "8888" },
-  ];
-
-  const ADMIN_ALIASES = ["admin", "administrator", "superadmin"];
-  const typedName = name.toLowerCase().trim();
-  const typedPin = String(pin); // Normalize: Firebase may store PIN as number
-
-  // 1. Check stored users FIRST (so User Management additions work without code changes)
-  try {
-    const raw = getStorageItem("sgf_users");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      // Exact name match
-      const found = stored.find(
-        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) === typedPin && x.isActive !== false
-      );
-      if (found) {
-        const hardcoded = DEFAULT_USERS.find((u) => u.id == found.id || u.name.toLowerCase() === found.name?.toLowerCase());
-        const resolvedPin = found.pin != null ? found.pin : hardcoded?.pin;
-        return { id: found.id, name: found.name, email: found.email, role: found.role, pin: resolvedPin };
-      }
-      // Admin alias match — check if any stored user has this PIN and is admin
-      if (ADMIN_ALIASES.includes(typedName)) {
-        const adminFound = stored.find(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
-        );
-        if (adminFound) {
-          const hardcoded = DEFAULT_USERS.find((u) => u.id == adminFound.id || u.name.toLowerCase() === adminFound.name?.toLowerCase());
-          const resolvedPin = adminFound.pin != null ? adminFound.pin : hardcoded?.pin;
-          return { id: adminFound.id, name: adminFound.name, email: adminFound.email, role: adminFound.role, pin: resolvedPin };
-        }
-      }
-    }
-  } catch { /* ignore */ }
-
-  // 2. Allow "admin" as a generic alias — match against ANY hardcoded admin/super_admin PIN
-  if (ADMIN_ALIASES.includes(typedName)) {
-    // First check stored users for admin alias (new PIN may have been changed)
-    let storedAdminFound: any = null;
-    try {
-      const raw = getStorageItem("sgf_users");
-      if (raw) {
-        const stored = JSON.parse(raw);
-        storedAdminFound = stored.find(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) === typedPin && x.isActive !== false
-        );
-      }
-    } catch { /* ignore */ }
-    if (storedAdminFound) {
-      return { id: storedAdminFound.id, name: storedAdminFound.name, email: storedAdminFound.email, role: storedAdminFound.role, pin: storedAdminFound.pin };
-    }
-
-    // Only fall back to hardcoded if no stored admin with different PIN exists
-    let storedAdminWithDifferentPin = false;
-    try {
-      const raw = getStorageItem("sgf_users");
-      if (raw) {
-        const stored = JSON.parse(raw);
-        storedAdminWithDifferentPin = stored.some(
-          (x: any) => (x.role === "admin" || x.role === "super_admin") && String(x.pin) !== typedPin && x.isActive !== false
-        );
-      }
-    } catch { /* ignore */ }
-
-    if (!storedAdminWithDifferentPin) {
-      const adminMatch = DEFAULT_USERS.find(
-        (u) => (u.role === "admin" || u.role === "super_admin") && String(u.pin) === typedPin
-      );
-      if (adminMatch) {
-        return { id: adminMatch.id, name: adminMatch.name, email: adminMatch.email, role: adminMatch.role, pin: adminMatch.pin };
-      }
-    }
+// Export getter functions for internal use
+export function getCustomers() { reloadFromStorage([STORAGE_KEYS.customers]); return customers; }
+export function getProducts() { reloadFromStorage([STORAGE_KEYS.products]); return products; }
+export function getOrders() { reloadFromStorage([STORAGE_KEYS.orders]); return orders; }
+export function getInvoices() { reloadFromStorage([STORAGE_KEYS.invoices]); return invoices; }
+export function getPurchaseOrders() { reloadFromStorage([STORAGE_KEYS.purchaseOrders]); return purchaseOrders; }
+export function getUsers() { reloadFromStorage([STORAGE_KEYS.users]); return users; }
+export function getCurrentUser() { reloadFromStorage([STORAGE_KEYS.currentUser]); return currentUser; }
+export function setCurrentUser(user: User | null) {
+  currentUser = user;
+  if (user) {
+    setStorageItem(STORAGE_KEYS.currentUser, JSON.stringify(user));
+  } else {
+    removeStorageItem(STORAGE_KEYS.currentUser);
   }
-
-  // 3. Check hardcoded defaults (fallback — survives data clears)
-  // BUT only if the user does NOT exist in stored data with a different PIN.
-  // This prevents old hardcoded PINs from working after a PIN change.
-  let storedUserWithDifferentPin: any = null;
-  try {
-    const raw = getStorageItem("sgf_users");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      storedUserWithDifferentPin = stored.find(
-        (x: any) => x.name?.toLowerCase() === typedName && String(x.pin) !== typedPin && x.isActive !== false
-      );
-    }
-  } catch { /* ignore */ }
-
-  if (!storedUserWithDifferentPin) {
-    const fromDefaults = DEFAULT_USERS.find(
-      (u) => u.name.toLowerCase() === typedName && String(u.pin) === typedPin
-    );
-    if (fromDefaults) {
-      // Do NOT re-add missing default users here — if an admin deleted a user,
-      // they must stay deleted. Re-adding causes "jumping back" bug.
-      // Defaults are only injected on first app load when users array is empty.
-      return { id: fromDefaults.id, name: fromDefaults.name, email: fromDefaults.email, role: fromDefaults.role, pin: fromDefaults.pin };
-    }
-  }
-
-  return null;
 }
 
-// NOTE: load() is already called at line 143 after all module-level variables are declared.
-// Do NOT call load() again here — it would overwrite in-memory data with stale localStorage.
+// Export for localLink.ts
+export { users, customers, corporateCustomers, products, orders, invoices, receipts, creditNotes, purchaseOrders, deliveryNotes, stockItems, specialPrices, collectionNotes, collectionPromises, accountHolds, auditLog, salesReps, sampleReports, appointments, followUps, cocReports, packingLists, currentUser, invoiceGenerationLock };
 
-function getEffectivePrice(stockItemId: number, priceTier: string, customerId: number, _isSample: boolean = false): number {
-  // CRITICAL: Sample orders must ALWAYS use corporate price.
-  // Do NOT apply special/customer prices to sample orders, even if a
-  // special price exists for this customer+product combination.
-  if (!_isSample) {
-    const sp = specialPrices.find((p) => p.customerId == customerId && p.stockItemId == stockItemId);
-    if (sp) return Number(sp.specialPrice);
-  }
-  const stock = products.find((p) => p.id == stockItemId);
-  if (!stock) return 0;
-  let rawPrice: number;
-  switch (priceTier) {
-    case "corporate": rawPrice = Number(stock.corporatePrice); break;
-    case "bulk": rawPrice = Number(stock.bulkPrice); break;
-    case "retail": rawPrice = Number(stock.retailPrice); break;
-    default: rawPrice = Number(stock.wholesalePrice); break;
-  }
-  // Fallback to STATIC_PRODUCTS if loaded price is 0
-  if (rawPrice <= 0) {
-    const staticProd = STATIC_PRODUCTS.find((p: any) =>
-      p.id == stockItemId ||
-      (stock.productCode && p.productCode === stock.productCode) ||
-      (stock.productName && p.productName && String(p.productName).toLowerCase().trim() === String(stock.productName).toLowerCase().trim())
-    );
-    if (staticProd) {
-      switch (priceTier) {
-        case "corporate": rawPrice = Number(staticProd.corporatePrice); break;
-        case "bulk": rawPrice = Number(staticProd.bulkPrice); break;
-        case "retail": rawPrice = Number(staticProd.retailPrice); break;
-        default: rawPrice = Number(staticProd.wholesalePrice); break;
-      }
-    }
-  }
-  return rawPrice;
-}
+// ═══════════════════════════════════════════════════════════════
+//  BACKWARD COMPATIBILITY EXPORTS
+// ═══════════════════════════════════════════════════════════════
 
-// Repair corrupted orders on module load (fixes orders created during the reloadFromStorage bug)
-try {
-  dataService.order.repairOrders();
-} catch (e) {
-  console.error("[dataService] Order repair failed:", e);
-}
+export default dataService;

@@ -1,13 +1,37 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#1a1a2e" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Supreme Global Foods - Sales App</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Supreme Sales Command</title>
+    <!-- HARD-CODED VERSION: Increment this on every critical deploy to force cache bust -->
+    <script>window.SGF_APP_VERSION="2.1.1-hardcoded-firebase-config";</script>
+    <!-- Cache-bust: if loaded JS references old patterns, force reload -->
+    <script>
+      (function(){
+        try {
+          var APP_VERSION = window.SGF_APP_VERSION;
+          var lastVer = localStorage.getItem("sgf_app_version");
+          if (lastVer && lastVer !== APP_VERSION) {
+            console.log("[CacheBust] Version changed from " + lastVer + " to " + APP_VERSION + " — clearing cache");
+            localStorage.setItem("sgf_app_version", APP_VERSION);
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({action:"skipWaiting"});
+            }
+            // Only reload once per version change
+            if (!sessionStorage.getItem("sgf_reloaded_" + APP_VERSION)) {
+              sessionStorage.setItem("sgf_reloaded_" + APP_VERSION, "1");
+              window.location.reload(true);
+            }
+          } else {
+            localStorage.setItem("sgf_app_version", APP_VERSION);
+          }
+        } catch(e) { console.error("[CacheBust]", e); }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

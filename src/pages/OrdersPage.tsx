@@ -727,7 +727,7 @@ export default function OrdersPage() {
           }
         } catch { /* ignore */ }
       }
-      if (adminPin !== effectivePin) {
+      if (String(adminPin).trim() !== String(effectivePin).trim()) {
         return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve this order." };
       }
     }

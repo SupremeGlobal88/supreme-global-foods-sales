@@ -2518,10 +2518,14 @@ export const dataService = {
     getById: (id: number) => customers.find((c) => c.id == id) || null,
     create: (data: any) => {
       const normName = (data.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
-      // Prevent duplicate: check if customer with same normalized name already exists
-      const existingIdx = customers.findIndex((c) =>
-        (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase() === normName
-      );
+      const incomingCode = (data.customerCode || "").toString().trim().toLowerCase();
+      // Prevent duplicate: only update if BOTH name AND customerCode match (or both codes empty)
+      const existingIdx = customers.findIndex((c) => {
+        const nameMatch = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase() === normName;
+        const existingCode = (c.customerCode || "").toString().trim().toLowerCase();
+        const codeMatch = incomingCode && existingCode ? incomingCode === existingCode : true;
+        return nameMatch && codeMatch;
+      });
       if (existingIdx >= 0) {
         // Update existing customer instead of creating duplicate
         const existing = customers[existingIdx];
@@ -2574,11 +2578,13 @@ export const dataService = {
     },
     getStats: () => {
       const regular = customers.filter((c) => !c.isCorporate && c.priceTier !== "corporate");
+      const now = new Date();
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
       return {
         total: regular.length,
         active: regular.filter((c) => c.isActive !== false).length,
         inactive: regular.filter((c) => c.isActive === false).length,
-        thisMonth: regular.length,
+        thisMonth: regular.filter((c) => new Date(c.createdAt || 0).getTime() >= thisMonthStart).length,
       };
     },
     getSalesReps: () => {
@@ -2606,11 +2612,13 @@ export const dataService = {
         const name = (item.name || "").toString().trim();
         if (!name) continue;
         const normName = normalize(name);
-        // Match by normalized customer name, or by customerCode if provided
+        const incomingCode = code.toLowerCase();
+        // Match ONLY if BOTH name AND customerCode match (prevents overwriting different customers with same name)
         const existingIdx = customers.findIndex((c) => {
           const nameMatch = normalize(c.name) === normName;
-          const codeMatch = code && c.customerCode && c.customerCode.toLowerCase() === code.toLowerCase();
-          return nameMatch || codeMatch;
+          const existingCode = (c.customerCode || "").toString().trim().toLowerCase();
+          const codeMatch = incomingCode && existingCode ? incomingCode === existingCode : true;
+          return nameMatch && codeMatch;
         });
         if (existingIdx >= 0) {
           // Update existing — same id, orders/invoices unaffected
@@ -2658,7 +2666,7 @@ export const dataService = {
       cutoff.setDate(cutoff.getDate() - days);
       const cutoffMs = cutoff.getTime();
       return customers
-        .filter((c) => c.isActive === "active")
+        .filter((c) => c.isActive !== false)
         .map((c) => {
           // Find most recent order for this customer
           const custOrders = orders

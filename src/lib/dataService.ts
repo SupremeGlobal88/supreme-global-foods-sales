@@ -4231,7 +4231,6 @@ export const dataService = {
     fixDraftInvoices: fixDraftInvoicesForDeliveredOrders,
     fixSageDates: fixSageInvoiceDates,
     generateForPO: activateInvoiceFromPO,
-    update: updateInvoice,
   },
 
   appointment: {

@@ -1242,7 +1242,10 @@ export const dataService = {
     try {
       load(); // ensure fresh data
       const po = purchaseOrders.find((p) => p.id == poId);
-      if (!po) return null;
+      if (!po) {
+        console.warn("[generateInvoiceForPO] PO not found:", poId);
+        return null;
+      }
 
       // Calculate totals from PO line items
       const items = po.lineItems || [];
@@ -1345,6 +1348,9 @@ export const dataService = {
       });
       saveItem("sgf_invoices", invoices);
       return invoiceNumber;
+    } catch (err) {
+      console.error("[generateInvoiceForPO] CRASH:", err);
+      return null;
     } finally {
       invoiceGenerationLock = false;
     }

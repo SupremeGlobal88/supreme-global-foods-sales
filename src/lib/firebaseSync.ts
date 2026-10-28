@@ -1,5 +1,6 @@
 import { getStorageItem, setStorageItem } from "./compressedStorage";
 import type { RefreshFn } from "./dataService";
+import { firebaseConfig as HARDCODED_CONFIG } from "./firebase";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Firebase Realtime Database sync layer
@@ -91,10 +92,13 @@ export function getConfigFromStorage(): any {
 export function getFirebaseConfig(): { configured: boolean; projectId?: string } {
   try {
     const cfg = localStorage.getItem("firebase_config");
-    if (!cfg) return { configured: false };
-    const parsed = JSON.parse(cfg);
-    return { configured: !!parsed.projectId, projectId: parsed.projectId };
-  } catch { return { configured: false }; }
+    if (cfg) {
+      const parsed = JSON.parse(cfg);
+      if (parsed.projectId) return { configured: true, projectId: parsed.projectId };
+    }
+  } catch { /* ignore */ }
+  // Fallback to hardcoded production config
+  return { configured: !!HARDCODED_CONFIG.projectId, projectId: HARDCODED_CONFIG.projectId };
 }
 
 export function saveFirebaseConfig(userConfig: any): boolean {
@@ -112,7 +116,8 @@ export function clearFirebaseConfig(): void {
 export function initFirebase(userConfig?: any): boolean {
   if (app && db) return true;
   try {
-    const cfg = userConfig || getConfigFromStorage();
+    // Priority: 1) userConfig passed in, 2) localStorage config, 3) hardcoded production config
+    const cfg = userConfig || getConfigFromStorage() || HARDCODED_CONFIG;
     if (!cfg || !cfg.projectId) return false;
     // Lazy-load and init
     getFirebase().then((fb) => {

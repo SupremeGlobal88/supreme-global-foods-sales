@@ -1,32 +1,16 @@
-// Firebase Configuration
-// To set up your own Firebase project:
-// 1. Go to https://console.firebase.google.com/ → Create Project
-// 2. Click "Add App" → Web → Register
-// 3. Copy the config values below
-// 4. Go to Build → Realtime Database → Create Database → Start in test mode
-
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, onValue, off, push, update, remove } from "firebase/database";
 
-// Replace these with your own Firebase config after creating a project
-const firebaseConfig = {
-  apiKey: "AIzaSyDemoKeyForSupremeSalesCommand",
-  authDomain: "supreme-sales-command.firebaseapp.com",
-  databaseURL: "https://supreme-sales-command-default-rtdb.firebaseio.com",
-  projectId: "supreme-sales-command",
-  storageBucket: "supreme-sales-command.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef123456"
+// HARDCODED REAL CONFIG — Supreme Global Foods production Firebase
+export const firebaseConfig = {
+  apiKey: "AIzaSyAj68G-CmO9ImmBB5MgPwlas389gHWqPu8",
+  authDomain: "supreme-global-foods-835b0.firebaseapp.com",
+  databaseURL: "https://supreme-global-foods-835b0-default-rtdb.firebaseio.com",
+  projectId: "supreme-global-foods-835b0",
+  storageBucket: "supreme-global-foods-835b0.appspot.com",
+  messagingSenderId: "570220829537",
+  appId: "1:570220829537:web:3c8d3c870887e9cc7a4320"
 };
 
-// For now, use localStorage fallback until Firebase is configured
-// To switch to Firebase: uncomment the lines below and fill in your config
-// const app = initializeApp(firebaseConfig);
-// export const db = getDatabase(app);
-
-// LocalStorage-based fallback (current mode)
-// This keeps existing data working while Firebase setup is pending
-const USE_FIREBASE = false;
-
-export { USE_FIREBASE };
+export const USE_FIREBASE = true;
 export { ref, set, get, onValue, off, push, update, remove };

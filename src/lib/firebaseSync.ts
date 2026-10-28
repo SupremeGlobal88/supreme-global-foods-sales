@@ -188,32 +188,27 @@ function queuePush(path: string, data: any): Promise<boolean> {
 
 // ── Individual push functions ────────────────────────────────────────────────
 export async function pushOrder(order: any): Promise<boolean> {
-  if (!isFirebaseReady()) return false;
   const path = getDbPath("orders");
   return queuePush(path, order);
 }
 
 export async function pushCheckin(checkin: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("checkins");
   await queuePush(path, checkin);
 }
 
 export async function pushAppointment(appointment: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("appointments");
   await queuePush(path, appointment);
 }
 
 export async function pushInvoice(invoice: any): Promise<{ success: boolean; error?: string }> {
-  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
   const path = getDbPath("invoices");
   const ok = await queuePush(path, invoice);
   return { success: ok };
 }
 
 export async function pushInvoices(invoices: any[]): Promise<{ success: boolean; error?: string }> {
-  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
   const path = getDbPath("invoices");
   let ok = true;
   for (const inv of invoices) {
@@ -224,37 +219,31 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
 }
 
 export async function removeOrder(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("orders");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function removeInvoice(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("invoices");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushFollowUpAction(action: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("followUpActions");
   await queuePush(path, action);
 }
 
 export async function pushFollowUp(followUp: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("followUps");
   await queuePush(path, followUp);
 }
 
 export async function pushOneReceipt(receipt: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("receipts");
   await queuePush(path, receipt);
 }
 
 export async function pushReceipts(receipts: any[]): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("receipts");
   for (const r of receipts) await queuePush(path, r);
 }
@@ -274,187 +263,156 @@ export async function readFromFirebase(path: string): Promise<any[]> {
 }
 
 export async function pushAppointmentDelete(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("appointments");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushCheckinDelete(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("checkins");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushOneCustomer(customer: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("customers");
   await queuePush(path, customer);
 }
 
 export async function removeOneCustomer(customerId: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("customers");
   await queuePush(`${path}/${customerId}`, null);
 }
 
 export async function pushOneStockItem(item: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("products");
   await queuePush(path, item);
 }
 
 export async function removeOneStockItem(itemId: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("products");
   await queuePush(`${path}/${itemId}`, null);
 }
 
 export async function pushCorporateCustomer(customer: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("corporateCustomers");
   await queuePush(path, customer);
 }
 
 export async function removeCorporateCustomer(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("corporateCustomers");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushPurchaseOrder(po: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("purchaseOrders");
   await queuePush(path, po);
 }
 
 export async function removePurchaseOrder(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("purchaseOrders");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushBarrel(barrel: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("barrels");
   await queuePush(path, barrel);
 }
 
 export async function removeBarrel(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("barrels");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushCOC(coc: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("certificatesOfCompliance");
   await queuePush(path, coc);
 }
 
 export async function removeCOC(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("certificatesOfCompliance");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushPackingListLine(pl: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("packingListLines");
   await queuePush(path, pl);
 }
 
 export async function removePackingListLine(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("packingListLines");
   await queuePush(`${path}/${id}`, null);
 }
 
 export async function pushCustomers(customers: any[]): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("customers");
   for (const c of customers) await queuePush(path, c);
 }
 
 export async function pushStock(stock: any[]): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("products");
   for (const s of stock) await queuePush(path, s);
 }
 
 export async function pushUser(user: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("users");
   await queuePush(path, user);
 }
 
 export async function pushSalesRep(rep: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("salesReps");
   await queuePush(path, rep);
 }
 
 export async function removeSalesRep(repId: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("salesReps");
   await queuePush(`${path}/${repId}`, null);
 }
 
 export async function pushUserDelete(userId: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("users");
   await queuePush(`${path}/${userId}`, null);
 }
 
 export async function pushCreditNote(cn: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("creditNotes");
   await queuePush(path, cn);
 }
 
 export async function pushCollectionNote(note: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("collectionNotes");
   await queuePush(path, note);
 }
 
 export async function pushCollectionPromise(promise: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("collectionPromises");
   await queuePush(path, promise);
 }
 
 export async function pushAccountHold(hold: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("accountHolds");
   await queuePush(path, hold);
 }
 
 export async function pushCustomer(customer: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("customers");
   await queuePush(path, customer);
 }
 
 export async function pushPackingList(pl: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("packingListLines");
   await queuePush(path, pl);
 }
 
 export async function pushAudit(audit: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("audits");
   await queuePush(path, audit);
 }
 
 export async function pushSpecialPrice(sp: any): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("specialPrices");
   await queuePush(path, sp);
 }
 
 export async function removeSpecialPrice(id: number): Promise<void> {
-  if (!isFirebaseReady()) return;
   const path = getDbPath("specialPrices");
   await queuePush(`${path}/${id}`, null);
 }
@@ -584,7 +542,6 @@ function handleReceived(type: string, storageKey: string) {
 }
 
 export function subscribeToCustomers(onData?: (customers: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("customers");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -595,7 +552,6 @@ export function subscribeToCustomers(onData?: (customers: any[]) => void): () =>
 }
 
 export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("products");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -606,7 +562,6 @@ export function subscribeToStock(onData?: (stock: any[]) => void): () => void {
 }
 
 export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("orders");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -617,7 +572,6 @@ export function subscribeToOrders(onData: (orders: any[]) => void): () => void {
 }
 
 export function subscribeToCheckins(onData: (checkins: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("checkins");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -628,7 +582,6 @@ export function subscribeToCheckins(onData: (checkins: any[]) => void): () => vo
 }
 
 export function subscribeToAppointments(onData: (appts: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("appointments");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -639,7 +592,6 @@ export function subscribeToAppointments(onData: (appts: any[]) => void): () => v
 }
 
 export function subscribeToInvoices(onData: (invoices: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("invoices");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -650,7 +602,6 @@ export function subscribeToInvoices(onData: (invoices: any[]) => void): () => vo
 }
 
 export function subscribeToFollowUpActions(onData: (actions: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("followUpActions");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -661,7 +612,6 @@ export function subscribeToFollowUpActions(onData: (actions: any[]) => void): ()
 }
 
 export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("followUps");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -672,7 +622,6 @@ export function subscribeToFollowUps(onData?: (followUps: any[]) => void): () =>
 }
 
 export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("receipts");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -683,7 +632,6 @@ export function subscribeToReceipts(onData?: (receipts: any[]) => void): () => v
 }
 
 export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("salesReps");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -694,7 +642,6 @@ export function subscribeToSalesReps(onData?: (reps: any[]) => void): () => void
 }
 
 export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("users");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -705,7 +652,6 @@ export function subscribeToUsers(onData?: (users: any[]) => void): () => void {
 }
 
 export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("creditNotes");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -716,7 +662,6 @@ export function subscribeToCreditNotes(onData?: (notes: any[]) => void): () => v
 }
 
 export function subscribeToCollectionNotes(onData?: (notes: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("collectionNotes");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -727,7 +672,6 @@ export function subscribeToCollectionNotes(onData?: (notes: any[]) => void): () 
 }
 
 export function subscribeToCollectionPromises(onData?: (promises: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("collectionPromises");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -738,7 +682,6 @@ export function subscribeToCollectionPromises(onData?: (promises: any[]) => void
 }
 
 export function subscribeToAccountHolds(onData?: (holds: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("accountHolds");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -749,7 +692,6 @@ export function subscribeToAccountHolds(onData?: (holds: any[]) => void): () => 
 }
 
 export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("specialPrices");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -760,7 +702,6 @@ export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () =
 }
 
 export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("corporateCustomers");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -771,7 +712,6 @@ export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): 
 }
 
 export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("purchaseOrders");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -782,7 +722,6 @@ export function subscribeToPurchaseOrders(onData?: (items: any[]) => void): () =
 }
 
 export function subscribeToBarrels(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("barrels");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -793,7 +732,6 @@ export function subscribeToBarrels(onData?: (items: any[]) => void): () => void 
 }
 
 export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("certificatesOfCompliance");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {
@@ -804,7 +742,6 @@ export function subscribeToCOCs(onData?: (items: any[]) => void): () => void {
 }
 
 export function subscribeToPackingListLines(onData?: (items: any[]) => void): () => void {
-  if (!isFirebaseReady()) return () => {};
   const path = getDbPath("packingListLines");
   const { onValue, ref } = require("firebase/database");
   const unsub = onValue(ref(db, path), (snap: any) => {

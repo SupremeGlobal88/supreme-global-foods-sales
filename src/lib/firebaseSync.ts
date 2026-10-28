@@ -112,8 +112,8 @@ export function clearFirebaseConfig(): void {
 export function initFirebase(userConfig?: any): boolean {
   if (app && db) return true;
   try {
-    const cfg = userConfig || getFirebaseConfig();
-    if (!cfg.configured) return false;
+    const cfg = userConfig || getConfigFromStorage();
+    if (!cfg || !cfg.projectId) return false;
     // Lazy-load and init
     getFirebase().then((fb) => {
       if (!fb) return;

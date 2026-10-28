@@ -23,6 +23,8 @@ jobs:
         run: |
           echo "Node version: $(node -v)"
           echo "NPM version: $(npm -v)"
+          # Fallback to public npm registry if mirror is unreachable
+          sed -i 's|https://npm.mirrors.msh.team/|https://registry.npmjs.org/|g' package-lock.json || true
           npm ci --no-audit --no-fund 2>&1 | tee npm-install.log
           echo "Install completed"
 

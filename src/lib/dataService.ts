@@ -2577,14 +2577,13 @@ export const dataService = {
       return { success: true };
     },
     getStats: () => {
-      const regular = customers.filter((c) => !c.isCorporate && c.priceTier !== "corporate");
       const now = new Date();
       const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
       return {
-        total: regular.length,
-        active: regular.filter((c) => c.isActive !== false).length,
-        inactive: regular.filter((c) => c.isActive === false).length,
-        thisMonth: regular.filter((c) => new Date(c.createdAt || 0).getTime() >= thisMonthStart).length,
+        total: customers.length,
+        active: customers.filter((c) => c.isActive !== false).length,
+        inactive: customers.filter((c) => c.isActive === false).length,
+        thisMonth: customers.filter((c) => new Date(c.createdAt || 0).getTime() >= thisMonthStart).length,
       };
     },
     getSalesReps: () => {

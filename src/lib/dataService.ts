@@ -5744,10 +5744,7 @@ export const dataService = {
     try {
       load(); // ensure fresh data
       const po = purchaseOrders.find((p) => p.id == poId);
-      if (!po) {
-        console.warn("[generateInvoiceForPO] PO not found:", poId);
-        return null;
-      }
+      if (!po) return null;
 
       // Calculate totals from PO line items
       const items = po.lineItems || [];
@@ -5776,7 +5773,6 @@ export const dataService = {
         salesRepName: corpCustomer?.salesRepName || "",
       };
 
-      const poRef = po.poNumber || `PO-${po.id}`;
       // Check if invoice already exists for this PO
       const existingIdx = invoices.findIndex((i) => i.purchaseOrderId == poId);
 
@@ -5833,6 +5829,7 @@ export const dataService = {
       }
 
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
+      const poRef = po.poNumber || `PO-${po.id}`;
 
       invoices.push({
         id: nextInvId,
@@ -5868,9 +5865,6 @@ export const dataService = {
       });
       saveItem("sgf_invoices", invoices);
       return invoiceNumber;
-    } catch (err) {
-      console.error("[generateInvoiceForPO] CRASH:", err);
-      return null;
     } finally {
       invoiceGenerationLock = false;
     }

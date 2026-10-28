@@ -870,11 +870,19 @@ export async function localLinkHandler(path: string, input: any) {
       }
 
       // ================================================================
-      //  FALLBACK
+      //  GENERIC FALLBACK — handles any dataService method not explicitly cased above
       // ================================================================
-      default:
-        console.warn(`[localLink] Unhandled: ${path}`);
-        result = null;
+      default: {
+        const [cat, act] = path.split(".");
+        const svc = (dataService as any)[cat];
+        if (svc && typeof svc[act] === "function") {
+          result = svc[act](input);
+        } else {
+          console.warn(`[localLink] Unhandled: ${path}`);
+          result = null;
+        }
+        break;
+      }
     }
 
     return result;

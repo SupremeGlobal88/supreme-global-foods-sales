@@ -1,4 +1,5 @@
 import { initTRPC } from "@trpc/server";
+import { dataService } from "./dataService";
 
 const t = initTRPC.create();
 
@@ -205,9 +206,10 @@ export const appRouter = t.router({
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(({ input }) => dataService.packingList.update(input)),
     delete: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.packingList.delete(input)),
   }),
-});
 
   customerFollowUp: t.router({
     getAllFollowUps: t.procedure.query(() => dataService.customerFollowUp.getAllFollowUps()),
   }),
-  export type AppRouter = typeof appRouter;
+});
+
+export type AppRouter = typeof appRouter;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { reloadFromStorage } from "@/lib/dataService";
@@ -7,6 +8,7 @@ import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Plus, Pencil, Trash2, X, Users, MapPin, Mail,
   Download, Upload, FileText, Tag, DollarSign, ShieldAlert, History,
+  AlertTriangle, Eye,
 } from "lucide-react";
 
 const PRICE_TIER_COLORS: Record<string, string> = {
@@ -23,11 +25,13 @@ export default function CustomersPage() {
   const myRepName = user?.name || "";
   const utils = trpc.useUtils();
 
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean; similar: any[]; payload: any }>({ show: false, similar: [], payload: null });
   const [showSpecialPriceForm, setShowSpecialPriceForm] = useState(false);
   const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [specialPriceData, setSpecialPriceData] = useState({ stockItemId: 0, specialPrice: 0 });
@@ -84,6 +88,17 @@ export default function CustomersPage() {
     setEditingId(cust.id); setShowForm(true);
   }
 
+  function findSimilarCustomers(name: string, code: string) {
+    if (!customers) return [];
+    const normName = name.trim().replace(/\s+/g, " ").toLowerCase();
+    const normCode = code.trim().toLowerCase();
+    return customers.filter((c) => {
+      const nameSimilar = (c.name || "").trim().replace(/\s+/g, " ").toLowerCase() === normName;
+      const codeSimilar = normCode && (c.customerCode || "").toLowerCase() === normCode;
+      return nameSimilar || codeSimilar;
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     // Name is required
@@ -114,6 +129,12 @@ export default function CustomersPage() {
       // Auto-generate customer code for new customers
       if (!payload.customerCode || payload.customerCode.trim() === "") {
         payload.customerCode = "AUTO"; // Will be replaced by backend
+      }
+      // Check for duplicates before creating
+      const similar = findSimilarCustomers(payload.name, payload.customerCode || "");
+      if (similar.length > 0) {
+        setDuplicateWarning({ show: true, similar, payload });
+        return;
       }
       createCustomer.mutate(payload);
     }
@@ -453,6 +474,13 @@ export default function CustomersPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate(`/customer/${selected.id}`)}
+                      className="p-2 rounded-lg hover:bg-[#D4A843]/10 text-[#D4A843] transition-colors"
+                      title="View full profile"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                     {isAdmin && (
                       <button
                         onClick={() => {
@@ -682,6 +710,45 @@ export default function CustomersPage() {
               </div>
               <button type="submit" className="btn-primary w-full justify-center">Save Special Price</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Warning Modal */}
+      {duplicateWarning.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }}>
+          <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16, border: "1px solid rgba(239,68,68,0.3)" }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-full bg-[#EF4444]/10">
+                <AlertTriangle className="w-6 h-6 text-[#EF4444]" />
+              </div>
+              <h2 className="font-display font-semibold text-white text-xl">Similar Customer(s) Found</h2>
+            </div>
+            <p className="text-sm text-[#9CA3AF] font-body mb-4">
+              A customer with a similar name or code already exists. Creating a duplicate may overwrite existing data.
+            </p>
+            <div className="space-y-2 mb-6">
+              {duplicateWarning.similar.map((c: any) => (
+                <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-[#0a0a0a] border" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+                  <div>
+                    <p className="text-sm font-body text-[#F5F5F0]">{c.name}</p>
+                    <p className="text-xs text-[#9CA3AF]">{c.customerCode || "No code"} · {c.city || "No city"}</p>
+                  </div>
+                  <button onClick={() => navigate(`/customer/${c.id}`)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#D4A843]/10 text-[#D4A843] text-xs font-body hover:bg-[#D4A843]/20 transition-colors">
+                    <Eye className="w-3 h-3" />
+                    View
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDuplicateWarning({ show: false, similar: [], payload: null })} className="flex-1 py-2.5 rounded-lg border text-sm font-body transition-colors" style={{ borderColor: "rgba(255,255,255,0.1)", color: "#9CA3AF" }}>
+                Cancel
+              </button>
+              <button onClick={() => { createCustomer.mutate(duplicateWarning.payload); setDuplicateWarning({ show: false, similar: [], payload: null }); }} className="flex-1 py-2.5 rounded-lg bg-[#D4A843] text-black text-sm font-body font-semibold hover:bg-[#D4A843]/90 transition-colors">
+                Create Anyway
+              </button>
+            </div>
           </div>
         </div>
       )}

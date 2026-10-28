@@ -2510,6 +2510,7 @@ export const dataService = {
         items: results.sort((a, b) => b.totalOrdered - a.totalOrdered),
       };
     },
+    bulkUpload: bulkCreate,
   },
 
   customer: {
@@ -3208,6 +3209,17 @@ export const dataService = {
       }
       return { repaired, total: orders.length };
     },
+    delete: ({ id }: { id: number }) => {
+      const ord = orders.find((o) => o.id == id);
+      if (ord) {
+        orders = orders.map((o) => o.id == id ? { ...o, status: "cancelled", updatedAt: new Date().toISOString() } : o);
+        saveItem("sgf_orders", orders);
+        logAudit("DELETE", "order", id, `Order cancelled: ${ord.invoiceNumber || ord.id}`);
+      }
+      return { success: true };
+    },
+    generateInvoice: (orderId: number) => generateInvoiceForOrder(orderId),
+    generateMissingInvoices: () => repairOrders(),
   },
 
   invoice: {
@@ -4216,7 +4228,13 @@ export const dataService = {
     generateInvoiceForOrder,
     matchBankPayments,
     parseBankStatement,
-    allocateBankPayments,},
+    allocateBankPayments,
+    fixDraftInvoices: fixDraftInvoicesForDeliveredOrders,
+    fixSageDates: fixSageInvoiceDates,
+    generateForPO: generateInvoiceForPO,
+    createOrderFromInvoice: createFromInvoice,
+    update: updateInvoice,
+  },
 
   appointment: {
     list: () => appointments.map((a) => ({

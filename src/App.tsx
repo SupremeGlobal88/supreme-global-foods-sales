@@ -33,6 +33,7 @@ import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
 import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
 import PackingListPage from "./pages/PackingListPage";
 import AuditReportPage from "./pages/AuditReportPage";
+import CustomerDetailPage from "./pages/CustomerDetailPage";
 import { ShieldAlert, Cloud } from "lucide-react";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -250,6 +251,7 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="stock" element={<StockPage />} />
         <Route path="customers" element={<CustomersPage />} />
+        <Route path="customer/:id" element={<CustomerDetailPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="invoices" element={<RoleGuard><InvoicesPage /></RoleGuard>} />
         <Route path="statement/:customerId" element={<RoleGuard><StatementPage /></RoleGuard>} />

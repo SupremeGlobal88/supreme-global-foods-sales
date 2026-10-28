@@ -20,6 +20,7 @@ import {
   removeCOC,
   pushCreditNote,
   pushUser,
+  pushUserDelete,
   pushSalesRep,
   pushSpecialPrice,
   pushFollowUp,
@@ -32,6 +33,18 @@ import {
   pushCollectionPromise,
   pushAudit,
   syncFromCloud,
+  removeOneCustomer,
+  removeOneStockItem,
+  removeOrder,
+  removeInvoice,
+  pushAppointmentDelete,
+  pushCheckinDelete,
+  removeSpecialPrice,
+  removeSalesRep,
+  removeCorporateCustomer,
+  removePurchaseOrder,
+  removeBarrel,
+  removePackingListLine,
 } from "./firebaseSync";
 
 type RouterInput = inferRouterInputs<AppRouter>;
@@ -92,6 +105,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "user.delete": {
         result = dataService.user.delete(input);
         if (result?.success) {
+          await pushUserDelete(input);
           reloadFromStorage(["sgf_users"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 0 } }));
         }
@@ -165,6 +179,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "stock.delete": {
         result = dataService.stock.delete(input);
         if (result?.success) {
+          await removeOneStockItem(input);
           reloadFromStorage(["sgf_products"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "products", count: 0 } }));
         }
@@ -226,6 +241,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "customer.delete": {
         result = dataService.customer.delete(input);
         if (result?.success) {
+          await removeOneCustomer(input);
           reloadFromStorage(["sgf_customers"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "customers", count: 0 } }));
         }
@@ -283,6 +299,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "order.delete": {
         result = dataService.order.update({ id: input, data: { deleted: true, deletedAt: new Date().toISOString() } });
         if (result?.success) {
+          await pushOrder(result);
           reloadFromStorage(["sgf_orders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 0 } }));
         }
@@ -344,7 +361,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "invoice.getAgingReport": await smartSync("invoices", "sgf_invoices"); result = dataService.invoice.getAgingReport(input || {}); break;
       case "invoice.create": { result = dataService.invoice.create(input); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.update": { const { id, data } = input; result = dataService.invoice.updateInvoice({ id, data }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
-      case "invoice.delete": { result = dataService.invoice.delete(input); if (result?.success) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
+      case "invoice.delete": { result = dataService.invoice.delete(input); if (result?.success) { await removeInvoice(input); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.markAsPaid": { result = dataService.invoice.updateStatus({ id: input, status: "paid" }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.send": { result = dataService.invoice.updateStatus({ id: input, status: "sent" }); if (result) { await pushInvoice(result); reloadFromStorage(["sgf_invoices"]); window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } })); } break; }
       case "invoice.generatePDF": result = dataService.invoice.getById(input); break;
@@ -403,6 +420,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "appointment.delete": {
         result = dataService.appointment.delete(input);
         if (result?.success) {
+          await pushAppointmentDelete(input);
           reloadFromStorage(["sgf_appointments"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 0 } }));
         }
@@ -450,6 +468,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "checkIn.delete": {
         result = dataService.checkin.delete(input);
         if (result?.success) {
+          await pushCheckinDelete(input);
           reloadFromStorage(["sgf_checkins"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkins", count: 0 } }));
         }
@@ -529,6 +548,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "specialPrice.delete": {
         result = dataService.specialPrice.delete(input);
         if (result?.success) {
+          await removeSpecialPrice(input);
           reloadFromStorage(["sgf_specialPrices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "specialPrices", count: 0 } }));
         }
@@ -578,6 +598,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "salesRep.delete": {
         result = dataService.salesRep.delete(input);
         if (result?.success) {
+          await removeSalesRep(input);
           reloadFromStorage(["sgf_salesReps"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 0 } }));
         }
@@ -727,6 +748,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "corporateCustomer.delete": {
         result = dataService.corporateCustomer.delete(input);
         if (result?.success) {
+          await removeCorporateCustomer(input);
           reloadFromStorage(["sgf_corporateCustomers"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 0 } }));
         }
@@ -775,6 +797,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "purchaseOrder.delete": {
         result = dataService.purchaseOrder.delete(input);
         if (result?.success) {
+          await removePurchaseOrder(input);
           reloadFromStorage(["sgf_purchaseOrders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 0 } }));
         }
@@ -818,6 +841,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "barrel.delete": {
         result = dataService.barrel.delete(input);
         if (result?.success) {
+          await removeBarrel(input);
           reloadFromStorage(["sgf_barrels"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 0 } }));
         }
@@ -863,6 +887,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "packingList.delete": {
         result = dataService.packingList?.delete?.(input);
         if (result?.success) {
+          await removePackingListLine(input);
           reloadFromStorage(["sgf_packingLists"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingLists", count: 0 } }));
         }

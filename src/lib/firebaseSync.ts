@@ -567,6 +567,7 @@ function handleReceived(type: string, storageKey: string) {
       const merged = mergeWithCloudData(storageKey, items);
       if (hasFingerprintChanged(storageKey, merged)) {
         setStorageItem(storageKey, JSON.stringify(merged));
+        dataServiceRefresh?.();
         window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type, count: items.length } }));
       }
     } catch { /* ignore */ }

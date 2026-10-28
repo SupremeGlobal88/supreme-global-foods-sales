@@ -60,4 +60,30 @@ jobs:
           echo "Deploying with wrangler..."
           echo "Token length: ${#CLOUDFLARE_API_TOKEN}"
           echo "Account ID: $CLOUDFLARE_ACCOUNT_ID"
-          npx wrangler pages deploy dist --project-name=supreme-global-foods-sales --branch=main --commit-dirty=true
+
+          max_retries=3
+          retry_delay=30
+          attempt=1
+
+          while [ $attempt -le $max_retries ]; do
+            echo ""
+            echo "=== Deploy attempt $attempt of $max_retries ==="
+            if npx wrangler pages deploy dist --project-name=supreme-global-foods-sales --branch=main --commit-dirty=true; then
+              echo "✅ Deploy succeeded on attempt $attempt"
+              exit 0
+            fi
+
+            exit_code=$?
+            echo "❌ Deploy failed with exit code $exit_code"
+
+            if [ $attempt -lt $max_retries ]; then
+              echo "⏳ Waiting $retry_delay seconds before retry..."
+              sleep $retry_delay
+              retry_delay=$((retry_delay + 30))
+            fi
+
+            attempt=$((attempt + 1))
+          done
+
+          echo "❌ Deploy failed after $max_retries attempts"
+          exit 1

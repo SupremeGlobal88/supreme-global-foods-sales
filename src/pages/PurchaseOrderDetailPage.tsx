@@ -437,7 +437,7 @@ export default function PurchaseOrderDetailPage() {
       const existingCOC = cocByPackingLine.get(pl.id);
 
       if (existingCOC) {
-        // PRESERVE batch number and product code — only update changed fields
+        // REGENERATE from fresh packing line — don't preserve old batch/product code
         return {
           ...existingCOC,
           purchaseOrderId: poId,
@@ -445,34 +445,33 @@ export default function PurchaseOrderDetailPage() {
           poNumber: po.poNumber,
           corporateCustomerId: po.corporateCustomerId,
           corporateCustomerName: customer?.name || "",
-          recircleProductCode: existingCOC.recircleProductCode, // PRESERVED
-          customerProductCode: poLine?.customerStockCode || existingCOC.customerProductCode || "",
-          customerDescription: poLine?.customerDescription || existingCOC.customerDescription || "",
-          productDescription: fullDesc, // Updated in case product description changed
-          batchNumber: existingCOC.batchNumber, // PRESERVED — never changes
-          lotSealNumber: pl.lotSealNumber || pl.lotNumber || pl.sealNumber || existingCOC.lotSealNumber || "",
+          recircleProductCode: pl.stockCode || poLine?.stockCode || poLine?.productCode || existingCOC.recircleProductCode || "",
+          customerProductCode: poLine?.customerStockCode ?? existingCOC.customerProductCode ?? "",
+          customerDescription: poLine?.customerDescription ?? existingCOC.customerDescription ?? "",
+          productDescription: fullDesc,
+          batchNumber: pl.batchNumber || pl.lineNumber || `${format(new Date(), "yyMMdd")}${Math.floor(Math.random() * 10000)}`,
+          lotSealNumber: pl.lotSealNumber ?? pl.lotNumber ?? pl.sealNumber ?? existingCOC.lotSealNumber ?? "",
           manufacturingDate: mfgDateStr,
           useByDate: useByStr,
-          barrelNumber: `${barrelIdx + 1} of ${totalBarrels}`,
-          barrelIndex: barrelIdx + 1,
+          barrelNumber: pl.barrelNumber ? `${pl.barrelNumber} of ${totalBarrels}` : `${barrelIdx + 1} of ${totalBarrels}`,
+          barrelIndex: pl.barrelNumber ? Number(pl.barrelNumber) : barrelIdx + 1,
           totalBarrels,
-          quantityBundles: pl.quantityBundles || 0,
-          calibration: stock?.size || existingCOC.calibration || "Min 28/30 mm",
+          quantityBundles: pl.quantityBundles ?? 0,
+          calibration: stock?.size ?? existingCOC.calibration ?? "Min 28/30 mm",
           length: stock?.length ? `Minimum ${stock.length}m/bundle` : (existingCOC.length || "Minimum 90 to 91m/bundle"),
           qtyStrands: stock?.strands ? `${stock.strands} strands / bundle` : (existingCOC.qtyStrands || "13 strands / bundle"),
           stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",
-          grossWeight: pl.grossWeight || existingCOC.grossWeight || 0,
-          netWeight: pl.netWeight || existingCOC.netWeight || 0,
-          // Preserve these fields if they exist
-          odour: existingCOC.odour || "No off odors to be present",
-          colour: existingCOC.colour || "White / Beige color",
-          packing: existingCOC.packing || "Bundles packed in barrels of 150 or 200",
-          countryOfOrigin: existingCOC.countryOfOrigin || "South Africa",
-          status: existingCOC.status || "Non HALAAL",
+          grossWeight: pl.grossWeight ?? existingCOC.grossWeight ?? 0,
+          netWeight: pl.netWeight ?? existingCOC.netWeight ?? 0,
+          odour: pl.odour ?? existingCOC.odour ?? "No off odors to be present",
+          colour: pl.colour ?? existingCOC.colour ?? "White / Beige color",
+          packing: pl.packing ?? existingCOC.packing ?? "Bundles packed in barrels of 150 or 200",
+          countryOfOrigin: pl.countryOfOrigin ?? existingCOC.countryOfOrigin ?? "South Africa",
+          status: pl.status ?? existingCOC.status ?? "Non HALAAL",
           casingType,
           animalType: isSheep ? "sheep" : "hog",
-          cleaningProcess: existingCOC.cleaningProcess || "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
-          handlingStorage: existingCOC.handlingStorage || "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
+          cleaningProcess: pl.cleaningProcess ?? existingCOC.cleaningProcess ?? "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
+          handlingStorage: pl.handlingStorage ?? existingCOC.handlingStorage ?? "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
         };
       }
 

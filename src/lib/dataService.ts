@@ -1524,7 +1524,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
       const now = new Date();
 
-      invoices.push({
+      const invoice = {
         id: nextInvId,
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -5862,9 +5862,10 @@ export const dataService = {
         })),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
-      });
+      };
+      invoices.push(invoice);
       saveItem("sgf_invoices", invoices);
-      return invoiceNumber;
+      return invoice;
     } finally {
       invoiceGenerationLock = false;
     }

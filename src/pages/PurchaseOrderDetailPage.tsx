@@ -380,6 +380,8 @@ export default function PurchaseOrderDetailPage() {
 
   // ═══ AUTO-GENERATE COCs FROM PACKING LIST — ATOMIC BULK OPERATION ═══
   function handleAutoGenerateCOCs() {
+    // Force reload ALL data from localStorage to ensure nothing is stale
+    reloadFromStorage();
     // Read FRESH packing lines directly from dataService — avoid stale React state
     const freshPackingLines = dataService.packingList.listByPurchaseOrder(poId);
     const pls = freshPackingLines || [];

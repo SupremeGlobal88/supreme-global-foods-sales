@@ -430,7 +430,7 @@ export default function PurchaseOrderDetailPage() {
 
       const productDesc = pl.productDescription || "";
       const fullDesc = stock
-        ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
+        ? `${productDesc} (${casingType.replace(" CASINGS", "")} ${pl.size || stock.size || ""} ${stock.strands || ""}/${stock.hanks || ""}/${stock.length || ""} ${stock.calibration || ""})`
         : productDesc;
 
       // Check if a COC already exists for this packing list line
@@ -495,8 +495,8 @@ export default function PurchaseOrderDetailPage() {
         corporateCustomerId: po.corporateCustomerId,
         corporateCustomerName: customer?.name || "",
         recircleProductCode: uniqueProductCode,
-        customerProductCode: poLine?.customerStockCode || "",
-        customerDescription: poLine?.customerDescription || "",
+        customerProductCode: pl.customerStockCode || poLine?.customerStockCode || "",
+        customerDescription: pl.productDescription || poLine?.customerDescription || "",
         productDescription: fullDesc,
         batchNumber,
         lotSealNumber: pl.lotSealNumber ?? pl.lotNumber ?? pl.sealNumber ?? "",
@@ -506,7 +506,7 @@ export default function PurchaseOrderDetailPage() {
         barrelIndex: pl.barrelNumber ? Number(pl.barrelNumber) : barrelIdx + 1,
         totalBarrels,
         quantityBundles: pl.quantityBundles ?? 0,
-        calibration: stock?.size ?? "Min 28/30 mm",
+        calibration: pl.size || stock?.size || "Min 28/30 mm",
         length: stock?.length ? `Minimum ${stock.length}m/bundle` : "Minimum 90 to 91m/bundle",
         qtyStrands: stock?.strands ? `${stock.strands} strands / bundle` : "13 strands / bundle",
         stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",
@@ -519,8 +519,8 @@ export default function PurchaseOrderDetailPage() {
         animalType: isSheep ? "sheep" : "hog",
         cleaningProcess: "Collect small intestines from Abattoir. Manure stripped by hand. Mucosa is removed, through a series of soaking and feeding through a combination of rollers. Final: Quality control, calibration and measuring processed. Product salted and stored in plastic drums ready for delivery.",
         handlingStorage: "Casings to be handled, transported, packed, selected and dispatched in conformance with Good Manufacturing Practice. Casing supplier to store casings in salt, and at ambient/cool temperature. End user to store casings under refrigerated conditions and use within 10-12 months (Opened/Unopened) of receiving it.",
-        grossWeight: pl.grossWeight || 0,
-        netWeight: pl.netWeight || 0,
+        grossWeight: pl.grossWeight ?? 0,
+        netWeight: pl.netWeight ?? 0,
       };
     });
 

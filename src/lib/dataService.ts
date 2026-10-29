@@ -1524,7 +1524,7 @@ export function migrateSampleOrders(): { migrated: number; invoicesCreated: numb
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
       const now = new Date();
 
-      const invoice = {
+      invoices.push({
         id: nextInvId,
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -5831,7 +5831,7 @@ export const dataService = {
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
       const poRef = po.poNumber || `PO-${po.id}`;
 
-      invoices.push({
+      const invoice = {
         id: nextInvId,
         purchaseOrderId: po.id,
         poNumber: po.poNumber,

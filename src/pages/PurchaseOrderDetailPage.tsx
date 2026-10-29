@@ -380,7 +380,9 @@ export default function PurchaseOrderDetailPage() {
 
   // ═══ AUTO-GENERATE COCs FROM PACKING LIST — ATOMIC BULK OPERATION ═══
   function handleAutoGenerateCOCs() {
-    const pls = packingLines || [];
+    // Read FRESH packing lines directly from dataService — avoid stale React state
+    const freshPackingLines = dataService.packingList.listByPurchaseOrder(poId);
+    const pls = freshPackingLines || [];
     if (pls.length === 0) {
       alert("No packing list lines found. Please complete the packing list first.");
       return;

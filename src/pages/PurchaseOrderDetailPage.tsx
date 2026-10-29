@@ -437,7 +437,7 @@ export default function PurchaseOrderDetailPage() {
       const existingCOC = cocByPackingLine.get(pl.id);
 
       if (existingCOC) {
-        // REGENERATE from fresh packing line — don't preserve old batch/product code
+        // REGENERATE from fresh packing line — use pl.* directly for editable fields
         return {
           ...existingCOC,
           purchaseOrderId: poId,
@@ -446,8 +446,8 @@ export default function PurchaseOrderDetailPage() {
           corporateCustomerId: po.corporateCustomerId,
           corporateCustomerName: customer?.name || "",
           recircleProductCode: pl.stockCode || poLine?.stockCode || poLine?.productCode || existingCOC.recircleProductCode || "",
-          customerProductCode: poLine?.customerStockCode ?? existingCOC.customerProductCode ?? "",
-          customerDescription: poLine?.customerDescription ?? existingCOC.customerDescription ?? "",
+          customerProductCode: pl.customerStockCode || poLine?.customerStockCode || existingCOC.customerProductCode || "",
+          customerDescription: pl.productDescription || poLine?.customerDescription || existingCOC.customerDescription || "",
           productDescription: fullDesc,
           batchNumber: pl.batchNumber || pl.lineNumber || `${format(new Date(), "yyMMdd")}${Math.floor(Math.random() * 10000)}`,
           lotSealNumber: pl.lotSealNumber ?? pl.lotNumber ?? pl.sealNumber ?? existingCOC.lotSealNumber ?? "",
@@ -457,7 +457,7 @@ export default function PurchaseOrderDetailPage() {
           barrelIndex: pl.barrelNumber ? Number(pl.barrelNumber) : barrelIdx + 1,
           totalBarrels,
           quantityBundles: pl.quantityBundles ?? 0,
-          calibration: stock?.size ?? existingCOC.calibration ?? "Min 28/30 mm",
+          calibration: pl.size || stock?.size || existingCOC.calibration || "Min 28/30 mm",
           length: stock?.length ? `Minimum ${stock.length}m/bundle` : (existingCOC.length || "Minimum 90 to 91m/bundle"),
           qtyStrands: stock?.strands ? `${stock.strands} strands / bundle` : (existingCOC.qtyStrands || "13 strands / bundle"),
           stuffingCapacity: pl.quantityBundles <= 150 ? "44kg average / bundle" : "58kg average / bundle",

@@ -337,6 +337,23 @@ function load() {
     // they must stay deleted. Re-adding causes "jumping back" bug.
     // Defaults are only injected on first load when users array is empty.
   } catch { /* ignore */ }
+
+  // ─── CORPORATE MODULE DATA LOADING ───
+  const cc = getStorageItem("sgf_corporateCustomers");
+  if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }
+  else corporateCustomers = [];
+  const po = getStorageItem("sgf_purchaseOrders");
+  if (po) { const d = JSON.parse(po); if (Array.isArray(d)) purchaseOrders = d; }
+  else purchaseOrders = [];
+  const br = getStorageItem("sgf_barrels");
+  if (br) { const d = JSON.parse(br); if (Array.isArray(d)) barrels = d; }
+  else barrels = [];
+  const coc = getStorageItem("sgf_certificatesOfCompliance");
+  if (coc) { const d = JSON.parse(coc); if (Array.isArray(d)) certificatesOfCompliance = d; }
+  else certificatesOfCompliance = [];
+  const pll = getStorageItem("sgf_packingListLines");
+  if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
+  else packingListLines = [];
 }
 
 /** Reset all transaction data (orders, invoices, receipts, etc.) but keep users, customers, products, settings */

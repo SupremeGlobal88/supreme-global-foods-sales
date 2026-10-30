@@ -144,8 +144,8 @@ export const appRouter = t.router({
   }),
   systemLogs: t.router({
     list: t.procedure.query(() => dataService.systemLogs.list()),
-    getByCategory: t.procedure.query(({ input }: { input?: string }) => dataService.systemLogs.getByCategory(input || "")),
-    getByLevel: t.procedure.query(({ input }: { input?: string }) => dataService.systemLogs.getByLevel(input || "")),
+    getByCategory: t.procedure.input((val: unknown) => val as string).query(({ input }) => dataService.systemLogs.getByCategory(input || "")),
+    getByLevel: t.procedure.input((val: unknown) => val as string).query(({ input }) => dataService.systemLogs.getByLevel(input || "")),
     getSummary: t.procedure.query(() => dataService.systemLogs.getSummary()),
   }),
   followUp: t.router({

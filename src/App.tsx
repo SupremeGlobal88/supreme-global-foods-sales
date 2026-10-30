@@ -2,8 +2,8 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pullFromCloud, pushInvoice } from "@/lib/firebaseSync";
-import { repairCancelledInvoiceBalances } from "@/lib/dataService";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady } from "@/lib/firebaseSync";
+
 import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
@@ -98,55 +98,16 @@ export default function App() {
     repairInvoiceCompanies();
     repairPurchaseOrderCompanies();
 
-    const doBackgroundPull = async () => {
-      try {
-        if (isFirebaseReady()) {
-          console.log("[Sync] Background cloud pull starting...");
-          const counts = await pullFromCloud();
-          reloadFromStorage();
-          console.log("[Sync] Background cloud pull complete:", counts);
+    // Mark cloud as ready immediately — real-time subscriptions handle ongoing sync
+    setIsCloudReady(true);
 
-          // Repair cancelled invoices with non-zero balance after cloud pull
-          const repairResult = repairCancelledInvoiceBalances();
-          if (repairResult.changed > 0) {
-            console.log(`[Sync] Repaired ${repairResult.changed} cancelled invoice(s), pushing to cloud...`);
-            for (const inv of repairResult.invoices) {
-              try { await pushInvoice(inv); } catch (e) { console.warn("[Sync] pushInvoice failed for", inv.invoiceNumber, e); }
-            }
-            reloadFromStorage();
-            console.log("[Sync] Cancelled invoice repair pushed to cloud");
-          }
-        }
-      } catch (e) {
-        console.warn("[Sync] Background pull error:", e);
-      }
-    };
-
-    // Attempt immediate background pull (may fail if Firebase not ready yet)
-    doBackgroundPull();
-
-    // When Firebase finishes lazy-loading, set up real-time sync and pull again
-    const onFirebaseReady = () => {
-      console.log("[Sync] Firebase ready — setting up real-time listeners and pulling cloud data");
-      initAutoSync();
-      doBackgroundPull();
-    };
-    window.addEventListener("firebaseReady", onFirebaseReady);
-
-    // Show loading screen for max 3 seconds
-    const safetyTimer = setTimeout(() => {
-      setIsCloudReady(true);
-    }, 3000);
-
-    return () => { unsub(); clearTimeout(safetyTimer); window.removeEventListener("firebaseReady", onFirebaseReady); };
+    return () => { unsub(); };
   }, []);
 
   // POST-LOGIN SYNC
   useEffect(() => {
     if (isAuthenticated && isCloudReady) {
-      console.log("[Sync] Post-login sync triggered");
       reloadFromStorage();
-      console.log("[Sync] Post-login complete");
     }
   }, [isAuthenticated, isCloudReady]);
 
@@ -165,7 +126,7 @@ export default function App() {
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        console.log("[Sync] firebaseDataReceived batch:", Array.from(pendingTypes));
+
         for (const t of pendingTypes) {
           switch (t) {
             case "invoices":
@@ -224,7 +185,7 @@ export default function App() {
               utils.packingList.listByPurchaseOrder.invalidate();
               break;
             default:
-              console.warn("[Sync] Unknown data type in firebaseDataReceived:", t);
+
           }
         }
         pendingTypes.clear();
@@ -280,10 +241,10 @@ export default function App() {
         <Route path="purchase-orders" element={<RoleGuard><PurchaseOrdersPage /></RoleGuard>} />
         <Route path="purchase-order/:id" element={<RoleGuard><PurchaseOrderDetailPage /></RoleGuard>} />
         <Route path="packing-list/:id" element={<RoleGuard><PackingListPage /></RoleGuard>} />
-        <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
+        <Route path="audit-report" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
+        <Route path="system-logs" element={<RoleGuard><SystemLogsPage /></RoleGuard>} />
         <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
-        <Route path="audit" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
-<Route path="system-logs" element={<RoleGuard><SystemLogsPage /></RoleGuard>} />
+        <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
         <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />
       </Route>
       <Route path="*" element={<NotFound />} />

@@ -975,6 +975,10 @@ export function subscribeToAuditLog(onData?: (auditLog: any[]) => void): () => v
   return createSubscription("auditLog", "sgf_auditLog", onData);
 }
 
+export function subscribeToSystemLogs(onData?: (logs: any[]) => void): () => void {
+  return createSubscription("systemLogs", "sgf_systemLogs", onData);
+}
+
 export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
   return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
 }
@@ -1595,6 +1599,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToAccountHolds(handleReceived("accountHolds", "sgf_accountHolds")));
   unsubs.push(subscribeToSpecialPrices(handleReceived("specialPrices", "sgf_specialPrices")));
   unsubs.push(subscribeToAuditLog(handleReceived("auditLog", "sgf_auditLog")));
+  unsubs.push(subscribeToSystemLogs(handleReceived("systemLogs", "sgf_systemLogs")));
   // ═══ CORPORATE MODULE — real-time subscriptions
   unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
   unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));

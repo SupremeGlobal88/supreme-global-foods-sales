@@ -5138,6 +5138,22 @@ export const dataService = {
       };
     },
   },
+  systemLogs: {
+    list: () => systemLogs,
+    getByCategory: (cat: string) => systemLogs.filter((e) => e.category === cat),
+    getByLevel: (level: string) => systemLogs.filter((e) => e.level === level),
+    getSummary: () => ({
+      total: systemLogs.length,
+      byLevel: systemLogs.reduce((acc: Record<string, number>, e: any) => {
+        acc[e.level] = (acc[e.level] || 0) + 1;
+        return acc;
+      }, {}),
+      byCategory: systemLogs.reduce((acc: Record<string, number>, e: any) => {
+        acc[e.category] = (acc[e.category] || 0) + 1;
+        return acc;
+      }, {}),
+    }),
+  },
 
   /* ─── User Management with Roles ─── */
   user: {

@@ -1927,12 +1927,15 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       orders[orderIdx].updatedAt = new Date().toISOString();
       saveItem("sgf_orders", orders);
     }
+    console.log(`[generateInvoiceForOrder] UPDATED existing invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId}, newBalance=${newBalanceDue.toFixed(2)}`);
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;
   }
   // SAMPLE ORDERS ARE ALWAYS SGF — force company to "sgf" regardless of order.company
   const invoiceCompany = isSample ? "sgf" : (order.company || "sgf");
-  return createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, invoiceCompany, vatRate);
+  const newInvNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, invoiceCompany, vatRate);
+  console.log(`[generateInvoiceForOrder] CREATED new invoice ${newInvNum} for order ${order.orderNumber || orderId}`);
+  return newInvNum;
 }
 
 /** Generate invoices for all orders that don't have one. Returns count created. */

@@ -1517,6 +1517,7 @@ export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; ne
   }
 
   if (changes.length > 0) {
+    logSystemEvent("WARN", "fixDuplicateInvoiceNumbers", `Renumbered ${changes.length} duplicate invoices`, { changes: changes.map((c) => ({ oldNumber: c.old, newNumber: c.new, invoiceId: c.id, customer: c.customer })) });
     saveItem("sgf_invoices", invoices);
   }
   return { changes };

@@ -29,6 +29,7 @@ const allNavItems = [
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/users", label: "Users", icon: ShieldAlert },
   { path: "/audit", label: "Audit", icon: Eye },
+  { path: "/system-logs", label: "System Logs", icon: Terminal },
   { path: "/historical-import", label: "Import", icon: Archive },
 ];
 

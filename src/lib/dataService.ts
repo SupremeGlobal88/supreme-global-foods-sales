@@ -388,6 +388,9 @@ function load() {
   // The old code did `20${parts[2]}` on 4-digit years, producing dates like "202026-07-06".
   try { fixSageInvoiceDates(); } catch { /* ignore */ }
 
+  // FIX: Renumber any duplicate invoice numbers so each invoice has a unique SGF number.
+  try { fixDuplicateInvoiceNumbers(); } catch { /* ignore */ }
+
   // ─── CORPORATE MODULE DATA LOADING ───
   const cc = getStorageItem("sgf_corporateCustomers");
   if (cc) { const d = JSON.parse(cc); if (Array.isArray(d)) corporateCustomers = d; }

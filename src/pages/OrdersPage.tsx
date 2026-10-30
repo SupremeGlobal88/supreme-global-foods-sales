@@ -844,6 +844,8 @@ export default function OrdersPage() {
     const matchedInvoice = (invoices || []).find((i: any) => i.orderId == order.id);
     const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
     const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
+    const now = new Date();
+    const printedAt = now.toLocaleString("en-ZA", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
@@ -877,6 +879,7 @@ export default function OrdersPage() {
     <div class="subtitle">Tel: ${cfg.contact.phone}</div>
   </div>
   <div class="doc-title">FACTORY PICKING SLIP</div>
+  <div style="text-align:center;margin-bottom:10px;font-size:11px;color:#888;">Printed: ${printedAt}</div>
   <div style="text-align:center;margin-bottom:15px;">
     <span class="badge ${order.orderType === "sample" ? "badge-sample" : ""}">${order.orderType === "sample" ? "SAMPLE ORDER — NO CHARGE" : `PRICE TIER: ${(order.priceTier || "WHOLESALE").toUpperCase()}`}</span>
   </div>

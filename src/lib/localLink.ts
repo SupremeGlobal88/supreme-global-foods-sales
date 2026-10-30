@@ -32,6 +32,7 @@ import {
   pushCollectionNote,
   pushCollectionPromise,
   pushAudit,
+  pushSystemLog,
   syncFromCloud,
   removeOneCustomer,
   removeOneStockItem,
@@ -624,6 +625,20 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       case "audit.getAddressChanges":
         result = dataService.audit.getAddressChanges();
+        break;
+
+      // SYSTEM LOGS
+      case "systemLogs.list":
+        result = dataService.systemLogs.list();
+        break;
+      case "systemLogs.getByCategory":
+        result = dataService.systemLogs.getByCategory(args[0] as string);
+        break;
+      case "systemLogs.getByLevel":
+        result = dataService.systemLogs.getByLevel(args[0] as string);
+        break;
+      case "systemLogs.getSummary":
+        result = dataService.systemLogs.getSummary();
         break;
 
       // ================================================================

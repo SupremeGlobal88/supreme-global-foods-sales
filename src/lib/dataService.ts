@@ -110,6 +110,7 @@ let appointments = [] as any[];
 let checkins = [] as any[];
 let specialPrices = [] as any[];
 let auditLog = [] as any[];
+let systemLogs = [] as any[];
 let followUps = [] as any[];
 let followUpActions = [] as any[];
 let collectionNotes = [] as any[];
@@ -299,6 +300,8 @@ function load() {
     if (s) specialPrices = s;
     const log = safeLoadArray("sgf_auditLog");
     auditLog = log || [];
+    const sysLog = safeLoadArray("sgf_systemLogs");
+    systemLogs = sysLog || [];
     const fu = safeLoadArray("sgf_followUps");
     followUps = fu || [];
     const fa = safeLoadArray("sgf_followUpActions");
@@ -5912,6 +5915,7 @@ export function resetTransactionData(): void {
   collectionPromises = [];
   accountHolds = [];
   auditLog = [];
+  systemLogs = [];
 
   const keysToRemove = [
     "sgf_orders", "sgf_invoices", "sgf_receipts", "sgf_creditNotes", "sgf_appointments",
@@ -5946,7 +5950,7 @@ export function factoryReset(): void {
   // Step 4: Reset ALL in-memory arrays including users
   orders = []; invoices = []; receipts = []; creditNotes = []; appointments = []; checkins = [];
   followUps = []; followUpActions = []; specialPrices = [];
-  collectionNotes = []; collectionPromises = []; accountHolds = []; auditLog = []; users = [];
+  collectionNotes = []; collectionPromises = []; accountHolds = []; auditLog = []; systemLogs = []; users = [];
   // Step 5: Reset customers and products back to original static defaults
   customers = getStaticCustomers();
   products = getStaticProducts();

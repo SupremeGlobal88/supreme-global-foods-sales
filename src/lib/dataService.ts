@@ -1036,6 +1036,7 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   };
 
   if (result.ordersRemoved > 0 || result.invoicesRemoved > 0 || result.customersRemoved > 0) {
+    logSystemEvent("WARN", "deduplicateAll", `Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers`, { ordersRemoved: result.ordersRemoved, invoicesRemoved: result.invoicesRemoved, customersRemoved: result.customersRemoved, ordersRemaining: orders.length, invoicesRemaining: invoices.length, customersRemaining: customers.length });
     if (result.ordersRemoved > 0) logAudit("DELETE", "order", 0, `deduplicateAll removed ${result.ordersRemoved} duplicate orders. Remaining: ${orders.length}`);
     if (result.invoicesRemoved > 0) logAudit("DELETE", "invoice", 0, `deduplicateAll removed ${result.invoicesRemoved} duplicate invoices. Remaining: ${invoices.length}`);
     if (result.customersRemoved > 0) logAudit("DELETE", "customer", 0, `deduplicateAll removed ${result.customersRemoved} duplicate customers. Remaining: ${customers.length}`);
@@ -1735,6 +1736,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
 
   try {
     reloadFromStorage(["sgf_invoices", "sgf_orders"]);
+    logSystemEvent("INFO", "invoiceGeneration", `createInvoiceFromOrder START orderId=${order.id}, orderNumber=${order.orderNumber}, invoiceCount=${invoices.length}`);
     const now = new Date();
     // Look up customer from BOTH arrays — corporate customers have the full record
     const customer = customers.find((c) => c.id == order.customerId) || corporateCustomers.find((c) => c.id == order.customerId);
@@ -1888,6 +1890,7 @@ export function repairPurchaseOrderCompanies(): { repaired: number } {
  *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {
   reloadFromStorage(["sgf_invoices", "sgf_orders"]);
+  logSystemEvent("INFO", "invoiceGeneration", `generateInvoiceForOrder START orderId=${orderId}, invoiceCount=${invoices.length}`);
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const order = orders.find((o) => o.id == orderId);
   if (!order) return null;
@@ -1953,6 +1956,7 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       orders[orderIdx].updatedAt = new Date().toISOString();
       saveItem("sgf_orders", orders);
     }
+    logSystemEvent("INFO", "invoiceGeneration", `generateInvoiceForOrder UPDATED existing invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId}, newBalance=${newBalanceDue.toFixed(2)}`);
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;
   }
@@ -5777,6 +5781,7 @@ export const dataService = {
 
     try {
       reloadFromStorage(["sgf_invoices", "sgf_orders", "sgf_purchaseOrders"]);
+      logSystemEvent("INFO", "invoiceGeneration", `generateInvoiceForPO START poId=${poId}, invoiceCount=${invoices.length}, lock=${invoiceGenerationLock}`);
       const po = purchaseOrders.find((p) => p.id == poId);
       if (!po) return null;
 
@@ -5899,6 +5904,7 @@ export const dataService = {
       };
       invoices.push(invoice);
       saveItem("sgf_invoices", invoices);
+      logSystemEvent("INFO", "invoiceGeneration", `generateInvoiceForPO END invoiceNumber=${invoice.invoiceNumber}, poNumber=${po.poNumber}, newInvoiceCount=${invoices.length}`);
       return invoice;
     } finally {
       invoiceGenerationLock = false;

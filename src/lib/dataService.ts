@@ -1303,7 +1303,7 @@ function _doReloadFromStorage(keys?: string[]): void {
       const priceRepair = repairProductPrices(products);
       if (priceRepair.count > 0) {
         saveItem("sgf_products", products);
-        console.log(`[PriceRepair] Reload repaired ${priceRepair.count} products after cloud sync`);
+        logSystemEvent("WARN", "priceRepair", `Reload repaired ${priceRepair.count} products after cloud sync`, { repaired: priceRepair.repaired.map((p: any) => p.productCode) });
         // Notify app that products were repaired so Firebase can be updated
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("sgf:productsRepaired", { detail: { products: priceRepair.repaired, count: priceRepair.count } }));
@@ -1337,7 +1337,7 @@ function _doReloadFromStorage(keys?: string[]): void {
             const linkedOrderNum = String(inv.orderNumber || "");
             if (linkedOrderNum.toUpperCase().startsWith("QTE-")) {
               toRemove.push(idx);
-              console.log(`[InvoiceCleanup] Removing invoice ${inv.invoiceNumber} linked to quote ${linkedOrderNum}`);
+              logSystemEvent("INFO", "invoiceCleanup", `Removing invoice ${inv.invoiceNumber} linked to quote ${linkedOrderNum}`, { invoiceId: inv.id, invoiceNumber: inv.invoiceNumber, quoteNumber: linkedOrderNum });
             }
           }
           for (let i = toRemove.length - 1; i >= 0; i--) {
@@ -1345,7 +1345,7 @@ function _doReloadFromStorage(keys?: string[]): void {
           }
           if (toRemove.length > 0) {
             saveItem("sgf_invoices", invoices);
-            console.log(`[InvoiceCleanup] Reload removed ${toRemove.length} invoice(s) linked to quotes`);
+            logSystemEvent("WARN", "invoiceCleanup", `Reload removed ${toRemove.length} invoice(s) linked to quotes`, { removedCount: toRemove.length });
             if (typeof window !== "undefined") {
               window.dispatchEvent(new CustomEvent("sgf:invoicesCleaned", { detail: { removed: toRemove.length } }));
             }
@@ -1376,6 +1376,12 @@ function _doReloadFromStorage(keys?: string[]): void {
     try {
       const log = getStorageItem("sgf_auditLog");
       if (log) { const d = JSON.parse(log); if (Array.isArray(d)) auditLog = d; }
+    } catch { /* keep current */ }
+  }
+  if (reloadAll || keys?.includes("sgf_systemLogs")) {
+    try {
+      const sysLog = getStorageItem("sgf_systemLogs");
+      if (sysLog) { const d = JSON.parse(sysLog); if (Array.isArray(d)) systemLogs = d; }
     } catch { /* keep current */ }
   }
   if (reloadAll || keys?.includes("sgf_followUps")) {

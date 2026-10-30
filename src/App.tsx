@@ -283,6 +283,7 @@ export default function App() {
         <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
         <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
         <Route path="audit" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
+<Route path="system-logs" element={<RoleGuard><SystemLogsPage /></RoleGuard>} />
         <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />
       </Route>
       <Route path="*" element={<NotFound />} />

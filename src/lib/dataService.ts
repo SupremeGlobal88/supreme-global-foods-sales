@@ -1033,7 +1033,10 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   };
 
   if (result.ordersRemoved > 0 || result.invoicesRemoved > 0 || result.customersRemoved > 0) {
-    console.log(`[DEDUPLICATE] Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers`);
+    console.warn(`[DEDUPLICATE] Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers`);
+    if (result.ordersRemoved > 0) logAudit("DELETE", "order", 0, `deduplicateAll removed ${result.ordersRemoved} duplicate orders. Remaining: ${orders.length}`);
+    if (result.invoicesRemoved > 0) logAudit("DELETE", "invoice", 0, `deduplicateAll removed ${result.invoicesRemoved} duplicate invoices. Remaining: ${invoices.length}`);
+    if (result.customersRemoved > 0) logAudit("DELETE", "customer", 0, `deduplicateAll removed ${result.customersRemoved} duplicate customers. Remaining: ${customers.length}`);
     saveItem("sgf_orders", orders);
     saveItem("sgf_invoices", invoices);
     saveItem("sgf_customers", customers);

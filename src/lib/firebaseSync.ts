@@ -1624,7 +1624,11 @@ export const pushCustomer = pushOneCustomer;
 /** Alias for pushPackingListLine — used by localLink.ts */
 export const pushPackingList = pushPackingListLine;
 
-/** Push audit entry — currently a no-op since audits are local-only */
-export async function pushAudit(_audit: any): Promise<void> {
-  // Audits are local-only for now; no cloud sync needed
+/** Push audit entry to Firebase */
+export async function pushAudit(audit: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    const safeId = String(audit.id || Date.now() + Math.random()).replace(/[.#$[\]]/g, '_');
+    await set(ref(db, `auditLog/${safeId}`), { ...audit, _syncedAt: Date.now() });
+  } catch { /* ignore */ }
 }

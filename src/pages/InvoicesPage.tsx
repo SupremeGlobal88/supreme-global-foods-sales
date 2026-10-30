@@ -103,6 +103,10 @@ export default function InvoicesPage() {
       reloadFromStorage();
       await utils.invoice.list.invalidate();
       await utils.invoice.getReceipts.invalidate();
+      await utils.collections.getOverdueInvoices.invalidate();
+      await utils.collections.getDailyReport.invalidate();
+      await utils.collections.getStats.invalidate();
+      await utils.collections.getFollowUpsDue.invalidate();
       closePay();
       // Show the receipt immediately
       if (data?.receipt) setShowReceipt(data.receipt);
@@ -110,11 +114,11 @@ export default function InvoicesPage() {
     onError: (err: any) => { alert("Payment failed: " + (err.message || "Unknown error")); },
   });
   const editPay = trpc.invoice.editPayment.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); closePay(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); await utils.collections.getOverdueInvoices.invalidate(); await utils.collections.getDailyReport.invalidate(); await utils.collections.getStats.invalidate(); closePay(); },
     onError: (err: any) => { alert("Edit payment failed: " + (err.message || "Unknown error")); closePay(); },
   });
   const delPay = trpc.invoice.deletePayment.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); await utils.collections.getOverdueInvoices.invalidate(); await utils.collections.getDailyReport.invalidate(); await utils.collections.getStats.invalidate(); },
     onError: (err: any) => { alert("Delete payment failed: " + (err.message || "Unknown error")); },
   });
   const createCreditNote = trpc.invoice.createCreditNote.useMutation({

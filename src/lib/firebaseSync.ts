@@ -1636,3 +1636,11 @@ export async function pushAudit(audit: any): Promise<void> {
     await set(ref(db, `auditLog/${safeId}`), { ...audit, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
+
+export async function pushSystemLog(entry: any): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try {
+    const safeId = String(entry.id || Date.now() + Math.random()).replace(/[.#$[\]]/g, '_');
+    await set(ref(db, `systemLogs/${safeId}`), { ...entry, _syncedAt: Date.now() });
+  } catch { /* ignore */ }
+}

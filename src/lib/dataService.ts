@@ -1487,6 +1487,7 @@ export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; ne
   }
 
   if (changes.length > 0) {
+    console.warn(`[fixDuplicateInvoiceNumbers] RENUMBERED ${changes.length} duplicate invoices:`, changes.map((c) => `${c.old}→${c.new} (ID=${c.id}, ${c.customer})`).join(", "));
     saveItem("sgf_invoices", invoices);
   }
   return { changes };
@@ -1706,6 +1707,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
 
   try {
     reloadFromStorage(["sgf_invoices", "sgf_orders"]);
+    console.log(`[createInvoiceFromOrder] START orderId=${order.id}, orderNumber=${order.orderNumber}, currentInvoiceCount=${invoices.length}`);
     const now = new Date();
     // Look up customer from BOTH arrays — corporate customers have the full record
     const customer = customers.find((c) => c.id == order.customerId) || corporateCustomers.find((c) => c.id == order.customerId);
@@ -1859,6 +1861,7 @@ export function repairPurchaseOrderCompanies(): { repaired: number } {
  *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {
   reloadFromStorage(["sgf_invoices", "sgf_orders"]);
+  console.log(`[generateInvoiceForOrder] START orderId=${orderId}, currentInvoiceCount=${invoices.length}`);
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const order = orders.find((o) => o.id == orderId);
   if (!order) return null;
@@ -3061,7 +3064,8 @@ export const dataService = {
           newOrder.invoiceNumber = inv.invoiceNumber;
           saveItem("sgf_orders", orders);
         }
-        logAudit("CREATE", "invoice", newOrder.id, `Invoice ${invoiceNumber} generated for converted order ${orderNumber}`);
+        console.log(`[createInvoiceFromOrder] END invoiceNumber=${invoiceNumber}, orderNumber=${orderNumber}, newInvoiceCount=${invoices.length}`);
+    logAudit("CREATE", "invoice", newOrder.id, `Invoice ${invoiceNumber} generated for converted order ${orderNumber}`);
       }
 
       logAudit("CONVERT", "quote", quote.id, `Quote ${quote.orderNumber} converted to order ${orderNumber}`);
@@ -5750,6 +5754,7 @@ export const dataService = {
 
     try {
       reloadFromStorage(["sgf_invoices", "sgf_orders", "sgf_purchaseOrders"]);
+      console.log(`[generateInvoiceForPO] START poId=${poId}, currentInvoiceCount=${invoices.length}, lock=${invoiceGenerationLock}`);
       const po = purchaseOrders.find((p) => p.id == poId);
       if (!po) return null;
 

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Users, ShoppingCart, FileText,
   Calendar, UserCog, CreditCard, Settings, LogOut, Globe,
   Bell, FlaskConical, ShieldAlert, Archive, X, Wallet,
-  FileSpreadsheet, Banknote, TrendingUp, Building2, ClipboardList, Eye,
+  FileSpreadsheet, Banknote, TrendingUp, Building2, ClipboardList, Eye, Terminal,
 } from "lucide-react";
 
 const allNavItems = [

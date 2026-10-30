@@ -1819,6 +1819,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
       saveItem("sgf_orders", orders);
     }
 
+    logSystemEvent("INFO", "invoiceGeneration", `createInvoiceFromOrder END invoiceNumber=${invoiceNumber}, orderNumber=${order.orderNumber}, newInvoiceCount=${invoices.length}`);
     return invoiceNumber;
   } finally {
     // RELEASE LOCK: always release even if an error occurred

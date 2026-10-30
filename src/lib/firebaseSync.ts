@@ -264,7 +264,8 @@ export async function pushCheckin(checkin: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("checkin", checkin); return; }
   try {
     await set(ref(db, `checkins/${safeFbKey(checkin.id)}`), { ...checkin, _syncedAt: Date.now() });
-  } catch (err) { console.error(`[pushOrder] FAILED orderId=${order?.id}, orderNumber=${order?.orderNumber}:`, err); }
+  }
+    } catch { /* ignore */ }
 }
 
 export async function pushAppointment(appointment: any): Promise<void> {
@@ -300,7 +301,8 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
 
 export async function removeOrder(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `orders/${safeFbKey(id)}`), null); } catch (err) { console.error(`[pushInvoice] FAILED invoiceId=${invoice?.id}, invoiceNumber=${invoice?.invoiceNumber}:`, err); }
+  try { await set(ref(db, `orders/${safeFbKey(id)}`), null); }
+    } catch { /* ignore */ }
 }
 
 export async function removeInvoice(id: number): Promise<void> {
@@ -484,7 +486,8 @@ export async function removePackingListLine(id: number): Promise<void> {
  *  NEVER use after a single create/update — it will delete other users' customers. */
 export async function pushCustomers(customers: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, "customers"), customers); } catch (err) { console.error(`[pushCustomer] FAILED customerId=${customer?.id}, name=${customer?.name}:`, err); }
+  try { await set(ref(db, "customers"), customers); }
+    } catch { /* ignore */ }
 }
 
 /** ⚠️ DANGER: Replaces ENTIRE stock list in Firebase.

@@ -55,8 +55,7 @@ export function getConfigFromStorage(): any {
       if (parsed && parsed.apiKey && !parsed.apiKey.includes("PLACEHOLDER")) {
         return parsed;
       }
-    }
-  } catch { /* ignore */ }
+    } catch { /* ignore */ }
   // Return the built-in real config — no setup needed
   return DEFAULT_CONFIG;
 }
@@ -264,8 +263,7 @@ export async function pushCheckin(checkin: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("checkin", checkin); return; }
   try {
     await set(ref(db, `checkins/${safeFbKey(checkin.id)}`), { ...checkin, _syncedAt: Date.now() });
-  }
-    } catch { /* ignore */ }
+  } catch { /* ignore */ }
 }
 
 export async function pushAppointment(appointment: any): Promise<void> {
@@ -301,8 +299,7 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
 
 export async function removeOrder(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `orders/${safeFbKey(id)}`), null); }
-    } catch { /* ignore */ }
+  try { await set(ref(db, `orders/${safeFbKey(id)}`), null); } catch { /* ignore */ }
 }
 
 export async function removeInvoice(id: number): Promise<void> {
@@ -780,8 +777,7 @@ function createSubscription(
         setStorageItem(storageKey, JSON.stringify(merged));
         if (options?.logPrefix) {
           console.log(`[FirebaseSync] ${options.logPrefix}: ${items.length} cloud → ${merged.length} merged`);
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
       reloadFromStorage([storageKey]);
       // CRITICAL FIX: pass merged (repaired) data to onData, not raw Firebase items
       if (onData) onData(merged);
@@ -1081,8 +1077,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
       if (raw) {
         const items = JSON.parse(raw);
         if (Array.isArray(items)) totalItems += items.filter(x => x != null).length;
-      }
-    } catch { /* ignore */ }
+      } catch { /* ignore */ }
   }
 
   let pushedSoFar = 0;
@@ -1460,15 +1455,13 @@ if (typeof window !== "undefined") {
         const allOrders = allOrdersRaw ? JSON.parse(allOrdersRaw) : [];
         if (Array.isArray(allOrders) && allOrders.length > 0) {
           fbPush("order", allOrders).catch((err: any) => console.error("[FirebaseSync] push orders failed:", err?.message || err));
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
       try {
         const allProductsRaw = getStorageItem("sgf_products");
         const allProducts = allProductsRaw ? JSON.parse(allProductsRaw) : [];
         if (Array.isArray(allProducts) && allProducts.length > 0) {
           fbPush("stock", allProducts).catch((err: any) => console.error("[FirebaseSync] push stock failed:", err?.message || err));
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
     }
   });
 
@@ -1481,8 +1474,7 @@ if (typeof window !== "undefined") {
         const allInvoices = allInvoicesRaw ? JSON.parse(allInvoicesRaw) : [];
         if (Array.isArray(allInvoices) && allInvoices.length > 0) {
           fbPush("invoice", allInvoices).catch((err: any) => console.error("[FirebaseSync] push invoices failed:", err?.message || err));
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
     }
   });
 }
@@ -1494,8 +1486,7 @@ function getCurrentUserRole(): string {
     if (userStr) {
       const user = JSON.parse(userStr);
       return user.role || "sales_rep";
-    }
-  } catch { /* ignore */ }
+    } catch { /* ignore */ }
   return "sales_rep";
 }
 

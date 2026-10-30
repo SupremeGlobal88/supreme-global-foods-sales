@@ -1033,7 +1033,6 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   };
 
   if (result.ordersRemoved > 0 || result.invoicesRemoved > 0 || result.customersRemoved > 0) {
-    console.warn(`[DEDUPLICATE] Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers`);
     if (result.ordersRemoved > 0) logAudit("DELETE", "order", 0, `deduplicateAll removed ${result.ordersRemoved} duplicate orders. Remaining: ${orders.length}`);
     if (result.invoicesRemoved > 0) logAudit("DELETE", "invoice", 0, `deduplicateAll removed ${result.invoicesRemoved} duplicate invoices. Remaining: ${invoices.length}`);
     if (result.customersRemoved > 0) logAudit("DELETE", "customer", 0, `deduplicateAll removed ${result.customersRemoved} duplicate customers. Remaining: ${customers.length}`);
@@ -1490,7 +1489,6 @@ export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; ne
   }
 
   if (changes.length > 0) {
-    console.warn(`[fixDuplicateInvoiceNumbers] RENUMBERED ${changes.length} duplicate invoices:`, changes.map((c) => `${c.old}→${c.new} (ID=${c.id}, ${c.customer})`).join(", "));
     saveItem("sgf_invoices", invoices);
   }
   return { changes };
@@ -1710,7 +1708,6 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
 
   try {
     reloadFromStorage(["sgf_invoices", "sgf_orders"]);
-    console.log(`[createInvoiceFromOrder] START orderId=${order.id}, orderNumber=${order.orderNumber}, currentInvoiceCount=${invoices.length}`);
     const now = new Date();
     // Look up customer from BOTH arrays — corporate customers have the full record
     const customer = customers.find((c) => c.id == order.customerId) || corporateCustomers.find((c) => c.id == order.customerId);
@@ -1864,7 +1861,6 @@ export function repairPurchaseOrderCompanies(): { repaired: number } {
  *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {
   reloadFromStorage(["sgf_invoices", "sgf_orders"]);
-  console.log(`[generateInvoiceForOrder] START orderId=${orderId}, currentInvoiceCount=${invoices.length}`);
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const order = orders.find((o) => o.id == orderId);
   if (!order) return null;
@@ -1930,14 +1926,12 @@ export function generateInvoiceForOrder(orderId: number): string | null {
       orders[orderIdx].updatedAt = new Date().toISOString();
       saveItem("sgf_orders", orders);
     }
-    console.log(`[generateInvoiceForOrder] UPDATED existing invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId}, newBalance=${newBalanceDue.toFixed(2)}`);
     logAudit("UPDATE", "invoice", existing.id, `Updated invoice ${existing.invoiceNumber} for order ${order.orderNumber || orderId} balance=${newBalanceDue.toFixed(2)}`, order.salesRepName);
     return existing.invoiceNumber;
   }
   // SAMPLE ORDERS ARE ALWAYS SGF — force company to "sgf" regardless of order.company
   const invoiceCompany = isSample ? "sgf" : (order.company || "sgf");
   const newInvNum = createInvoiceFromOrder(order, subtotal, vatAmount, total, isSample, invoiceCompany, vatRate);
-  console.log(`[generateInvoiceForOrder] CREATED new invoice ${newInvNum} for order ${order.orderNumber || orderId}`);
   return newInvNum;
 }
 
@@ -3070,7 +3064,6 @@ export const dataService = {
           newOrder.invoiceNumber = inv.invoiceNumber;
           saveItem("sgf_orders", orders);
         }
-        console.log(`[createInvoiceFromOrder] END invoiceNumber=${invoiceNumber}, orderNumber=${orderNumber}, newInvoiceCount=${invoices.length}`);
     logAudit("CREATE", "invoice", newOrder.id, `Invoice ${invoiceNumber} generated for converted order ${orderNumber}`);
       }
 
@@ -3657,7 +3650,6 @@ export const dataService = {
       return { creditNote: finalCreditNote, updatedInvoice };
     },
     allocateCredit: ({ creditNoteId, invoiceId, amount }: { creditNoteId: number; invoiceId: number; amount: number }) => {
-      console.log("[allocateCredit] called:", { creditNoteId, invoiceId, amount });
       const cnIdx = creditNotes.findIndex((cn) => cn.id == creditNoteId);
       if (cnIdx < 0) return { success: false, error: "Credit note not found" };
       const cn = creditNotes[cnIdx];
@@ -3694,8 +3686,6 @@ export const dataService = {
 
       saveItem("sgf_creditNotes", creditNotes);
       saveItem("sgf_invoices", invoices);
-
-      console.log("[allocateCredit] success:", { newBalance, remainingAmount: creditNotes[cnIdx].remainingAmount });
       logAudit("UPDATE", "creditNote", creditNoteId, `Allocated R${amount.toFixed(2)} to invoice ${invoiceId}. Remaining: R${(remaining - amount).toFixed(2)}`);
       return { success: true, creditNote: creditNotes[cnIdx], invoice: invoices[invIdx] };
     },
@@ -5760,7 +5750,6 @@ export const dataService = {
 
     try {
       reloadFromStorage(["sgf_invoices", "sgf_orders", "sgf_purchaseOrders"]);
-      console.log(`[generateInvoiceForPO] START poId=${poId}, currentInvoiceCount=${invoices.length}, lock=${invoiceGenerationLock}`);
       const po = purchaseOrders.find((p) => p.id == poId);
       if (!po) return null;
 
@@ -5883,7 +5872,6 @@ export const dataService = {
       };
       invoices.push(invoice);
       saveItem("sgf_invoices", invoices);
-      console.log(`[generateInvoiceForPO] END invoiceNumber=${invoice.invoiceNumber}, poNumber=${po.poNumber}, newInvoiceCount=${invoices.length}`);
       return invoice;
     } finally {
       invoiceGenerationLock = false;

@@ -1090,6 +1090,24 @@ function logAudit(action: string, entityType: string, entityId: number | string,
   pushAudit(entry).catch(() => {});
 }
 
+/** System event logger — writes to Firebase so logs are visible across all devices */
+function logSystemEvent(level: "INFO" | "WARN" | "ERROR", category: string, message: string, meta?: Record<string, any>) {
+  const entry = {
+    id: Date.now() + Math.random(),
+    level,
+    category,
+    message,
+    meta: meta || {},
+    userName: getCurrentUserName(),
+    createdAt: new Date().toISOString(),
+  };
+  systemLogs.unshift(entry);
+  // Keep only last 500 system logs to prevent bloat
+  if (systemLogs.length > 500) systemLogs = systemLogs.slice(0, 500);
+  saveItem("sgf_systemLogs", systemLogs);
+  pushSystemLog(entry).catch(() => {});
+}
+
 // getAvailableStock: returns the live product.quantity which is already
 // deducted when orders are created and restored when delivered/cancelled
 function getAvailableStock(productId: number): number {

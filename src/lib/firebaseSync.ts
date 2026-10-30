@@ -1039,7 +1039,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
   appointments: number; checkins: number; followUps: number; receipts: number;
   auditLog: number; errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, auditLog: 0, auditLog: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, auditLog: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   // Count total items first for progress reporting
@@ -1065,6 +1065,7 @@ export async function forcePushAllLocalData(onProgress?: (done: number, total: n
     { storageKey: "sgf_followUpActions", fbPath: "followUpActions", counter: "followUpActions" as const, label: "Follow-up Actions" },
     { storageKey: "sgf_users", fbPath: "users", counter: "users" as const, label: "Users" },
     { storageKey: "sgf_salesReps", fbPath: "salesReps", counter: "salesReps" as const, label: "Sales Reps" },
+    { storageKey: "sgf_auditLog", fbPath: "auditLog", counter: "auditLog" as const, label: "Audit Log" },
   ];
   let totalItems = 0;
   for (const list of lists) {
@@ -1130,7 +1131,7 @@ export async function forcePullAllFromCloud(): Promise<{
   followUpActions: number; users: number; salesReps: number; auditLog: number;
   errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, auditLog: 0, auditLog: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, auditLog: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   const pullList = async (fbPath: string, storageKey: string, counter: keyof typeof result) => {

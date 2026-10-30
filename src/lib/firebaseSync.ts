@@ -675,6 +675,7 @@ export async function pullFromCloud(): Promise<Record<string, number>> {
   await pullType("creditNotes", "sgf_creditNotes");
   await pullType("users", "sgf_users");
   await pullType("salesReps", "sgf_salesReps");
+  await pullType("auditLog", "sgf_auditLog");
 
   dataServiceRefresh?.();
   return counts;
@@ -967,6 +968,10 @@ export function subscribeToSpecialPrices(onData?: (prices: any[]) => void): () =
   return createSubscription("specialPrices", "sgf_specialPrices", onData);
 }
 
+export function subscribeToAuditLog(onData?: (auditLog: any[]) => void): () => void {
+  return createSubscription("auditLog", "sgf_auditLog", onData);
+}
+
 export function subscribeToCorporateCustomers(onData?: (items: any[]) => void): () => void {
   return createSubscription("corporateCustomers", "sgf_corporateCustomers", onData);
 }
@@ -1032,9 +1037,9 @@ export async function syncAllLocalData(localData: {
 export async function forcePushAllLocalData(onProgress?: (done: number, total: number, currentType: string) => void): Promise<{
   orders: number; invoices: number; customers: number; stock: number;
   appointments: number; checkins: number; followUps: number; receipts: number;
-  errors: string[];
+  auditLog: number; errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, auditLog: 0, auditLog: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   // Count total items first for progress reporting
@@ -1122,10 +1127,10 @@ export async function forcePullAllFromCloud(): Promise<{
   creditNotes: number; collectionNotes: number; collectionPromises: number;
   accountHolds: number; specialPrices: number; corporateCustomers: number;
   purchaseOrders: number; barrels: number; cocs: number; packingListLines: number;
-  followUpActions: number; users: number; salesReps: number;
+  followUpActions: number; users: number; salesReps: number; auditLog: number;
   errors: string[];
 }> {
-  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
+  const result = { orders: 0, invoices: 0, customers: 0, stock: 0, appointments: 0, checkins: 0, followUps: 0, receipts: 0, auditLog: 0, auditLog: 0, creditNotes: 0, collectionNotes: 0, collectionPromises: 0, accountHolds: 0, specialPrices: 0, corporateCustomers: 0, purchaseOrders: 0, barrels: 0, cocs: 0, packingListLines: 0, followUpActions: 0, users: 0, salesReps: 0, errors: [] as string[] };
   if (!isFirebaseReady()) { result.errors.push("Firebase not ready"); return result; }
 
   const pullList = async (fbPath: string, storageKey: string, counter: keyof typeof result) => {
@@ -1163,6 +1168,7 @@ export async function forcePullAllFromCloud(): Promise<{
   await pullList("followUpActions", "sgf_followUpActions", "followUpActions");
   await pullList("users", "sgf_users", "users");
   await pullList("salesReps", "sgf_salesReps", "salesReps");
+  await pullList("auditLog", "sgf_auditLog", "auditLog");
 
   dataServiceRefresh?.();
   console.log("[forcePull] COMPLETE:", result);
@@ -1555,7 +1561,7 @@ export function initAutoSync(): () => void {
 
     // ONLY dispatch event — React Query will refetch via tRPC invalidate.
     // The subscription function has already merged, saved, and reloaded.
-    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","collectionNotes","collectionPromises","accountHolds","specialPrices","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines"].includes(type)) {
+    if (["orders","checkins","appointments","invoices","customers","stock","followUpActions","followUps","receipts","users","salesReps","creditNotes","collectionNotes","collectionPromises","accountHolds","specialPrices","corporateCustomers","purchaseOrders","barrels","certificatesOfCompliance","packingListLines","auditLog"].includes(type)) {
       pendingEventTypes.add(type);
       if (eventDebounceTimer) clearTimeout(eventDebounceTimer);
       // On first load, batch all subscription events into a single dispatch
@@ -1584,6 +1590,7 @@ export function initAutoSync(): () => void {
   unsubs.push(subscribeToCollectionPromises(handleReceived("collectionPromises", "sgf_collectionPromises")));
   unsubs.push(subscribeToAccountHolds(handleReceived("accountHolds", "sgf_accountHolds")));
   unsubs.push(subscribeToSpecialPrices(handleReceived("specialPrices", "sgf_specialPrices")));
+  unsubs.push(subscribeToAuditLog(handleReceived("auditLog", "sgf_auditLog")));
   // ═══ CORPORATE MODULE — real-time subscriptions
   unsubs.push(subscribeToCorporateCustomers(handleReceived("corporateCustomers", "sgf_corporateCustomers")));
   unsubs.push(subscribeToPurchaseOrders(handleReceived("purchaseOrders", "sgf_purchaseOrders")));

@@ -1,5 +1,6 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
+import { pushAudit } from "./firebaseSync";
 
 // ═══════════════════════════════════════════════════════════════
 //  SALES REP DATA MODEL — Object-based with full metadata
@@ -1081,6 +1082,7 @@ function logAudit(action: string, entityType: string, entityId: number | string,
   };
   auditLog.unshift(entry);
   saveItem("sgf_auditLog", auditLog);
+  pushAudit(entry).catch(() => {});
 }
 
 // getAvailableStock: returns the live product.quantity which is already

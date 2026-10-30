@@ -4845,7 +4845,7 @@ export const dataService = {
             customer: customer || null,
             daysOverdue,
             bucket,
-            balanceDue: Number(inv.total || inv.totalAmount || 0) - Number(inv.amountPaid || 0),
+            balanceDue: typeof inv.balanceDue === "number" ? inv.balanceDue : (Number(inv.total || inv.totalAmount || 0) - Number(inv.amountPaid || 0)),
             collectionNotes: notes,
             latestPromise,
             accountHold,

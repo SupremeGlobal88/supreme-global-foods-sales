@@ -5877,6 +5877,7 @@ export const dataService = {
       };
       invoices.push(invoice);
       saveItem("sgf_invoices", invoices);
+      console.log(`[generateInvoiceForPO] END invoiceNumber=${invoice.invoiceNumber}, poNumber=${po.poNumber}, newInvoiceCount=${invoices.length}`);
       return invoice;
     } finally {
       invoiceGenerationLock = false;

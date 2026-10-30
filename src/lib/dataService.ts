@@ -1,6 +1,6 @@
 import { STATIC_CUSTOMERS, STATIC_PRODUCTS } from "@/data/staticData";
 import { getStorageItem, setStorageItem, removeStorageItem } from "./compressedStorage";
-import { pushAudit } from "./firebaseSync";
+import { pushAudit, pushSystemLog } from "./firebaseSync";
 
 // ═══════════════════════════════════════════════════════════════
 //  SALES REP DATA MODEL — Object-based with full metadata

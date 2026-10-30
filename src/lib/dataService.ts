@@ -1702,6 +1702,7 @@ function createInvoiceFromOrder(order: any, subtotal: number, vatAmount: number,
   invoiceGenerationLock = true;
 
   try {
+    reloadFromStorage(["sgf_invoices", "sgf_orders"]);
     const now = new Date();
     // Look up customer from BOTH arrays — corporate customers have the full record
     const customer = customers.find((c) => c.id == order.customerId) || corporateCustomers.find((c) => c.id == order.customerId);
@@ -1854,6 +1855,7 @@ export function repairPurchaseOrderCompanies(): { repaired: number } {
 /** Generate an invoice for an existing order that doesn't have one.
  *  Caller MUST call reloadFromStorage() before this to ensure fresh data. */
 export function generateInvoiceForOrder(orderId: number): string | null {
+  reloadFromStorage(["sgf_invoices", "sgf_orders"]);
   // Use loose equality (==) because Firebase may convert number IDs to strings
   const order = orders.find((o) => o.id == orderId);
   if (!order) return null;
@@ -5744,7 +5746,7 @@ export const dataService = {
     invoiceGenerationLock = true;
 
     try {
-      load(); // ensure fresh data
+      reloadFromStorage(["sgf_invoices", "sgf_orders", "sgf_purchaseOrders"]);
       const po = purchaseOrders.find((p) => p.id == poId);
       if (!po) return null;
 

@@ -487,7 +487,7 @@ export async function removePackingListLine(id: number): Promise<void> {
 export async function pushCustomers(customers: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, "customers"), customers); }
-    } catch { /* ignore */ }
+  catch { /* ignore */ }
 }
 
 /** ⚠️ DANGER: Replaces ENTIRE stock list in Firebase.

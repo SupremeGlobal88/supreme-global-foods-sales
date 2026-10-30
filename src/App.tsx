@@ -33,6 +33,7 @@ import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
 import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
 import PackingListPage from "./pages/PackingListPage";
 import AuditReportPage from "./pages/AuditReportPage";
+import SystemLogsPage from "./pages/SystemLogsPage";
 import CustomerDetailPage from "./pages/CustomerDetailPage";
 import { ShieldAlert, Cloud } from "lucide-react";
 

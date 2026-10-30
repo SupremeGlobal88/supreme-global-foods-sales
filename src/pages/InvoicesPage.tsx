@@ -352,6 +352,7 @@ export default function InvoicesPage() {
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
     const invDate = new Date(inv.invoiceDate || inv.createdAt);
     const retDate = new Date(invDate); retDate.setDate(retDate.getDate() + 7);
+    const printedAt = new Date().toLocaleString("en-ZA", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
     // CUSTOMER PRINT: sample orders show R 0.00 (no charge to customer)
     // INTERNAL VIEW: still shows real values for admin tracking
     const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
@@ -393,6 +394,7 @@ export default function InvoicesPage() {
                 <tr><td style="color:#888; padding:2px 0;">Invoice Date</td><td style="padding:2px 0; padding-left:12px;">${invDate.toLocaleDateString("en-ZA")}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Payment Terms</td><td style="padding:2px 0; padding-left:12px;">${(inv.paymentTerms || "cod").replace("_", " ").toUpperCase()}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Return By</td><td style="padding:2px 0; padding-left:12px;">${retDate.toLocaleDateString("en-ZA")}</td></tr>
+                <tr><td style="color:#888; padding:2px 0;">Printed</td><td style="padding:2px 0; padding-left:12px; font-size:10px; color:#666;">${printedAt}</td></tr>
               </table>
             </td>
           </tr>

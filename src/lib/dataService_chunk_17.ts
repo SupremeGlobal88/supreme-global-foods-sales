@@ -1,283 +1,149 @@
-// =============================================================================
-// SUPPLIER / VENDOR SERVICE
-// =============================================================================
+        const existingIdx = customers.findIndex((c) => {
+          const nameMatch = normalize(c.name) === normName;
+          const existingCode = (c.customerCode || "").toString().trim().toLowerCase();
+          const codeMatch = incomingCode && existingCode ? incomingCode === existingCode : true;
+          return nameMatch && codeMatch;
+        });
+        if (existingIdx >= 0) {
+          // Update existing — same id, orders/invoices unaffected
+          const existing = customers[existingIdx];
+          customers[existingIdx] = {
+            ...existing,
+            name: name || existing.name,
+            customerCode: code || existing.customerCode,
+            businessName: item.businessName !== undefined ? item.businessName : existing.businessName,
+            contactPerson: item.contactPerson !== undefined ? item.contactPerson : existing.contactPerson,
+            phone: item.phone !== undefined ? item.phone : existing.phone,
+            email: item.email !== undefined ? item.email : existing.email,
+            physicalAddress: item.physicalAddress !== undefined ? item.physicalAddress : existing.physicalAddress,
+            city: item.city !== undefined ? item.city : existing.city,
+            province: item.province !== undefined ? item.province : existing.province,
+            postalCode: item.postalCode !== undefined ? item.postalCode : existing.postalCode,
+            paymentTerms: item.paymentTerms || existing.paymentTerms || "cod",
+            priceTier: item.priceTier || existing.priceTier || "wholesale",
+            salesRepName: item.salesRepName !== undefined ? item.salesRepName : existing.salesRepName,
+            vatNumber: item.vatNumber !== undefined ? item.vatNumber : existing.vatNumber,
+            notes: item.notes !== undefined ? item.notes : existing.notes,
+            isActive: "active",
+            updatedAt: new Date().toISOString(),
+          };
+          updated++;
+        } else {
+          // New customer
+          customers.push({
+            ...item,
+            id: Date.now() + Math.random(),
+            customerCode: code || generateNextCustomerCode(),
+            isActive: "active",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          created++;
+        }
+      }
+      saveItem("sgf_customers", customers);
+      return { created, updated, total: customers.length };
+    },
+    // Find customers who haven't placed an order in the last X days (default 10)
+    getCustomersNeedingFollowUp: (days: number = 10) => {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const cutoffMs = cutoff.getTime();
+      return customers
+        .filter((c) => c.isActive !== false)
+        .map((c) => {
+          // Find most recent order for this customer
+          const custOrders = orders
+            .filter((o) => o.customerId == c.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          const lastOrder = custOrders[0] || null;
+          const lastOrderDate = lastOrder ? new Date(lastOrder.createdAt).getTime() : 0;
+          const daysSinceLastOrder = lastOrderDate
+            ? Math.floor((Date.now() - lastOrderDate) / 86400000)
+            : 999;
+          // Also count total orders
+          const totalOrders = custOrders.length;
+          return {
+            ...c,
+            lastOrder,
+            lastOrderDate: lastOrder?.createdAt || null,
+            daysSinceLastOrder,
+            totalOrders,
+            needsFollowUp: !lastOrder || lastOrderDate < cutoffMs,
+          };
+        })
+        .filter((c) => c.needsFollowUp)
+        .sort((a, b) => b.daysSinceLastOrder - a.daysSinceLastOrder);
+    },
+  },
 
-export const supplierService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_suppliers");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const suppliers = supplierService.list();
-    return suppliers.find((s: any) => s.id === id);
-  },
-  getByName: (name: string) => {
-    const suppliers = supplierService.list();
-    return suppliers.find((s: any) => s.name?.toLowerCase() === name.toLowerCase());
-  },
-  create: (data: any) => {
-    const suppliers = supplierService.list();
-    const newSupplier = {
-      id: Date.now() + Math.random(),
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isActive: data.isActive !== false,
-    };
-    suppliers.push(newSupplier);
-    setStorageItem("sgf_suppliers", JSON.stringify(suppliers));
-    logAudit("create", "supplier", newSupplier.id, data);
-    return newSupplier;
-  },
-  update: (id: number, data: any) => {
-    const suppliers = supplierService.list();
-    const index = suppliers.findIndex((s: any) => s.id === id);
-    if (index === -1) return null;
-    suppliers[index] = { ...suppliers[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_suppliers", JSON.stringify(suppliers));
-    logAudit("update", "supplier", id, data);
-    return suppliers[index];
-  },
-  delete: (id: number) => {
-    const suppliers = supplierService.list();
-    const index = suppliers.findIndex((s: any) => s.id === id);
-    if (index === -1) return { success: false, error: "Supplier not found" };
-    suppliers.splice(index, 1);
-    setStorageItem("sgf_suppliers", JSON.stringify(suppliers));
-    logAudit("delete", "supplier", id, {});
-    return { success: true };
-  },
-};
+  order: {
+    list: () => orders
+      .map((o) => {
+        const customer = customers.find((c) => c.id == o.customerId);
+        return { ...o, customer: customer || null };
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getById: (id: number) => {
+      const order = orders.find((o) => o.id == id);
+      if (!order) return null;
+      const customer = customers.find((c) => c.id == order.customerId);
+      return { ...order, customer: customer || null };
+    },
+    create: (data: any) => {
+      const isSample = data.orderType === "sample";
+      const isQuote = data.orderType === "quote";
+      
+      // STOCK VALIDATION: Check availability before creating order (skip for quotes)
+      const requestedItems = data.items || [];
+      if (!isQuote) {
+        for (const item of requestedItems) {
+          const product = products.find((p) => p.id == item.stockItemId);
+          if (!product) continue;
+          // product.quantity already has all non-cancelled orders deducted at creation time.
+          // It IS the live available stock — do NOT subtract committed again.
+          const available = Math.max(0, product.quantity || 0);
+          const conversion = item.conversion || 1;
+          const requestedQty = (isSample ? 1 : (item.quantity || 0)) * conversion;
+          if (requestedQty > available) {
+            throw new Error(`Insufficient stock for ${product.productName}. Available: ${available}, Requested: ${requestedQty}`);
+          }
+        }
+      }
 
-// =============================================================================
-// PURCHASE ORDER (SUPPLIER) SERVICE
-// =============================================================================
-
-export const supplierPOService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_supplierPOs");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const pos = supplierPOService.list();
-    return pos.find((p: any) => p.id === id);
-  },
-  getBySupplier: (supplierId: number) => {
-    const pos = supplierPOService.list();
-    return pos.filter((p: any) => p.supplierId === supplierId);
-  },
-  getByStatus: (status: string) => {
-    const pos = supplierPOService.list();
-    return pos.filter((p: any) => p.status === status);
-  },
-  create: (data: any) => {
-    const pos = supplierPOService.list();
-    const newPO = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "draft",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    pos.push(newPO);
-    setStorageItem("sgf_supplierPOs", JSON.stringify(pos));
-    logAudit("create", "supplierPO", newPO.id, data);
-    return newPO;
-  },
-  update: (id: number, data: any) => {
-    const pos = supplierPOService.list();
-    const index = pos.findIndex((p: any) => p.id === id);
-    if (index === -1) return null;
-    pos[index] = { ...pos[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_supplierPOs", JSON.stringify(pos));
-    logAudit("update", "supplierPO", id, data);
-    return pos[index];
-  },
-  delete: (id: number) => {
-    const pos = supplierPOService.list();
-    const index = pos.findIndex((p: any) => p.id === id);
-    if (index === -1) return { success: false, error: "Supplier PO not found" };
-    pos.splice(index, 1);
-    setStorageItem("sgf_supplierPOs", JSON.stringify(pos));
-    logAudit("delete", "supplierPO", id, {});
-    return { success: true };
-  },
-};
-
-// =============================================================================
-// EXPENSE / COST SERVICE
-// =============================================================================
-
-export const expenseService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_expenses");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const expenses = expenseService.list();
-    return expenses.find((e: any) => e.id === id);
-  },
-  getByCategory: (category: string) => {
-    const expenses = expenseService.list();
-    return expenses.filter((e: any) => e.category === category);
-  },
-  getByDate: (date: string) => {
-    const expenses = expenseService.list();
-    return expenses.filter((e: any) => e.date === date);
-  },
-  create: (data: any) => {
-    const expenses = expenseService.list();
-    const newExpense = {
-      id: Date.now() + Math.random(),
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    expenses.push(newExpense);
-    setStorageItem("sgf_expenses", JSON.stringify(expenses));
-    logAudit("create", "expense", newExpense.id, data);
-    return newExpense;
-  },
-  update: (id: number, data: any) => {
-    const expenses = expenseService.list();
-    const index = expenses.findIndex((e: any) => e.id === id);
-    if (index === -1) return null;
-    expenses[index] = { ...expenses[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_expenses", JSON.stringify(expenses));
-    logAudit("update", "expense", id, data);
-    return expenses[index];
-  },
-  delete: (id: number) => {
-    const expenses = expenseService.list();
-    const index = expenses.findIndex((e: any) => e.id === id);
-    if (index === -1) return { success: false, error: "Expense not found" };
-    expenses.splice(index, 1);
-    setStorageItem("sgf_expenses", JSON.stringify(expenses));
-    logAudit("delete", "expense", id, {});
-    return { success: true };
-  },
-  getSummary: (startDate?: string, endDate?: string) => {
-    let expenses = expenseService.list();
-    if (startDate) expenses = expenses.filter((e: any) => e.date >= startDate);
-    if (endDate) expenses = expenses.filter((e: any) => e.date <= endDate);
-    const byCategory = new Map<string, number>();
-    for (const e of expenses) {
-      byCategory.set(e.category, (byCategory.get(e.category) || 0) + (e.amount || 0));
-    }
-    return {
-      total: expenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0),
-      count: expenses.length,
-      byCategory: Array.from(byCategory.entries()).map(([category, amount]) => ({ category, amount })),
-    };
-  },
-};
-
-// =============================================================================
-// INCOME / REVENUE SERVICE
-// =============================================================================
-
-export const incomeService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_income");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const income = incomeService.list();
-    return income.find((i: any) => i.id === id);
-  },
-  getByCategory: (category: string) => {
-    const income = incomeService.list();
-    return income.filter((i: any) => i.category === category);
-  },
-  getByDate: (date: string) => {
-    const income = incomeService.list();
-    return income.filter((i: any) => i.date === date);
-  },
-  create: (data: any) => {
-    const income = incomeService.list();
-    const newIncome = {
-      id: Date.now() + Math.random(),
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    income.push(newIncome);
-    setStorageItem("sgf_income", JSON.stringify(income));
-    logAudit("create", "income", newIncome.id, data);
-    return newIncome;
-  },
-  update: (id: number, data: any) => {
-    const income = incomeService.list();
-    const index = income.findIndex((i: any) => i.id === id);
-    if (index === -1) return null;
-    income[index] = { ...income[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_income", JSON.stringify(income));
-    logAudit("update", "income", id, data);
-    return income[index];
-  },
-  delete: (id: number) => {
-    const income = incomeService.list();
-    const index = income.findIndex((i: any) => i.id === id);
-    if (index === -1) return { success: false, error: "Income not found" };
-    income.splice(index, 1);
-    setStorageItem("sgf_income", JSON.stringify(income));
-    logAudit("delete", "income", id, {});
-    return { success: true };
-  },
-  getSummary: (startDate?: string, endDate?: string) => {
-    let income = incomeService.list();
-    if (startDate) income = income.filter((i: any) => i.date >= startDate);
-    if (endDate) income = income.filter((i: any) => i.date <= endDate);
-    const byCategory = new Map<string, number>();
-    for (const i of income) {
-      byCategory.set(i.category, (byCategory.get(i.category) || 0) + (i.amount || 0));
-    }
-    return {
-      total: income.reduce((sum: number, i: any) => sum + (i.amount || 0), 0),
-      count: income.length,
-      byCategory: Array.from(byCategory.entries()).map(([category, amount]) => ({ category, amount })),
-    };
-  },
-};
-
-// =============================================================================
-// PROFIT & LOSS SERVICE
-// =============================================================================
-
-export const profitLossService = {
-  getReport: (startDate?: string, endDate?: string) => {
-    const income = incomeService.getSummary(startDate, endDate);
-    const expenses = expenseService.getSummary(startDate, endDate);
-    const sales = reportingService.getSalesSummary(startDate, endDate);
-    const costOfGoods = sales.orders.reduce((sum: number, o: any) => {
-      if (!o.items) return sum;
-      return sum + o.items.reduce((itemSum: number, item: any) => {
-        const product = products.find((p) => p.id === item.stockItemId);
-        return itemSum + (product?.costPrice || 0) * item.quantity;
-      }, 0);
-    }, 0);
-
-    const totalRevenue = income.total + sales.totalSales;
-    const totalExpenses = expenses.total + costOfGoods;
-    const grossProfit = sales.totalSales - costOfGoods;
-    const netProfit = totalRevenue - totalExpenses;
-
-    return {
-      revenue: { sales: sales.totalSales, otherIncome: income.total, total: totalRevenue },
-      expenses: { costOfGoods, operatingExpenses: expenses.total, total: totalExpenses },
-      profit: { gross: grossProfit, net: netProfit, margin: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0 },
-    };
-  },
-};
+      // CUSTOMER CHECK: validate active status, credit limit, and COD overdue rules
+      if (!isQuote) {
+        const check = checkCustomerCanOrder(
+          data.customerId,
+          data.paymentTerms || "cod",
+          data.superAdminOverride === true
+        );
+        if (check.blocked) {
+          throw new Error(check.reason);
+        }
+      }
+      
+      // Generate unique order number: date + HHMM + ms-based 4-digit suffix
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const now = new Date();
+      const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+      const msCounter = String(Date.now() % 10000).padStart(4, "0");
+      const prefix = isSample ? "SMP" : isQuote ? "QTE" : "ORD";
+      const orderNumber = `${prefix}-${dateStr}-${hhmm}${msCounter}`;
+      
+      const items = (data.items || []).map((item: any) => {
+        const product = products.find((p) => p.id == item.stockItemId);
+        const conversion = item.conversion || 1;
+        const basePrice = getEffectivePrice(item.stockItemId, isSample ? "corporate" : data.priceTier, data.customerId, isSample);
+        const unitPrice = isSample ? basePrice : (item.unitPrice && item.unitPrice > 0 ? item.unitPrice : basePrice * conversion);
+        return {
+          ...item,
+          productCode: product?.productCode || "",
+          productName: product?.productName || "Unknown",
+          lineTotal: unitPrice * item.quantity,
+          unitPrice,
+          unit: item.unit || "each",
+          conversion,
+          unitLabel: item.unitLabel || (conversion === 1 ? "Each" : `${conversion} units`),
+        };
+      });

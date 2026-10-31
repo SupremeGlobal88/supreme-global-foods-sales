@@ -1,0 +1,1 @@
+// (end of firebaseSync.ts — no more content)

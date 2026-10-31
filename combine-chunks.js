@@ -33,3 +33,4 @@ async function combineChunks(prefix, outputFile) {
 
 await combineChunks('dataService', 'dataService.ts');
 await combineChunks('localLink', 'localLink.ts');
+await combineChunks('firebaseSync', 'firebaseSync.ts');

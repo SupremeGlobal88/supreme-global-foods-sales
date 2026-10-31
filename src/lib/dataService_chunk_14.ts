@@ -1,242 +1,530 @@
 // =============================================================================
-// BANK / PAYMENT METHOD SERVICE
+// DISCIPLINARY SERVICE
 // =============================================================================
 
-export const bankService = {
+export const disciplinaryService = {
   list: () => {
-    try {
-      const raw = getStorageItem("sgf_banks");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+    const comp = getCurrentCompany();
+    return disciplinaryRecords.filter((d) => d.company === comp);
   },
   getById: (id: number) => {
-    const banks = bankService.list();
-    return banks.find((b: any) => b.id === id);
+    return disciplinaryRecords.find((d) => d.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return disciplinaryRecords.filter((d) => d.employeeId === employeeId);
   },
   create: (data: any) => {
-    const banks = bankService.list();
-    const newBank = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    banks.push(newBank);
-    setStorageItem("sgf_banks", JSON.stringify(banks));
-    logAudit("create", "bank", newBank.id, data);
-    return newBank;
+    disciplinaryRecords.push(newItem);
+    saveItem("sgf_disciplinaryRecords", disciplinaryRecords);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const banks = bankService.list();
-    const index = banks.findIndex((b: any) => b.id === id);
-    if (index === -1) return null;
-    banks[index] = { ...banks[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_banks", JSON.stringify(banks));
-    logAudit("update", "bank", id, data);
-    return banks[index];
-  },
-  delete: (id: number) => {
-    const banks = bankService.list();
-    const index = banks.findIndex((b: any) => b.id === id);
-    if (index === -1) return { success: false, error: "Bank not found" };
-    banks.splice(index, 1);
-    setStorageItem("sgf_banks", JSON.stringify(banks));
-    logAudit("delete", "bank", id, {});
-    return { success: true };
-  },
-};
-
-// =============================================================================
-// TAX / VAT SERVICE
-// =============================================================================
-
-export const taxService = {
-  getTaxRate: () => {
-    try {
-      const raw = getStorageItem("sgf_taxRate");
-      if (raw) return parseFloat(raw);
-    } catch { /* ignore */ }
-    return 0.15; // Default 15% VAT
-  },
-  setTaxRate: (rate: number) => {
-    setStorageItem("sgf_taxRate", String(rate));
-    logAudit("update", "taxRate", 0, { rate });
-    return rate;
-  },
-  calculateTax: (amount: number) => {
-    const rate = taxService.getTaxRate();
-    return Math.round(amount * rate * 100) / 100;
-  },
-  calculateTotalWithTax: (amount: number) => {
-    const rate = taxService.getTaxRate();
-    return Math.round(amount * (1 + rate) * 100) / 100;
-  },
-  calculateAmountWithoutTax: (total: number) => {
-    const rate = taxService.getTaxRate();
-    return Math.round(total / (1 + rate) * 100) / 100;
-  },
-};
-
-// =============================================================================
-// DISCOUNT / PROMOTION SERVICE
-// =============================================================================
-
-export const discountService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_discounts");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const discounts = discountService.list();
-    return discounts.find((d: any) => d.id === id);
-  },
-  create: (data: any) => {
-    const discounts = discountService.list();
-    const newDiscount = {
-      id: Date.now() + Math.random(),
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    discounts.push(newDiscount);
-    setStorageItem("sgf_discounts", JSON.stringify(discounts));
-    logAudit("create", "discount", newDiscount.id, data);
-    return newDiscount;
-  },
-  update: (id: number, data: any) => {
-    const discounts = discountService.list();
-    const index = discounts.findIndex((d: any) => d.id === id);
-    if (index === -1) return null;
-    discounts[index] = { ...discounts[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_discounts", JSON.stringify(discounts));
-    logAudit("update", "discount", id, data);
-    return discounts[index];
-  },
-  delete: (id: number) => {
-    const discounts = discountService.list();
-    const index = discounts.findIndex((d: any) => d.id === id);
-    if (index === -1) return { success: false, error: "Discount not found" };
-    discounts.splice(index, 1);
-    setStorageItem("sgf_discounts", JSON.stringify(discounts));
-    logAudit("delete", "discount", id, {});
-    return { success: true };
-  },
-  applyDiscount: (amount: number, discountId: number) => {
-    const discount = discountService.getById(discountId);
-    if (!discount) return amount;
-    if (discount.type === "percentage") {
-      return amount * (1 - (discount.value || 0) / 100);
-    } else if (discount.type === "fixed") {
-      return Math.max(0, amount - (discount.value || 0));
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = disciplinaryRecords.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      disciplinaryRecords[idx] = { ...disciplinaryRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_disciplinaryRecords", disciplinaryRecords);
     }
-    return amount;
+    return disciplinaryRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = disciplinaryRecords.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      disciplinaryRecords.splice(idx, 1);
+      saveItem("sgf_disciplinaryRecords", disciplinaryRecords);
+    }
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// CURRENCY / EXCHANGE RATE SERVICE
+// GRIEVANCE SERVICE
 // =============================================================================
 
-export const currencyService = {
-  getBaseCurrency: () => {
-    try {
-      const raw = getStorageItem("sgf_baseCurrency");
-      if (raw) return raw;
-    } catch { /* ignore */ }
-    return "ZAR";
+export const grievanceService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return grievances.filter((g) => g.company === comp);
   },
-  setBaseCurrency: (currency: string) => {
-    setStorageItem("sgf_baseCurrency", currency);
-    logAudit("update", "baseCurrency", 0, { currency });
-    return currency;
+  getById: (id: number) => {
+    return grievances.find((g) => g.id === id);
   },
-  getExchangeRate: (currency: string) => {
-    try {
-      const raw = getStorageItem(`sgf_exchangeRate_${currency}`);
-      if (raw) return parseFloat(raw);
-    } catch { /* ignore */ }
-    return 1;
+  getByEmployee: (employeeId: number) => {
+    return grievances.filter((g) => g.employeeId === employeeId);
   },
-  setExchangeRate: (currency: string, rate: number) => {
-    setStorageItem(`sgf_exchangeRate_${currency}`, String(rate));
-    logAudit("update", "exchangeRate", 0, { currency, rate });
-    return rate;
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return grievances.filter((g) => g.company === comp && g.status === status);
   },
-  convert: (amount: number, from: string, to: string) => {
-    if (from === to) return amount;
-    const fromRate = currencyService.getExchangeRate(from);
-    const toRate = currencyService.getExchangeRate(to);
-    return Math.round((amount / fromRate) * toRate * 100) / 100;
-  },
-};
-
-// =============================================================================
-// COMPANY / BRANCH SERVICE
-// =============================================================================
-
-export const companyService = {
-  getCompanyInfo: () => {
-    try {
-      const raw = getStorageItem("sgf_companyInfo");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return {
-      name: "Supreme Global Foods",
-      registration: "",
-      vatNumber: "",
-      address: "",
-      phone: "",
-      email: "",
-      website: "",
-    };
-  },
-  setCompanyInfo: (data: any) => {
-    const current = companyService.getCompanyInfo();
-    const updated = { ...current, ...data };
-    setStorageItem("sgf_companyInfo", JSON.stringify(updated));
-    logAudit("update", "companyInfo", 0, data);
-    return updated;
-  },
-  getBranches: () => {
-    try {
-      const raw = getStorageItem("sgf_branches");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  createBranch: (data: any) => {
-    const branches = companyService.getBranches();
-    const newBranch = {
-      id: Date.now() + Math.random(),
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    branches.push(newBranch);
-    setStorageItem("sgf_branches", JSON.stringify(branches));
-    logAudit("create", "branch", newBranch.id, data);
-    return newBranch;
+    grievances.push(newItem);
+    saveItem("sgf_grievances", grievances);
+    return newItem;
   },
-  updateBranch: (id: number, data: any) => {
-    const branches = companyService.getBranches();
-    const index = branches.findIndex((b: any) => b.id === id);
-    if (index === -1) return null;
-    branches[index] = { ...branches[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_branches", JSON.stringify(branches));
-    logAudit("update", "branch", id, data);
-    return branches[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = grievances.findIndex((g) => g.id === id);
+    if (idx >= 0) {
+      grievances[idx] = { ...grievances[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_grievances", grievances);
+    }
+    return grievances[idx];
   },
-  deleteBranch: (id: number) => {
-    const branches = companyService.getBranches();
-    const index = branches.findIndex((b: any) => b.id === id);
-    if (index === -1) return { success: false, error: "Branch not found" };
-    branches.splice(index, 1);
-    setStorageItem("sgf_branches", JSON.stringify(branches));
-    logAudit("delete", "branch", id, {});
-    return { success: true };
+  delete: (id: number) => {
+    const idx = grievances.findIndex((g) => g.id === id);
+    if (idx >= 0) {
+      grievances.splice(idx, 1);
+      saveItem("sgf_grievances", grievances);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// HEALTH AND SAFETY SERVICE
+// =============================================================================
+
+export const healthSafetyService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return healthSafetyRecords.filter((h) => h.company === comp);
+  },
+  getById: (id: number) => {
+    return healthSafetyRecords.find((h) => h.id === id);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return healthSafetyRecords.filter((h) => h.company === comp && h.type === type);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    healthSafetyRecords.push(newItem);
+    saveItem("sgf_healthSafetyRecords", healthSafetyRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = healthSafetyRecords.findIndex((h) => h.id === id);
+    if (idx >= 0) {
+      healthSafetyRecords[idx] = { ...healthSafetyRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_healthSafetyRecords", healthSafetyRecords);
+    }
+    return healthSafetyRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = healthSafetyRecords.findIndex((h) => h.id === id);
+    if (idx >= 0) {
+      healthSafetyRecords.splice(idx, 1);
+      saveItem("sgf_healthSafetyRecords", healthSafetyRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// INCIDENT SERVICE
+// =============================================================================
+
+export const incidentService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return incidents.filter((i) => i.company === comp);
+  },
+  getById: (id: number) => {
+    return incidents.find((i) => i.id === id);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return incidents.filter((i) => i.company === comp && i.type === type);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return incidents.filter((i) => i.company === comp && i.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    incidents.push(newItem);
+    saveItem("sgf_incidents", incidents);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = incidents.findIndex((i) => i.id === id);
+    if (idx >= 0) {
+      incidents[idx] = { ...incidents[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_incidents", incidents);
+    }
+    return incidents[idx];
+  },
+  delete: (id: number) => {
+    const idx = incidents.findIndex((i) => i.id === id);
+    if (idx >= 0) {
+      incidents.splice(idx, 1);
+      saveItem("sgf_incidents", incidents);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// RISK REGISTER SERVICE
+// =============================================================================
+
+export const riskRegisterService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return riskRegisters.filter((r) => r.company === comp);
+  },
+  getById: (id: number) => {
+    return riskRegisters.find((r) => r.id === id);
+  },
+  getByCategory: (category: string) => {
+    const comp = getCurrentCompany();
+    return riskRegisters.filter((r) => r.company === comp && r.category === category);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return riskRegisters.filter((r) => r.company === comp && r.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    riskRegisters.push(newItem);
+    saveItem("sgf_riskRegisters", riskRegisters);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = riskRegisters.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      riskRegisters[idx] = { ...riskRegisters[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_riskRegisters", riskRegisters);
+    }
+    return riskRegisters[idx];
+  },
+  delete: (id: number) => {
+    const idx = riskRegisters.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      riskRegisters.splice(idx, 1);
+      saveItem("sgf_riskRegisters", riskRegisters);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// EMERGENCY CONTACT SERVICE
+// =============================================================================
+
+export const emergencyContactService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return emergencyContacts.filter((e) => e.company === comp);
+  },
+  getById: (id: number) => {
+    return emergencyContacts.find((e) => e.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return emergencyContacts.filter((e) => e.employeeId === employeeId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    emergencyContacts.push(newItem);
+    saveItem("sgf_emergencyContacts", emergencyContacts);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = emergencyContacts.findIndex((e) => e.id === id);
+    if (idx >= 0) {
+      emergencyContacts[idx] = { ...emergencyContacts[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_emergencyContacts", emergencyContacts);
+    }
+    return emergencyContacts[idx];
+  },
+  delete: (id: number) => {
+    const idx = emergencyContacts.findIndex((e) => e.id === id);
+    if (idx >= 0) {
+      emergencyContacts.splice(idx, 1);
+      saveItem("sgf_emergencyContacts", emergencyContacts);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// MEDICAL RECORD SERVICE
+// =============================================================================
+
+export const medicalRecordService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return medicalRecords.filter((m) => m.company === comp);
+  },
+  getById: (id: number) => {
+    return medicalRecords.find((m) => m.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return medicalRecords.filter((m) => m.employeeId === employeeId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    medicalRecords.push(newItem);
+    saveItem("sgf_medicalRecords", medicalRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = medicalRecords.findIndex((m) => m.id === id);
+    if (idx >= 0) {
+      medicalRecords[idx] = { ...medicalRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_medicalRecords", medicalRecords);
+    }
+    return medicalRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = medicalRecords.findIndex((m) => m.id === id);
+    if (idx >= 0) {
+      medicalRecords.splice(idx, 1);
+      saveItem("sgf_medicalRecords", medicalRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// FIRST AID SERVICE
+// =============================================================================
+
+export const firstAidService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return firstAidRecords.filter((f) => f.company === comp);
+  },
+  getById: (id: number) => {
+    return firstAidRecords.find((f) => f.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return firstAidRecords.filter((f) => f.employeeId === employeeId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    firstAidRecords.push(newItem);
+    saveItem("sgf_firstAidRecords", firstAidRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = firstAidRecords.findIndex((f) => f.id === id);
+    if (idx >= 0) {
+      firstAidRecords[idx] = { ...firstAidRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_firstAidRecords", firstAidRecords);
+    }
+    return firstAidRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = firstAidRecords.findIndex((f) => f.id === id);
+    if (idx >= 0) {
+      firstAidRecords.splice(idx, 1);
+      saveItem("sgf_firstAidRecords", firstAidRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// FIRE SAFETY SERVICE
+// =============================================================================
+
+export const fireSafetyService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return fireSafetyRecords.filter((f) => f.company === comp);
+  },
+  getById: (id: number) => {
+    return fireSafetyRecords.find((f) => f.id === id);
+  },
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return fireSafetyRecords.filter((f) => f.company === comp && f.nextCheck && f.nextCheck <= now);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    fireSafetyRecords.push(newItem);
+    saveItem("sgf_fireSafetyRecords", fireSafetyRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = fireSafetyRecords.findIndex((f) => f.id === id);
+    if (idx >= 0) {
+      fireSafetyRecords[idx] = { ...fireSafetyRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_fireSafetyRecords", fireSafetyRecords);
+    }
+    return fireSafetyRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = fireSafetyRecords.findIndex((f) => f.id === id);
+    if (idx >= 0) {
+      fireSafetyRecords.splice(idx, 1);
+      saveItem("sgf_fireSafetyRecords", fireSafetyRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// EQUIPMENT SERVICE
+// =============================================================================
+
+export const equipmentService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return equipmentRecords.filter((e) => e.company === comp);
+  },
+  getById: (id: number) => {
+    return equipmentRecords.find((e) => e.id === id);
+  },
+  getByCode: (code: string) => {
+    return equipmentRecords.find((e) => e.code === code);
+  },
+  getByCategory: (category: string) => {
+    const comp = getCurrentCompany();
+    return equipmentRecords.filter((e) => e.company === comp && e.category === category);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    equipmentRecords.push(newItem);
+    saveItem("sgf_equipmentRecords", equipmentRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = equipmentRecords.findIndex((e) => e.id === id);
+    if (idx >= 0) {
+      equipmentRecords[idx] = { ...equipmentRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_equipmentRecords", equipmentRecords);
+    }
+    return equipmentRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = equipmentRecords.findIndex((e) => e.id === id);
+    if (idx >= 0) {
+      equipmentRecords.splice(idx, 1);
+      saveItem("sgf_equipmentRecords", equipmentRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// VEHICLE SERVICE
+// =============================================================================
+
+export const vehicleService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return vehicles.filter((v) => v.company === comp);
+  },
+  getById: (id: number) => {
+    return vehicles.find((v) => v.id === id);
+  },
+  getByRegistration: (registration: string) => {
+    return vehicles.find((v) => v.registration === registration);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return vehicles.filter((v) => v.company === comp && v.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    vehicles.push(newItem);
+    saveItem("sgf_vehicles", vehicles);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = vehicles.findIndex((v) => v.id === id);
+    if (idx >= 0) {
+      vehicles[idx] = { ...vehicles[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_vehicles", vehicles);
+    }
+    return vehicles[idx];
+  },
+  delete: (id: number) => {
+    const idx = vehicles.findIndex((v) => v.id === id);
+    if (idx >= 0) {
+      vehicles.splice(idx, 1);
+      saveItem("sgf_vehicles", vehicles);
+    }
+    return { success: idx >= 0 };
   },
 };

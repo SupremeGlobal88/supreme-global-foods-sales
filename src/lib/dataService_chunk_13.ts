@@ -1,258 +1,442 @@
 // =============================================================================
-// ROUTE / DELIVERY SERVICE
+// CONTRACT SERVICE
 // =============================================================================
 
-export const routeService = {
-  getRoutes: () => {
-    try {
-      const raw = getStorageItem("sgf_routes");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+export const contractService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return contracts.filter((c) => c.company === comp);
   },
-  createRoute: (data: any) => {
-    const routes = routeService.getRoutes();
-    const newRoute = {
-      id: Date.now() + Math.random(),
+  getById: (id: number) => {
+    return contracts.find((c) => c.id === id);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return contracts.filter((c) => c.company === comp && c.type === type);
+  },
+  getExpiring: () => {
+    const comp = getCurrentCompany();
+    const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    return contracts.filter((c) => c.company === comp && c.endDate && c.endDate <= thirtyDays);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    routes.push(newRoute);
-    setStorageItem("sgf_routes", JSON.stringify(routes));
-    logAudit("create", "route", newRoute.id, data);
-    return newRoute;
+    contracts.push(newItem);
+    saveItem("sgf_contracts", contracts);
+    return newItem;
   },
-  updateRoute: (id: number, data: any) => {
-    const routes = routeService.getRoutes();
-    const index = routes.findIndex((r: any) => r.id === id);
-    if (index === -1) return null;
-    routes[index] = { ...routes[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_routes", JSON.stringify(routes));
-    logAudit("update", "route", id, data);
-    return routes[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = contracts.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      contracts[idx] = { ...contracts[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_contracts", contracts);
+    }
+    return contracts[idx];
   },
-  deleteRoute: (id: number) => {
-    const routes = routeService.getRoutes();
-    const index = routes.findIndex((r: any) => r.id === id);
-    if (index === -1) return { success: false, error: "Route not found" };
-    routes.splice(index, 1);
-    setStorageItem("sgf_routes", JSON.stringify(routes));
-    logAudit("delete", "route", id, {});
-    return { success: true };
-  },
-  getCustomerRoute: (customerId: number) => {
-    const routes = routeService.getRoutes();
-    return routes.find((r: any) => r.customerIds?.includes(customerId));
-  },
-  getRouteCustomers: (routeId: number) => {
-    const routes = routeService.getRoutes();
-    const route = routes.find((r: any) => r.id === routeId);
-    if (!route) return [];
-    return customers.filter((c) => route.customerIds?.includes(c.id));
+  delete: (id: number) => {
+    const idx = contracts.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      contracts.splice(idx, 1);
+      saveItem("sgf_contracts", contracts);
+    }
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// DELIVERY NOTE SERVICE
+// PROJECT SERVICE
 // =============================================================================
 
-export const deliveryNoteService = {
+export const projectService = {
   list: () => {
-    try {
-      const raw = getStorageItem("sgf_deliveryNotes");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+    const comp = getCurrentCompany();
+    return projects.filter((p) => p.company === comp);
   },
   getById: (id: number) => {
-    const notes = deliveryNoteService.list();
-    return notes.find((n: any) => n.id === id);
+    return projects.find((p) => p.id === id);
   },
-  getByOrder: (orderId: number) => {
-    const notes = deliveryNoteService.list();
-    return notes.filter((n: any) => n.orderId === orderId);
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return projects.filter((p) => p.company === comp && p.status === status);
   },
   create: (data: any) => {
-    const notes = deliveryNoteService.list();
-    const newNote = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    notes.push(newNote);
-    setStorageItem("sgf_deliveryNotes", JSON.stringify(notes));
-    logAudit("create", "deliveryNote", newNote.id, data);
-    return newNote;
+    projects.push(newItem);
+    saveItem("sgf_projects", projects);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const notes = deliveryNoteService.list();
-    const index = notes.findIndex((n: any) => n.id === id);
-    if (index === -1) return null;
-    notes[index] = { ...notes[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_deliveryNotes", JSON.stringify(notes));
-    logAudit("update", "deliveryNote", id, data);
-    return notes[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = projects.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      projects[idx] = { ...projects[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_projects", projects);
+    }
+    return projects[idx];
   },
   delete: (id: number) => {
-    const notes = deliveryNoteService.list();
-    const index = notes.findIndex((n: any) => n.id === id);
-    if (index === -1) return { success: false, error: "Delivery note not found" };
-    notes.splice(index, 1);
-    setStorageItem("sgf_deliveryNotes", JSON.stringify(notes));
-    logAudit("delete", "deliveryNote", id, {});
-    return { success: true };
+    const idx = projects.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      projects.splice(idx, 1);
+      saveItem("sgf_projects", projects);
+    }
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// VEHICLE / TRANSPORT SERVICE
+// TASK SERVICE
 // =============================================================================
 
-export const vehicleService = {
+export const taskService = {
   list: () => {
-    try {
-      const raw = getStorageItem("sgf_vehicles");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+    const comp = getCurrentCompany();
+    return tasks.filter((t) => t.company === comp);
   },
   getById: (id: number) => {
-    const vehicles = vehicleService.list();
-    return vehicles.find((v: any) => v.id === id);
+    return tasks.find((t) => t.id === id);
   },
-  getByReg: (reg: string) => {
-    const vehicles = vehicleService.list();
-    return vehicles.find((v: any) => v.registration?.toLowerCase() === reg.toLowerCase());
+  getByProject: (projectId: number) => {
+    return tasks.filter((t) => t.projectId === projectId);
+  },
+  getByAssignee: (assigneeId: number) => {
+    return tasks.filter((t) => t.assigneeId === assigneeId);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return tasks.filter((t) => t.company === comp && t.status === status);
   },
   create: (data: any) => {
-    const vehicles = vehicleService.list();
-    const newVehicle = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    vehicles.push(newVehicle);
-    setStorageItem("sgf_vehicles", JSON.stringify(vehicles));
-    logAudit("create", "vehicle", newVehicle.id, data);
-    return newVehicle;
+    tasks.push(newItem);
+    saveItem("sgf_tasks", tasks);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const vehicles = vehicleService.list();
-    const index = vehicles.findIndex((v: any) => v.id === id);
-    if (index === -1) return null;
-    vehicles[index] = { ...vehicles[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_vehicles", JSON.stringify(vehicles));
-    logAudit("update", "vehicle", id, data);
-    return vehicles[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = tasks.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      tasks[idx] = { ...tasks[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_tasks", tasks);
+    }
+    return tasks[idx];
   },
   delete: (id: number) => {
-    const vehicles = vehicleService.list();
-    const index = vehicles.findIndex((v: any) => v.id === id);
-    if (index === -1) return { success: false, error: "Vehicle not found" };
-    vehicles.splice(index, 1);
-    setStorageItem("sgf_vehicles", JSON.stringify(vehicles));
-    logAudit("delete", "vehicle", id, {});
-    return { success: true };
+    const idx = tasks.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      tasks.splice(idx, 1);
+      saveItem("sgf_tasks", tasks);
+    }
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// DRIVER / TRANSPORTER SERVICE
+// TIME TRACKING SERVICE
 // =============================================================================
 
-export const driverService = {
+export const timeTrackingService = {
   list: () => {
-    try {
-      const raw = getStorageItem("sgf_drivers");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+    const comp = getCurrentCompany();
+    return timeTrackingRecords.filter((t) => t.company === comp);
   },
   getById: (id: number) => {
-    const drivers = driverService.list();
-    return drivers.find((d: any) => d.id === id);
+    return timeTrackingRecords.find((t) => t.id === id);
+  },
+  getByTask: (taskId: number) => {
+    return timeTrackingRecords.filter((t) => t.taskId === taskId);
+  },
+  getByEmployee: (employeeId: number) => {
+    return timeTrackingRecords.filter((t) => t.employeeId === employeeId);
   },
   create: (data: any) => {
-    const drivers = driverService.list();
-    const newDriver = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    drivers.push(newDriver);
-    setStorageItem("sgf_drivers", JSON.stringify(drivers));
-    logAudit("create", "driver", newDriver.id, data);
-    return newDriver;
+    timeTrackingRecords.push(newItem);
+    saveItem("sgf_timeTrackingRecords", timeTrackingRecords);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const drivers = driverService.list();
-    const index = drivers.findIndex((d: any) => d.id === id);
-    if (index === -1) return null;
-    drivers[index] = { ...drivers[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_drivers", JSON.stringify(drivers));
-    logAudit("update", "driver", id, data);
-    return drivers[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = timeTrackingRecords.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      timeTrackingRecords[idx] = { ...timeTrackingRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_timeTrackingRecords", timeTrackingRecords);
+    }
+    return timeTrackingRecords[idx];
   },
   delete: (id: number) => {
-    const drivers = driverService.list();
-    const index = drivers.findIndex((d: any) => d.id === id);
-    if (index === -1) return { success: false, error: "Driver not found" };
-    drivers.splice(index, 1);
-    setStorageItem("sgf_drivers", JSON.stringify(drivers));
-    logAudit("delete", "driver", id, {});
-    return { success: true };
+    const idx = timeTrackingRecords.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      timeTrackingRecords.splice(idx, 1);
+      saveItem("sgf_timeTrackingRecords", timeTrackingRecords);
+    }
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// WAREHOUSE / LOCATION SERVICE
+// MILESTONE SERVICE
 // =============================================================================
 
-export const warehouseService = {
+export const milestoneService = {
   list: () => {
-    try {
-      const raw = getStorageItem("sgf_warehouses");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+    const comp = getCurrentCompany();
+    return milestones.filter((m) => m.company === comp);
   },
   getById: (id: number) => {
-    const warehouses = warehouseService.list();
-    return warehouses.find((w: any) => w.id === id);
+    return milestones.find((m) => m.id === id);
+  },
+  getByProject: (projectId: number) => {
+    return milestones.filter((m) => m.projectId === projectId);
   },
   create: (data: any) => {
-    const warehouses = warehouseService.list();
-    const newWarehouse = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    warehouses.push(newWarehouse);
-    setStorageItem("sgf_warehouses", JSON.stringify(warehouses));
-    logAudit("create", "warehouse", newWarehouse.id, data);
-    return newWarehouse;
+    milestones.push(newItem);
+    saveItem("sgf_milestones", milestones);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const warehouses = warehouseService.list();
-    const index = warehouses.findIndex((w: any) => w.id === id);
-    if (index === -1) return null;
-    warehouses[index] = { ...warehouses[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_warehouses", JSON.stringify(warehouses));
-    logAudit("update", "warehouse", id, data);
-    return warehouses[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = milestones.findIndex((m) => m.id === id);
+    if (idx >= 0) {
+      milestones[idx] = { ...milestones[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_milestones", milestones);
+    }
+    return milestones[idx];
   },
   delete: (id: number) => {
-    const warehouses = warehouseService.list();
-    const index = warehouses.findIndex((w: any) => w.id === id);
-    if (index === -1) return { success: false, error: "Warehouse not found" };
-    warehouses.splice(index, 1);
-    setStorageItem("sgf_warehouses", JSON.stringify(warehouses));
-    logAudit("delete", "warehouse", id, {});
-    return { success: true };
+    const idx = milestones.findIndex((m) => m.id === id);
+    if (idx >= 0) {
+      milestones.splice(idx, 1);
+      saveItem("sgf_milestones", milestones);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// RESOURCE ALLOCATION SERVICE
+// =============================================================================
+
+export const resourceAllocationService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return resourceAllocations.filter((r) => r.company === comp);
+  },
+  getById: (id: number) => {
+    return resourceAllocations.find((r) => r.id === id);
+  },
+  getByProject: (projectId: number) => {
+    return resourceAllocations.filter((r) => r.projectId === projectId);
+  },
+  getByResource: (resourceId: number) => {
+    return resourceAllocations.filter((r) => r.resourceId === resourceId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    resourceAllocations.push(newItem);
+    saveItem("sgf_resourceAllocations", resourceAllocations);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = resourceAllocations.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      resourceAllocations[idx] = { ...resourceAllocations[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_resourceAllocations", resourceAllocations);
+    }
+    return resourceAllocations[idx];
+  },
+  delete: (id: number) => {
+    const idx = resourceAllocations.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      resourceAllocations.splice(idx, 1);
+      saveItem("sgf_resourceAllocations", resourceAllocations);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// SKILL SERVICE
+// =============================================================================
+
+export const skillService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return skills.filter((s) => s.company === comp);
+  },
+  getById: (id: number) => {
+    return skills.find((s) => s.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return skills.filter((s) => s.employeeId === employeeId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    skills.push(newItem);
+    saveItem("sgf_skills", skills);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = skills.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      skills[idx] = { ...skills[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_skills", skills);
+    }
+    return skills[idx];
+  },
+  delete: (id: number) => {
+    const idx = skills.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      skills.splice(idx, 1);
+      saveItem("sgf_skills", skills);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// RECRUITMENT SERVICE
+// =============================================================================
+
+export const recruitmentService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return recruitments.filter((r) => r.company === comp);
+  },
+  getById: (id: number) => {
+    return recruitments.find((r) => r.id === id);
+  },
+  getByPosition: (position: string) => {
+    const comp = getCurrentCompany();
+    return recruitments.filter((r) => r.company === comp && r.position === position);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return recruitments.filter((r) => r.company === comp && r.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    recruitments.push(newItem);
+    saveItem("sgf_recruitments", recruitments);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = recruitments.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      recruitments[idx] = { ...recruitments[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_recruitments", recruitments);
+    }
+    return recruitments[idx];
+  },
+  delete: (id: number) => {
+    const idx = recruitments.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      recruitments.splice(idx, 1);
+      saveItem("sgf_recruitments", recruitments);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// APPRAISAL SERVICE
+// =============================================================================
+
+export const appraisalService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return appraisals.filter((a) => a.company === comp);
+  },
+  getById: (id: number) => {
+    return appraisals.find((a) => a.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return appraisals.filter((a) => a.employeeId === employeeId);
+  },
+  getByPeriod: (period: string) => {
+    const comp = getCurrentCompany();
+    return appraisals.filter((a) => a.company === comp && a.period === period);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    appraisals.push(newItem);
+    saveItem("sgf_appraisals", appraisals);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = appraisals.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      appraisals[idx] = { ...appraisals[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_appraisals", appraisals);
+    }
+    return appraisals[idx];
+  },
+  delete: (id: number) => {
+    const idx = appraisals.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      appraisals.splice(idx, 1);
+      saveItem("sgf_appraisals", appraisals);
+    }
+    return { success: idx >= 0 };
   },
 };

@@ -1,288 +1,239 @@
-// =============================================================================
-// SUBSCRIPTION / RECURRING SERVICE
-// =============================================================================
+      if (invIdx < 0) return { success: false, error: "Invoice not found" };
+      const inv = invoices[invIdx];
 
-export const subscriptionService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_subscriptions");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const subscriptions = subscriptionService.list();
-    return subscriptions.find((s: any) => s.id === id);
-  },
-  getByCustomer: (customerId: number) => {
-    const subscriptions = subscriptionService.list();
-    return subscriptions.filter((s: any) => s.customerId === customerId);
-  },
-  getActive: () => {
-    const subscriptions = subscriptionService.list();
-    return subscriptions.filter((s: any) => s.status === "active");
-  },
-  create: (data: any) => {
-    const subscriptions = subscriptionService.list();
-    const newSubscription = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "active",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    subscriptions.push(newSubscription);
-    setStorageItem("sgf_subscriptions", JSON.stringify(subscriptions));
-    logAudit("create", "subscription", newSubscription.id, data);
-    return newSubscription;
-  },
-  update: (id: number, data: any) => {
-    const subscriptions = subscriptionService.list();
-    const index = subscriptions.findIndex((s: any) => s.id === id);
-    if (index === -1) return null;
-    subscriptions[index] = { ...subscriptions[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_subscriptions", JSON.stringify(subscriptions));
-    logAudit("update", "subscription", id, data);
-    return subscriptions[index];
-  },
-  delete: (id: number) => {
-    const subscriptions = subscriptionService.list();
-    const index = subscriptions.findIndex((s: any) => s.id === id);
-    if (index === -1) return { success: false, error: "Subscription not found" };
-    subscriptions.splice(index, 1);
-    setStorageItem("sgf_subscriptions", JSON.stringify(subscriptions));
-    logAudit("delete", "subscription", id, {});
-    return { success: true };
-  },
-};
+      const currentBalance = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0) - (inv.amountPaid || 0);
+      const creditApplied = Math.min(amount, currentBalance);
+      const newBalance = Math.max(0, currentBalance - creditApplied);
 
-// =============================================================================
-// CONTRACT / AGREEMENT SERVICE
-// =============================================================================
+      inv.balanceDue = newBalance;
+      inv.amountPaid = (inv.amountPaid || 0) + creditApplied;
+      inv.status = newBalance <= 0.01 ? "paid" : "sent";
+      inv.updatedAt = new Date().toISOString();
 
-export const contractService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_contracts");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
-  },
-  getById: (id: number) => {
-    const contracts = contractService.list();
-    return contracts.find((c: any) => c.id === id);
-  },
-  getByCustomer: (customerId: number) => {
-    const contracts = contractService.list();
-    return contracts.filter((c: any) => c.customerId === customerId);
-  },
-  getActive: () => {
-    const contracts = contractService.list();
-    return contracts.filter((c: any) => c.status === "active");
-  },
-  create: (data: any) => {
-    const contracts = contractService.list();
-    const newContract = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "draft",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    contracts.push(newContract);
-    setStorageItem("sgf_contracts", JSON.stringify(contracts));
-    logAudit("create", "contract", newContract.id, data);
-    return newContract;
-  },
-  update: (id: number, data: any) => {
-    const contracts = contractService.list();
-    const index = contracts.findIndex((c: any) => c.id === id);
-    if (index === -1) return null;
-    contracts[index] = { ...contracts[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_contracts", JSON.stringify(contracts));
-    logAudit("update", "contract", id, data);
-    return contracts[index];
-  },
-  delete: (id: number) => {
-    const contracts = contractService.list();
-    const index = contracts.findIndex((c: any) => c.id === id);
-    if (index === -1) return { success: false, error: "Contract not found" };
-    contracts.splice(index, 1);
-    setStorageItem("sgf_contracts", JSON.stringify(contracts));
-    logAudit("delete", "contract", id, {});
-    return { success: true };
-  },
-};
+      cn.remainingAmount = remaining - creditApplied;
+      cn.status = cn.remainingAmount <= 0.01 ? "fully_applied" : "partially_applied";
+      cn.updatedAt = new Date().toISOString();
 
-// =============================================================================
-// PROJECT / JOB SERVICE
-// =============================================================================
+      saveItem("sgf_creditNotes", creditNotes);
+      saveItem("sgf_invoices", invoices);
+      logAudit("APPLY", "creditNote", creditNoteId, `Credit note applied: R${creditApplied.toFixed(2)} to invoice ${inv.invoiceNumber}`);
+      return { success: true, invoice: inv, creditNote: cn };
+    },
+    createCreditNoteFromInvoice: ({ invoiceId, reason }: { invoiceId: number; reason: string }) => {
+      const inv = invoices.find((i) => i.id == invoiceId);
+      if (!inv) return { success: false, error: "Invoice not found" };
+      const total = inv.total || inv.totalAmount || 0;
+      const paid = inv.amountPaid || 0;
+      const creditTotal = Math.max(0, total - paid);
+      if (creditTotal <= 0) return { success: false, error: "Invoice has no remaining balance to credit" };
 
-export const projectService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_projects");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+      const creditNote = {
+        id: Date.now(),
+        creditNoteNumber: `CN-${String(creditNotes.length + 1).padStart(3, "0")}`,
+        customerId: inv.customerId,
+        customerName: inv.customerName,
+        invoiceId,
+        invoiceNumber: inv.invoiceNumber,
+        amount: creditTotal,
+        remainingAmount: creditTotal,
+        reason: reason || "",
+        status: "open",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      creditNotes.push(creditNote);
+      saveItem("sgf_creditNotes", creditNotes);
+      logAudit("CREATE", "creditNote", creditNote.id, `Credit note ${creditNote.creditNoteNumber} created from invoice ${inv.invoiceNumber}`);
+      return { success: true, creditNote };
+    },
+    voidCreditNote: (id: number) => {
+      const idx = creditNotes.findIndex((cn) => cn.id == id);
+      if (idx >= 0) {
+        creditNotes[idx].status = "voided";
+        creditNotes[idx].updatedAt = new Date().toISOString();
+        saveItem("sgf_creditNotes", creditNotes);
+      }
+      return { success: idx >= 0 };
+    },
+    getCreditNoteStats: () => ({
+      total: creditNotes.length,
+      open: creditNotes.filter((cn) => cn.status === "open").length,
+      applied: creditNotes.filter((cn) => cn.status === "fully_applied" || cn.status === "partially_applied").length,
+      voided: creditNotes.filter((cn) => cn.status === "voided").length,
+      totalValue: Math.round(creditNotes.reduce((sum, cn) => sum + (cn.amount || 0), 0) * 100) / 100,
+    }),
   },
-  getById: (id: number) => {
-    const projects = projectService.list();
-    return projects.find((p: any) => p.id === id);
-  },
-  getByCustomer: (customerId: number) => {
-    const projects = projectService.list();
-    return projects.filter((p: any) => p.customerId === customerId);
-  },
-  getByStatus: (status: string) => {
-    const projects = projectService.list();
-    return projects.filter((p: any) => p.status === status);
-  },
-  create: (data: any) => {
-    const projects = projectService.list();
-    const newProject = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "active",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    projects.push(newProject);
-    setStorageItem("sgf_projects", JSON.stringify(projects));
-    logAudit("create", "project", newProject.id, data);
-    return newProject;
-  },
-  update: (id: number, data: any) => {
-    const projects = projectService.list();
-    const index = projects.findIndex((p: any) => p.id === id);
-    if (index === -1) return null;
-    projects[index] = { ...projects[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_projects", JSON.stringify(projects));
-    logAudit("update", "project", id, data);
-    return projects[index];
-  },
-  delete: (id: number) => {
-    const projects = projectService.list();
-    const index = projects.findIndex((p: any) => p.id === id);
-    if (index === -1) return { success: false, error: "Project not found" };
-    projects.splice(index, 1);
-    setStorageItem("sgf_projects", JSON.stringify(projects));
-    logAudit("delete", "project", id, {});
-    return { success: true };
-  },
-};
 
-// =============================================================================
-// TIME TRACKING / TIMESHEET SERVICE
-// =============================================================================
+  // =============================================================================
+  // SAGE IMPORT SERVICE
+  // =============================================================================
 
-export const timesheetService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_timesheets");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+  sageImport: {
+    importCustomers: (data: any[]) => {
+      let created = 0;
+      let updated = 0;
+      for (const item of data) {
+        const existingIdx = sageCustomers.findIndex((c) => c.accountNumber === item.accountNumber);
+        if (existingIdx >= 0) {
+          sageCustomers[existingIdx] = { ...sageCustomers[existingIdx], ...item, updatedAt: new Date().toISOString() };
+          updated++;
+        } else {
+          sageCustomers.push({ ...item, id: Date.now() + created, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+          created++;
+        }
+      }
+      saveItem("sgf_sageCustomers", sageCustomers);
+      return { created, updated };
+    },
+    importInvoices: (data: any[]) => {
+      let created = 0;
+      let updated = 0;
+      for (const item of data) {
+        const existingIdx = sageInvoices.findIndex((i) => i.invoiceNumber === item.invoiceNumber);
+        if (existingIdx >= 0) {
+          sageInvoices[existingIdx] = { ...sageInvoices[existingIdx], ...item, updatedAt: new Date().toISOString() };
+          updated++;
+        } else {
+          sageInvoices.push({ ...item, id: Date.now() + created, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+          created++;
+        }
+      }
+      saveItem("sgf_sageInvoices", sageInvoices);
+      return { created, updated };
+    },
+    importPayments: (data: any[]) => {
+      let created = 0;
+      let updated = 0;
+      for (const item of data) {
+        const existingIdx = sagePayments.findIndex((p) => p.reference === item.reference);
+        if (existingIdx >= 0) {
+          sagePayments[existingIdx] = { ...sagePayments[existingIdx], ...item, updatedAt: new Date().toISOString() };
+          updated++;
+        } else {
+          sagePayments.push({ ...item, id: Date.now() + created, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          created++;
+        }
+      }
+      saveItem("sgf_sagePayments", sagePayments);
+      return { created, updated };
+    },
+    reconcile: () => {
+      // Match Sage invoices to app invoices
+      const results: any[] = [];
+      for (const sageInv of sageInvoices) {
+        const appInv = invoices.find((i) => i.invoiceNumber === sageInv.invoiceNumber);
+        if (appInv) {
+          const sageTotal = Number(sageInv.total) || 0;
+          const appTotal = Number(appInv.total) || 0;
+          const diff = Math.abs(sageTotal - appTotal);
+          results.push({
+            invoiceNumber: sageInv.invoiceNumber,
+            sageTotal,
+            appTotal,
+            difference: diff,
+            matched: diff < 0.01,
+          });
+        }
+      }
+      return results;
+    },
+    getSummary: () => ({
+      customers: sageCustomers.length,
+      invoices: sageInvoices.length,
+      payments: sagePayments.length,
+    }),
   },
-  getById: (id: number) => {
-    const timesheets = timesheetService.list();
-    return timesheets.find((t: any) => t.id === id);
-  },
-  getByUser: (userId: number) => {
-    const timesheets = timesheetService.list();
-    return timesheets.filter((t: any) => t.userId === userId);
-  },
-  getByDate: (date: string) => {
-    const timesheets = timesheetService.list();
-    return timesheets.filter((t: any) => t.date === date);
-  },
-  create: (data: any) => {
-    const timesheets = timesheetService.list();
-    const newTimesheet = {
-      id: Date.now() + Math.random(),
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    timesheets.push(newTimesheet);
-    setStorageItem("sgf_timesheets", JSON.stringify(timesheets));
-    logAudit("create", "timesheet", newTimesheet.id, data);
-    return newTimesheet;
-  },
-  update: (id: number, data: any) => {
-    const timesheets = timesheetService.list();
-    const index = timesheets.findIndex((t: any) => t.id === id);
-    if (index === -1) return null;
-    timesheets[index] = { ...timesheets[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_timesheets", JSON.stringify(timesheets));
-    logAudit("update", "timesheet", id, data);
-    return timesheets[index];
-  },
-  delete: (id: number) => {
-    const timesheets = timesheetService.list();
-    const index = timesheets.findIndex((t: any) => t.id === id);
-    if (index === -1) return { success: false, error: "Timesheet not found" };
-    timesheets.splice(index, 1);
-    setStorageItem("sgf_timesheets", JSON.stringify(timesheets));
-    logAudit("delete", "timesheet", id, {});
-    return { success: true };
-  },
-};
 
-// =============================================================================
-// LEAVE / ABSENCE SERVICE
-// =============================================================================
+  // =============================================================================
+  // REPORT SERVICE
+  // =============================================================================
 
-export const leaveService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_leaves");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+  report: {
+    salesSummary: ({ from, to }: { from: string; to: string }) => {
+      const fromTs = new Date(from + "T00:00:00").getTime();
+      const toTs = new Date(to + "T23:59:59").getTime();
+      const periodOrders = orders.filter((o) => {
+        const ts = new Date(o.createdAt).getTime();
+        return ts >= fromTs && ts <= toTs && o.status !== "cancelled" && o.orderType !== "quote";
+      });
+      const totalSales = periodOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+      const totalOrders = periodOrders.length;
+      const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+      return { totalSales, totalOrders, avgOrderValue, periodOrders };
+    },
+    customerSales: ({ from, to }: { from: string; to: string }) => {
+      const fromTs = new Date(from + "T00:00:00").getTime();
+      const toTs = new Date(to + "T23:59:59").getTime();
+      const customerSales: Record<number, { customerId: number; customerName: string; total: number; orders: number }> = {};
+      for (const order of orders) {
+        const ts = new Date(order.createdAt).getTime();
+        if (ts < fromTs || ts > toTs || order.status === "cancelled" || order.orderType === "quote") continue;
+        const cid = order.customerId;
+        if (!customerSales[cid]) {
+          const customer = customers.find((c) => c.id == cid);
+          customerSales[cid] = { customerId: cid, customerName: customer?.name || "Unknown", total: 0, orders: 0 };
+        }
+        customerSales[cid].total += order.total || 0;
+        customerSales[cid].orders++;
+      }
+      return Object.values(customerSales).sort((a, b) => b.total - a.total);
+    },
+    productSales: ({ from, to }: { from: string; to: string }) => {
+      const fromTs = new Date(from + "T00:00:00").getTime();
+      const toTs = new Date(to + "T23:59:59").getTime();
+      const productSales: Record<number, { productId: number; productName: string; totalQty: number; totalRevenue: number }> = {};
+      for (const order of orders) {
+        const ts = new Date(order.createdAt).getTime();
+        if (ts < fromTs || ts > toTs || order.status === "cancelled" || order.orderType === "quote") continue;
+        for (const item of (order.items || [])) {
+          const pid = item.stockItemId;
+          if (!productSales[pid]) {
+            const product = products.find((p) => p.id == pid);
+            productSales[pid] = { productId: pid, productName: product?.name || item.productName || "Unknown", totalQty: 0, totalRevenue: 0 };
+          }
+          productSales[pid].totalQty += item.quantity || 0;
+          productSales[pid].totalRevenue += item.lineTotal || 0;
+        }
+      }
+      return Object.values(productSales).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    },
+    repPerformance: ({ from, to }: { from: string; to: string }) => {
+      const fromTs = new Date(from + "T00:00:00").getTime();
+      const toTs = new Date(to + "T23:59:59").getTime();
+      const repPerformance: Record<string, { repName: string; totalSales: number; orders: number; customers: number }> = {};
+      for (const order of orders) {
+        const ts = new Date(order.createdAt).getTime();
+        if (ts < fromTs || ts > toTs || order.status === "cancelled" || order.orderType === "quote") continue;
+        const customer = customers.find((c) => c.id == order.customerId);
+        const repName = customer?.salesRepName || "Unassigned";
+        if (!repPerformance[repName]) {
+          repPerformance[repName] = { repName, totalSales: 0, orders: 0, customers: 0 };
+        }
+        repPerformance[repName].totalSales += order.total || 0;
+        repPerformance[repName].orders++;
+      }
+      return Object.values(repPerformance).sort((a, b) => b.totalSales - a.totalSales);
+    },
+    agingReport: () => {
+      const now = new Date();
+      const buckets = {
+        current: [] as any[],
+        days1to30: [] as any[],
+        days31to60: [] as any[],
+        days61to90: [] as any[],
+        over90: [] as any[],
+      };
+      for (const inv of invoices) {
+        if (inv.status === "cancelled" || (inv.balanceDue || 0) <= 0.01) continue;
+        const dueDate = new Date(inv.dueDate || inv.createdAt);
+        const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / 86400000);
+        const item = { ...inv, daysOverdue };
+        if (daysOverdue <= 0) buckets.current.push(item);
+        else if (daysOverdue <= 30) buckets.days1to30.push(item);
+        else if (daysOverdue <= 60) buckets.days31to60.push(item);
+        else if (daysOverdue <= 90) buckets.days61to90.push(item);
+        else buckets.over90.push(item);
+      }
+      return buckets;
+    },
   },
-  getById: (id: number) => {
-    const leaves = leaveService.list();
-    return leaves.find((l: any) => l.id === id);
-  },
-  getByUser: (userId: number) => {
-    const leaves = leaveService.list();
-    return leaves.filter((l: any) => l.userId === userId);
-  },
-  getByStatus: (status: string) => {
-    const leaves = leaveService.list();
-    return leaves.filter((l: any) => l.status === status);
-  },
-  create: (data: any) => {
-    const leaves = leaveService.list();
-    const newLeave = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    leaves.push(newLeave);
-    setStorageItem("sgf_leaves", JSON.stringify(leaves));
-    logAudit("create", "leave", newLeave.id, data);
-    return newLeave;
-  },
-  update: (id: number, data: any) => {
-    const leaves = leaveService.list();
-    const index = leaves.findIndex((l: any) => l.id === id);
-    if (index === -1) return null;
-    leaves[index] = { ...leaves[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_leaves", JSON.stringify(leaves));
-    logAudit("update", "leave", id, data);
-    return leaves[index];
-  },
-  delete: (id: number) => {
-    const leaves = leaveService.list();
-    const index = leaves.findIndex((l: any) => l.id === id);
-    if (index === -1) return { success: false, error: "Leave not found" };
-    leaves.splice(index, 1);
-    setStorageItem("sgf_leaves", JSON.stringify(leaves));
-    logAudit("delete", "leave", id, {});
-    return { success: true };
-  },
-};

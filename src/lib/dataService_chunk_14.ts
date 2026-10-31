@@ -1,144 +1,242 @@
-      logAudit("DELETE", "stock", id, `Stock item deleted: ${prod?.productName || prod?.productCode || "Unnamed"}`);
-      return { success: true };
-    },
-    bulkCreate: (items: any[]) => {
-      const created = [];
-      const updated = [];
-      for (let i = 0; i < items.length; i++) {
-        const incoming = items[i];
-        // Check if product already exists by productName (case-insensitive)
-        // productCode can differ between uploads, but productName is the reliable identifier
-        let existingIdx = products.findIndex(
-          (p) => (p.productName || "").toLowerCase().trim() === (incoming.productName || "").toLowerCase().trim()
-        );
-        // Fallback: if no name match, try matching by ALL non-empty shared attributes
-        if (existingIdx < 0) {
-          const inStrands = String(incoming.strands || "").trim().toLowerCase();
-          const inSize    = String(incoming.size    || "").trim().toLowerCase();
-          const inGrade   = String(incoming.grade   || "").trim().toLowerCase();
-          const inColor   = String(incoming.color   || "").trim().toLowerCase();
-          const inSpecies = String(incoming.species || "").trim().toLowerCase();
-          existingIdx = products.findIndex((p) => {
-            const pStrands = String(p.strands || "").trim().toLowerCase();
-            const pSize    = String(p.size    || "").trim().toLowerCase();
-            const pGrade   = String(p.grade   || "").trim().toLowerCase();
-            const pColor   = String(p.color   || "").trim().toLowerCase();
-            const pSpecies = String(p.species || "").trim().toLowerCase();
-            let possible = 0, matched = 0;
-            if (pStrands && inStrands) { possible++; if (pStrands === inStrands) matched++; }
-            if (pSize    && inSize)    { possible++; if (pSize    === inSize)    matched++; }
-            if (pGrade   && inGrade)   { possible++; if (pGrade   === inGrade)   matched++; }
-            if (pColor   && inColor)   { possible++; if (pColor   === inColor)   matched++; }
-            if (pSpecies && inSpecies) { possible++; if (pSpecies === inSpecies) matched++; }
-            return possible >= 2 && matched === possible;
-          });
-        }
-        if (existingIdx >= 0) {
-          // Update existing product: new SOH, update prices if provided, keep id
-          const existing = products[existingIdx];
-          // PRICE PROTECTION: never overwrite an existing price with 0/empty from a bulk upload.
-          // Uploads that lack price columns parse prices as 0 — treat those as "not provided".
-          const safePrice = (incomingVal: any, existingVal: any) =>
-            Number(incomingVal) > 0 ? incomingVal : existingVal;
-          products[existingIdx] = {
-            ...existing,
-            quantity: incoming.quantity !== undefined ? incoming.quantity : existing.quantity,
-            corporatePrice: safePrice(incoming.corporatePrice, existing.corporatePrice),
-            bulkPrice: safePrice(incoming.bulkPrice, existing.bulkPrice),
-            wholesalePrice: safePrice(incoming.wholesalePrice, existing.wholesalePrice),
-            retailPrice: safePrice(incoming.retailPrice, existing.retailPrice),
-            // Update optional fields if provided
-            ...(incoming.strands !== undefined && { strands: incoming.strands }),
-            ...(incoming.size !== undefined && { size: incoming.size }),
-            ...(incoming.grade !== undefined && { grade: incoming.grade }),
-            ...(incoming.color !== undefined && { color: incoming.color }),
-            ...(incoming.species !== undefined && { species: incoming.species }),
-            ...(incoming.category !== undefined && { category: incoming.category }),
-            ...(incoming.productName !== undefined && { productName: incoming.productName }),
-            updatedAt: new Date().toISOString(),
-            // Recalculate status based on new quantity
-            status: (incoming.quantity || existing.quantity) === 0
-              ? "out_of_stock"
-              : (incoming.quantity || existing.quantity) < 20
-                ? "low_stock"
-                : "in_stock",
-          };
-          updated.push(products[existingIdx]);
-        } else {
-          // New product - create with new id
-          const newItem = {
-            ...incoming,
-            id: Date.now() + i,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            status: (incoming.quantity || 0) === 0
-              ? "out_of_stock"
-              : (incoming.quantity || 0) < 20
-                ? "low_stock"
-                : "in_stock",
-          };
-          products.push(newItem);
-          created.push(newItem);
-        }
-      }
-      saveItem("sgf_products", products);
-      logAudit("BULK_UPLOAD", "stock", 0, `Bulk stock upload: ${created.length} created, ${updated.length} updated`);
-      return { created: created.length, updated: updated.length };
-    },
+// =============================================================================
+// BANK / PAYMENT METHOD SERVICE
+// =============================================================================
 
-    /** Daily Invoiced Stock Report — shows what stock was invoiced on a given date */
-    getDailyInvoicedStock: ({ from, to }: { from?: string; to?: string }) => {
-      const fromDate = from || new Date().toISOString().slice(0, 10);
-      const toDate = to || fromDate;
-      const fromTs = new Date(fromDate + "T00:00:00").getTime();
-      const toTs = new Date(toDate + "T23:59:59").getTime();
+export const bankService = {
+  list: () => {
+    try {
+      const raw = getStorageItem("sgf_banks");
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return [];
+  },
+  getById: (id: number) => {
+    const banks = bankService.list();
+    return banks.find((b: any) => b.id === id);
+  },
+  create: (data: any) => {
+    const banks = bankService.list();
+    const newBank = {
+      id: Date.now() + Math.random(),
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    banks.push(newBank);
+    setStorageItem("sgf_banks", JSON.stringify(banks));
+    logAudit("create", "bank", newBank.id, data);
+    return newBank;
+  },
+  update: (id: number, data: any) => {
+    const banks = bankService.list();
+    const index = banks.findIndex((b: any) => b.id === id);
+    if (index === -1) return null;
+    banks[index] = { ...banks[index], ...data, updatedAt: new Date().toISOString() };
+    setStorageItem("sgf_banks", JSON.stringify(banks));
+    logAudit("update", "bank", id, data);
+    return banks[index];
+  },
+  delete: (id: number) => {
+    const banks = bankService.list();
+    const index = banks.findIndex((b: any) => b.id === id);
+    if (index === -1) return { success: false, error: "Bank not found" };
+    banks.splice(index, 1);
+    setStorageItem("sgf_banks", JSON.stringify(banks));
+    logAudit("delete", "bank", id, {});
+    return { success: true };
+  },
+};
 
-      const results: any[] = [];
+// =============================================================================
+// TAX / VAT SERVICE
+// =============================================================================
 
-      for (const inv of invoices) {
-        const invTs = new Date(inv.createdAt || inv.invoiceDate).getTime();
-        if (invTs < fromTs || invTs > toTs) continue;
+export const taxService = {
+  getTaxRate: () => {
+    try {
+      const raw = getStorageItem("sgf_taxRate");
+      if (raw) return parseFloat(raw);
+    } catch { /* ignore */ }
+    return 0.15; // Default 15% VAT
+  },
+  setTaxRate: (rate: number) => {
+    setStorageItem("sgf_taxRate", String(rate));
+    logAudit("update", "taxRate", 0, { rate });
+    return rate;
+  },
+  calculateTax: (amount: number) => {
+    const rate = taxService.getTaxRate();
+    return Math.round(amount * rate * 100) / 100;
+  },
+  calculateTotalWithTax: (amount: number) => {
+    const rate = taxService.getTaxRate();
+    return Math.round(amount * (1 + rate) * 100) / 100;
+  },
+  calculateAmountWithoutTax: (total: number) => {
+    const rate = taxService.getTaxRate();
+    return Math.round(total / (1 + rate) * 100) / 100;
+  },
+};
 
-        const order = orders.find((o) => o.id == inv.orderId);
-        if (!order) continue;
+// =============================================================================
+// DISCOUNT / PROMOTION SERVICE
+// =============================================================================
 
-        const customer = customers.find((c) => c.id == inv.customerId || c.id == order.customerId);
-        if (!customer) continue;
+export const discountService = {
+  list: () => {
+    try {
+      const raw = getStorageItem("sgf_discounts");
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return [];
+  },
+  getById: (id: number) => {
+    const discounts = discountService.list();
+    return discounts.find((d: any) => d.id === id);
+  },
+  create: (data: any) => {
+    const discounts = discountService.list();
+    const newDiscount = {
+      id: Date.now() + Math.random(),
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    discounts.push(newDiscount);
+    setStorageItem("sgf_discounts", JSON.stringify(discounts));
+    logAudit("create", "discount", newDiscount.id, data);
+    return newDiscount;
+  },
+  update: (id: number, data: any) => {
+    const discounts = discountService.list();
+    const index = discounts.findIndex((d: any) => d.id === id);
+    if (index === -1) return null;
+    discounts[index] = { ...discounts[index], ...data, updatedAt: new Date().toISOString() };
+    setStorageItem("sgf_discounts", JSON.stringify(discounts));
+    logAudit("update", "discount", id, data);
+    return discounts[index];
+  },
+  delete: (id: number) => {
+    const discounts = discountService.list();
+    const index = discounts.findIndex((d: any) => d.id === id);
+    if (index === -1) return { success: false, error: "Discount not found" };
+    discounts.splice(index, 1);
+    setStorageItem("sgf_discounts", JSON.stringify(discounts));
+    logAudit("delete", "discount", id, {});
+    return { success: true };
+  },
+  applyDiscount: (amount: number, discountId: number) => {
+    const discount = discountService.getById(discountId);
+    if (!discount) return amount;
+    if (discount.type === "percentage") {
+      return amount * (1 - (discount.value || 0) / 100);
+    } else if (discount.type === "fixed") {
+      return Math.max(0, amount - (discount.value || 0));
+    }
+    return amount;
+  },
+};
 
-        const repName = customer.salesRepName || customer.salesRep || "";
-        const priceTier = customer.priceTier || "retail";
+// =============================================================================
+// CURRENCY / EXCHANGE RATE SERVICE
+// =============================================================================
 
-        for (const item of inv.items || order.items || []) {
-          const product = products.find((p) => p.id == item.stockItemId);
-          const specialPrice = specialPrices.find(
-            (sp: any) => sp.customerId == customer.id && sp.stockItemId == item.stockItemId
-          );
+export const currencyService = {
+  getBaseCurrency: () => {
+    try {
+      const raw = getStorageItem("sgf_baseCurrency");
+      if (raw) return raw;
+    } catch { /* ignore */ }
+    return "ZAR";
+  },
+  setBaseCurrency: (currency: string) => {
+    setStorageItem("sgf_baseCurrency", currency);
+    logAudit("update", "baseCurrency", 0, { currency });
+    return currency;
+  },
+  getExchangeRate: (currency: string) => {
+    try {
+      const raw = getStorageItem(`sgf_exchangeRate_${currency}`);
+      if (raw) return parseFloat(raw);
+    } catch { /* ignore */ }
+    return 1;
+  },
+  setExchangeRate: (currency: string, rate: number) => {
+    setStorageItem(`sgf_exchangeRate_${currency}`, String(rate));
+    logAudit("update", "exchangeRate", 0, { currency, rate });
+    return rate;
+  },
+  convert: (amount: number, from: string, to: string) => {
+    if (from === to) return amount;
+    const fromRate = currencyService.getExchangeRate(from);
+    const toRate = currencyService.getExchangeRate(to);
+    return Math.round((amount / fromRate) * toRate * 100) / 100;
+  },
+};
 
-          const unitPrice = Number(item.unitPrice || 0);
-          const quantity = Number(item.quantity || 0);
-          const lineTotal = Number(item.lineTotal || unitPrice * quantity);
+// =============================================================================
+// COMPANY / BRANCH SERVICE
+// =============================================================================
 
-          // Determine if special price was used
-          let isSpecialPrice = false;
-          let tierPrice = 0;
-          if (product) {
-            tierPrice = Number((product as any)[`${priceTier}Price`] || 0);
-            if (specialPrice && Math.abs(specialPrice.specialPrice - unitPrice) < 0.01) {
-              isSpecialPrice = true;
-            }
-          }
-
-          results.push({
-            invoiceNumber: inv.invoiceNumber,
-            orderNumber: inv.orderNumber || order.orderNumber,
-            invoiceDate: inv.invoiceDate || inv.createdAt,
-            productName: item.description || item.productName || product?.name || "Unknown",
-            productCode: product?.productCode || "",
-            quantity,
-            unitPrice,
-            lineTotal,
-            priceTier,
-            isSpecialPrice,
-            specialPriceAmount: specialPrice?.specialPrice || null,
-            tierPrice: tierPrice || null,
-            salesRep: repName,
+export const companyService = {
+  getCompanyInfo: () => {
+    try {
+      const raw = getStorageItem("sgf_companyInfo");
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return {
+      name: "Supreme Global Foods",
+      registration: "",
+      vatNumber: "",
+      address: "",
+      phone: "",
+      email: "",
+      website: "",
+    };
+  },
+  setCompanyInfo: (data: any) => {
+    const current = companyService.getCompanyInfo();
+    const updated = { ...current, ...data };
+    setStorageItem("sgf_companyInfo", JSON.stringify(updated));
+    logAudit("update", "companyInfo", 0, data);
+    return updated;
+  },
+  getBranches: () => {
+    try {
+      const raw = getStorageItem("sgf_branches");
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return [];
+  },
+  createBranch: (data: any) => {
+    const branches = companyService.getBranches();
+    const newBranch = {
+      id: Date.now() + Math.random(),
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    branches.push(newBranch);
+    setStorageItem("sgf_branches", JSON.stringify(branches));
+    logAudit("create", "branch", newBranch.id, data);
+    return newBranch;
+  },
+  updateBranch: (id: number, data: any) => {
+    const branches = companyService.getBranches();
+    const index = branches.findIndex((b: any) => b.id === id);
+    if (index === -1) return null;
+    branches[index] = { ...branches[index], ...data, updatedAt: new Date().toISOString() };
+    setStorageItem("sgf_branches", JSON.stringify(branches));
+    logAudit("update", "branch", id, data);
+    return branches[index];
+  },
+  deleteBranch: (id: number) => {
+    const branches = companyService.getBranches();
+    const index = branches.findIndex((b: any) => b.id === id);
+    if (index === -1) return { success: false, error: "Branch not found" };
+    branches.splice(index, 1);
+    setStorageItem("sgf_branches", JSON.stringify(branches));
+    logAudit("delete", "branch", id, {});
+    return { success: true };
+  },
+};

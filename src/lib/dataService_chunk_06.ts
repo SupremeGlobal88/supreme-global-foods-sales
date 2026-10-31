@@ -1,323 +1,586 @@
+      errors.push(`Failed to process ${alloc.invoiceNumber}: ${e.message}`);
+    }
+  }
+  if (processed > 0) saveItem("sgf_invoices", invoices);
+  return { processed, errors };
+}
+
+/** Auto-link Sage invoices to customers on every app startup.
+ *  Silent version — no Firebase push, just local fix.
+ *  This ensures ALL devices have matched Sage invoices.
+ *  Handles both old CUST0001 format and new 10001 format. */
+function autoLinkSageInvoicesSilent() {
+  let matched = 0;
+  for (const inv of invoices) {
+    if (!inv.customerId || inv.customerId <= 0) {
+      const customer = customers.find(
+        (c) =>
+          c.code &&
+          inv.customerCode &&
+          c.code.toUpperCase() === inv.customerCode.toUpperCase()
+      );
+      if (customer) {
+        inv.customerId = customer.id;
+        inv.customerName = customer.name;
+        matched++;
+      }
+    }
+  }
+  if (matched > 0) {
+    saveItem("sgf_invoices", invoices);
+  }
+}
+
+// Run auto-link on startup
+autoLinkSageInvoicesSilent();
+
 // =============================================================================
-// USER SERVICE
+// CERTIFICATE OF COMPLIANCE SERVICE
 // =============================================================================
 
-export const userService = {
-  list: () => users,
-  getById: (id: number) => users.find((u) => u.id === id),
-  getByName: (name: string) => users.find((u) => u.name.toLowerCase() === name.toLowerCase()),
-  getByEmail: (email: string) => users.find((u) => u.email?.toLowerCase() === email.toLowerCase()),
+export const certificateOfComplianceService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return certificatesOfCompliance.filter((c) => c.company === comp);
+  },
+  getById: (id: number) => {
+    return certificatesOfCompliance.find((c) => c.id === id);
+  },
   create: (data: any) => {
-    const newUser = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    let company = data.company;
+    if (!company && data.customerId) {
+      const customer = customers.find((c) => c.id === data.customerId);
+      if (customer?.company) company = customer.company;
+    }
+    if (!company && data.orderId) {
+      const order = orders.find((o) => o.id === data.orderId);
+      if (order?.company) company = order.company;
+    }
+    if (!company && data.purchaseOrderId) {
+      const po = purchaseOrders.find((p) => p.id === data.purchaseOrderId);
+      if (po?.company) company = po.company;
+    }
+    const newItem = {
       ...data,
-      isActive: data.isActive !== false,
+      company: company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    users.push(newUser);
-    saveItem("sgf_users", users);
-    logAudit("create", "user", newUser.id, data);
-    return newUser;
+    certificatesOfCompliance.push(newItem);
+    saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+    saveItem("sgf_cocs", certificatesOfCompliance);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const index = users.findIndex((u) => u.id === id);
-    if (index === -1) return null;
-    users[index] = { ...users[index], ...data, updatedAt: new Date().toISOString() };
-    saveItem("sgf_users", users);
-    logAudit("update", "user", id, data);
-    return users[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = certificatesOfCompliance.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      certificatesOfCompliance[idx] = {
+        ...certificatesOfCompliance[idx],
+        ...data,
+        updatedAt: new Date().toISOString(),
+      };
+      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      saveItem("sgf_cocs", certificatesOfCompliance);
+    }
+    return certificatesOfCompliance[idx];
   },
   delete: (id: number) => {
-    const index = users.findIndex((u) => u.id === id);
-    if (index === -1) return { success: false, error: "User not found" };
-    users.splice(index, 1);
-    saveItem("sgf_users", users);
-    logAudit("delete", "user", id, {});
-    return { success: true };
+    const idx = certificatesOfCompliance.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      certificatesOfCompliance.splice(idx, 1);
+      saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
+      saveItem("sgf_cocs", certificatesOfCompliance);
+    }
+    return { success: idx >= 0 };
   },
-  getByRole: (role: string) => users.filter((u) => u.role === role),
-  getActive: () => users.filter((u) => u.isActive !== false),
-  getInactive: () => users.filter((u) => u.isActive === false),
 };
 
 // =============================================================================
-// SALES REP SERVICE
+// TRACEABILITY SERVICE
 // =============================================================================
 
-export const salesRepService = {
-  list: () => SALES_REPS,
-  getByName: (name: string) => SALES_REPS.find((r) => r.name.toLowerCase() === name.toLowerCase()),
+export const traceabilityService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return traceabilityRecords.filter((t) => t.company === comp);
+  },
+  getById: (id: number) => {
+    return traceabilityRecords.find((t) => t.id === id);
+  },
+  getByBatch: (batchNumber: string) => {
+    return traceabilityRecords.filter((t) => t.batchNumber === batchNumber);
+  },
+  getByProduct: (productId: number) => {
+    return traceabilityRecords.filter((t) => t.productId === productId);
+  },
   create: (data: any) => {
-    const existing = SALES_REPS.find((r) => r.name.toLowerCase() === (data.name || "").toLowerCase());
-    if (existing) return existing;
-    const newRep = {
-      id: Date.now() + Math.random(),
+    const comp = getCurrentCompany();
+    const newItem = {
       ...data,
-      isActive: data.isActive !== false,
+      company: data.company || comp,
+      id: Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    SALES_REPS.push(newRep);
-    saveSalesReps();
-    logAudit("create", "salesRep", newRep.id, data);
-    return newRep;
+    traceabilityRecords.push(newItem);
+    saveItem("sgf_traceabilityRecords", traceabilityRecords);
+    return newItem;
   },
-  update: (id: number, data: any) => {
-    const index = SALES_REPS.findIndex((r) => r.id === id);
-    if (index === -1) return null;
-    SALES_REPS[index] = { ...SALES_REPS[index], ...data, updatedAt: new Date().toISOString() };
-    saveSalesReps();
-    logAudit("update", "salesRep", id, data);
-    return SALES_REPS[index];
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = traceabilityRecords.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      traceabilityRecords[idx] = {
+        ...traceabilityRecords[idx],
+        ...data,
+        updatedAt: new Date().toISOString(),
+      };
+      saveItem("sgf_traceabilityRecords", traceabilityRecords);
+    }
+    return traceabilityRecords[idx];
   },
   delete: (id: number) => {
-    const index = SALES_REPS.findIndex((r) => r.id === id);
-    if (index === -1) return { success: false, error: "Sales rep not found" };
-    SALES_REPS.splice(index, 1);
-    saveSalesReps();
-    logAudit("delete", "salesRep", id, {});
-    return { success: true };
-  },
-  getActive: () => SALES_REPS.filter((r) => r.isActive !== false),
-  getInactive: () => SALES_REPS.filter((r) => r.isActive === false),
-};
-
-// =============================================================================
-// STOCK / INVENTORY SERVICE
-// =============================================================================
-
-export const stockService = {
-  list: () => products,
-  getById: (id: number) => products.find((p) => p.id === id),
-  getByCode: (code: string) => products.find((p) => p.productCode === code),
-  getByName: (name: string) => products.find((p) => p.productName.toLowerCase() === name.toLowerCase()),
-  adjustStock: (productId: number, quantity: number, reason: string) => {
-    const product = products.find((p) => p.id === productId);
-    if (!product) return { success: false, error: "Product not found" };
-    product.quantity = (product.quantity || 0) + quantity;
-    product.updatedAt = new Date().toISOString();
-    saveItem("sgf_products", products);
-    logAudit("adjustStock", "product", productId, { quantity, reason, newQuantity: product.quantity });
-    return { success: true, product };
-  },
-  setStock: (productId: number, quantity: number) => {
-    const product = products.find((p) => p.id === productId);
-    if (!product) return { success: false, error: "Product not found" };
-    product.quantity = quantity;
-    product.updatedAt = new Date().toISOString();
-    saveItem("sgf_products", products);
-    logAudit("setStock", "product", productId, { quantity });
-    return { success: true, product };
-  },
-  getStockValue: () => {
-    return products.reduce((total, p) => total + (p.quantity || 0) * (p.costPrice || 0), 0);
-  },
-  getLowStock: () => products.filter((p) => (p.quantity || 0) <= (p.reorderLevel || 10)),
-  getOutOfStock: () => products.filter((p) => (p.quantity || 0) <= 0),
-  getTopSelling: (limit: number = 10) => {
-    const productSales = new Map<number, number>();
-    for (const order of orders) {
-      if (order.items && Array.isArray(order.items)) {
-        for (const item of order.items) {
-          const current = productSales.get(item.stockItemId) || 0;
-          productSales.set(item.stockItemId, current + item.quantity);
-        }
-      }
+    const idx = traceabilityRecords.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      traceabilityRecords.splice(idx, 1);
+      saveItem("sgf_traceabilityRecords", traceabilityRecords);
     }
-    const sorted = Array.from(productSales.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit);
-    return sorted.map(([id, qty]) => {
-      const product = products.find((p) => p.id === id);
-      return { product, quantitySold: qty };
-    });
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// REPORTING SERVICE
+// CALIBRATION SERVICE
 // =============================================================================
 
-export const reportingService = {
-  getSalesSummary: (startDate?: string, endDate?: string) => {
-    let filtered = orders;
-    if (startDate) filtered = filtered.filter((o) => o.orderDate >= startDate);
-    if (endDate) filtered = filtered.filter((o) => o.orderDate <= endDate);
-    const totalSales = filtered.reduce((sum, o) => sum + (o.total || 0), 0);
-    const totalOrders = filtered.length;
-    const totalItems = filtered.reduce((sum, o) => sum + (o.items?.length || 0), 0);
-    return { totalSales, totalOrders, totalItems, orders: filtered };
+export const calibrationService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return calibrations.filter((c) => c.company === comp);
   },
-  getInvoiceSummary: (startDate?: string, endDate?: string) => {
-    let filtered = invoices;
-    if (startDate) filtered = filtered.filter((i) => i.invoiceDate >= startDate);
-    if (endDate) filtered = filtered.filter((i) => i.invoiceDate <= endDate);
-    const totalInvoiced = filtered.reduce((sum, i) => sum + (i.total || 0), 0);
-    const totalPaid = filtered.reduce((sum, i) => sum + (i.amountPaid || 0), 0);
-    const totalDue = filtered.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
-    return { totalInvoiced, totalPaid, totalDue, invoices: filtered };
+  getById: (id: number) => {
+    return calibrations.find((c) => c.id === id);
   },
-  getCustomerSummary: () => {
-    return customers.map((c) => {
-      const customerOrders = orders.filter((o) => o.customerId === c.id);
-      const customerInvoices = invoices.filter((i) => i.customerId === c.id);
-      const totalSpent = customerOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-      const totalInvoiced = customerInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
-      const totalPaid = customerInvoices.reduce((sum, i) => sum + (i.amountPaid || 0), 0);
-      const balanceDue = totalInvoiced - totalPaid;
-      return { customer: c, totalSpent, totalInvoiced, totalPaid, balanceDue, orderCount: customerOrders.length };
-    });
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return calibrations.filter((c) => c.company === comp && c.nextDueDate && c.nextDueDate <= now);
   },
-  getSalesRepSummary: () => {
-    return SALES_REPS.map((r) => {
-      const repOrders = orders.filter((o) => o.salesRepName === r.name);
-      const repInvoices = invoices.filter((i) => i.salesRepName === r.name);
-      const totalSales = repOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-      const totalInvoiced = repInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
-      return { rep: r, totalSales, totalInvoiced, orderCount: repOrders.length, invoiceCount: repInvoices.length };
-    });
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    calibrations.push(newItem);
+    saveItem("sgf_calibrations", calibrations);
+    return newItem;
   },
-  getProductSummary: () => {
-    const productSales = new Map<number, { quantity: number; revenue: number }>();
-    for (const order of orders) {
-      if (order.items && Array.isArray(order.items)) {
-        for (const item of order.items) {
-          const current = productSales.get(item.stockItemId) || { quantity: 0, revenue: 0 };
-          current.quantity += item.quantity;
-          current.revenue += (item.price || 0) * item.quantity;
-          productSales.set(item.stockItemId, current);
-        }
-      }
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = calibrations.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      calibrations[idx] = { ...calibrations[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_calibrations", calibrations);
     }
-    return products.map((p) => {
-      const sales = productSales.get(p.id) || { quantity: 0, revenue: 0 };
-      return { product: p, ...sales };
-    });
+    return calibrations[idx];
   },
-  getMonthlySales: () => {
-    const monthly = new Map<string, number>();
-    for (const order of orders) {
-      const month = order.orderDate?.slice(0, 7) || "unknown";
-      monthly.set(month, (monthly.get(month) || 0) + (order.total || 0));
+  delete: (id: number) => {
+    const idx = calibrations.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      calibrations.splice(idx, 1);
+      saveItem("sgf_calibrations", calibrations);
     }
-    return Array.from(monthly.entries()).sort().map(([month, total]) => ({ month, total }));
-  },
-  getDailySales: (date: string) => {
-    const dailyOrders = orders.filter((o) => o.orderDate === date);
-    const total = dailyOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-    return { date, total, orders: dailyOrders };
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// UTILITY / EXPORT HELPERS
+// MAINTENANCE SERVICE
 // =============================================================================
 
-export function exportToCSV(data: any[], filename: string): void {
-  if (!data || data.length === 0) return;
-  const headers = Object.keys(data[0]);
-  const rows = data.map((row) =>
-    headers.map((h) => {
-      const val = row[h];
-      if (val == null) return "";
-      const str = String(val);
-      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    }).join(",")
-  );
-  const csv = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+export const maintenanceService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return maintenanceRecords.filter((m) => m.company === comp);
+  },
+  getById: (id: number) => {
+    return maintenanceRecords.find((m) => m.id === id);
+  },
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return maintenanceRecords.filter((m) => m.company === comp && m.nextDueDate && m.nextDueDate <= now);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    maintenanceRecords.push(newItem);
+    saveItem("sgf_maintenanceRecords", maintenanceRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = maintenanceRecords.findIndex((m) => m.id === id);
+    if (idx >= 0) {
+      maintenanceRecords[idx] = { ...maintenanceRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_maintenanceRecords", maintenanceRecords);
+    }
+    return maintenanceRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = maintenanceRecords.findIndex((m) => m.id === id);
+    if (idx >= 0) {
+      maintenanceRecords.splice(idx, 1);
+      saveItem("sgf_maintenanceRecords", maintenanceRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" }).format(amount);
-}
+// =============================================================================
+// NON-CONFORMANCE SERVICE
+// =============================================================================
 
-export function formatDate(date: string | Date): string {
-  if (!date) return "";
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-ZA");
-}
+export const nonConformanceService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return nonConformances.filter((n) => n.company === comp);
+  },
+  getById: (id: number) => {
+    return nonConformances.find((n) => n.id === id);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return nonConformances.filter((n) => n.company === comp && n.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    nonConformances.push(newItem);
+    saveItem("sgf_nonConformances", nonConformances);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = nonConformances.findIndex((n) => n.id === id);
+    if (idx >= 0) {
+      nonConformances[idx] = { ...nonConformances[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_nonConformances", nonConformances);
+    }
+    return nonConformances[idx];
+  },
+  delete: (id: number) => {
+    const idx = nonConformances.findIndex((n) => n.id === id);
+    if (idx >= 0) {
+      nonConformances.splice(idx, 1);
+      saveItem("sgf_nonConformances", nonConformances);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function formatDateTime(date: string | Date): string {
-  if (!date) return "";
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleString("en-ZA");
-}
+// =============================================================================
+// CORRECTIVE ACTION SERVICE
+// =============================================================================
 
-export function generateId(): number {
-  return Date.now() + Math.random();
-}
+export const correctiveActionService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return correctiveActions.filter((c) => c.company === comp);
+  },
+  getById: (id: number) => {
+    return correctiveActions.find((c) => c.id === id);
+  },
+  getByNCR: (ncrId: number) => {
+    return correctiveActions.filter((c) => c.ncrId === ncrId);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return correctiveActions.filter((c) => c.company === comp && c.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    correctiveActions.push(newItem);
+    saveItem("sgf_correctiveActions", correctiveActions);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = correctiveActions.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      correctiveActions[idx] = { ...correctiveActions[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_correctiveActions", correctiveActions);
+    }
+    return correctiveActions[idx];
+  },
+  delete: (id: number) => {
+    const idx = correctiveActions.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      correctiveActions.splice(idx, 1);
+      saveItem("sgf_correctiveActions", correctiveActions);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
-}
+// =============================================================================
+// AUDIT SCHEDULE SERVICE
+// =============================================================================
 
-export function sanitizeString(str: string): string {
-  return str.replace(/[<>'"]/g, "");
-}
+export const auditScheduleService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return auditSchedules.filter((a) => a.company === comp);
+  },
+  getById: (id: number) => {
+    return auditSchedules.find((a) => a.id === id);
+  },
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return auditSchedules.filter((a) => a.company === comp && a.dueDate && a.dueDate <= now);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    auditSchedules.push(newItem);
+    saveItem("sgf_auditSchedules", auditSchedules);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = auditSchedules.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      auditSchedules[idx] = { ...auditSchedules[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_auditSchedules", auditSchedules);
+    }
+    return auditSchedules[idx];
+  },
+  delete: (id: number) => {
+    const idx = auditSchedules.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      auditSchedules.splice(idx, 1);
+      saveItem("sgf_auditSchedules", auditSchedules);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function truncate(str: string, length: number): string {
-  if (!str || str.length <= length) return str;
-  return str.slice(0, length) + "...";
-}
+// =============================================================================
+// DOCUMENT CONTROL SERVICE
+// =============================================================================
 
-export function groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
-  return array.reduce((groups, item) => {
-    const groupKey = String(item[key]);
-    if (!groups[groupKey]) groups[groupKey] = [];
-    groups[groupKey].push(item);
-    return groups;
-  }, {} as Record<string, T[]>);
-}
+export const documentControlService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return documents.filter((d) => d.company === comp);
+  },
+  getById: (id: number) => {
+    return documents.find((d) => d.id === id);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return documents.filter((d) => d.company === comp && d.type === type);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    documents.push(newItem);
+    saveItem("sgf_documents", documents);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = documents.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      documents[idx] = { ...documents[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_documents", documents);
+    }
+    return documents[idx];
+  },
+  delete: (id: number) => {
+    const idx = documents.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      documents.splice(idx, 1);
+      saveItem("sgf_documents", documents);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function sortBy<T>(array: T[], key: keyof T, direction: "asc" | "desc" = "asc"): T[] {
-  return [...array].sort((a, b) => {
-    const aVal = a[key];
-    const bVal = b[key];
-    if (aVal < bVal) return direction === "asc" ? -1 : 1;
-    if (aVal > bVal) return direction === "asc" ? 1 : -1;
-    return 0;
-  });
-}
+// =============================================================================
+// TRAINING RECORD SERVICE
+// =============================================================================
 
-export function filterByDateRange<T extends { date?: string }>(array: T[], startDate?: string, endDate?: string): T[] {
-  return array.filter((item) => {
-    if (startDate && item.date && item.date < startDate) return false;
-    if (endDate && item.date && item.date > endDate) return false;
-    return true;
-  });
-}
+export const trainingRecordService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return trainingRecords.filter((t) => t.company === comp);
+  },
+  getById: (id: number) => {
+    return trainingRecords.find((t) => t.id === id);
+  },
+  getByEmployee: (employeeId: number) => {
+    return trainingRecords.filter((t) => t.employeeId === employeeId);
+  },
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return trainingRecords.filter((t) => t.company === comp && t.expiryDate && t.expiryDate <= now);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    trainingRecords.push(newItem);
+    saveItem("sgf_trainingRecords", trainingRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = trainingRecords.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      trainingRecords[idx] = { ...trainingRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_trainingRecords", trainingRecords);
+    }
+    return trainingRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = trainingRecords.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      trainingRecords.splice(idx, 1);
+      saveItem("sgf_trainingRecords", trainingRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function calculatePercentage(part: number, whole: number): number {
-  if (whole === 0) return 0;
-  return Math.round((part / whole) * 100);
-}
+// =============================================================================
+// SUPPLIER AUDIT SERVICE
+// =============================================================================
 
-export function calculateAverage(numbers: number[]): number {
-  if (numbers.length === 0) return 0;
-  return numbers.reduce((sum, n) => sum + n, 0) / numbers.length;
-}
+export const supplierAuditService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return supplierAudits.filter((s) => s.company === comp);
+  },
+  getById: (id: number) => {
+    return supplierAudits.find((s) => s.id === id);
+  },
+  getBySupplier: (supplierId: number) => {
+    return supplierAudits.filter((s) => s.supplierId === supplierId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    supplierAudits.push(newItem);
+    saveItem("sgf_supplierAudits", supplierAudits);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = supplierAudits.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      supplierAudits[idx] = { ...supplierAudits[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_supplierAudits", supplierAudits);
+    }
+    return supplierAudits[idx];
+  },
+  delete: (id: number) => {
+    const idx = supplierAudits.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      supplierAudits.splice(idx, 1);
+      saveItem("sgf_supplierAudits", supplierAudits);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-export function calculateMedian(numbers: number[]): number {
-  if (numbers.length === 0) return 0;
-  const sorted = [...numbers].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
+// =============================================================================
+// CUSTOMER COMPLAINT SERVICE
+// =============================================================================
 
-export function calculateStandardDeviation(numbers: number[]): number {
-  if (numbers.length === 0) return 0;
-  const avg = calculateAverage(numbers);
-  const variance = numbers.reduce((sum, n) => sum + Math.pow(n - avg, 2), 0) / numbers.length;
-  return Math.sqrt(variance);
-}
+export const customerComplaintService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return customerComplaints.filter((c) => c.company === comp);
+  },
+  getById: (id: number) => {
+    return customerComplaints.find((c) => c.id === id);
+  },
+  getByCustomer: (customerId: number) => {
+    return customerComplaints.filter((c) => c.customerId === customerId);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return customerComplaints.filter((c) => c.company === comp && c.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    customerComplaints.push(newItem);
+    saveItem("sgf_customerComplaints", customerComplaints);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = customerComplaints.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      customerComplaints[idx] = { ...customerComplaints[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_customerComplaints", customerComplaints);
+    }
+    return customerComplaints[idx];
+  },
+  delete: (id: number) => {
+    const idx = customerComplaints.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      customerComplaints.splice(idx, 1);
+      saveItem("sgf_customerComplaints", customerComplaints);
+    }
+    return { success: idx >= 0 };
+  },
+};

@@ -1,236 +1,523 @@
 // =============================================================================
-// DUPLICATE INVOICE NUMBER FIXER
+// YIELD RECORD SERVICE
 // =============================================================================
 
-export function fixDuplicateInvoiceNumbers(): { changes: Array<{ old: string; new: string; id: number; customer: string }> } {
-  // NOTE: Do NOT call load() here — load() may call this function, causing infinite recursion.
-  // This function is called during startup by load(), and also called standalone.
-  // Calling load() here would create a stack overflow that blocks Chrome's main thread.
-  const changes: Array<{ old: string; new: string; id: number; customer: string }> = [];
-
-  const seen = new Map<string, number[]>();
-  for (const inv of invoices) {
-    const num = inv.invoiceNumber;
-    if (!seen.has(num)) seen.set(num, []);
-    seen.get(num)!.push(inv.id);
-  }
-
-  for (const [num, ids] of seen) {
-    if (ids.length > 1) {
-      for (let i = 1; i < ids.length; i++) {
-        const invoice = invoices.find((inv) => inv.id === ids[i]);
-        if (invoice) {
-          const oldNum = invoice.invoiceNumber;
-          const newNum = getNextInvoiceNumber();
-          invoice.invoiceNumber = newNum;
-          changes.push({
-            old: oldNum,
-            new: newNum,
-            id: invoice.id,
-            customer: getCustomerName(invoice.customerId),
-          });
-        }
-      }
-    }
-  }
-
-  if (changes.length > 0) {
-    saveItem("sgf_invoices", invoices);
-  }
-  return { changes };
-}
-
-// =============================================================================
-// DUPLICATE ORDER NUMBER FIXER
-// =============================================================================
-
-export function fixDuplicateOrderNumbers(): { changes: Array<{ old: string; new: string; id: number; customer: string }> } {
-  const changes: Array<{ old: string; new: string; id: number; customer: string }> = [];
-
-  const seen = new Map<string, number[]>();
-  for (const order of orders) {
-    const num = order.orderNumber;
-    if (!seen.has(num)) seen.set(num, []);
-    seen.get(num)!.push(order.id);
-  }
-
-  for (const [num, ids] of seen) {
-    if (ids.length > 1) {
-      for (let i = 1; i < ids.length; i++) {
-        const order = orders.find((o) => o.id === ids[i]);
-        if (order) {
-          const oldNum = order.orderNumber;
-          const newNum = generateOrderNumber(order.orderType);
-          order.orderNumber = newNum;
-          changes.push({
-            old: oldNum,
-            new: newNum,
-            id: order.id,
-            customer: getCustomerName(order.customerId),
-          });
-        }
-      }
-    }
-  }
-
-  if (changes.length > 0) {
-    saveItem("sgf_orders", orders);
-  }
-  return { changes };
-}
-
-// =============================================================================
-// BATCH INVOICE GENERATOR
-// =============================================================================
-
-export function generateBatchInvoices(orderIds: number[]): { success: number; failed: number; errors: string[] } {
-  let success = 0;
-  let failed = 0;
-  const errors: string[] = [];
-
-  for (const orderId of orderIds) {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) {
-      failed++;
-      errors.push(`Order ${orderId} not found`);
-      continue;
-    }
-    if (order.status === "cancelled") {
-      failed++;
-      errors.push(`Order ${order.orderNumber} is cancelled`);
-      continue;
-    }
-    try {
-      const invoice = invoiceService.create({
-        customerId: order.customerId,
-        orderId: order.id,
-        items: order.items,
-        total: order.total,
-        priceTier: order.priceTier,
-        salesRepName: order.salesRepName,
-        invoiceDate: new Date().toISOString().slice(0, 10),
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        status: "draft",
-      });
-      if (invoice) {
-        success++;
-      } else {
-        failed++;
-        errors.push(`Failed to create invoice for order ${order.orderNumber}`);
-      }
-    } catch (e) {
-      failed++;
-      errors.push(`Error creating invoice for order ${order.orderNumber}: ${String(e)}`);
-    }
-  }
-
-  return { success, failed, errors };
-}
-
-// =============================================================================
-// SALES TARGET / GOAL SERVICE
-// =============================================================================
-
-export const salesTargetService = {
-  getTargets: () => {
-    try {
-      const raw = getStorageItem("sgf_salesTargets");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+export const yieldService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return yieldRecords.filter((y) => y.company === comp);
   },
-  setTarget: (repName: string, month: string, target: number) => {
-    const targets = salesTargetService.getTargets();
-    const existing = targets.find((t: any) => t.repName === repName && t.month === month);
-    if (existing) {
-      existing.target = target;
-      existing.updatedAt = new Date().toISOString();
-    } else {
-      targets.push({
-        id: Date.now() + Math.random(),
-        repName,
-        month,
-        target,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
-    setStorageItem("sgf_salesTargets", JSON.stringify(targets));
-    return targets;
+  getById: (id: number) => {
+    return yieldRecords.find((y) => y.id === id);
   },
-  getProgress: (repName: string, month: string) => {
-    const targets = salesTargetService.getTargets();
-    const target = targets.find((t: any) => t.repName === repName && t.month === month);
-    if (!target) return { target: 0, actual: 0, percentage: 0 };
-    const actual = orders
-      .filter((o) => o.salesRepName === repName && o.orderDate?.startsWith(month))
-      .reduce((sum, o) => sum + (o.total || 0), 0);
-    return {
-      target: target.target,
-      actual,
-      percentage: target.target > 0 ? Math.round((actual / target.target) * 100) : 0,
+  getByBatch: (batchId: number) => {
+    return yieldRecords.filter((y) => y.batchId === batchId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
+    yieldRecords.push(newItem);
+    saveItem("sgf_yieldRecords", yieldRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = yieldRecords.findIndex((y) => y.id === id);
+    if (idx >= 0) {
+      yieldRecords[idx] = { ...yieldRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_yieldRecords", yieldRecords);
+    }
+    return yieldRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = yieldRecords.findIndex((y) => y.id === id);
+    if (idx >= 0) {
+      yieldRecords.splice(idx, 1);
+      saveItem("sgf_yieldRecords", yieldRecords);
+    }
+    return { success: idx >= 0 };
   },
 };
 
 // =============================================================================
-// COMMISSION CALCULATOR
+// SCRAP RECORD SERVICE
 // =============================================================================
 
-export function calculateCommission(
-  repName: string,
-  startDate?: string,
-  endDate?: string,
-  rate: number = 0.05
-): { totalSales: number; commission: number; orders: number } {
-  let filtered = orders.filter((o) => o.salesRepName === repName);
-  if (startDate) filtered = filtered.filter((o) => o.orderDate >= startDate);
-  if (endDate) filtered = filtered.filter((o) => o.orderDate <= endDate);
-  const totalSales = filtered.reduce((sum, o) => sum + (o.total || 0), 0);
-  return {
-    totalSales,
-    commission: Math.round(totalSales * rate * 100) / 100,
-    orders: filtered.length,
-  };
-}
+export const scrapService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return scrapRecords.filter((s) => s.company === comp);
+  },
+  getById: (id: number) => {
+    return scrapRecords.find((s) => s.id === id);
+  },
+  getByBatch: (batchId: number) => {
+    return scrapRecords.filter((s) => s.batchId === batchId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    scrapRecords.push(newItem);
+    saveItem("sgf_scrapRecords", scrapRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = scrapRecords.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      scrapRecords[idx] = { ...scrapRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_scrapRecords", scrapRecords);
+    }
+    return scrapRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = scrapRecords.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      scrapRecords.splice(idx, 1);
+      saveItem("sgf_scrapRecords", scrapRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
 // =============================================================================
-// AGING REPORT
+// REWORK RECORD SERVICE
 // =============================================================================
 
-export function getAgingReport(): Array<{
-  customerId: number;
-  customerName: string;
-  current: number;
-  days30: number;
-  days60: number;
-  days90: number;
-  days120: number;
-  total: number;
-}> {
-  const now = new Date();
-  const report = new Map<number, { current: number; days30: number; days60: number; days90: number; days120: number }>();
+export const reworkService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return reworkRecords.filter((r) => r.company === comp);
+  },
+  getById: (id: number) => {
+    return reworkRecords.find((r) => r.id === id);
+  },
+  getByBatch: (batchId: number) => {
+    return reworkRecords.filter((r) => r.batchId === batchId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    reworkRecords.push(newItem);
+    saveItem("sgf_reworkRecords", reworkRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = reworkRecords.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      reworkRecords[idx] = { ...reworkRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_reworkRecords", reworkRecords);
+    }
+    return reworkRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = reworkRecords.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      reworkRecords.splice(idx, 1);
+      saveItem("sgf_reworkRecords", reworkRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-  for (const invoice of invoices) {
-    if (invoice.status !== "sent" && invoice.status !== "partial") continue;
-    const due = new Date(invoice.dueDate || invoice.invoiceDate);
-    const daysOverdue = Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
-    const balance = invoice.balanceDue || invoice.total || 0;
-    if (balance <= 0) continue;
+// =============================================================================
+// PACKING LIST SERVICE
+// =============================================================================
 
-    const entry = report.get(invoice.customerId) || { current: 0, days30: 0, days60: 0, days90: 0, days120: 0 };
-    if (daysOverdue <= 0) entry.current += balance;
-    else if (daysOverdue <= 30) entry.days30 += balance;
-    else if (daysOverdue <= 60) entry.days60 += balance;
-    else if (daysOverdue <= 90) entry.days90 += balance;
-    else entry.days120 += balance;
-    report.set(invoice.customerId, entry);
-  }
+export const packingListService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return packingLists.filter((p) => p.company === comp);
+  },
+  getById: (id: number) => {
+    return packingLists.find((p) => p.id === id);
+  },
+  getByOrder: (orderId: number) => {
+    return packingLists.filter((p) => p.orderId === orderId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    packingLists.push(newItem);
+    saveItem("sgf_packingLists", packingLists);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = packingLists.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      packingLists[idx] = { ...packingLists[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_packingLists", packingLists);
+    }
+    return packingLists[idx];
+  },
+  delete: (id: number) => {
+    const idx = packingLists.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      packingLists.splice(idx, 1);
+      saveItem("sgf_packingLists", packingLists);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
-  return Array.from(report.entries()).map(([customerId, amounts]) => ({
-    customerId,
-    customerName: getCustomerName(customerId),
-    ...amounts,
-    total: amounts.current + amounts.days30 + amounts.days60 + amounts.days90 + amounts.days120,
-  }));
-}
+// =============================================================================
+// SHIPPING SERVICE
+// =============================================================================
+
+export const shippingService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return shippingRecords.filter((s) => s.company === comp);
+  },
+  getById: (id: number) => {
+    return shippingRecords.find((s) => s.id === id);
+  },
+  getByOrder: (orderId: number) => {
+    return shippingRecords.filter((s) => s.orderId === orderId);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return shippingRecords.filter((s) => s.company === comp && s.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    shippingRecords.push(newItem);
+    saveItem("sgf_shippingRecords", shippingRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = shippingRecords.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      shippingRecords[idx] = { ...shippingRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_shippingRecords", shippingRecords);
+    }
+    return shippingRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = shippingRecords.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      shippingRecords.splice(idx, 1);
+      saveItem("sgf_shippingRecords", shippingRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// RETURN SERVICE
+// =============================================================================
+
+export const returnService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return returnRecords.filter((r) => r.company === comp);
+  },
+  getById: (id: number) => {
+    return returnRecords.find((r) => r.id === id);
+  },
+  getByOrder: (orderId: number) => {
+    return returnRecords.filter((r) => r.orderId === orderId);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return returnRecords.filter((r) => r.company === comp && r.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    returnRecords.push(newItem);
+    saveItem("sgf_returnRecords", returnRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = returnRecords.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      returnRecords[idx] = { ...returnRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_returnRecords", returnRecords);
+    }
+    return returnRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = returnRecords.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      returnRecords.splice(idx, 1);
+      saveItem("sgf_returnRecords", returnRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// CREDIT NOTE SERVICE
+// =============================================================================
+
+export const creditNoteService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return creditNotes.filter((c) => c.company === comp);
+  },
+  getById: (id: number) => {
+    return creditNotes.find((c) => c.id === id);
+  },
+  getByInvoice: (invoiceId: number) => {
+    return creditNotes.filter((c) => c.invoiceId === invoiceId);
+  },
+  getByCustomer: (customerId: number) => {
+    return creditNotes.filter((c) => c.customerId === customerId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    creditNotes.push(newItem);
+    saveItem("sgf_creditNotes", creditNotes);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = creditNotes.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      creditNotes[idx] = { ...creditNotes[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_creditNotes", creditNotes);
+    }
+    return creditNotes[idx];
+  },
+  delete: (id: number) => {
+    const idx = creditNotes.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      creditNotes.splice(idx, 1);
+      saveItem("sgf_creditNotes", creditNotes);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// DEBIT NOTE SERVICE
+// =============================================================================
+
+export const debitNoteService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return debitNotes.filter((d) => d.company === comp);
+  },
+  getById: (id: number) => {
+    return debitNotes.find((d) => d.id === id);
+  },
+  getBySupplier: (supplierId: number) => {
+    return debitNotes.filter((d) => d.supplierId === supplierId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    debitNotes.push(newItem);
+    saveItem("sgf_debitNotes", debitNotes);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = debitNotes.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      debitNotes[idx] = { ...debitNotes[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_debitNotes", debitNotes);
+    }
+    return debitNotes[idx];
+  },
+  delete: (id: number) => {
+    const idx = debitNotes.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      debitNotes.splice(idx, 1);
+      saveItem("sgf_debitNotes", debitNotes);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// JOURNAL ENTRY SERVICE
+// =============================================================================
+
+export const journalEntryService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return journalEntries.filter((j) => j.company === comp);
+  },
+  getById: (id: number) => {
+    return journalEntries.find((j) => j.id === id);
+  },
+  getByDate: (date: string) => {
+    const comp = getCurrentCompany();
+    return journalEntries.filter((j) => j.company === comp && j.date === date);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    journalEntries.push(newItem);
+    saveItem("sgf_journalEntries", journalEntries);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = journalEntries.findIndex((j) => j.id === id);
+    if (idx >= 0) {
+      journalEntries[idx] = { ...journalEntries[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_journalEntries", journalEntries);
+    }
+    return journalEntries[idx];
+  },
+  delete: (id: number) => {
+    const idx = journalEntries.findIndex((j) => j.id === id);
+    if (idx >= 0) {
+      journalEntries.splice(idx, 1);
+      saveItem("sgf_journalEntries", journalEntries);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// GENERAL LEDGER SERVICE
+// =============================================================================
+
+export const generalLedgerService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return generalLedger.filter((g) => g.company === comp);
+  },
+  getById: (id: number) => {
+    return generalLedger.find((g) => g.id === id);
+  },
+  getByAccount: (accountCode: string) => {
+    const comp = getCurrentCompany();
+    return generalLedger.filter((g) => g.company === comp && g.accountCode === accountCode);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    generalLedger.push(newItem);
+    saveItem("sgf_generalLedger", generalLedger);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = generalLedger.findIndex((g) => g.id === id);
+    if (idx >= 0) {
+      generalLedger[idx] = { ...generalLedger[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_generalLedger", generalLedger);
+    }
+    return generalLedger[idx];
+  },
+  delete: (id: number) => {
+    const idx = generalLedger.findIndex((g) => g.id === id);
+    if (idx >= 0) {
+      generalLedger.splice(idx, 1);
+      saveItem("sgf_generalLedger", generalLedger);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// ACCOUNT SERVICE
+// =============================================================================
+
+export const accountService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return accounts.filter((a) => a.company === comp);
+  },
+  getById: (id: number) => {
+    return accounts.find((a) => a.id === id);
+  },
+  getByCode: (code: string) => {
+    const comp = getCurrentCompany();
+    return accounts.find((a) => a.company === comp && a.code === code);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return accounts.filter((a) => a.company === comp && a.type === type);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    accounts.push(newItem);
+    saveItem("sgf_accounts", accounts);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = accounts.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      accounts[idx] = { ...accounts[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_accounts", accounts);
+    }
+    return accounts[idx];
+  },
+  delete: (id: number) => {
+    const idx = accounts.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      accounts.splice(idx, 1);
+      saveItem("sgf_accounts", accounts);
+    }
+    return { success: idx >= 0 };
+  },
+};

@@ -1,242 +1,514 @@
 // =============================================================================
-// BACKUP / RESTORE SERVICE
+// HACCP SERVICE
 // =============================================================================
 
-export function createBackup(): string {
-  const backup = {
-    timestamp: new Date().toISOString(),
-    version: "2.0",
-    data: {
-      customers: deepClone(customers),
-      products: deepClone(products),
-      orders: deepClone(orders),
-      invoices: deepClone(invoices),
-      appointments: deepClone(appointments),
-      checkins: deepClone(checkins),
-      specialPrices: deepClone(specialPrices),
-      auditLog: deepClone(auditLog),
-      systemLogs: deepClone(systemLogs),
-      followUps: deepClone(followUps),
-      followUpActions: deepClone(followUpActions),
-      collectionNotes: deepClone(collectionNotes),
-      collectionPromises: deepClone(collectionPromises),
-      accountHolds: deepClone(accountHolds),
-      receipts: deepClone(receipts),
-      creditNotes: deepClone(creditNotes),
-      users: deepClone(users),
-      corporateCustomers: deepClone(corporateCustomers),
-      purchaseOrders: deepClone(purchaseOrders),
-      barrels: deepClone(barrels),
-      certificatesOfCompliance: deepClone(certificatesOfCompliance),
-      packingListLines: deepClone(packingListLines),
-    },
-  };
-  return JSON.stringify(backup);
-}
-
-export function restoreFromBackup(backupJson: string): { success: boolean; error?: string } {
-  try {
-    const backup = JSON.parse(backupJson);
-    if (!backup.data) return { success: false, error: "Invalid backup format" };
-    if (backup.data.customers) customers = backup.data.customers;
-    if (backup.data.products) products = backup.data.products;
-    if (backup.data.orders) orders = backup.data.orders;
-    if (backup.data.invoices) invoices = backup.data.invoices;
-    if (backup.data.appointments) appointments = backup.data.appointments;
-    if (backup.data.checkins) checkins = backup.data.checkins;
-    if (backup.data.specialPrices) specialPrices = backup.data.specialPrices;
-    if (backup.data.auditLog) auditLog = backup.data.auditLog;
-    if (backup.data.systemLogs) systemLogs = backup.data.systemLogs;
-    if (backup.data.followUps) followUps = backup.data.followUps;
-    if (backup.data.followUpActions) followUpActions = backup.data.followUpActions;
-    if (backup.data.collectionNotes) collectionNotes = backup.data.collectionNotes;
-    if (backup.data.collectionPromises) collectionPromises = backup.data.collectionPromises;
-    if (backup.data.accountHolds) accountHolds = backup.data.accountHolds;
-    if (backup.data.receipts) receipts = backup.data.receipts;
-    if (backup.data.creditNotes) creditNotes = backup.data.creditNotes;
-    if (backup.data.users) users = backup.data.users;
-    if (backup.data.corporateCustomers) corporateCustomers = backup.data.corporateCustomers;
-    if (backup.data.purchaseOrders) purchaseOrders = backup.data.purchaseOrders;
-    if (backup.data.barrels) barrels = backup.data.barrels;
-    if (backup.data.certificatesOfCompliance) certificatesOfCompliance = backup.data.certificatesOfCompliance;
-    if (backup.data.packingListLines) packingListLines = backup.data.packingListLines;
-    // Save all to localStorage
-    saveItem("sgf_customers", customers);
-    saveItem("sgf_products", products);
-    saveItem("sgf_orders", orders);
-    saveItem("sgf_invoices", invoices);
-    saveItem("sgf_appointments", appointments);
-    saveItem("sgf_checkins", checkins);
-    saveItem("sgf_specialPrices", specialPrices);
-    saveItem("sgf_auditLog", auditLog);
-    saveItem("sgf_systemLogs", systemLogs);
-    saveItem("sgf_followUps", followUps);
-    saveItem("sgf_followUpActions", followUpActions);
-    saveItem("sgf_collectionNotes", collectionNotes);
-    saveItem("sgf_collectionPromises", collectionPromises);
-    saveItem("sgf_accountHolds", accountHolds);
-    saveItem("sgf_receipts", receipts);
-    saveItem("sgf_creditNotes", creditNotes);
-    saveItem("sgf_users", users);
-    saveItem("sgf_corporateCustomers", corporateCustomers);
-    saveItem("sgf_purchaseOrders", purchaseOrders);
-    saveItem("sgf_barrels", barrels);
-    saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance);
-    saveItem("sgf_packingListLines", packingListLines);
-    logAudit("restore", "system", 0, { timestamp: backup.timestamp });
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
-}
+export const haccpService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return haccpRecords.filter((h) => h.company === comp);
+  },
+  getById: (id: number) => {
+    return haccpRecords.find((h) => h.id === id);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return haccpRecords.filter((h) => h.company === comp && h.type === type);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    haccpRecords.push(newItem);
+    saveItem("sgf_haccpRecords", haccpRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = haccpRecords.findIndex((h) => h.id === id);
+    if (idx >= 0) {
+      haccpRecords[idx] = { ...haccpRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_haccpRecords", haccpRecords);
+    }
+    return haccpRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = haccpRecords.findIndex((h) => h.id === id);
+    if (idx >= 0) {
+      haccpRecords.splice(idx, 1);
+      saveItem("sgf_haccpRecords", haccpRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
 
 // =============================================================================
-// DATA INTEGRITY / VALIDATION
+// CLEANING SCHEDULE SERVICE
 // =============================================================================
 
-export function validateDataIntegrity(): { valid: boolean; issues: string[] } {
-  const issues: string[] = [];
-  // Check for orphaned orders (customer doesn't exist)
-  for (const order of orders) {
-    if (!customers.find((c) => c.id === order.customerId)) {
-      issues.push(`Order ${order.orderNumber} has invalid customer ${order.customerId}`);
+export const cleaningScheduleService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return cleaningSchedules.filter((c) => c.company === comp);
+  },
+  getById: (id: number) => {
+    return cleaningSchedules.find((c) => c.id === id);
+  },
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return cleaningSchedules.filter((c) => c.company === comp && c.nextDue && c.nextDue <= now);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    cleaningSchedules.push(newItem);
+    saveItem("sgf_cleaningSchedules", cleaningSchedules);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = cleaningSchedules.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      cleaningSchedules[idx] = { ...cleaningSchedules[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_cleaningSchedules", cleaningSchedules);
     }
-  }
-  // Check for orphaned invoices (customer doesn't exist)
-  for (const invoice of invoices) {
-    if (!customers.find((c) => c.id === invoice.customerId)) {
-      issues.push(`Invoice ${invoice.invoiceNumber} has invalid customer ${invoice.customerId}`);
+    return cleaningSchedules[idx];
+  },
+  delete: (id: number) => {
+    const idx = cleaningSchedules.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      cleaningSchedules.splice(idx, 1);
+      saveItem("sgf_cleaningSchedules", cleaningSchedules);
     }
-  }
-  // Check for orphaned order items (product doesn't exist)
-  for (const order of orders) {
-    if (order.items) {
-      for (const item of order.items) {
-        if (!products.find((p) => p.id === item.stockItemId)) {
-          issues.push(`Order ${order.orderNumber} has invalid product ${item.stockItemId}`);
-        }
-      }
-    }
-  }
-  // Check for negative stock
-  for (const product of products) {
-    if ((product.quantity || 0) < 0) {
-      issues.push(`Product ${product.productName} has negative stock: ${product.quantity}`);
-    }
-  }
-  // Check for duplicate invoice numbers
-  const invoiceNumbers = new Map<string, number[]>();
-  for (const invoice of invoices) {
-    const num = invoice.invoiceNumber;
-    if (!invoiceNumbers.has(num)) invoiceNumbers.set(num, []);
-    invoiceNumbers.get(num)!.push(invoice.id);
-  }
-  for (const [num, ids] of invoiceNumbers) {
-    if (ids.length > 1) {
-      issues.push(`Duplicate invoice number ${num} on invoices: ${ids.join(", ")}`);
-    }
-  }
-  // Check for duplicate order numbers
-  const orderNumbers = new Map<string, number[]>();
-  for (const order of orders) {
-    const num = order.orderNumber;
-    if (!orderNumbers.has(num)) orderNumbers.set(num, []);
-    orderNumbers.get(num)!.push(order.id);
-  }
-  for (const [num, ids] of orderNumbers) {
-    if (ids.length > 1) {
-      issues.push(`Duplicate order number ${num} on orders: ${ids.join(", ")}`);
-    }
-  }
-  return { valid: issues.length === 0, issues };
-}
+    return { success: idx >= 0 };
+  },
+};
 
-/** Repair broken data references and duplicate numbers.
- *  Returns report of all repairs made. */
-export function repairData(): { repairs: string[] } {
-  const repairs: string[] = [];
-  const integrity = validateDataIntegrity();
-  if (integrity.valid) return { repairs: ["No issues found"] };
-  for (const issue of integrity.issues) {
-    if (issue.includes("invalid customer")) {
-      // Remove orphaned orders/invoices
-      const orderMatch = issue.match(/Order (\S+) has invalid customer/);
-      if (orderMatch) {
-        const orderNum = orderMatch[1];
-        const idx = orders.findIndex((o) => o.orderNumber === orderNum);
-        if (idx !== -1) {
-          orders.splice(idx, 1);
-          repairs.push(`Removed orphaned order ${orderNum}`);
-        }
-      }
-      const invoiceMatch = issue.match(/Invoice (\S+) has invalid customer/);
-      if (invoiceMatch) {
-        const invNum = invoiceMatch[1];
-        const idx = invoices.findIndex((i) => i.invoiceNumber === invNum);
-        if (idx !== -1) {
-          invoices.splice(idx, 1);
-          repairs.push(`Removed orphaned invoice ${invNum}`);
-        }
-      }
+// =============================================================================
+// PEST CONTROL SERVICE
+// =============================================================================
+
+export const pestControlService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return pestControlRecords.filter((p) => p.company === comp);
+  },
+  getById: (id: number) => {
+    return pestControlRecords.find((p) => p.id === id);
+  },
+  getDue: () => {
+    const comp = getCurrentCompany();
+    const now = new Date().toISOString();
+    return pestControlRecords.filter((p) => p.company === comp && p.nextDue && p.nextDue <= now);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    pestControlRecords.push(newItem);
+    saveItem("sgf_pestControlRecords", pestControlRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = pestControlRecords.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      pestControlRecords[idx] = { ...pestControlRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_pestControlRecords", pestControlRecords);
     }
-    if (issue.includes("invalid product")) {
-      // Remove invalid items from orders
-      const orderMatch = issue.match(/Order (\S+) has invalid product (\d+)/);
-      if (orderMatch) {
-        const orderNum = orderMatch[1];
-        const productId = parseInt(orderMatch[2]);
-        const order = orders.find((o) => o.orderNumber === orderNum);
-        if (order && order.items) {
-          order.items = order.items.filter((item: any) => item.stockItemId !== productId);
-          repairs.push(`Removed invalid product ${productId} from order ${orderNum}`);
-        }
-      }
+    return pestControlRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = pestControlRecords.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      pestControlRecords.splice(idx, 1);
+      saveItem("sgf_pestControlRecords", pestControlRecords);
     }
-    if (issue.includes("negative stock")) {
-      const productMatch = issue.match(/Product (.+) has negative stock: ([-\d.]+)/);
-      if (productMatch) {
-        const productName = productMatch[1];
-        const product = products.find((p) => p.productName === productName);
-        if (product) {
-          product.quantity = 0;
-          repairs.push(`Reset negative stock for ${productName} to 0`);
-        }
-      }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// ALLERGEN MANAGEMENT SERVICE
+// =============================================================================
+
+export const allergenService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return allergens.filter((a) => a.company === comp);
+  },
+  getById: (id: number) => {
+    return allergens.find((a) => a.id === id);
+  },
+  getByProduct: (productId: number) => {
+    return allergens.filter((a) => a.productId === productId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    allergens.push(newItem);
+    saveItem("sgf_allergens", allergens);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = allergens.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      allergens[idx] = { ...allergens[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_allergens", allergens);
     }
-    if (issue.includes("Duplicate invoice number")) {
-      const dupMatch = issue.match(/Duplicate invoice number (\S+) on invoices: ([\d, ]+)/);
-      if (dupMatch) {
-        const invNum = dupMatch[1];
-        const ids = dupMatch[2].split(", ").map((id) => parseInt(id.trim()));
-        // Keep the first, renumber the rest
-        for (let i = 1; i < ids.length; i++) {
-          const invoice = invoices.find((inv) => inv.id === ids[i]);
-          if (invoice) {
-            const newNum = getNextInvoiceNumber();
-            invoice.invoiceNumber = newNum;
-            repairs.push(`Renamed duplicate invoice ${invNum} -> ${newNum}`);
-          }
-        }
-      }
+    return allergens[idx];
+  },
+  delete: (id: number) => {
+    const idx = allergens.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      allergens.splice(idx, 1);
+      saveItem("sgf_allergens", allergens);
     }
-    if (issue.includes("Duplicate order number")) {
-      const dupMatch = issue.match(/Duplicate order number (\S+) on orders: ([\d, ]+)/);
-      if (dupMatch) {
-        const ordNum = dupMatch[1];
-        const ids = dupMatch[2].split(", ").map((id) => parseInt(id.trim()));
-        for (let i = 1; i < ids.length; i++) {
-          const order = orders.find((o) => o.id === ids[i]);
-          if (order) {
-            const newNum = generateOrderNumber(order.orderType);
-            order.orderNumber = newNum;
-            repairs.push(`Renamed duplicate order ${ordNum} -> ${newNum}`);
-          }
-        }
-      }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// SPECIFICATION SERVICE
+// =============================================================================
+
+export const specificationService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return specifications.filter((s) => s.company === comp);
+  },
+  getById: (id: number) => {
+    return specifications.find((s) => s.id === id);
+  },
+  getByProduct: (productId: number) => {
+    return specifications.filter((s) => s.productId === productId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    specifications.push(newItem);
+    saveItem("sgf_specifications", specifications);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = specifications.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      specifications[idx] = { ...specifications[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_specifications", specifications);
     }
-  }
-  saveItem("sgf_orders", orders);
-  saveItem("sgf_invoices", invoices);
-  saveItem("sgf_products", products);
-  return { repairs };
-}
+    return specifications[idx];
+  },
+  delete: (id: number) => {
+    const idx = specifications.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      specifications.splice(idx, 1);
+      saveItem("sgf_specifications", specifications);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// LABELING SERVICE
+// =============================================================================
+
+export const labelingService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return labels.filter((l) => l.company === comp);
+  },
+  getById: (id: number) => {
+    return labels.find((l) => l.id === id);
+  },
+  getByProduct: (productId: number) => {
+    return labels.filter((l) => l.productId === productId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    labels.push(newItem);
+    saveItem("sgf_labels", labels);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = labels.findIndex((l) => l.id === id);
+    if (idx >= 0) {
+      labels[idx] = { ...labels[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_labels", labels);
+    }
+    return labels[idx];
+  },
+  delete: (id: number) => {
+    const idx = labels.findIndex((l) => l.id === id);
+    if (idx >= 0) {
+      labels.splice(idx, 1);
+      saveItem("sgf_labels", labels);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// PACKAGING SERVICE
+// =============================================================================
+
+export const packagingService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return packagingRecords.filter((p) => p.company === comp);
+  },
+  getById: (id: number) => {
+    return packagingRecords.find((p) => p.id === id);
+  },
+  getByProduct: (productId: number) => {
+    return packagingRecords.filter((p) => p.productId === productId);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    packagingRecords.push(newItem);
+    saveItem("sgf_packagingRecords", packagingRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = packagingRecords.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      packagingRecords[idx] = { ...packagingRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_packagingRecords", packagingRecords);
+    }
+    return packagingRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = packagingRecords.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      packagingRecords.splice(idx, 1);
+      saveItem("sgf_packagingRecords", packagingRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// RECALL SERVICE
+// =============================================================================
+
+export const recallService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return recalls.filter((r) => r.company === comp);
+  },
+  getById: (id: number) => {
+    return recalls.find((r) => r.id === id);
+  },
+  getByStatus: (status: string) => {
+    const comp = getCurrentCompany();
+    return recalls.filter((r) => r.company === comp && r.status === status);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    recalls.push(newItem);
+    saveItem("sgf_recalls", recalls);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = recalls.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      recalls[idx] = { ...recalls[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_recalls", recalls);
+    }
+    return recalls[idx];
+  },
+  delete: (id: number) => {
+    const idx = recalls.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      recalls.splice(idx, 1);
+      saveItem("sgf_recalls", recalls);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// WASTE MANAGEMENT SERVICE
+// =============================================================================
+
+export const wasteService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return wasteRecords.filter((w) => w.company === comp);
+  },
+  getById: (id: number) => {
+    return wasteRecords.find((w) => w.id === id);
+  },
+  getByType: (type: string) => {
+    const comp = getCurrentCompany();
+    return wasteRecords.filter((w) => w.company === comp && w.type === type);
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    wasteRecords.push(newItem);
+    saveItem("sgf_wasteRecords", wasteRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = wasteRecords.findIndex((w) => w.id === id);
+    if (idx >= 0) {
+      wasteRecords[idx] = { ...wasteRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_wasteRecords", wasteRecords);
+    }
+    return wasteRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = wasteRecords.findIndex((w) => w.id === id);
+    if (idx >= 0) {
+      wasteRecords.splice(idx, 1);
+      saveItem("sgf_wasteRecords", wasteRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// WATER QUALITY SERVICE
+// =============================================================================
+
+export const waterQualityService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return waterQualityRecords.filter((w) => w.company === comp);
+  },
+  getById: (id: number) => {
+    return waterQualityRecords.find((w) => w.id === id);
+  },
+  getOutOfSpec: () => {
+    const comp = getCurrentCompany();
+    return waterQualityRecords.filter((w) => w.company === comp && w.status === "out_of_spec");
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    waterQualityRecords.push(newItem);
+    saveItem("sgf_waterQualityRecords", waterQualityRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = waterQualityRecords.findIndex((w) => w.id === id);
+    if (idx >= 0) {
+      waterQualityRecords[idx] = { ...waterQualityRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_waterQualityRecords", waterQualityRecords);
+    }
+    return waterQualityRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = waterQualityRecords.findIndex((w) => w.id === id);
+    if (idx >= 0) {
+      waterQualityRecords.splice(idx, 1);
+      saveItem("sgf_waterQualityRecords", waterQualityRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};
+
+// =============================================================================
+// AIR QUALITY SERVICE
+// =============================================================================
+
+export const airQualityService = {
+  list: () => {
+    const comp = getCurrentCompany();
+    return airQualityRecords.filter((a) => a.company === comp);
+  },
+  getById: (id: number) => {
+    return airQualityRecords.find((a) => a.id === id);
+  },
+  getOutOfSpec: () => {
+    const comp = getCurrentCompany();
+    return airQualityRecords.filter((a) => a.company === comp && a.status === "out_of_spec");
+  },
+  create: (data: any) => {
+    const comp = getCurrentCompany();
+    const newItem = {
+      ...data,
+      company: data.company || comp,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    airQualityRecords.push(newItem);
+    saveItem("sgf_airQualityRecords", airQualityRecords);
+    return newItem;
+  },
+  update: ({ id, data }: { id: number; data: any }) => {
+    const idx = airQualityRecords.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      airQualityRecords[idx] = { ...airQualityRecords[idx], ...data, updatedAt: new Date().toISOString() };
+      saveItem("sgf_airQualityRecords", airQualityRecords);
+    }
+    return airQualityRecords[idx];
+  },
+  delete: (id: number) => {
+    const idx = airQualityRecords.findIndex((a) => a.id === id);
+    if (idx >= 0) {
+      airQualityRecords.splice(idx, 1);
+      saveItem("sgf_airQualityRecords", airQualityRecords);
+    }
+    return { success: idx >= 0 };
+  },
+};

@@ -1,530 +1,182 @@
-// =============================================================================
-// DISCIPLINARY SERVICE
-// =============================================================================
+    return { blocked: true, reason: `Customer account is inactive. Contact admin to reactivate.` };
+  }
 
-export const disciplinaryService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return disciplinaryRecords.filter((d) => d.company === comp);
-  },
-  getById: (id: number) => {
-    return disciplinaryRecords.find((d) => d.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return disciplinaryRecords.filter((d) => d.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  // 2. Account on hold
+  const hold = accountHolds.find(
+    (h) => h.customerId == customerId && h.status === "active"
+  );
+  if (hold) {
+    return { blocked: true, reason: `Account on hold: ${hold.reason || "Unspecified"}. Contact admin.` };
+  }
+
+  // 3. COD order - calculate total of this NEW order, check credit limit
+  // COD means customer must have enough credit limit to cover total order value
+  if (paymentTerms === "cod") {
+    const totalOutstanding = getCustomerOutstandingBalance(customerId);
+    // We don't have the current order total here, but we check if they already exceeded limit
+    const limit = typeof customer.creditLimit === "number" ? customer.creditLimit : 0;
+    if (limit > 0 && totalOutstanding >= limit) {
+      return { blocked: true, reason: `Credit limit exceeded (outstanding: R ${totalOutstanding.toFixed(2)} / limit: R ${limit.toFixed(2)}). Reduce outstanding balance or contact admin.` };
+    }
+  }
+
+  return { blocked: false };
+}
+
+/* ─── ORDER CREATION / UPDATE ─── */
+
+// Avoid circular import: the order page already imports from dataService.
+// Just check if window.dispatchEvent is available and fire a generic refresh.
+function notifyOrderChange() {
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("sgf_data_changed", { detail: { type: "orders" } }));
+    }
+  } catch { /* ignore */ }
+}
+
+export function getOrderById(orderId: number) {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  return orders.find((o) => o.id == orderId) || null;
+}
+
+export function getInvoiceForOrder(orderId: number) {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  return invoices.find((inv) => inv.orderId == orderId) || null;
+}
+
+/** Generate a purchase order number that avoids duplicates.
+ *  Format: PO-YYYY-MM-DD-XXXXXXXX (date + 8 random hex chars)
+ *  Ensures uniqueness by checking existing purchase orders. */
+export function generatePurchaseOrderNumber(): string {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  let attempts = 0;
+  while (attempts < 100) {
+    const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const poNumber = `PO-${datePart}-${randomPart}`;
+    if (!purchaseOrders.some((po) => po.poNumber === poNumber)) {
+      return poNumber;
+    }
+    attempts++;
+  }
+  // Fallback with timestamp
+  return `PO-${datePart}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+/** Generate a sample order number that avoids duplicates.
+ *  Format: SMP-YYYY-MM-DD-XXXXXXXX (date + 8 random hex chars)
+ *  Ensures uniqueness by checking existing orders. */
+export function generateSampleOrderNumber(): string {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  let attempts = 0;
+  while (attempts < 100) {
+    const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const orderNumber = `SMP-${datePart}-${randomPart}`;
+    if (!orders.some((o) => o.orderNumber === orderNumber)) {
+      return orderNumber;
+    }
+    attempts++;
+  }
+  // Fallback with timestamp
+  return `SMP-${datePart}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function createOrder(data: any) {
+  const comp = getCurrentCompany();
+  // CRITICAL: Reload customer + product data from storage to ensure latest
+  // prices/credit limits are in memory before validation
+  reloadFromStorage(["sgf_customers", "sgf_corporateCustomers", "sgf_products", "sgf_accountHolds"]);
+
+  // ─── Corporate Customer Order ───
+  if (data.orderType === "corporate" && data.corporateCustomerId) {
+    return createCorporateOrder(data);
+  }
+
+  // ─── Normal Customer Order (regular + sample) ───
+  const customerId = data.customerId;
+  const customer = customers.find((c) => c.id == customerId);
+  if (!customer && !data.corporateCustomerId) {
+    throw new Error("Customer not found");
+  }
+
+  // Check account holds
+  const hold = accountHolds.find((h) => h.customerId == customerId && h.status === "active");
+  if (hold) {
+    throw new Error(`Account on hold: ${hold.reason || "Unspecified"}. Contact admin.`);
+  }
+
+  const isSample = data.orderType === "sample";
+  const orderNumber = isSample ? generateSampleOrderNumber() : generateOrderNumber();
+
+  // ─── Stock check (skip for sample orders) ───
+  if (!isSample && data.items?.length) {
+    for (const it of data.items) {
+      if (it.stockItemId) {
+        const available = getAvailableStock(it.stockItemId);
+        if (available < (it.quantity || 0)) {
+          throw new Error(`Insufficient stock for ${it.productName || it.description || "item"}. Available: ${available}, Requested: ${it.quantity}`);
+        }
+      }
+    }
+  }
+
+  const items = (data.items || []).map((item: any) => {
+    const prod = products.find((p) => p.id == item.stockItemId);
+    const price = isSample ? 0 : (item.unitPrice ?? prod?.price ?? 0);
+    const qty = Number(item.quantity) || 0;
+    const conv = Number(item.conversion) || 1;
+    return {
+      ...item,
+      stockItemId: item.stockItemId ?? null,
+      productCode: item.productCode ?? prod?.productCode ?? "",
+      productName: item.productName ?? prod?.name ?? "",
+      species: item.species ?? prod?.species ?? "",
+      strands: item.strands ?? prod?.strands ?? "",
+      description: item.description || item.productName || prod?.name || "",
+      quantity: qty,
+      conversion: conv,
+      unitPrice: price,
+      lineTotal: qty * price,
+      unitLabel: item.unitLabel || (conv === 1 ? "Each" : `${conv} units`),
     };
-    disciplinaryRecords.push(newItem);
-    saveItem("sgf_disciplinaryRecords", disciplinaryRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = disciplinaryRecords.findIndex((d) => d.id === id);
-    if (idx >= 0) {
-      disciplinaryRecords[idx] = { ...disciplinaryRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_disciplinaryRecords", disciplinaryRecords);
-    }
-    return disciplinaryRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = disciplinaryRecords.findIndex((d) => d.id === id);
-    if (idx >= 0) {
-      disciplinaryRecords.splice(idx, 1);
-      saveItem("sgf_disciplinaryRecords", disciplinaryRecords);
-    }
-    return { success: idx >= 0 };
-  },
-};
+  });
 
-// =============================================================================
-// GRIEVANCE SERVICE
-// =============================================================================
+  const subtotal = isSample ? 0 : items.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
+  const vatAmount = isSample ? 0 : subtotal * 0.15;
+  const total = subtotal + vatAmount;
 
-export const grievanceService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return grievances.filter((g) => g.company === comp);
-  },
-  getById: (id: number) => {
-    return grievances.find((g) => g.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return grievances.filter((g) => g.employeeId === employeeId);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return grievances.filter((g) => g.company === comp && g.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    grievances.push(newItem);
-    saveItem("sgf_grievances", grievances);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = grievances.findIndex((g) => g.id === id);
-    if (idx >= 0) {
-      grievances[idx] = { ...grievances[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_grievances", grievances);
-    }
-    return grievances[idx];
-  },
-  delete: (id: number) => {
-    const idx = grievances.findIndex((g) => g.id === id);
-    if (idx >= 0) {
-      grievances.splice(idx, 1);
-      saveItem("sgf_grievances", grievances);
-    }
-    return { success: idx >= 0 };
-  },
-};
+  const order = {
+    ...data,
+    company: comp,
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    orderNumber,
+    items,
+    subtotal,
+    vatAmount,
+    total,
+    status: data.status || "pending",
+    paymentTerms: data.paymentTerms || "cod",
+    deliveryDate: data.deliveryDate || null,
+    notes: data.notes || "",
+    isPaid: isSample ? true : false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  orders.push(order);
+  saveItem("sgf_orders", orders);
 
-// =============================================================================
-// HEALTH AND SAFETY SERVICE
-// =============================================================================
+  // For corporate orders, create purchase order as well
+  if (data.orderType === "corporate" && data.corporateCustomerId) {
+    createPurchaseOrderFromOrder(order);
+  }
 
-export const healthSafetyService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return healthSafetyRecords.filter((h) => h.company === comp);
-  },
-  getById: (id: number) => {
-    return healthSafetyRecords.find((h) => h.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return healthSafetyRecords.filter((h) => h.company === comp && h.type === type);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    healthSafetyRecords.push(newItem);
-    saveItem("sgf_healthSafetyRecords", healthSafetyRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = healthSafetyRecords.findIndex((h) => h.id === id);
-    if (idx >= 0) {
-      healthSafetyRecords[idx] = { ...healthSafetyRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_healthSafetyRecords", healthSafetyRecords);
-    }
-    return healthSafetyRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = healthSafetyRecords.findIndex((h) => h.id === id);
-    if (idx >= 0) {
-      healthSafetyRecords.splice(idx, 1);
-      saveItem("sgf_healthSafetyRecords", healthSafetyRecords);
-    }
-    return { success: idx >= 0 };
-  },
-};
+  // Generate invoice for the order (unless it's a sample or draft)
+  if (!isSample && order.status !== "draft") {
+    const invNum = createInvoiceFromOrder(order.id, order.company);
+    if (invNum) order.invoiceNumber = invNum;
+  }
 
-// =============================================================================
-// INCIDENT SERVICE
-// =============================================================================
-
-export const incidentService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return incidents.filter((i) => i.company === comp);
-  },
-  getById: (id: number) => {
-    return incidents.find((i) => i.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return incidents.filter((i) => i.company === comp && i.type === type);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return incidents.filter((i) => i.company === comp && i.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    incidents.push(newItem);
-    saveItem("sgf_incidents", incidents);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = incidents.findIndex((i) => i.id === id);
-    if (idx >= 0) {
-      incidents[idx] = { ...incidents[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_incidents", incidents);
-    }
-    return incidents[idx];
-  },
-  delete: (id: number) => {
-    const idx = incidents.findIndex((i) => i.id === id);
-    if (idx >= 0) {
-      incidents.splice(idx, 1);
-      saveItem("sgf_incidents", incidents);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// RISK REGISTER SERVICE
-// =============================================================================
-
-export const riskRegisterService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return riskRegisters.filter((r) => r.company === comp);
-  },
-  getById: (id: number) => {
-    return riskRegisters.find((r) => r.id === id);
-  },
-  getByCategory: (category: string) => {
-    const comp = getCurrentCompany();
-    return riskRegisters.filter((r) => r.company === comp && r.category === category);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return riskRegisters.filter((r) => r.company === comp && r.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    riskRegisters.push(newItem);
-    saveItem("sgf_riskRegisters", riskRegisters);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = riskRegisters.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      riskRegisters[idx] = { ...riskRegisters[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_riskRegisters", riskRegisters);
-    }
-    return riskRegisters[idx];
-  },
-  delete: (id: number) => {
-    const idx = riskRegisters.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      riskRegisters.splice(idx, 1);
-      saveItem("sgf_riskRegisters", riskRegisters);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// EMERGENCY CONTACT SERVICE
-// =============================================================================
-
-export const emergencyContactService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return emergencyContacts.filter((e) => e.company === comp);
-  },
-  getById: (id: number) => {
-    return emergencyContacts.find((e) => e.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return emergencyContacts.filter((e) => e.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    emergencyContacts.push(newItem);
-    saveItem("sgf_emergencyContacts", emergencyContacts);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = emergencyContacts.findIndex((e) => e.id === id);
-    if (idx >= 0) {
-      emergencyContacts[idx] = { ...emergencyContacts[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_emergencyContacts", emergencyContacts);
-    }
-    return emergencyContacts[idx];
-  },
-  delete: (id: number) => {
-    const idx = emergencyContacts.findIndex((e) => e.id === id);
-    if (idx >= 0) {
-      emergencyContacts.splice(idx, 1);
-      saveItem("sgf_emergencyContacts", emergencyContacts);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// MEDICAL RECORD SERVICE
-// =============================================================================
-
-export const medicalRecordService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return medicalRecords.filter((m) => m.company === comp);
-  },
-  getById: (id: number) => {
-    return medicalRecords.find((m) => m.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return medicalRecords.filter((m) => m.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    medicalRecords.push(newItem);
-    saveItem("sgf_medicalRecords", medicalRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = medicalRecords.findIndex((m) => m.id === id);
-    if (idx >= 0) {
-      medicalRecords[idx] = { ...medicalRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_medicalRecords", medicalRecords);
-    }
-    return medicalRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = medicalRecords.findIndex((m) => m.id === id);
-    if (idx >= 0) {
-      medicalRecords.splice(idx, 1);
-      saveItem("sgf_medicalRecords", medicalRecords);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// FIRST AID SERVICE
-// =============================================================================
-
-export const firstAidService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return firstAidRecords.filter((f) => f.company === comp);
-  },
-  getById: (id: number) => {
-    return firstAidRecords.find((f) => f.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return firstAidRecords.filter((f) => f.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    firstAidRecords.push(newItem);
-    saveItem("sgf_firstAidRecords", firstAidRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = firstAidRecords.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      firstAidRecords[idx] = { ...firstAidRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_firstAidRecords", firstAidRecords);
-    }
-    return firstAidRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = firstAidRecords.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      firstAidRecords.splice(idx, 1);
-      saveItem("sgf_firstAidRecords", firstAidRecords);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// FIRE SAFETY SERVICE
-// =============================================================================
-
-export const fireSafetyService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return fireSafetyRecords.filter((f) => f.company === comp);
-  },
-  getById: (id: number) => {
-    return fireSafetyRecords.find((f) => f.id === id);
-  },
-  getDue: () => {
-    const comp = getCurrentCompany();
-    const now = new Date().toISOString();
-    return fireSafetyRecords.filter((f) => f.company === comp && f.nextCheck && f.nextCheck <= now);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    fireSafetyRecords.push(newItem);
-    saveItem("sgf_fireSafetyRecords", fireSafetyRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = fireSafetyRecords.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      fireSafetyRecords[idx] = { ...fireSafetyRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_fireSafetyRecords", fireSafetyRecords);
-    }
-    return fireSafetyRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = fireSafetyRecords.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      fireSafetyRecords.splice(idx, 1);
-      saveItem("sgf_fireSafetyRecords", fireSafetyRecords);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// EQUIPMENT SERVICE
-// =============================================================================
-
-export const equipmentService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return equipmentRecords.filter((e) => e.company === comp);
-  },
-  getById: (id: number) => {
-    return equipmentRecords.find((e) => e.id === id);
-  },
-  getByCode: (code: string) => {
-    return equipmentRecords.find((e) => e.code === code);
-  },
-  getByCategory: (category: string) => {
-    const comp = getCurrentCompany();
-    return equipmentRecords.filter((e) => e.company === comp && e.category === category);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    equipmentRecords.push(newItem);
-    saveItem("sgf_equipmentRecords", equipmentRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = equipmentRecords.findIndex((e) => e.id === id);
-    if (idx >= 0) {
-      equipmentRecords[idx] = { ...equipmentRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_equipmentRecords", equipmentRecords);
-    }
-    return equipmentRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = equipmentRecords.findIndex((e) => e.id === id);
-    if (idx >= 0) {
-      equipmentRecords.splice(idx, 1);
-      saveItem("sgf_equipmentRecords", equipmentRecords);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// VEHICLE SERVICE
-// =============================================================================
-
-export const vehicleService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return vehicles.filter((v) => v.company === comp);
-  },
-  getById: (id: number) => {
-    return vehicles.find((v) => v.id === id);
-  },
-  getByRegistration: (registration: string) => {
-    return vehicles.find((v) => v.registration === registration);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return vehicles.filter((v) => v.company === comp && v.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    vehicles.push(newItem);
-    saveItem("sgf_vehicles", vehicles);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = vehicles.findIndex((v) => v.id === id);
-    if (idx >= 0) {
-      vehicles[idx] = { ...vehicles[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_vehicles", vehicles);
-    }
-    return vehicles[idx];
-  },
-  delete: (id: number) => {
-    const idx = vehicles.findIndex((v) => v.id === id);
-    if (idx >= 0) {
-      vehicles.splice(idx, 1);
-      saveItem("sgf_vehicles", vehicles);
-    }
-    return { success: idx >= 0 };
-  },
-};
+  notifyOrderChange();
+  logAudit("CREATE", "order", order.id, `Order created: ${orderNumber} (${order.status})`);
+  return order;
+}

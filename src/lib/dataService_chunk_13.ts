@@ -1,442 +1,173 @@
-// =============================================================================
-// CONTRACT SERVICE
-// =============================================================================
+    balanceDue: newBalanceDue,
+    status: newStatus,
+    cancelledAt: isCancelledOrder ? (inv.cancelledAt || new Date().toISOString()) : inv.cancelledAt,
+    cancellationReason: isCancelledOrder ? (inv.cancellationReason || "Order cancelled") : inv.cancellationReason,
+    paymentTerms: order.paymentTerms || inv.paymentTerms,
+    items: (order.items || []).map((item: any) => ({
+      description: buildInvoiceItemDescription(item),
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      lineTotal: item.lineTotal,
+      stockItemId: item.stockItemId || null,
+      productCode: item.productCode || "",
+      productName: item.productName || "",
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+  saveItem("sgf_invoices", invoices);
+  return invoices[idx];
+}
 
-export const contractService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return contracts.filter((c) => c.company === comp);
-  },
-  getById: (id: number) => {
-    return contracts.find((c) => c.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return contracts.filter((c) => c.company === comp && c.type === type);
-  },
-  getExpiring: () => {
-    const comp = getCurrentCompany();
-    const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    return contracts.filter((c) => c.company === comp && c.endDate && c.endDate <= thirtyDays);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    contracts.push(newItem);
-    saveItem("sgf_contracts", contracts);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = contracts.findIndex((c) => c.id === id);
-    if (idx >= 0) {
-      contracts[idx] = { ...contracts[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_contracts", contracts);
-    }
-    return contracts[idx];
-  },
-  delete: (id: number) => {
-    const idx = contracts.findIndex((c) => c.id === id);
-    if (idx >= 0) {
-      contracts.splice(idx, 1);
-      saveItem("sgf_contracts", contracts);
-    }
-    return { success: idx >= 0 };
-  },
-};
+/** When order status changes to ready/delivered, upgrade invoice from draft to sent */
+function activateInvoiceFromOrder(orderId: number) {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const idx = invoices.findIndex((i) => i.orderId == orderId);
+  if (idx >= 0 && invoices[idx].status === "draft") {
+    invoices[idx].status = "sent";
+    invoices[idx].updatedAt = new Date().toISOString();
+    saveItem("sgf_invoices", invoices);
 
-// =============================================================================
-// PROJECT SERVICE
-// =============================================================================
+  }
+}
 
-export const projectService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return projects.filter((p) => p.company === comp);
-  },
-  getById: (id: number) => {
-    return projects.find((p) => p.id === id);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return projects.filter((p) => p.company === comp && p.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    projects.push(newItem);
-    saveItem("sgf_projects", projects);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = projects.findIndex((p) => p.id === id);
-    if (idx >= 0) {
-      projects[idx] = { ...projects[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_projects", projects);
-    }
-    return projects[idx];
-  },
-  delete: (id: number) => {
-    const idx = projects.findIndex((p) => p.id === id);
-    if (idx >= 0) {
-      projects.splice(idx, 1);
-      saveItem("sgf_projects", projects);
-    }
-    return { success: idx >= 0 };
-  },
-};
+/** When purchase order status changes to fulfilled, upgrade invoice from draft to sent */
+function activateInvoiceFromPO(poId: number) {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const idx = invoices.findIndex((i) => i.purchaseOrderId == poId);
+  if (idx >= 0 && invoices[idx].status === "draft") {
+    invoices[idx].status = "sent";
+    invoices[idx].updatedAt = new Date().toISOString();
+    saveItem("sgf_invoices", invoices);
 
-// =============================================================================
-// TASK SERVICE
-// =============================================================================
+  }
+}
 
-export const taskService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return tasks.filter((t) => t.company === comp);
-  },
-  getById: (id: number) => {
-    return tasks.find((t) => t.id === id);
-  },
-  getByProject: (projectId: number) => {
-    return tasks.filter((t) => t.projectId === projectId);
-  },
-  getByAssignee: (assigneeId: number) => {
-    return tasks.filter((t) => t.assigneeId === assigneeId);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return tasks.filter((t) => t.company === comp && t.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    tasks.push(newItem);
-    saveItem("sgf_tasks", tasks);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = tasks.findIndex((t) => t.id === id);
-    if (idx >= 0) {
-      tasks[idx] = { ...tasks[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_tasks", tasks);
-    }
-    return tasks[idx];
-  },
-  delete: (id: number) => {
-    const idx = tasks.findIndex((t) => t.id === id);
-    if (idx >= 0) {
-      tasks.splice(idx, 1);
-      saveItem("sgf_tasks", tasks);
-    }
-    return { success: idx >= 0 };
-  },
-};
+/** When order is cancelled, also cancel its linked invoice (if any).
+ *  Returns the cancelled invoice so caller can push to Firebase (cloud-first). */
+function cancelInvoiceFromOrder(orderId: number): any | null {
+  // Use loose equality (==) because Firebase may convert number IDs to strings
+  const idx = invoices.findIndex((i) => i.orderId == orderId);
+  if (idx >= 0) {
+    const oldInvStatus = invoices[idx].status;
+    const hadBalance = invoices[idx].balanceDue;
+    invoices[idx].status = "cancelled";
+    invoices[idx].balanceDue = 0;
+    invoices[idx].updatedAt = new Date().toISOString();
+    invoices[idx].cancelledAt = invoices[idx].cancelledAt || new Date().toISOString();
+    invoices[idx].cancellationReason = invoices[idx].cancellationReason || "Order cancelled";
+    saveItem("sgf_invoices", invoices);
 
-// =============================================================================
-// TIME TRACKING SERVICE
-// =============================================================================
+    return invoices[idx];
+  }
+  return null;
+}
 
-export const timeTrackingService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return timeTrackingRecords.filter((t) => t.company === comp);
-  },
-  getById: (id: number) => {
-    return timeTrackingRecords.find((t) => t.id === id);
-  },
-  getByTask: (taskId: number) => {
-    return timeTrackingRecords.filter((t) => t.taskId === taskId);
-  },
-  getByEmployee: (employeeId: number) => {
-    return timeTrackingRecords.filter((t) => t.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    timeTrackingRecords.push(newItem);
-    saveItem("sgf_timeTrackingRecords", timeTrackingRecords);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = timeTrackingRecords.findIndex((t) => t.id === id);
-    if (idx >= 0) {
-      timeTrackingRecords[idx] = { ...timeTrackingRecords[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_timeTrackingRecords", timeTrackingRecords);
+/** Fix invoices stuck in "draft" whose orders are already delivered/ready or whose
+ *  purchase orders are already fulfilled.
+ *  This repairs data corrupted by the old === bug in activateInvoiceFromOrder.
+ *  Returns changed invoices so caller can push to Firebase (cloud-first). */
+export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoices: any[] } {
+  let changed = 0;
+  const changedInvs: any[] = [];
+  for (const inv of invoices) {
+    if (inv.status !== "draft") continue;
+    // Use loose equality (==) because Firebase may convert number IDs to strings
+    const order = orders.find((o) => o.id == inv.orderId);
+    if (order && (order.status === "delivered" || order.status === "ready")) {
+      inv.status = "sent";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
+      continue;
     }
-    return timeTrackingRecords[idx];
-  },
-  delete: (id: number) => {
-    const idx = timeTrackingRecords.findIndex((t) => t.id === id);
-    if (idx >= 0) {
-      timeTrackingRecords.splice(idx, 1);
-      saveItem("sgf_timeTrackingRecords", timeTrackingRecords);
+    // Also check purchase orders (corporate orders)
+    const po = purchaseOrders.find((p) => p.id == inv.purchaseOrderId);
+    if (po && po.status === "fulfilled") {
+      inv.status = "sent";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
     }
-    return { success: idx >= 0 };
-  },
-};
+  }
+  if (changed > 0) {
+    saveItem("sgf_invoices", invoices);
 
-// =============================================================================
-// MILESTONE SERVICE
-// =============================================================================
+  }
+  return { changed, invoices: changedInvs };
+}
 
-export const milestoneService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return milestones.filter((m) => m.company === comp);
-  },
-  getById: (id: number) => {
-    return milestones.find((m) => m.id === id);
-  },
-  getByProject: (projectId: number) => {
-    return milestones.filter((m) => m.projectId === projectId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    milestones.push(newItem);
-    saveItem("sgf_milestones", milestones);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = milestones.findIndex((m) => m.id === id);
-    if (idx >= 0) {
-      milestones[idx] = { ...milestones[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_milestones", milestones);
+/** Repair cancelled invoices that still have a non-zero balanceDue.
+ *  This fixes data corrupted before the balanceDue=0 fix was added to cancelInvoiceFromOrder.
+ *  Returns changed invoices so caller can push to Firebase (cloud-first). */
+export function repairCancelledInvoiceBalances(): { changed: number; invoices: any[] } {
+  let changed = 0;
+  const changedInvs: any[] = [];
+  for (const inv of invoices) {
+    const isCancelled = String(inv.status || "").toLowerCase().trim() === "cancelled";
+    const balanceDue = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0) - (inv.amountPaid || 0);
+    if (isCancelled && balanceDue !== 0) {
+      inv.balanceDue = 0;
+      inv.cancelledAt = inv.cancelledAt || new Date().toISOString();
+      inv.cancellationReason = inv.cancellationReason || "Order cancelled";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
     }
-    return milestones[idx];
-  },
-  delete: (id: number) => {
-    const idx = milestones.findIndex((m) => m.id === id);
-    if (idx >= 0) {
-      milestones.splice(idx, 1);
-      saveItem("sgf_milestones", milestones);
-    }
-    return { success: idx >= 0 };
-  },
-};
+  }
+  if (changed > 0) {
+    saveItem("sgf_invoices", invoices);
 
-// =============================================================================
-// RESOURCE ALLOCATION SERVICE
-// =============================================================================
+  }
+  return { changed, invoices: changedInvs };
+}
 
-export const resourceAllocationService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return resourceAllocations.filter((r) => r.company === comp);
-  },
-  getById: (id: number) => {
-    return resourceAllocations.find((r) => r.id === id);
-  },
-  getByProject: (projectId: number) => {
-    return resourceAllocations.filter((r) => r.projectId === projectId);
-  },
-  getByResource: (resourceId: number) => {
-    return resourceAllocations.filter((r) => r.resourceId === resourceId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    resourceAllocations.push(newItem);
-    saveItem("sgf_resourceAllocations", resourceAllocations);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = resourceAllocations.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      resourceAllocations[idx] = { ...resourceAllocations[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_resourceAllocations", resourceAllocations);
-    }
-    return resourceAllocations[idx];
-  },
-  delete: (id: number) => {
-    const idx = resourceAllocations.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      resourceAllocations.splice(idx, 1);
-      saveItem("sgf_resourceAllocations", resourceAllocations);
-    }
-    return { success: idx >= 0 };
-  },
-};
+function searchItems(items: any[], query: string) {
+  if (!query || query.trim() === "") return items;
+  const q = query.toLowerCase().trim();
+  return items.filter((item) =>
+    item.name?.toLowerCase().includes(q) ||
+    item.productCode?.toLowerCase().includes(q) ||
+    item.category?.toLowerCase().includes(q) ||
+    item.customerCode?.toLowerCase().includes(q) ||
+    item.city?.toLowerCase().includes(q)
+  );
+}
 
-// =============================================================================
-// SKILL SERVICE
-// =============================================================================
+export { SALES_REPS, getCommittedStock, getAvailableStock };
 
-export const skillService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return skills.filter((s) => s.company === comp);
-  },
-  getById: (id: number) => {
-    return skills.find((s) => s.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return skills.filter((s) => s.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    skills.push(newItem);
-    saveItem("sgf_skills", skills);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = skills.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      skills[idx] = { ...skills[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_skills", skills);
-    }
-    return skills[idx];
-  },
-  delete: (id: number) => {
-    const idx = skills.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      skills.splice(idx, 1);
-      saveItem("sgf_skills", skills);
-    }
-    return { success: idx >= 0 };
-  },
-};
+/* ─── CUSTOMER CREDIT & ACTIVITY HELPERS ─── */
 
-// =============================================================================
-// RECRUITMENT SERVICE
-// =============================================================================
+/** Sum outstanding balanceDue for all non-cancelled invoices linked to a regular customer */
+function getCustomerOutstandingBalance(customerId: number): number {
+  return invoices
+    .filter((inv) => inv.customerId == customerId && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+    .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
+}
 
-export const recruitmentService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return recruitments.filter((r) => r.company === comp);
-  },
-  getById: (id: number) => {
-    return recruitments.find((r) => r.id === id);
-  },
-  getByPosition: (position: string) => {
-    const comp = getCurrentCompany();
-    return recruitments.filter((r) => r.company === comp && r.position === position);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return recruitments.filter((r) => r.company === comp && r.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    recruitments.push(newItem);
-    saveItem("sgf_recruitments", recruitments);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = recruitments.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      recruitments[idx] = { ...recruitments[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_recruitments", recruitments);
-    }
-    return recruitments[idx];
-  },
-  delete: (id: number) => {
-    const idx = recruitments.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      recruitments.splice(idx, 1);
-      saveItem("sgf_recruitments", recruitments);
-    }
-    return { success: idx >= 0 };
-  },
-};
+/** Sum outstanding balanceDue for all non-cancelled invoices linked to a corporate customer via purchaseOrderId */
+function getCorporateCustomerOutstandingBalance(corporateCustomerId: number): number {
+  const poIds = purchaseOrders
+    .filter((po) => po.corporateCustomerId == corporateCustomerId)
+    .map((po) => po.id);
+  return invoices
+    .filter((inv) => inv.purchaseOrderId != null && poIds.includes(inv.purchaseOrderId) && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+    .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
+}
 
-// =============================================================================
-// APPRAISAL SERVICE
-// =============================================================================
+/** Check if a regular customer is allowed to place an order.
+ *  Returns { blocked: false } if OK, or { blocked: true, reason: string } if blocked.
+ *  overrideBySuperAdmin bypasses all checks. */
+function checkCustomerCanOrder(
+  customerId: number,
+  paymentTerms: string,
+  overrideBySuperAdmin = false
+): { blocked: boolean; reason?: string } {
+  if (overrideBySuperAdmin) return { blocked: false };
 
-export const appraisalService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return appraisals.filter((a) => a.company === comp);
-  },
-  getById: (id: number) => {
-    return appraisals.find((a) => a.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return appraisals.filter((a) => a.employeeId === employeeId);
-  },
-  getByPeriod: (period: string) => {
-    const comp = getCurrentCompany();
-    return appraisals.filter((a) => a.company === comp && a.period === period);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    appraisals.push(newItem);
-    saveItem("sgf_appraisals", appraisals);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = appraisals.findIndex((a) => a.id === id);
-    if (idx >= 0) {
-      appraisals[idx] = { ...appraisals[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_appraisals", appraisals);
-    }
-    return appraisals[idx];
-  },
-  delete: (id: number) => {
-    const idx = appraisals.findIndex((a) => a.id === id);
-    if (idx >= 0) {
-      appraisals.splice(idx, 1);
-      saveItem("sgf_appraisals", appraisals);
-    }
-    return { success: idx >= 0 };
-  },
-};
+  const customer = customers.find((c) => c.id == customerId);
+  if (!customer) return { blocked: true, reason: "Customer not found." };
+
+  // 1. Customer deactivated
+  if (customer.isActive === false) {
+    return { blocked: true, reason: `Customer account is inactive. Contact admin to reactivate.` };
+  }

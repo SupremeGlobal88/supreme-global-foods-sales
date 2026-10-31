@@ -1,437 +1,149 @@
-// =============================================================================
-// FUEL LOG SERVICE
-// =============================================================================
+            const pSpecies = String(p.species || "").trim().toLowerCase();
+            let possible = 0, matched = 0;
+            if (pStrands && inStrands) { possible++; if (pStrands === inStrands) matched++; }
+            if (pSize    && inSize)    { possible++; if (pSize    === inSize)    matched++; }
+            if (pGrade   && inGrade)   { possible++; if (pGrade   === inGrade)   matched++; }
+            if (pColor   && inColor)   { possible++; if (pColor   === inColor)   matched++; }
+            if (pSpecies && inSpecies) { possible++; if (pSpecies === inSpecies) matched++; }
+            return possible >= 2 && matched === possible;
+          });
+        }
+        if (existingIdx >= 0) {
+          // Update existing product: new SOH, update prices if provided, keep id
+          const existing = products[existingIdx];
+          // PRICE PROTECTION: never overwrite an existing price with 0/empty from a bulk upload.
+          // Uploads that lack price columns parse prices as 0 — treat those as "not provided".
+          const safePrice = (incomingVal: any, existingVal: any) =>
+            Number(incomingVal) > 0 ? incomingVal : existingVal;
+          products[existingIdx] = {
+            ...existing,
+            quantity: incoming.quantity !== undefined ? incoming.quantity : existing.quantity,
+            corporatePrice: safePrice(incoming.corporatePrice, existing.corporatePrice),
+            bulkPrice: safePrice(incoming.bulkPrice, existing.bulkPrice),
+            wholesalePrice: safePrice(incoming.wholesalePrice, existing.wholesalePrice),
+            retailPrice: safePrice(incoming.retailPrice, existing.retailPrice),
+            // Update optional fields if provided
+            ...(incoming.strands !== undefined && { strands: incoming.strands }),
+            ...(incoming.size !== undefined && { size: incoming.size }),
+            ...(incoming.grade !== undefined && { grade: incoming.grade }),
+            ...(incoming.color !== undefined && { color: incoming.color }),
+            ...(incoming.species !== undefined && { species: incoming.species }),
+            ...(incoming.category !== undefined && { category: incoming.category }),
+            ...(incoming.productName !== undefined && { productName: incoming.productName }),
+            updatedAt: new Date().toISOString(),
+            // Recalculate status based on new quantity
+            status: (incoming.quantity || existing.quantity) === 0
+              ? "out_of_stock"
+              : (incoming.quantity || existing.quantity) < 20
+                ? "low_stock"
+                : "in_stock",
+          };
+          updated.push(products[existingIdx]);
+        } else {
+          // New product - create with new id
+          const newItem = {
+            ...incoming,
+            id: Date.now() + i,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            status: (incoming.quantity || 0) === 0
+              ? "out_of_stock"
+              : (incoming.quantity || 0) < 20
+                ? "low_stock"
+                : "in_stock",
+          };
+          products.push(newItem);
+          created.push(newItem);
+        }
+      }
+      saveItem("sgf_products", products);
+      logAudit("BULK_UPLOAD", "stock", 0, `Bulk stock upload: ${created.length} created, ${updated.length} updated`);
+      return { created: created.length, updated: updated.length };
+    },
 
-export const fuelLogService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return fuelLogs.filter((f) => f.company === comp);
-  },
-  getById: (id: number) => {
-    return fuelLogs.find((f) => f.id === id);
-  },
-  getByVehicle: (vehicleId: number) => {
-    return fuelLogs.filter((f) => f.vehicleId === vehicleId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    fuelLogs.push(newItem);
-    saveItem("sgf_fuelLogs", fuelLogs);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = fuelLogs.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      fuelLogs[idx] = { ...fuelLogs[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_fuelLogs", fuelLogs);
-    }
-    return fuelLogs[idx];
-  },
-  delete: (id: number) => {
-    const idx = fuelLogs.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      fuelLogs.splice(idx, 1);
-      saveItem("sgf_fuelLogs", fuelLogs);
-    }
-    return { success: idx >= 0 };
-  },
-};
+    /** Daily Invoiced Stock Report — shows what stock was invoiced on a given date */
+    getDailyInvoicedStock: ({ from, to }: { from?: string; to?: string }) => {
+      const fromDate = from || new Date().toISOString().slice(0, 10);
+      const toDate = to || fromDate;
+      const fromTs = new Date(fromDate + "T00:00:00").getTime();
+      const toTs = new Date(toDate + "T23:59:59").getTime();
 
-// =============================================================================
-// SERVICE LOG SERVICE
-// =============================================================================
+      const results: any[] = [];
 
-export const serviceLogService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return serviceLogs.filter((s) => s.company === comp);
-  },
-  getById: (id: number) => {
-    return serviceLogs.find((s) => s.id === id);
-  },
-  getByVehicle: (vehicleId: number) => {
-    return serviceLogs.filter((s) => s.vehicleId === vehicleId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    serviceLogs.push(newItem);
-    saveItem("sgf_serviceLogs", serviceLogs);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = serviceLogs.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      serviceLogs[idx] = { ...serviceLogs[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_serviceLogs", serviceLogs);
-    }
-    return serviceLogs[idx];
-  },
-  delete: (id: number) => {
-    const idx = serviceLogs.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      serviceLogs.splice(idx, 1);
-      saveItem("sgf_serviceLogs", serviceLogs);
-    }
-    return { success: idx >= 0 };
-  },
-};
+      for (const inv of invoices) {
+        const invTs = new Date(inv.createdAt || inv.invoiceDate).getTime();
+        if (invTs < fromTs || invTs > toTs) continue;
 
-// =============================================================================
-// LICENSE SERVICE
-// =============================================================================
+        const order = orders.find((o) => o.id == inv.orderId);
+        if (!order) continue;
 
-export const licenseService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return licenses.filter((l) => l.company === comp);
-  },
-  getById: (id: number) => {
-    return licenses.find((l) => l.id === id);
-  },
-  getByEmployee: (employeeId: number) => {
-    return licenses.filter((l) => l.employeeId === employeeId);
-  },
-  getExpiring: () => {
-    const comp = getCurrentCompany();
-    const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    return licenses.filter((l) => l.company === comp && l.expiryDate && l.expiryDate <= thirtyDays);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    licenses.push(newItem);
-    saveItem("sgf_licenses", licenses);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = licenses.findIndex((l) => l.id === id);
-    if (idx >= 0) {
-      licenses[idx] = { ...licenses[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_licenses", licenses);
-    }
-    return licenses[idx];
-  },
-  delete: (id: number) => {
-    const idx = licenses.findIndex((l) => l.id === id);
-    if (idx >= 0) {
-      licenses.splice(idx, 1);
-      saveItem("sgf_licenses", licenses);
-    }
-    return { success: idx >= 0 };
-  },
-};
+        const customer = customers.find((c) => c.id == inv.customerId || c.id == order.customerId);
+        if (!customer) continue;
 
-// =============================================================================
-// PERMIT SERVICE
-// =============================================================================
+        const repName = customer.salesRepName || customer.salesRep || "";
+        const priceTier = customer.priceTier || "retail";
 
-export const permitService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return permits.filter((p) => p.company === comp);
-  },
-  getById: (id: number) => {
-    return permits.find((p) => p.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return permits.filter((p) => p.company === comp && p.type === type);
-  },
-  getExpiring: () => {
-    const comp = getCurrentCompany();
-    const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    return permits.filter((p) => p.company === comp && p.expiryDate && p.expiryDate <= thirtyDays);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    permits.push(newItem);
-    saveItem("sgf_permits", permits);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = permits.findIndex((p) => p.id === id);
-    if (idx >= 0) {
-      permits[idx] = { ...permits[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_permits", permits);
-    }
-    return permits[idx];
-  },
-  delete: (id: number) => {
-    const idx = permits.findIndex((p) => p.id === id);
-    if (idx >= 0) {
-      permits.splice(idx, 1);
-      saveItem("sgf_permits", permits);
-    }
-    return { success: idx >= 0 };
-  },
-};
+        for (const item of inv.items || order.items || []) {
+          const product = products.find((p) => p.id == item.stockItemId);
+          const specialPrice = specialPrices.find(
+            (sp: any) => sp.customerId == customer.id && sp.stockItemId == item.stockItemId
+          );
 
-// =============================================================================
-// INSPECTION SERVICE
-// =============================================================================
+          const unitPrice = Number(item.unitPrice || 0);
+          const quantity = Number(item.quantity || 0);
+          const lineTotal = Number(item.lineTotal || unitPrice * quantity);
 
-export const inspectionService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return inspections.filter((i) => i.company === comp);
-  },
-  getById: (id: number) => {
-    return inspections.find((i) => i.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return inspections.filter((i) => i.company === comp && i.type === type);
-  },
-  getByStatus: (status: string) => {
-    const comp = getCurrentCompany();
-    return inspections.filter((i) => i.company === comp && i.status === status);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    inspections.push(newItem);
-    saveItem("sgf_inspections", inspections);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = inspections.findIndex((i) => i.id === id);
-    if (idx >= 0) {
-      inspections[idx] = { ...inspections[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_inspections", inspections);
-    }
-    return inspections[idx];
-  },
-  delete: (id: number) => {
-    const idx = inspections.findIndex((i) => i.id === id);
-    if (idx >= 0) {
-      inspections.splice(idx, 1);
-      saveItem("sgf_inspections", inspections);
-    }
-    return { success: idx >= 0 };
-  },
-};
+          // Determine if special price was used
+          let isSpecialPrice = false;
+          let tierPrice = 0;
+          if (product) {
+            tierPrice = Number((product as any)[`${priceTier}Price`] || 0);
+            if (specialPrice && Math.abs(specialPrice.specialPrice - unitPrice) < 0.01) {
+              isSpecialPrice = true;
+            }
+          }
 
-// =============================================================================
-// CHECKLIST SERVICE
-// =============================================================================
+          results.push({
+            invoiceNumber: inv.invoiceNumber,
+            orderNumber: inv.orderNumber || order.orderNumber,
+            invoiceDate: inv.invoiceDate || inv.createdAt,
+            productName: item.description || item.productName || product?.name || "Unknown",
+            productCode: product?.productCode || "",
+            quantity,
+            unitPrice,
+            lineTotal,
+            priceTier,
+            isSpecialPrice,
+            specialPriceAmount: specialPrice?.specialPrice || null,
+            tierPrice: tierPrice || null,
+            salesRep: repName,
+            customerName: customer.name || "",
+          });
+        }
+      }
 
-export const checklistService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return checklists.filter((c) => c.company === comp);
-  },
-  getById: (id: number) => {
-    return checklists.find((c) => c.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return checklists.filter((c) => c.company === comp && c.type === type);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    checklists.push(newItem);
-    saveItem("sgf_checklists", checklists);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = checklists.findIndex((c) => c.id === id);
-    if (idx >= 0) {
-      checklists[idx] = { ...checklists[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_checklists", checklists);
-    }
-    return checklists[idx];
-  },
-  delete: (id: number) => {
-    const idx = checklists.findIndex((c) => c.id === id);
-    if (idx >= 0) {
-      checklists.splice(idx, 1);
-      saveItem("sgf_checklists", checklists);
-    }
-    return { success: idx >= 0 };
-  },
-};
+      return {
+        from: fromDate,
+        to: toDate,
+        generatedAt: new Date().toISOString(),
+        totalLines: results.length,
+        totalValue: Math.round(results.reduce((s, r) => s + r.lineTotal, 0) * 100) / 100,
+        items: results.sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()),
+      };
+    },
 
-// =============================================================================
-// FORM BUILDER SERVICE
-// =============================================================================
+    /** Stock Reconciliation — shows current SOH vs total ordered vs starting SOH.
+     *  Helps verify that uploaded stock minus orders equals current stock. */
+    reconcileStock: ({ from, to }: { from?: string; to?: string } = {}) => {
+      const fromDate = from || new Date().toISOString().slice(0, 10);
+      const toDate = to || fromDate;
+      const fromTs = new Date(fromDate + "T00:00:00").getTime();
+      const toTs = new Date(toDate + "T23:59:59").getTime();
 
-export const formBuilderService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return forms.filter((f) => f.company === comp);
-  },
-  getById: (id: number) => {
-    return forms.find((f) => f.id === id);
-  },
-  getByType: (type: string) => {
-    const comp = getCurrentCompany();
-    return forms.filter((f) => f.company === comp && f.type === type);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    forms.push(newItem);
-    saveItem("sgf_forms", forms);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = forms.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      forms[idx] = { ...forms[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_forms", forms);
-    }
-    return forms[idx];
-  },
-  delete: (id: number) => {
-    const idx = forms.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      forms.splice(idx, 1);
-      saveItem("sgf_forms", forms);
-    }
-    return { success: idx >= 0 };
-  },
-};
+      const results: any[] = [];
 
-// =============================================================================
-// FORM SUBMISSION SERVICE
-// =============================================================================
+      for (const product of products) {
+        // Count total quantity ordered for this product in the date range
+        let totalOrdered = 0;
+        const orderDetails: any[] = [];
 
-export const formSubmissionService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return formSubmissions.filter((f) => f.company === comp);
-  },
-  getById: (id: number) => {
-    return formSubmissions.find((f) => f.id === id);
-  },
-  getByForm: (formId: number) => {
-    return formSubmissions.filter((f) => f.formId === formId);
-  },
-  getByEmployee: (employeeId: number) => {
-    return formSubmissions.filter((f) => f.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    formSubmissions.push(newItem);
-    saveItem("sgf_formSubmissions", formSubmissions);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = formSubmissions.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      formSubmissions[idx] = { ...formSubmissions[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_formSubmissions", formSubmissions);
-    }
-    return formSubmissions[idx];
-  },
-  delete: (id: number) => {
-    const idx = formSubmissions.findIndex((f) => f.id === id);
-    if (idx >= 0) {
-      formSubmissions.splice(idx, 1);
-      saveItem("sgf_formSubmissions", formSubmissions);
-    }
-    return { success: idx >= 0 };
-  },
-};
-
-// =============================================================================
-// SIGN-OFF SERVICE
-// =============================================================================
-
-export const signOffService = {
-  list: () => {
-    const comp = getCurrentCompany();
-    return signOffs.filter((s) => s.company === comp);
-  },
-  getById: (id: number) => {
-    return signOffs.find((s) => s.id === id);
-  },
-  getByDocument: (documentId: number) => {
-    return signOffs.filter((s) => s.documentId === documentId);
-  },
-  getByEmployee: (employeeId: number) => {
-    return signOffs.filter((s) => s.employeeId === employeeId);
-  },
-  create: (data: any) => {
-    const comp = getCurrentCompany();
-    const newItem = {
-      ...data,
-      company: data.company || comp,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    signOffs.push(newItem);
-    saveItem("sgf_signOffs", signOffs);
-    return newItem;
-  },
-  update: ({ id, data }: { id: number; data: any }) => {
-    const idx = signOffs.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      signOffs[idx] = { ...signOffs[idx], ...data, updatedAt: new Date().toISOString() };
-      saveItem("sgf_signOffs", signOffs);
-    }
-    return signOffs[idx];
-  },
-  delete: (id: number) => {
-    const idx = signOffs.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      signOffs.splice(idx, 1);
-      saveItem("sgf_signOffs", signOffs);
-    }
-    return { success: idx >= 0 };
-  },
-};

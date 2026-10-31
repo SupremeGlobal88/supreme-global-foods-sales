@@ -1,289 +1,309 @@
-// =============================================================================
-// SAMPLE ORDER SERVICE
-// =============================================================================
+        for (const order of orders) {
+          const orderTs = new Date(order.createdAt || order.orderDate).getTime();
+          if (orderTs < fromTs || orderTs > toTs) continue;
+          if (order.status === "cancelled") continue;
 
-export const sampleOrderService = {
-  list: () => orders.filter((o) => o.orderType === "sample"),
-  getById: (id: number) => orders.find((o) => o.id === id && o.orderType === "sample"),
-  getByCustomer: (customerId: number) => orders.filter((o) => o.customerId === customerId && o.orderType === "sample"),
-  getByStatus: (status: string) => orders.filter((o) => o.status === status && o.orderType === "sample"),
-  getBySalesRep: (repName: string) => orders.filter((o) => o.salesRepName === repName && o.orderType === "sample"),
-  create: (data: any) => {
-    const newOrder = {
-      id: Date.now() + Math.random(),
-      orderNumber: generateOrderNumber("sample"),
-      orderType: "sample",
-      ...data,
-      status: data.status || "draft",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    orders.push(newOrder);
-    saveItem("sgf_orders", orders);
-    logAudit("create", "sampleOrder", newOrder.id, data);
-    return newOrder;
-  },
-  update: (id: number, data: any) => {
-    const index = orders.findIndex((o) => o.id === id && o.orderType === "sample");
-    if (index === -1) return null;
-    orders[index] = { ...orders[index], ...data, updatedAt: new Date().toISOString() };
-    saveItem("sgf_orders", orders);
-    logAudit("update", "sampleOrder", id, data);
-    return orders[index];
-  },
-  delete: (id: number) => {
-    const index = orders.findIndex((o) => o.id === id && o.orderType === "sample");
-    if (index === -1) return { success: false, error: "Sample order not found" };
-    orders.splice(index, 1);
-    saveItem("sgf_orders", orders);
-    logAudit("delete", "sampleOrder", id, {});
-    return { success: true };
-  },
-  getStats: () => {
-    const samples = orders.filter((o) => o.orderType === "sample");
-    return {
-      total: samples.length,
-      draft: samples.filter((o) => o.status === "draft").length,
-      pending: samples.filter((o) => o.status === "pending").length,
-      confirmed: samples.filter((o) => o.status === "confirmed").length,
-      delivered: samples.filter((o) => o.status === "delivered").length,
-      totalValue: samples.reduce((sum, o) => sum + (o.total || 0), 0),
-    };
-  },
-};
+          for (const item of (order.items || [])) {
+            if (item.stockItemId == product.id) {
+              totalOrdered += Number(item.quantity || 0);
+              orderDetails.push({
+                orderNumber: order.orderNumber,
+                customer: order.customerName || (order.customer?.name) || "Unknown",
+                quantity: item.quantity,
+                orderDate: order.createdAt,
+              });
+            }
+          }
+        }
 
-// =============================================================================
-// QUOTE SERVICE
-// =============================================================================
+        // Only include products that had orders OR have current stock
+        if (totalOrdered > 0 || (product.quantity || 0) > 0) {
+          results.push({
+            productId: product.id,
+            productCode: product.productCode || "",
+            productName: product.productName || "",
+            category: product.category || "",
+            currentStock: product.quantity || 0,
+            totalOrdered,
+            startingStock: (product.quantity || 0) + totalOrdered,
+            unit: product.unit || "",
+            status: product.status || "unknown",
+            orderDetails: orderDetails.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()),
+          });
+        }
+      }
 
-export const quoteService = {
-  list: () => orders.filter((o) => o.orderType === "quote"),
-  getById: (id: number) => orders.find((o) => o.id === id && o.orderType === "quote"),
-  getByCustomer: (customerId: number) => orders.filter((o) => o.customerId === customerId && o.orderType === "quote"),
-  getByStatus: (status: string) => orders.filter((o) => o.status === status && o.orderType === "quote"),
-  getBySalesRep: (repName: string) => orders.filter((o) => o.salesRepName === repName && o.orderType === "quote"),
-  create: (data: any) => {
-    const newQuote = {
-      id: Date.now() + Math.random(),
-      orderNumber: generateOrderNumber("quote"),
-      orderType: "quote",
-      ...data,
-      status: data.status || "draft",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    orders.push(newQuote);
-    saveItem("sgf_orders", orders);
-    logAudit("create", "quote", newQuote.id, data);
-    return newQuote;
+      return {
+        from: fromDate,
+        to: toDate,
+        generatedAt: new Date().toISOString(),
+        totalProducts: results.length,
+        totalCurrentStock: results.reduce((s, r) => s + r.currentStock, 0),
+        totalOrdered: results.reduce((s, r) => s + r.totalOrdered, 0),
+        items: results.sort((a, b) => b.totalOrdered - a.totalOrdered),
+      };
+    },
   },
-  update: (id: number, data: any) => {
-    const index = orders.findIndex((o) => o.id === id && o.orderType === "quote");
-    if (index === -1) return null;
-    orders[index] = { ...orders[index], ...data, updatedAt: new Date().toISOString() };
-    saveItem("sgf_orders", orders);
-    logAudit("update", "quote", id, data);
-    return orders[index];
-  },
-  delete: (id: number) => {
-    const index = orders.findIndex((o) => o.id === id && o.orderType === "quote");
-    if (index === -1) return { success: false, error: "Quote not found" };
-    orders.splice(index, 1);
-    saveItem("sgf_orders", orders);
-    logAudit("delete", "quote", id, {});
-    return { success: true };
-  },
-  convertToOrder: (id: number) => {
-    const index = orders.findIndex((o) => o.id === id && o.orderType === "quote");
-    if (index === -1) return { success: false, error: "Quote not found" };
-    const quote = orders[index];
-    quote.orderType = "regular";
-    quote.status = "pending";
-    quote.orderNumber = generateOrderNumber("regular");
-    quote.updatedAt = new Date().toISOString();
-    saveItem("sgf_orders", orders);
-    logAudit("convert", "quote", id, { newOrderNumber: quote.orderNumber });
-    return { success: true, order: quote };
-  },
-  getStats: () => {
-    const quotes = orders.filter((o) => o.orderType === "quote");
-    return {
-      total: quotes.length,
-      draft: quotes.filter((o) => o.status === "draft").length,
-      sent: quotes.filter((o) => o.status === "sent").length,
-      accepted: quotes.filter((o) => o.status === "accepted").length,
-      rejected: quotes.filter((o) => o.status === "rejected").length,
-      converted: quotes.filter((o) => o.status === "converted").length,
-      totalValue: quotes.reduce((sum, o) => sum + (o.total || 0), 0),
-    };
-  },
-};
 
-// =============================================================================
-// RETURN / CREDIT SERVICE
-// =============================================================================
+  customer: {
+    list: () => customers,
+    search: ({ query }: { query: string }) => searchItems(customers, query),
+    getById: (id: number) => customers.find((c) => c.id == id) || null,
+    create: (data: any) => {
+      const normName = (data.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+      const incomingCode = (data.customerCode || "").toString().trim().toLowerCase();
+      // Prevent duplicate: only update if BOTH name AND customerCode match (or both codes empty)
+      const existingIdx = customers.findIndex((c) => {
+        const nameMatch = (c.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase() === normName;
+        const existingCode = (c.customerCode || "").toString().trim().toLowerCase();
+        const codeMatch = incomingCode && existingCode ? incomingCode === existingCode : true;
+        return nameMatch && codeMatch;
+      });
+      if (existingIdx >= 0) {
+        // Update existing — same id, orders/invoices unaffected
+        const existing = customers[existingIdx];
+        customers[existingIdx] = {
+          ...existing,
+          ...data,
+          id: existing.id,
+          company: data.company || existing.company || getCurrentCompany(),
+          isActive: data.isActive !== undefined ? data.isActive : existing.isActive,
+          updatedAt: new Date().toISOString(),
+        };
+        saveItem("sgf_customers", customers);
+        return customers[existingIdx];
+      }
+      const newItem = {
+        ...data,
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        company: data.company || getCurrentCompany(),
+        isActive: data.isActive !== undefined ? data.isActive : true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      customers.push(newItem);
+      saveItem("sgf_customers", customers);
+      logAudit("CREATE", "customer", newItem.id, `Customer created: ${newItem.name || ""}`);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = customers.findIndex((c) => c.id == id);
+      if (idx >= 0) {
+        customers[idx] = { ...customers[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_customers", customers);
+        logAudit("UPDATE", "customer", id, `Customer updated: ${customers[idx].name || ""}`);
+      }
+      return customers[idx];
+    },
+    delete: (id: number) => {
+      const idx = customers.findIndex((c) => c.id == id);
+      if (idx >= 0) {
+        customers.splice(idx, 1);
+        saveItem("sgf_customers", customers);
+        logAudit("DELETE", "customer", id, "Customer deleted");
+      }
+      return { success: idx >= 0 };
+    },
+  },
 
-export const returnService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_returns");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+  corporateCustomer: {
+    list: () => corporateCustomers,
+    search: ({ query }: { query: string }) => searchItems(corporateCustomers, query),
+    getById: (id: number) => corporateCustomers.find((c) => c.id == id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        company: data.company || getCurrentCompany(),
+        isActive: data.isActive !== undefined ? data.isActive : true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      corporateCustomers.push(newItem);
+      saveItem("sgf_corporateCustomers", corporateCustomers);
+      logAudit("CREATE", "corporateCustomer", newItem.id, `Corporate customer created: ${newItem.name || ""}`);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = corporateCustomers.findIndex((c) => c.id == id);
+      if (idx >= 0) {
+        corporateCustomers[idx] = { ...corporateCustomers[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_corporateCustomers", corporateCustomers);
+        logAudit("UPDATE", "corporateCustomer", id, `Corporate customer updated: ${corporateCustomers[idx].name || ""}`);
+      }
+      return corporateCustomers[idx];
+    },
+    delete: (id: number) => {
+      const idx = corporateCustomers.findIndex((c) => c.id == id);
+      if (idx >= 0) {
+        corporateCustomers.splice(idx, 1);
+        saveItem("sgf_corporateCustomers", corporateCustomers);
+        logAudit("DELETE", "corporateCustomer", id, "Corporate customer deleted");
+      }
+      return { success: idx >= 0 };
+    },
   },
-  getById: (id: number) => {
-    const returns = returnService.list();
-    return returns.find((r: any) => r.id === id);
-  },
-  getByCustomer: (customerId: number) => {
-    const returns = returnService.list();
-    return returns.filter((r: any) => r.customerId === customerId);
-  },
-  getByOrder: (orderId: number) => {
-    const returns = returnService.list();
-    return returns.filter((r: any) => r.orderId === orderId);
-  },
-  create: (data: any) => {
-    const returns = returnService.list();
-    const newReturn = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    returns.push(newReturn);
-    setStorageItem("sgf_returns", JSON.stringify(returns));
-    logAudit("create", "return", newReturn.id, data);
-    return newReturn;
-  },
-  update: (id: number, data: any) => {
-    const returns = returnService.list();
-    const index = returns.findIndex((r: any) => r.id === id);
-    if (index === -1) return null;
-    returns[index] = { ...returns[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_returns", JSON.stringify(returns));
-    logAudit("update", "return", id, data);
-    return returns[index];
-  },
-  delete: (id: number) => {
-    const returns = returnService.list();
-    const index = returns.findIndex((r: any) => r.id === id);
-    if (index === -1) return { success: false, error: "Return not found" };
-    returns.splice(index, 1);
-    setStorageItem("sgf_returns", JSON.stringify(returns));
-    logAudit("delete", "return", id, {});
-    return { success: true };
-  },
-};
 
-// =============================================================================
-// PRODUCTION / BATCH SERVICE
-// =============================================================================
+  priceTier: {
+    list: () => priceTiers,
+    getById: (id: number) => priceTiers.find((p) => p.id == id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      priceTiers.push(newItem);
+      saveItem("sgf_priceTiers", priceTiers);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = priceTiers.findIndex((p) => p.id == id);
+      if (idx >= 0) {
+        priceTiers[idx] = { ...priceTiers[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_priceTiers", priceTiers);
+      }
+      return priceTiers[idx];
+    },
+    delete: (id: number) => {
+      const idx = priceTiers.findIndex((p) => p.id == id);
+      if (idx >= 0) {
+        priceTiers.splice(idx, 1);
+        saveItem("sgf_priceTiers", priceTiers);
+      }
+      return { success: idx >= 0 };
+    },
+  },
 
-export const productionService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_production");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+  specialPrice: {
+    list: () => specialPrices,
+    getById: (id: number) => specialPrices.find((sp) => sp.id == id) || null,
+    getByCustomer: (customerId: number) => specialPrices.filter((sp) => sp.customerId == customerId),
+    getByProduct: (stockItemId: number) => specialPrices.filter((sp) => sp.stockItemId == stockItemId),
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      specialPrices.push(newItem);
+      saveItem("sgf_specialPrices", specialPrices);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = specialPrices.findIndex((sp) => sp.id == id);
+      if (idx >= 0) {
+        specialPrices[idx] = { ...specialPrices[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_specialPrices", specialPrices);
+      }
+      return specialPrices[idx];
+    },
+    delete: (id: number) => {
+      const idx = specialPrices.findIndex((sp) => sp.id == id);
+      if (idx >= 0) {
+        specialPrices.splice(idx, 1);
+        saveItem("sgf_specialPrices", specialPrices);
+      }
+      return { success: idx >= 0 };
+    },
   },
-  getById: (id: number) => {
-    const batches = productionService.list();
-    return batches.find((b: any) => b.id === id);
-  },
-  getByOrder: (orderId: number) => {
-    const batches = productionService.list();
-    return batches.filter((b: any) => b.orderId === orderId);
-  },
-  getByStatus: (status: string) => {
-    const batches = productionService.list();
-    return batches.filter((b: any) => b.status === status);
-  },
-  create: (data: any) => {
-    const batches = productionService.list();
-    const newBatch = {
-      id: Date.now() + Math.random(),
-      ...data,
-      status: data.status || "planned",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    batches.push(newBatch);
-    setStorageItem("sgf_production", JSON.stringify(batches));
-    logAudit("create", "production", newBatch.id, data);
-    return newBatch;
-  },
-  update: (id: number, data: any) => {
-    const batches = productionService.list();
-    const index = batches.findIndex((b: any) => b.id === id);
-    if (index === -1) return null;
-    batches[index] = { ...batches[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_production", JSON.stringify(batches));
-    logAudit("update", "production", id, data);
-    return batches[index];
-  },
-  delete: (id: number) => {
-    const batches = productionService.list();
-    const index = batches.findIndex((b: any) => b.id === id);
-    if (index === -1) return { success: false, error: "Production batch not found" };
-    batches.splice(index, 1);
-    setStorageItem("sgf_production", JSON.stringify(batches));
-    logAudit("delete", "production", id, {});
-    return { success: true };
-  },
-};
 
-// =============================================================================
-// QUALITY CONTROL SERVICE
-// =============================================================================
+  deliveryRoute: {
+    list: () => deliveryRoutes,
+    getById: (id: number) => deliveryRoutes.find((dr) => dr.id == id) || null,
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      deliveryRoutes.push(newItem);
+      saveItem("sgf_deliveryRoutes", deliveryRoutes);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = deliveryRoutes.findIndex((dr) => dr.id == id);
+      if (idx >= 0) {
+        deliveryRoutes[idx] = { ...deliveryRoutes[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_deliveryRoutes", deliveryRoutes);
+      }
+      return deliveryRoutes[idx];
+    },
+    delete: (id: number) => {
+      const idx = deliveryRoutes.findIndex((dr) => dr.id == id);
+      if (idx >= 0) {
+        deliveryRoutes.splice(idx, 1);
+        saveItem("sgf_deliveryRoutes", deliveryRoutes);
+      }
+      return { success: idx >= 0 };
+    },
+  },
 
-export const qualityControlService = {
-  list: () => {
-    try {
-      const raw = getStorageItem("sgf_qualityControl");
-      if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return [];
+  geoCheckin: {
+    list: () => geoCheckins,
+    getById: (id: number) => geoCheckins.find((g) => g.id == id) || null,
+    getByRep: (salesRepId: number) => geoCheckins.filter((g) => g.salesRepId == salesRepId),
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      geoCheckins.push(newItem);
+      saveItem("sgf_geoCheckins", geoCheckins);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = geoCheckins.findIndex((g) => g.id == id);
+      if (idx >= 0) {
+        geoCheckins[idx] = { ...geoCheckins[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_geoCheckins", geoCheckins);
+      }
+      return geoCheckins[idx];
+    },
+    delete: (id: number) => {
+      const idx = geoCheckins.findIndex((g) => g.id == id);
+      if (idx >= 0) {
+        geoCheckins.splice(idx, 1);
+        saveItem("sgf_geoCheckins", geoCheckins);
+      }
+      return { success: idx >= 0 };
+    },
   },
-  getById: (id: number) => {
-    const records = qualityControlService.list();
-    return records.find((r: any) => r.id === id);
+
+  accountHold: {
+    list: () => accountHolds,
+    getById: (id: number) => accountHolds.find((ah) => ah.id == id) || null,
+    getByCustomer: (customerId: number) => accountHolds.filter((ah) => ah.customerId == customerId),
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      accountHolds.push(newItem);
+      saveItem("sgf_accountHolds", accountHolds);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = accountHolds.findIndex((ah) => ah.id == id);
+      if (idx >= 0) {
+        accountHolds[idx] = { ...accountHolds[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_accountHolds", accountHolds);
+      }
+      return accountHolds[idx];
+    },
+    delete: (id: number) => {
+      const idx = accountHolds.findIndex((ah) => ah.id == id);
+      if (idx >= 0) {
+        accountHolds.splice(idx, 1);
+        saveItem("sgf_accountHolds", accountHolds);
+      }
+      return { success: idx >= 0 };
+    },
   },
-  getByBatch: (batchId: number) => {
-    const records = qualityControlService.list();
-    return records.filter((r: any) => r.batchId === batchId);
-  },
-  create: (data: any) => {
-    const records = qualityControlService.list();
-    const newRecord = {
-      id: Date.now() + Math.random(),
-      ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    records.push(newRecord);
-    setStorageItem("sgf_qualityControl", JSON.stringify(records));
-    logAudit("create", "qualityControl", newRecord.id, data);
-    return newRecord;
-  },
-  update: (id: number, data: any) => {
-    const records = qualityControlService.list();
-    const index = records.findIndex((r: any) => r.id === id);
-    if (index === -1) return null;
-    records[index] = { ...records[index], ...data, updatedAt: new Date().toISOString() };
-    setStorageItem("sgf_qualityControl", JSON.stringify(records));
-    logAudit("update", "qualityControl", id, data);
-    return records[index];
-  },
-  delete: (id: number) => {
-    const records = qualityControlService.list();
-    const index = records.findIndex((r: any) => r.id === id);
-    if (index === -1) return { success: false, error: "QC record not found" };
-    records.splice(index, 1);
-    setStorageItem("sgf_qualityControl", JSON.stringify(records));
-    logAudit("delete", "qualityControl", id, {});
-    return { success: true };
-  },
-};

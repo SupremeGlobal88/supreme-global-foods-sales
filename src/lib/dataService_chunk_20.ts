@@ -1,228 +1,312 @@
-// =============================================================================
-// DATA MIGRATION SERVICE
-// =============================================================================
+      const invoiceNumber = generateInvoiceForOrder(newOrder.id);
+      if (invoiceNumber) {
+        // Link invoice to the new order
+        const inv = invoices.find((i) => i.orderId == newOrder.id);
+        if (inv) {
+          newOrder.invoiceId = inv.id;
+          newOrder.invoiceNumber = inv.invoiceNumber;
+          saveItem("sgf_orders", orders);
+        }
+    logAudit("CREATE", "invoice", newOrder.id, `Invoice ${invoiceNumber} generated for converted order ${orderNumber}`);
+      }
 
-export const migrationService = {
-  getVersion: () => {
-    try {
-      const raw = getStorageItem("sgf_dataVersion");
-      if (raw) return parseInt(raw, 10);
-    } catch { /* ignore */ }
-    return 1;
-  },
-  setVersion: (version: number) => {
-    setStorageItem("sgf_dataVersion", String(version));
-    return version;
-  },
-  runMigrations: () => {
-    const currentVersion = migrationService.getVersion();
-    let version = currentVersion;
+      logAudit("CONVERT", "quote", quote.id, `Quote ${quote.orderNumber} converted to order ${orderNumber}`);
 
-    // Migration 1 → 2: Add updatedAt to all records
-    if (version < 2) {
-      for (const customer of customers) {
-        if (!customer.updatedAt) customer.updatedAt = customer.createdAt || new Date().toISOString();
+      return { error: null, order: newOrder };
+    },
+    /** Create a new order from an existing invoice that has no linked order.
+     *  This fixes the case where an invoice exists but its order was lost. */
+    createFromInvoice: (invoiceId: number) => {
+      const inv = invoices.find((i) => i.id == invoiceId);
+      if (!inv) return null;
+      // Check if order already exists
+      const existingOrder = orders.find((o) => o.id == inv.orderId);
+      if (existingOrder) return { error: "Order already exists", order: existingOrder };
+
+      // If invoice has a PO number, try to use it as the order number (with uniqueness check)
+      let orderNumber: string;
+      const poNumber = (inv as any).poNumber;
+      if (poNumber) {
+        const duplicate = orders.find((o) => o.orderNumber === poNumber);
+        if (!duplicate) {
+          orderNumber = poNumber;
+        } else {
+          // PO number already used as an order number — fall back to ORD-xxx
+          const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+          const now = new Date();
+          const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+          const msCounter = String(Date.now() % 10000).padStart(4, "0");
+          orderNumber = `ORD-${dateStr}-${hhmm}${msCounter}`;
+        }
+      } else {
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const now = new Date();
+        const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+        const msCounter = String(Date.now() % 10000).padStart(4, "0");
+        orderNumber = `ORD-${dateStr}-${hhmm}${msCounter}`;
       }
-      for (const product of products) {
-        if (!product.updatedAt) product.updatedAt = product.createdAt || new Date().toISOString();
-      }
-      for (const order of orders) {
-        if (!order.updatedAt) order.updatedAt = order.createdAt || new Date().toISOString();
-      }
-      for (const invoice of invoices) {
-        if (!invoice.updatedAt) invoice.updatedAt = invoice.createdAt || new Date().toISOString();
-      }
-      saveItem("sgf_customers", customers);
-      saveItem("sgf_products", products);
+
+      const newOrder = {
+        id: Date.now(),
+        orderNumber,
+        customerId: inv.customerId,
+        customerName: inv.customer?.name || "",
+        customer: inv.customer || null,
+        items: (inv.items || []).map((it: any) => ({
+          stockItemId: it.stockItemId,
+          productCode: it.productCode || "",
+          productName: it.productName || it.description || "",
+          description: it.description || "",
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          lineTotal: it.lineTotal,
+          unit: it.unit || "each",
+          conversion: it.conversion || 1,
+          unitLabel: it.unitLabel || "Each",
+        })),
+        subtotal: inv.subtotal || 0,
+        vatAmount: inv.vatAmount || 0,
+        total: inv.total || 0,
+        totalAmount: inv.totalAmount || 0,
+        status: "pending",
+        paymentTerms: inv.paymentTerms || "cod",
+        company: inv.company || "sgf",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      orders.push(newOrder);
       saveItem("sgf_orders", orders);
+      logAudit("CREATE", "order", newOrder.id, `Order ${orderNumber} created from invoice ${inv.invoiceNumber}`);
+      return { error: null, order: newOrder };
+    },
+  },
+
+  invoice: {
+    list: () => invoices
+      .map((inv) => repairInvoiceCompany(inv))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getById: (id: number) => {
+      const inv = invoices.find((i) => i.id == id);
+      return inv ? repairInvoiceCompany(inv) : null;
+    },
+    getByNumber: (num: string) => {
+      const inv = invoices.find((i) => i.invoiceNumber === num);
+      return inv ? repairInvoiceCompany(inv) : null;
+    },
+    getByOrderId: (orderId: number) => {
+      const inv = invoices.find((i) => i.orderId == orderId);
+      return inv ? repairInvoiceCompany(inv) : null;
+    },
+    getByCustomer: (customerId: number) => invoices
+      .filter((i) => i.customerId == customerId)
+      .map((inv) => repairInvoiceCompany(inv))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    create: (data: any) => {
+      const newItem = {
+        ...data,
+        id: Date.now(),
+        company: data.company || getCurrentCompany(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      invoices.push(newItem);
       saveItem("sgf_invoices", invoices);
-      version = 2;
-    }
-
-    // Migration 2 → 3: Add isActive to customers
-    if (version < 3) {
-      for (const customer of customers) {
-        if (customer.isActive === undefined) customer.isActive = true;
+      logAudit("CREATE", "invoice", newItem.id, `Invoice created: ${newItem.invoiceNumber || ""}`);
+      return newItem;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = invoices.findIndex((i) => i.id == id);
+      if (idx >= 0) {
+        invoices[idx] = { ...invoices[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_invoices", invoices);
+        logAudit("UPDATE", "invoice", id, `Invoice updated: ${invoices[idx].invoiceNumber || ""}`);
       }
-      saveItem("sgf_customers", customers);
-      version = 3;
-    }
-
-    // Migration 3 → 4: Add classification to customers
-    if (version < 4) {
-      for (const customer of customers) {
-        if (!customer.classification) customer.classification = "standard";
+      return invoices[idx];
+    },
+    updateStatus: ({ id, status }: { id: number; status: string }) => {
+      const idx = invoices.findIndex((i) => i.id == id);
+      if (idx >= 0) {
+        const oldStatus = invoices[idx].status;
+        invoices[idx].status = status;
+        invoices[idx].updatedAt = new Date().toISOString();
+        saveItem("sgf_invoices", invoices);
+        logAudit("UPDATE", "invoice", id, `Invoice ${invoices[idx].invoiceNumber} status changed from ${oldStatus} to ${status}`);
       }
-      saveItem("sgf_customers", customers);
-      version = 4;
-    }
-
-    // Migration 4 → 5: Add creditLimit to customers
-    if (version < 5) {
-      for (const customer of customers) {
-        if (customer.creditLimit === undefined) customer.creditLimit = 0;
+      return invoices[idx];
+    },
+    delete: (id: number) => {
+      const idx = invoices.findIndex((i) => i.id == id);
+      if (idx >= 0) {
+        invoices.splice(idx, 1);
+        saveItem("sgf_invoices", invoices);
+        logAudit("DELETE", "invoice", id, "Invoice deleted");
       }
-      saveItem("sgf_customers", customers);
-      version = 5;
-    }
-
-    // Migration 5 → 6: Add priceTier to customers
-    if (version < 6) {
-      for (const customer of customers) {
-        if (!customer.priceTier) customer.priceTier = "wholesale";
+      return { success: idx >= 0 };
+    },
+    getStats: () => {
+      const comp = getCurrentCompany();
+      const companyInvoices = invoices.filter((inv) => (inv.company || "sgf") === comp);
+      return {
+        total: companyInvoices.length,
+        outstanding: companyInvoices.filter((i) => (i.balanceDue || 0) > 0.01).length,
+        totalOutstanding: Math.round(companyInvoices.filter((i) => (i.balanceDue || 0) > 0.01).reduce((sum, i) => sum + (i.balanceDue || 0), 0) * 100) / 100,
+        totalValue: Math.round(companyInvoices.reduce((sum, i) => sum + (i.total || 0), 0) * 100) / 100,
+      };
+    },
+    markAsPaid: ({ id, amount, paymentMethod }: { id: number; amount: number; paymentMethod: string }) => {
+      const idx = invoices.findIndex((i) => i.id == id);
+      if (idx < 0) return { success: false, error: "Invoice not found" };
+      const inv = invoices[idx];
+      const paymentAmount = Number(amount) || 0;
+      const newPaid = (inv.amountPaid || 0) + paymentAmount;
+      const total = inv.total || inv.totalAmount || 0;
+      const newBalance = Math.max(0, total - newPaid);
+      const newStatus = newBalance <= 0.01 ? "paid" : "sent";
+      invoices[idx] = {
+        ...inv,
+        amountPaid: newPaid,
+        balanceDue: newBalance,
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      };
+      saveItem("sgf_invoices", invoices);
+      logAudit("PAYMENT", "invoice", id, `Payment of R${paymentAmount.toFixed(2)} recorded for invoice ${inv.invoiceNumber}`);
+      return { success: true, invoice: invoices[idx] };
+    },
+    // Consolidate multiple invoices into one payment receipt
+    consolidatePayments: ({ invoiceIds, amount, paymentMethod }: { invoiceIds: number[]; amount: number; paymentMethod: string }) => {
+      const totalAmount = Number(amount) || 0;
+      let remaining = totalAmount;
+      const updatedInvoices: any[] = [];
+      for (const id of invoiceIds) {
+        const idx = invoices.findIndex((i) => i.id == id);
+        if (idx < 0) continue;
+        const inv = invoices[idx];
+        const balance = (inv.total || 0) - (inv.amountPaid || 0);
+        if (balance <= 0) continue;
+        const payment = Math.min(remaining, balance);
+        inv.amountPaid = (inv.amountPaid || 0) + payment;
+        inv.balanceDue = (inv.total || 0) - inv.amountPaid;
+        inv.status = inv.balanceDue <= 0.01 ? "paid" : "sent";
+        inv.updatedAt = new Date().toISOString();
+        updatedInvoices.push(inv);
+        remaining -= payment;
+        if (remaining <= 0) break;
       }
-      saveItem("sgf_customers", customers);
-      version = 6;
-    }
-
-    // Migration 6 → 7: Add onStopList to customers
-    if (version < 7) {
-      for (const customer of customers) {
-        if (customer.onStopList === undefined) customer.onStopList = false;
-      }
-      saveItem("sgf_customers", customers);
-      version = 7;
-    }
-
-    // Migration 7 → 8: Add salesRepName to customers
-    if (version < 8) {
-      for (const customer of customers) {
-        if (!customer.salesRepName) customer.salesRepName = "";
-      }
-      saveItem("sgf_customers", customers);
-      version = 8;
-    }
-
-    // Migration 8 → 9: Ensure all users have PINs
-    if (version < 9) {
-      for (const user of users) {
-        if (!user.pin) user.pin = "0000";
-      }
-      saveItem("sgf_users", users);
-      version = 9;
-    }
-
-    // Migration 9 → 10: Add orderType to orders (default "regular")
-    if (version < 10) {
-      for (const order of orders) {
-        if (!order.orderType) order.orderType = "regular";
-      }
-      saveItem("sgf_orders", orders);
-      version = 10;
-    }
-
-    // Migration 10 → 11: Add status to orders (default "draft")
-    if (version < 11) {
-      for (const order of orders) {
-        if (!order.status) order.status = "draft";
-      }
-      saveItem("sgf_orders", orders);
-      version = 11;
-    }
-
-    migrationService.setVersion(version);
-    return { fromVersion: currentVersion, toVersion: version };
-  },
-};
-
-// =============================================================================
-// FIREBASE SYNC HELPERS
-// =============================================================================
-
-export function getDataForFirebaseSync(): Record<string, any[]> {
-  return {
-    customers: deepClone(customers),
-    products: deepClone(products),
-    orders: deepClone(orders),
-    invoices: deepClone(invoices),
-    appointments: deepClone(appointments),
-    checkins: deepClone(checkins),
-    specialPrices: deepClone(specialPrices),
-    auditLog: deepClone(auditLog),
-    systemLogs: deepClone(systemLogs),
-    followUps: deepClone(followUps),
-    followUpActions: deepClone(followUpActions),
-    collectionNotes: deepClone(collectionNotes),
-    collectionPromises: deepClone(collectionPromises),
-    accountHolds: deepClone(accountHolds),
-    receipts: deepClone(receipts),
-    creditNotes: deepClone(creditNotes),
-    users: deepClone(users),
-    corporateCustomers: deepClone(corporateCustomers),
-    purchaseOrders: deepClone(purchaseOrders),
-    barrels: deepClone(barrels),
-    certificatesOfCompliance: deepClone(certificatesOfCompliance),
-    packingListLines: deepClone(packingListLines),
-  };
-}
-
-export function applyFirebaseSync(data: Record<string, any[]>): void {
-  if (data.customers) { customers = mergeWithCloudData(customers, data.customers); saveItem("sgf_customers", customers); }
-  if (data.products) { products = mergeWithCloudData(products, data.products); saveItem("sgf_products", products); }
-  if (data.orders) { orders = mergeWithCloudData(orders, data.orders); saveItem("sgf_orders", orders); }
-  if (data.invoices) { invoices = mergeWithCloudData(invoices, data.invoices); saveItem("sgf_invoices", invoices); }
-  if (data.appointments) { appointments = mergeWithCloudData(appointments, data.appointments); saveItem("sgf_appointments", appointments); }
-  if (data.checkins) { checkins = mergeWithCloudData(checkins, data.checkins); saveItem("sgf_checkins", checkins); }
-  if (data.specialPrices) { specialPrices = mergeWithCloudData(specialPrices, data.specialPrices); saveItem("sgf_specialPrices", specialPrices); }
-  if (data.auditLog) { auditLog = mergeWithCloudData(auditLog, data.auditLog); saveItem("sgf_auditLog", auditLog); }
-  if (data.systemLogs) { systemLogs = mergeWithCloudData(systemLogs, data.systemLogs); saveItem("sgf_systemLogs", systemLogs); }
-  if (data.followUps) { followUps = mergeWithCloudData(followUps, data.followUps); saveItem("sgf_followUps", followUps); }
-  if (data.followUpActions) { followUpActions = mergeWithCloudData(followUpActions, data.followUpActions); saveItem("sgf_followUpActions", followUpActions); }
-  if (data.collectionNotes) { collectionNotes = mergeWithCloudData(collectionNotes, data.collectionNotes); saveItem("sgf_collectionNotes", collectionNotes); }
-  if (data.collectionPromises) { collectionPromises = mergeWithCloudData(collectionPromises, data.collectionPromises); saveItem("sgf_collectionPromises", collectionPromises); }
-  if (data.accountHolds) { accountHolds = mergeWithCloudData(accountHolds, data.accountHolds); saveItem("sgf_accountHolds", accountHolds); }
-  if (data.receipts) { receipts = mergeWithCloudData(receipts, data.receipts); saveItem("sgf_receipts", receipts); }
-  if (data.creditNotes) { creditNotes = mergeWithCloudData(creditNotes, data.creditNotes); saveItem("sgf_creditNotes", creditNotes); }
-  if (data.users) { users = mergeWithCloudData(users, data.users); saveItem("sgf_users", users); }
-  if (data.corporateCustomers) { corporateCustomers = mergeWithCloudData(corporateCustomers, data.corporateCustomers); saveItem("sgf_corporateCustomers", corporateCustomers); }
-  if (data.purchaseOrders) { purchaseOrders = mergeWithCloudData(purchaseOrders, data.purchaseOrders); saveItem("sgf_purchaseOrders", purchaseOrders); }
-  if (data.barrels) { barrels = mergeWithCloudData(barrels, data.barrels); saveItem("sgf_barrels", barrels); }
-  if (data.certificatesOfCompliance) { certificatesOfCompliance = mergeWithCloudData(certificatesOfCompliance, data.certificatesOfCompliance); saveItem("sgf_certificatesOfCompliance", certificatesOfCompliance); }
-  if (data.packingListLines) { packingListLines = mergeWithCloudData(packingListLines, data.packingListLines); saveItem("sgf_packingListLines", packingListLines); }
-}
-
-// =============================================================================
-// FIREBASE PUSH/PULL STUBS (for SettingsPage compatibility)
-// =============================================================================
-
-export function forcePushAllLocalData(): Promise<{ success: boolean; message: string }> {
-  return new Promise((resolve) => {
-    try {
-      const data = getDataForFirebaseSync();
-      setStorageItem("sgf_firebase_backup", JSON.stringify({ timestamp: new Date().toISOString(), data }));
-      resolve({ success: true, message: "Data backed up to localStorage" });
-    } catch (e) {
-      resolve({ success: false, message: String(e) });
-    }
-  });
-}
-
-export function forcePullAllFromCloud(): Promise<{ success: boolean; message: string }> {
-  return new Promise((resolve) => {
-    try {
-      const raw = getStorageItem("sgf_firebase_backup");
-      if (raw) {
-        const backup = JSON.parse(raw);
-        if (backup.data) {
-          applyFirebaseSync(backup.data);
-          resolve({ success: true, message: "Data restored from localStorage backup" });
-          return;
+      saveItem("sgf_invoices", invoices);
+      // Record the consolidated receipt
+      const receipt = {
+        id: Date.now(),
+        invoiceIds,
+        amount: totalAmount,
+        paymentMethod,
+        createdAt: new Date().toISOString(),
+      };
+      receipts.push(receipt);
+      saveItem("sgf_receipts", receipts);
+      return { success: true, invoices: updatedInvoices, remaining: Math.max(0, remaining) };
+    },
+    /** Repair all invoice statuses to match order statuses.
+     *  Fixes invoices that are "draft" but orders are "delivered",
+     *  or invoices that are not "cancelled" but orders are "cancelled".
+     *  Returns summary of repairs. */
+    repairAllInvoiceStatuses: () => {
+      let repaired = 0;
+      for (const inv of invoices) {
+        const order = orders.find((o) => o.id == inv.orderId);
+        if (!order) continue;
+        const orderStatus = order.status;
+        const invStatus = inv.status;
+        let needsSave = false;
+        if (orderStatus === "cancelled" && invStatus !== "cancelled") {
+          inv.status = "cancelled";
+          inv.balanceDue = 0;
+          inv.cancelledAt = inv.cancelledAt || new Date().toISOString();
+          inv.cancellationReason = inv.cancellationReason || "Order cancelled";
+          needsSave = true;
+        }
+        if ((orderStatus === "ready" || orderStatus === "delivered") && invStatus === "draft") {
+          inv.status = "sent";
+          needsSave = true;
+        }
+        if (needsSave) {
+          inv.updatedAt = new Date().toISOString();
+          repaired++;
         }
       }
-      resolve({ success: false, message: "No backup found in localStorage" });
-    } catch (e) {
-      resolve({ success: false, message: String(e) });
-    }
-  });
-}
-
-export function clearLocalOnlyData(): Promise<{ success: boolean; message: string }> {
-  return new Promise((resolve) => {
-    try {
-      removeStorageItem("sgf_firebase_backup");
-      resolve({ success: true, message: "Local backup cleared" });
-    } catch (e) {
-      resolve({ success: false, message: String(e) });
-    }
-  });
-}
+      if (repaired > 0) {
+        saveItem("sgf_invoices", invoices);
+      }
+      return { repaired };
+    },
+    /** Recalculate all invoice totals from their items array.
+     *  Fixes corrupted totals after order edits or bulk imports.
+     *  Returns summary of repairs. */
+    repairAllInvoiceTotals: () => {
+      let repaired = 0;
+      for (const inv of invoices) {
+        const items = inv.items || [];
+        let needsSave = false;
+        // Recalculate from items
+        const subtotal = items.reduce((sum: number, it: any) => sum + (it.lineTotal || 0), 0);
+        const vatRate = inv.vatRate !== undefined ? inv.vatRate : 0.15;
+        const vatAmount = subtotal * vatRate;
+        const total = subtotal + vatAmount;
+        if (Math.abs((inv.subtotal || 0) - subtotal) > 0.01) {
+          inv.subtotal = subtotal;
+          needsSave = true;
+        }
+        if (Math.abs((inv.vatAmount || 0) - vatAmount) > 0.01) {
+          inv.vatAmount = vatAmount;
+          needsSave = true;
+        }
+        if (Math.abs((inv.total || inv.totalAmount || 0) - total) > 0.01) {
+          inv.total = total;
+          inv.totalAmount = total;
+          needsSave = true;
+        }
+        if (needsSave) {
+          repaired++;
+          inv.updatedAt = new Date().toISOString();
+        }
+      }
+      if (repaired > 0) {
+        saveItem("sgf_invoices", invoices);
+      }
+      return { repaired };
+    },
+    /** Recalculate all order totals from their items array.
+     *  Fixes corrupted totals after order edits or bulk imports.
+     *  Returns summary of repairs. */
+    repairAllOrderTotals: () => {
+      let repaired = 0;
+      for (const order of orders) {
+        const items = order.items || [];
+        let needsSave = false;
+        const subtotal = items.reduce((sum: number, it: any) => sum + (it.lineTotal || 0), 0);
+        const vatRate = order.vatRate !== undefined ? order.vatRate : 0.15;
+        const vatAmount = subtotal * vatRate;
+        const total = subtotal + vatAmount;
+        if (Math.abs((order.subtotal || 0) - subtotal) > 0.01) {
+          order.subtotal = subtotal;
+          needsSave = true;
+        }
+        if (Math.abs((order.vatAmount || 0) - vatAmount) > 0.01) {
+          order.vatAmount = vatAmount;
+          needsSave = true;
+        }
+        if (Math.abs((order.total || order.totalAmount || 0) - total) > 0.01) {
+          order.total = total;
+          order.totalAmount = total;
+          needsSave = true;
+        }
+        if (needsSave) {
+          repaired++;
+          order.updatedAt = new Date().toISOString();
+        }
+      }
+      if (repaired > 0) {
+        saveItem("sgf_orders", orders);
+      }
+      return { repaired };
+    },

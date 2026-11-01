@@ -358,6 +358,9 @@ export async function localLinkHandler(path: string, input: any) {
       case "order.getRecent":
         result = dataService.order.getRecent(input || 5);
         break;
+      case "order.findByNumber":
+        result = dataService.order.findByNumber(input);
+        break;
 
       // ================================================================
       //  INVOICES

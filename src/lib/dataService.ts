@@ -3161,6 +3161,16 @@ const dataService = {
       quotes: orders.filter((o) => o.orderType === "quote" && o.status !== "converted").length,
       totalValue: Math.round(orders.filter((o) => o.orderType !== "sample" && o.orderType !== "quote").reduce((sum, o) => sum + Number(o.total || 0), 0) * 100) / 100,
     }),
+    /** Search for an order by exact orderNumber (case-insensitive).
+     *  Returns full order with customer, or null if not found. */
+    findByNumber: (orderNumber: string) => {
+      const target = String(orderNumber || "").trim().toLowerCase();
+      if (!target) return null;
+      const order = orders.find((o) => String(o.orderNumber || "").toLowerCase() === target);
+      if (!order) return null;
+      const customer = customers.find((c) => c.id == order.customerId);
+      return { ...order, customer: customer || null };
+    },
     checkExistingSample: ({ customerId, stockItemId }: { customerId: number; stockItemId: number }) => {
       return { exists: hasExistingSample(customerId, stockItemId) };
     },

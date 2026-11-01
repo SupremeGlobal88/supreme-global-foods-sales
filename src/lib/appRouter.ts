@@ -51,6 +51,7 @@ export const appRouter = t.router({
     delete: t.procedure.input((val: unknown) => val as { id: number }).mutation(({ input }) => dataService.order.delete(input)),
     updateStatus: t.procedure.input((val: unknown) => val as { id: number; status: string }).mutation(({ input }) => dataService.order.updateStatus(input)),
     checkExistingSample: t.procedure.input((val: unknown) => val as { customerId: number; stockItemId: number }).query(({ input }) => dataService.order.checkExistingSample(input)),
+    findByNumber: t.procedure.input((val: unknown) => val as string).query(({ input }) => dataService.order.findByNumber(input)),
     generateInvoice: t.procedure.input((val: unknown) => val as { orderId: number }).mutation(({ input }) => dataService.invoice.generateInvoiceForOrder(input?.orderId || input)),
     generateMissingInvoices: t.procedure.mutation(() => dataService.order.repairOrders()),
     convertQuoteToOrder: t.procedure.input((val: unknown) => val as { quoteId: number }).mutation(({ input }) => dataService.order.convertQuoteToOrder(input?.quoteId || input)),

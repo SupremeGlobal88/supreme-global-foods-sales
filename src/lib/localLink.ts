@@ -4,8 +4,6 @@ import { observable } from "@trpc/server/observable";
 import {
   dataService,
   reloadFromStorage,
-  fixDraftInvoicesForDeliveredOrders,
-  fixSageInvoiceDates,
 } from "./dataService";
 import { DATA_SERVICE_EXTRAS_LOADED } from "./dataServiceExtras";
 import { getStorageItem, setStorageItem } from "./compressedStorage";
@@ -1445,4 +1443,20 @@ export async function localLinkHandler(path: string, input: any) {
     // error silently handled
     throw err;
   }
+}
+
+export function createLocalLink() {
+  return () =>
+    ({ op }: any) =>
+      observable((observer) => {
+        (async () => {
+          try {
+            const result = await localLinkHandler(op.path, op.input);
+            observer.next({ result: { type: "data", data: result } });
+            observer.complete();
+          } catch (err: any) {
+            observer.error(err);
+          }
+        })();
+      });
 }

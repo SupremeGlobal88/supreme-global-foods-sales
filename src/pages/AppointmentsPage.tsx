@@ -708,13 +708,13 @@ export default function AppointmentsPage() {
   function submitCheckout() {
     if (checkoutCheckinId === 0) return;
     if (!checkoutOutcome) { alert("Please select an outcome"); return; }
-    if (checkoutOutcome === "other" && !checkoutOutcomeNotes.trim()) { alert("Please provide notes for 'Other' outcome"); return; }
+    if (checkoutOutcome === "other" && !checkoutNotes.trim()) { alert("Please provide notes for 'Other' outcome"); return; }
 
     checkoutMutation.mutate({
       id: checkoutCheckinId,
       notes: checkoutNotes,
       outcome: checkoutOutcome,
-      outcomeNotes: checkoutOutcomeNotes,
+      outcomeNotes: checkoutNotes,
     });
   }
 

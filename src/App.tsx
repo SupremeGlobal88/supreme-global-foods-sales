@@ -261,7 +261,7 @@ export default function App() {
         <Route path="purchase-orders" element={<RoleGuard><PurchaseOrdersPage /></RoleGuard>} />
         <Route path="purchase-order/:id" element={<RoleGuard><PurchaseOrderDetailPage /></RoleGuard>} />
         <Route path="packing-list/:id" element={<RoleGuard><PackingListPage /></RoleGuard>} />
-        <Route path="audit-report" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
+        <Route path="audit" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
         <Route path="system-logs" element={<RoleGuard><SystemLogsPage /></RoleGuard>} />
         <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
         <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />

@@ -304,6 +304,8 @@ function load() {
     if (i) invoices = i;
     // Auto-fix corrupted Sage invoice dates on every startup
     fixSageInvoiceDates();
+    // Auto-fix order statuses reverted by stale Firebase data
+    repairRevertedOrderStatuses();
     const a = safeLoadArray("sgf_appointments");
     if (a) appointments = a;
     const ci = safeLoadArray("sgf_checkins");
@@ -471,6 +473,67 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
  *  Useful for bulk-push to Firebase after fixing corrupted data. */
 export function getAllInvoices(): any[] {
   return [...invoices];
+}
+
+/** Return a shallow copy of the full in-memory orders array.
+ *  Useful for bulk-push to Firebase after fixing corrupted data. */
+export function getAllOrders(): any[] {
+  return [...orders];
+}
+
+/** Repair orders whose status was reverted by stale Firebase data.
+ *  Two corruption patterns are detected:
+ *    1. Order status is "picking" or "pending" but its invoice is "sent"
+ *       (invoice only goes sent when order reaches ready/delivered).
+ *    2. Audit log shows the order was changed TO "delivered" but current
+ *       status is no longer "delivered".
+ *  Returns changed orders so caller can push to Firebase (cloud-first). */
+export function repairRevertedOrderStatuses(): { changed: number; orders: any[] } {
+  let changed = 0;
+  const changedOrders: any[] = [];
+
+  // Build a set of order IDs that were ever marked delivered according to audit log
+  const everDelivered = new Set<string>();
+  for (const entry of auditLog) {
+    if (entry.entityType === "order" && entry.action === "UPDATE" && entry.details?.includes("to delivered")) {
+      everDelivered.add(String(entry.entityId));
+    }
+  }
+
+  for (const order of orders) {
+    if (!order || order.orderType === "quote") continue;
+
+    const orderId = String(order.id);
+    const inv = invoices.find((i) => i.orderId == order.id);
+    const invIsSent = inv && inv.status === "sent";
+    const invIsPaid = inv && (inv.status === "paid" || inv.status === "partial");
+
+    // Pattern 1: order is picking/pending but invoice is sent/paid → was at least ready
+    if ((order.status === "picking" || order.status === "pending") && (invIsSent || invIsPaid)) {
+      const oldStatus = order.status;
+      order.status = "ready";
+      order.updatedAt = new Date().toISOString();
+      changed++;
+      changedOrders.push(order);
+      logAudit("UPDATE", "order", order.id, `Auto-repair: status reverted from ${oldStatus} → ready (invoice ${inv?.invoiceNumber || inv?.id} is ${inv?.status})`);
+      continue;
+    }
+
+    // Pattern 2: audit log says it was delivered, but now it's not
+    if (everDelivered.has(orderId) && order.status !== "delivered" && order.status !== "cancelled") {
+      const oldStatus = order.status;
+      order.status = "delivered";
+      order.updatedAt = new Date().toISOString();
+      changed++;
+      changedOrders.push(order);
+      logAudit("UPDATE", "order", order.id, `Auto-repair: status reverted from ${oldStatus} → delivered (audit log shows previous delivery)`);
+    }
+  }
+
+  if (changed > 0) {
+    saveItem("sgf_orders", orders);
+  }
+  return { changed, orders: changedOrders };
 }
 
 /**

@@ -296,6 +296,16 @@ export async function pushInvoices(invoices: any[]): Promise<{ success: boolean;
   }
 }
 
+export async function pushOrders(orders: any[]): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
+  try {
+    await set(ref(db, "orders"), orders);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
 export async function removeOrder(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await set(ref(db, `orders/${safeFbKey(id)}`), null); } catch { /* ignore */ }

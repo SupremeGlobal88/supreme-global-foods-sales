@@ -300,7 +300,16 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "order.updateStatus": {
+      case "order.updateStatus":
+      case "order.generateMissingInvoices": {
+        result = dataService.order.generateMissingInvoices();
+        if (result && result.success) {
+          for (const inv of result.invoices || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.invoices?.length || 0 } }));
+        }
+        break;
+      } {
         result = dataService.order.updateStatus(input);
         if (result) {
           await pushOrder(result.order);
@@ -447,7 +456,64 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "invoice.voidCreditNote": {
+      case "invoice.voidCreditNote":
+      case "invoice.allocateBankPayments": {
+        result = dataService.invoice.allocateBankPayments(input);
+        if (result && result.success) {
+          for (const inv of result.updatedInvoices || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.updatedInvoices?.length || 0 } }));
+        }
+        break;
+      }
+      case "invoice.fixDraftInvoices": {
+        result = dataService.invoice.fixDraftInvoices();
+        if (result && result.success) {
+          for (const inv of result.fixed || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.fixed?.length || 0 } }));
+        }
+        break;
+      }
+      case "invoice.fixSageDates": {
+        result = dataService.invoice.fixSageDates();
+        if (result && result.success) {
+          for (const inv of result.fixed || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.fixed?.length || 0 } }));
+        }
+        break;
+      }
+      case "invoice.generateForPO": {
+        result = dataService.invoice.generateForPO(input);
+        if (result && !result.error) {
+          await pushInvoice(result);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.matchBankPayments": {
+        result = dataService.invoice.matchBankPayments(input);
+        if (result && result.success) {
+          for (const inv of result.updatedInvoices || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.updatedInvoices?.length || 0 } }));
+        }
+        break;
+      }
+      case "invoice.parseBankStatement":
+        result = dataService.invoice.parseBankStatement(input);
+        break;
+      case "invoice.relinkSageInvoices": {
+        result = dataService.invoice.relinkSageInvoices();
+        if (result && result.success) {
+          for (const inv of result.updated || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.updated?.length || 0 } }));
+        }
+        break;
+      } {
         result = dataService.invoice.voidCreditNote(input);
         if (result) {
           await pushCreditNote(result);
@@ -579,7 +645,10 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "appointment.update": {
+      case "appointment.update":
+      case "appointment.getStats":
+        result = dataService.appointment.getStats();
+        break; {
         const { id: aid, data: adata } = input;
         result = dataService.appointment.update({ id: aid, data: adata });
         if (result) {
@@ -632,7 +701,34 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "checkIn.update": {
+      case "checkIn.update":
+      case "checkIn.checkout": {
+        result = dataService.checkIn.checkout(input);
+        if (result) {
+          await pushCheckin(result);
+          reloadFromStorage(["sgf_checkins"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkins", count: 1 } }));
+        }
+        break;
+      }
+      case "checkIn.getAARate":
+        result = dataService.checkIn.getAARate();
+        break;
+      case "checkIn.getDailyReport":
+        result = dataService.checkIn.getDailyReport(input);
+        break;
+      case "checkIn.getMonthlyReport":
+        result = dataService.checkIn.getMonthlyReport(input);
+        break;
+      case "checkIn.getStats":
+        result = dataService.checkIn.getStats();
+        break;
+      case "checkIn.getWeeklyReport":
+        result = dataService.checkIn.getWeeklyReport(input);
+        break;
+      case "checkIn.setAARate":
+        result = dataService.checkIn.setAARate(input);
+        break; {
         const { id: cid, data: cdata } = input;
         result = dataService.checkIn.update({ id: cid, data: cdata });
         if (result) {
@@ -665,6 +761,21 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.specialPrice.getByCustomer(input);
         break;
       case "specialPrice.listByCustomer":
+      case "sampleReport.getAll":
+        result = dataService.sampleReport.getAll();
+        break;
+      case "sampleReport.getByCustomer":
+        result = dataService.sampleReport.getByCustomer(input);
+        break;
+      case "specialPrice.set": {
+        result = dataService.specialPrice.set(input);
+        if (result) {
+          await pushSpecialPrice(result);
+          reloadFromStorage(["sgf_specialPrices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "specialPrices", count: 1 } }));
+        }
+        break;
+      }
         result = dataService.specialPrice.listByCustomer(input);
         break;
       case "specialPrice.create": {
@@ -720,7 +831,13 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "followUp.update": {
+      case "followUp.update":
+      case "followUp.getStats":
+        result = dataService.followUp.getStats();
+        break;
+      case "followUp.listAll":
+        result = dataService.followUp.listAll();
+        break; {
         const { id: fuid, data: fudata } = input;
         result = dataService.followUp.update({ id: fuid, data: fudata });
         if (result) {
@@ -839,7 +956,56 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "collectionPromise.update": {
+      case "collectionPromise.update":
+      case "collections.addNote": {
+        result = dataService.collections.addNote(input);
+        if (result) {
+          await pushCollectionNote(result);
+          reloadFromStorage(["sgf_collectionNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionNotes", count: 1 } }));
+        }
+        break;
+      }
+      case "collections.getCustomerPaymentHistory":
+        result = dataService.collections.getCustomerPaymentHistory(input);
+        break;
+      case "collections.getDailyReport":
+        result = dataService.collections.getDailyReport();
+        break;
+      case "collections.getFollowUpsDue":
+        result = dataService.collections.getFollowUpsDue();
+        break;
+      case "collections.getOverdueInvoices":
+        result = dataService.collections.getOverdueInvoices();
+        break;
+      case "collections.getStats":
+        result = dataService.collections.getStats();
+        break;
+      case "collections.placeHold": {
+        result = dataService.collections.placeHold(input);
+        if (result) {
+          setStorageItem("sgf_accountHolds", JSON.stringify(dataService.accountHold.list ? dataService.accountHold.list() : []));
+          reloadFromStorage(["sgf_accountHolds"]);
+        }
+        break;
+      }
+      case "collections.recordPromise": {
+        result = dataService.collections.recordPromise(input);
+        if (result) {
+          await pushCollectionPromise(result);
+          reloadFromStorage(["sgf_collectionPromises"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 1 } }));
+        }
+        break;
+      }
+      case "collections.releaseHold": {
+        result = dataService.collections.releaseHold(input);
+        if (result) {
+          setStorageItem("sgf_accountHolds", JSON.stringify(dataService.accountHold.list ? dataService.accountHold.list() : []));
+          reloadFromStorage(["sgf_accountHolds"]);
+        }
+        break;
+      } {
         const { id: cpid, data: cpdata } = input;
         result = dataService.collectionPromise.update({ id: cpid, data: cpdata });
         if (result) {
@@ -863,6 +1029,18 @@ export async function localLinkHandler(path: string, input: any) {
       //  AUDIT LOG
       // ================================================================
       case "auditLog.list":
+      case "audit.getCheckInReport":
+        result = dataService.audit.getCheckInReport(input);
+        break;
+      case "audit.getFullTrail":
+        result = dataService.audit.getFullTrail(input);
+        break;
+      case "audit.getMissedAppointments":
+        result = dataService.audit.getMissedAppointments(input);
+        break;
+      case "audit.getStats":
+        result = dataService.audit.getStats();
+        break;
         result = dataService.auditLog.list();
         break;
       case "auditLog.getRecent":
@@ -971,7 +1149,16 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "purchaseOrder.update": {
+      case "purchaseOrder.update":
+      case "purchaseOrder.updateStatus": {
+        result = dataService.purchaseOrder.updateStatus(input);
+        if (result) {
+          await pushPurchaseOrder(result);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+        }
+        break;
+      } {
         const { id: poid, data: podata } = input;
         result = dataService.purchaseOrder.update({ id: poid, data: podata });
         if (result) {
@@ -1053,7 +1240,25 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "coc.update": {
+      case "coc.update":
+      case "coc.bulkGenerateForPO": {
+        result = dataService.coc.bulkGenerateForPO(input);
+        if (result && result.success) {
+          for (const c of result.cocs || []) await pushCOC(c);
+          reloadFromStorage(["sgf_cocs"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: result.cocs?.length || 0 } }));
+        }
+        break;
+      }
+      case "coc.generateForInvoice": {
+        result = dataService.coc.generateForInvoice(input);
+        if (result) {
+          await pushCOC(result);
+          reloadFromStorage(["sgf_cocs"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: 1 } }));
+        }
+        break;
+      } {
         const { id: cocid, data: cocdata } = input;
         result = dataService.coc.update({ id: cocid, data: cocdata });
         if (result) {
@@ -1129,7 +1334,16 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "salesRep.update": {
+      case "salesRep.update":
+      case "salesRep.toggleActive": {
+        result = dataService.salesRep.toggleActive(input);
+        if (result) {
+          await pushSalesRep(result);
+          reloadFromStorage(["sgf_salesReps"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
+        }
+        break;
+      } {
         const { id: srid, data: srdata } = input;
         result = dataService.salesRep.update({ id: srid, data: srdata });
         if (result) {

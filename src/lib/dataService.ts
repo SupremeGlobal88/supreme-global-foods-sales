@@ -962,11 +962,13 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   }
   invoices = Array.from(invMap.values());
 
-  // Deduplicate customers: group by normalized name, keep most recent
+  // Deduplicate customers: group by customerCode (primary) or name+phone (fallback), keep most recent
   const custMap = new Map<string, any>();
   for (const c of customers) {
-    const key = ((c.name || "") + "|" + (c.phone || "")).toString().trim().replace(/\s+/g, " ").toLowerCase();
-    if (!key) continue; // skip customers with no name
+    // Use customerCode as primary key; fallback to name+phone for customers without a code
+    const code = (c.customerCode || "").toString().trim().toLowerCase();
+    const key = code || ((c.name || "") + "|" + (c.phone || "")).toString().trim().replace(/\s+/g, " ").toLowerCase();
+    if (!key) continue; // skip customers with no name/code
     const existing = custMap.get(key);
     if (!existing || isMoreRecent(c, existing)) {
       custMap.set(key, c);

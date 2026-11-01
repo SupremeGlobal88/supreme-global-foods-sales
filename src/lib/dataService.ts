@@ -2234,6 +2234,18 @@ function checkCorporateCustomerCanOrder(
   return { blocked: false };
 }
 
+function repairOrders() {
+  // Stub: generate invoices for orders that don't have one yet
+  const generated: string[] = [];
+  for (const order of orders) {
+    if (!order.invoiceNumber) {
+      const inv = generateInvoiceForOrder(order.id);
+      if (inv) generated.push(inv.invoiceNumber);
+    }
+  }
+  return generated;
+}
+
 const dataService = {
   auth: {
     me: () => {
@@ -5777,6 +5789,7 @@ const dataService = {
       // Get corporate customer for payment terms
       const paymentTerms = corpCustomer?.paymentTerms || po.paymentTerms || "30_days";
       const days = paymentTerms === "30_days" ? 30 : paymentTerms === "14_days" ? 14 : paymentTerms === "7_days" ? 7 : 0;
+      const poRef = po.poNumber || `PO-${po.id}`;
 
       if (existingIdx >= 0) {
         const existing = invoices[existingIdx];
@@ -5827,7 +5840,6 @@ const dataService = {
       }
 
       const nextInvId = invoices.length > 0 ? Math.max(...invoices.map((i) => Number(i.id) || 0)) + 1 : 1;
-      const poRef = po.poNumber || `PO-${po.id}`;
 
       const invoice = {
         id: nextInvId,

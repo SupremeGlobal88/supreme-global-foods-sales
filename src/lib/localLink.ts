@@ -1409,17 +1409,11 @@ export async function localLinkHandler(path: string, input: any) {
       case "settings.getStatementSettings":
         result = dataService.settings.getStatementSettings();
         break;
-      case "settings.getReportSettings":
-        result = dataService.settings.getReportSettings();
-        break;
       case "settings.getSystemLogSettings":
         result = dataService.settings.getSystemLogSettings();
         break;
       case "settings.getAuditLogSettings":
         result = dataService.settings.getAuditLogSettings();
-        break;
-      case "settings.getSalesRepSettings":
-        result = dataService.settings.getSalesRepSettings();
         break;
 
       // ================================================================

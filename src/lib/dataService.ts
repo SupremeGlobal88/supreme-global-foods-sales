@@ -2295,6 +2295,23 @@ function repairOrders() {
   return generated;
 }
 
+/** Return customers deduplicated by customerCode (primary) or id (fallback).
+ *  Call this from list/search so the UI never shows duplicates even after
+ *  Firebase sync injects duplicates between page reloads. */
+function getDedupedCustomers(): any[] {
+  const map = new Map<string, any>();
+  for (const c of customers) {
+    if (!c) continue;
+    const key = (c.customerCode || "").toString().trim().toLowerCase() || String(c.id);
+    if (!key || key === "undefined" || key === "null") continue;
+    const existing = map.get(key);
+    if (!existing || isMoreRecent(c, existing)) {
+      map.set(key, c);
+    }
+  }
+  return Array.from(map.values());
+}
+
 const dataService = {
   auth: {
     me: () => {
@@ -2558,8 +2575,8 @@ const dataService = {
   },
 
   customer: {
-    list: () => customers,
-    search: ({ query }: { query: string }) => searchItems(customers, query),
+    list: () => getDedupedCustomers(),
+    search: ({ query }: { query: string }) => searchItems(getDedupedCustomers(), query),
     getById: (id: number) => customers.find((c) => c.id == id) || null,
     create: (data: any) => {
       const normName = (data.name || "").toString().trim().replace(/\s+/g, " ").toLowerCase();

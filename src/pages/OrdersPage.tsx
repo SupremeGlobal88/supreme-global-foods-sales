@@ -518,15 +518,16 @@ export default function OrdersPage() {
   }
 
   function handleCustomerSelect(cid: number | string) {
-    const customer = (customers || []).find((c) => String(c.id) === String(cid));
+    const customer = (Array.isArray(customers) ? customers : []).find((c) => String(c.id) === String(cid));
+    if (!customer) return; // Guard: if customer not found, don't corrupt form
     setFormData({ ...formData, customerId: Number(cid) || 0,
-      priceTier: (customer?.priceTier as any) || "wholesale",
-      paymentTerms: (customer?.paymentTerms as any) || "cod",
-      deliveryAddress: customer?.physicalAddress || "",
+      priceTier: (customer.priceTier as any) || "wholesale",
+      paymentTerms: (customer.paymentTerms as any) || "cod",
+      deliveryAddress: customer.physicalAddress || "",
       // Only clear items when creating a NEW order — preserve items when editing
       items: editingOrder ? formData.items : [],
     });
-    setCustomerSearch(customer?.name || "");
+    setCustomerSearch(customer.name || "");
     setShowCustomerDropdown(false);
   }
 
@@ -537,14 +538,24 @@ export default function OrdersPage() {
   }
 
   const filteredCustomers = useMemo(() => {
-    const list = (customers || []).filter(Boolean).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
+    // Defensive: ensure customers is always an array
+    const raw = Array.isArray(customers) ? customers : [];
+    // Deduplicate by customerCode or id so Firebase-sync duplicates don't break the dropdown
+    const dedupedMap = new Map<string, any>();
+    for (const c of raw) {
+      if (!c) continue;
+      const key = (c.customerCode || "").toString().trim().toLowerCase() || String(c.id);
+      if (!key || key === "undefined" || key === "null") continue;
+      dedupedMap.set(key, c);
+    }
+    const list = Array.from(dedupedMap.values()).sort((a: any, b: any) => a.name?.localeCompare(b.name || "") || 0);
     if (!showCustomerDropdown) return [];
-    const q = customerSearch.toLowerCase().trim();
+    const q = (customerSearch || "").toString().toLowerCase().trim();
     if (!q || q.length < 1) return list;
     return list.filter((c) =>
-      c.name?.toLowerCase().includes(q) ||
-      c.customerCode?.toLowerCase().includes(q) ||
-      c.city?.toLowerCase().includes(q)
+      (c.name || "").toString().toLowerCase().includes(q) ||
+      (c.customerCode || "").toString().toLowerCase().includes(q) ||
+      (c.city || "").toString().toLowerCase().includes(q)
     );
   }, [customers, customerSearch, showCustomerDropdown]);
 
@@ -1454,9 +1465,9 @@ export default function OrdersPage() {
                         {filteredCustomers.length === 0 && (
                           <div style={{ padding: 12, color: "#8A8B8C", fontSize: 12 }}>No customers found</div>
                         )}
-                        {filteredCustomers.map((c) => (
+                        {filteredCustomers.map((c, idx) => (
                           <div
-                            key={c.id}
+                            key={`cust-${c.id}-${idx}`}
                             onClick={() => { if (!editingOrder || isAdmin) handleCustomerSelect(c.id); }}
                             style={{ padding: "10px 12px", cursor: (!editingOrder || isAdmin) ? "pointer" : "not-allowed", borderBottom: "1px solid #222324", color: String(formData.customerId) === String(c.id) ? "#D4A843" : "#E8E8E9", fontSize: 13 }}
                             className="hover:bg-[#222324]"

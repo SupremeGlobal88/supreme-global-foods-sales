@@ -4563,7 +4563,8 @@ const dataService = {
      *  Uses GPS coordinates from check-ins to calculate distance
      *  and applies South African AA rates for cost estimation.
      *  ═══════════════════════════════════════════════════════════════ */
-    getDailyReport: (dateStr?: string) => {
+    getDailyReport: (input?: { date?: string }) => {
+      const dateStr = input?.date;
       const targetDate = dateStr ? new Date(dateStr) : new Date();
       const dateKey = targetDate.toDateString();
       // Include ALL check-ins for the day — even those without GPS coordinates.
@@ -4574,10 +4575,10 @@ const dataService = {
       return buildRepReport(dayCheckins, "daily", targetDate);
     },
 
-    getWeeklyReport: (year?: number, week?: number) => {
+    getWeeklyReport: (input?: { year?: number; week?: number }) => {
       const now = new Date();
-      const targetYear = year || now.getFullYear();
-      const targetWeek = week || getWeekNumber(now);
+      const targetYear = input?.year || now.getFullYear();
+      const targetWeek = input?.week || getWeekNumber(now);
       const weekCheckins = checkins.filter((ci) => {
         const d = new Date(ci.createdAt);
         return d.getFullYear() === targetYear && getWeekNumber(d) === targetWeek;
@@ -4585,10 +4586,10 @@ const dataService = {
       return buildRepReport(weekCheckins, "weekly", now, targetYear, targetWeek);
     },
 
-    getMonthlyReport: (year?: number, month?: number) => {
+    getMonthlyReport: (input?: { year?: number; month?: number }) => {
       const now = new Date();
-      const targetYear = year || now.getFullYear();
-      const targetMonth = month !== undefined ? month : now.getMonth();
+      const targetYear = input?.year || now.getFullYear();
+      const targetMonth = input?.month !== undefined ? input.month : now.getMonth();
       const monthCheckins = checkins.filter((ci) => {
         const d = new Date(ci.createdAt);
         return d.getFullYear() === targetYear && d.getMonth() === targetMonth;

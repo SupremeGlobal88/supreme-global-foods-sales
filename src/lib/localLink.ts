@@ -418,8 +418,8 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "invoice.recordPayment": {
         result = dataService.invoice.recordPayment(input);
-        if (result) {
-          await pushInvoice(result);
+        if (result && result.invoice) {
+          await pushInvoice(result.invoice);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
         }

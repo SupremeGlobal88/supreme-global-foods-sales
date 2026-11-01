@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDetails } from "@/lib/dataService";
+import { reloadFromStorage, generateInvoiceForOrder, dataService, getBankingDetails, diagnoseMissingOrders } from "@/lib/dataService";
 import { getCompanyConfig } from "@/lib/companyConfig";
 import * as staticData from "@/data/staticData";
 import {
@@ -344,19 +344,23 @@ export default function OrdersPage() {
 
   // DEEP DIAGNOSTIC: Search for missing orders across all data sources
   useEffect(() => {
-    const missingNumbers = ["SMP-20261028-09379008", "ORD-20261028-08534720"];
-    const diag = dataService.diagnoseMissingOrders(missingNumbers);
-    console.log("[ORDER DEEP DIAGNOSTIC] Results:", diag);
-    for (const f of diag.findings) {
-      console.group(`Order: ${f.orderNumber}`);
-      console.log("In orders:", f.inOrders);
-      console.log("In invoices:", f.inInvoices);
-      console.log("In audit log:", f.inAuditLog);
-      console.log("In follow-ups:", f.inFollowUps);
-      console.log("Similar orders:", f.similarOrders);
-      console.log("Similar invoices:", f.similarInvoices);
-      console.log("Audit entries:", f.auditEntries);
-      console.groupEnd();
+    try {
+      const missingNumbers = ["SMP-20261028-09379008", "ORD-20261028-08534720"];
+      const diag = diagnoseMissingOrders(missingNumbers);
+      console.log("[ORDER DEEP DIAGNOSTIC] Results:", diag);
+      for (const f of diag.findings) {
+        console.group(`Order: ${f.orderNumber}`);
+        console.log("In orders:", f.inOrders);
+        console.log("In invoices:", f.inInvoices);
+        console.log("In audit log:", f.inAuditLog);
+        console.log("In follow-ups:", f.inFollowUps);
+        console.log("Similar orders:", f.similarOrders);
+        console.log("Similar invoices:", f.similarInvoices);
+        console.log("Audit entries:", f.auditEntries);
+        console.groupEnd();
+      }
+    } catch (e) {
+      console.error("[ORDER DIAGNOSTIC] Error:", e);
     }
   }, []);
 

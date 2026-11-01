@@ -362,7 +362,7 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.order.findByNumber(input);
         break;
       case "order.diagnoseMissing":
-        result = dataService.diagnoseMissingOrders(input);
+        result = dataService.diagnoseMissingOrders ? dataService.diagnoseMissingOrders(input) : null;
         break;
 
       // ================================================================

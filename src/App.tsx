@@ -2,7 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pushInvoice } from "@/lib/firebaseSync";
 
 import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
@@ -110,6 +110,22 @@ export default function App() {
       reloadFromStorage();
     }
   }, [isAuthenticated, isCloudReady]);
+
+  // Listen for Sage date fixes and push corrected invoices to Firebase
+  useEffect(() => {
+    const handler = async (e: any) => {
+      const fixedInvs = e.detail?.invoices || [];
+      for (const inv of fixedInvs) {
+        await pushInvoice(inv);
+      }
+      if (fixedInvs.length > 0) {
+        utils.invoice.list.invalidate();
+        utils.invoice.getStats.invalidate();
+      }
+    };
+    window.addEventListener("sgf:sageDatesFixed", handler);
+    return () => window.removeEventListener("sgf:sageDatesFixed", handler);
+  }, [utils]);
 
   // CRITICAL FIX: Use tRPC utils.invalidate() instead of queryClient.invalidateQueries().
   // tRPC React Query wraps query keys internally — manual queryClient.invalidateQueries

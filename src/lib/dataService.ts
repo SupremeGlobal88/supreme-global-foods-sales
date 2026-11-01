@@ -302,6 +302,8 @@ function load() {
 
     const i = safeLoadArray("sgf_invoices");
     if (i) invoices = i;
+    // Auto-fix corrupted Sage invoice dates on every startup
+    fixSageInvoiceDates();
     const a = safeLoadArray("sgf_appointments");
     if (a) appointments = a;
     const ci = safeLoadArray("sgf_checkins");
@@ -453,12 +455,14 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
       inv.updatedAt = new Date().toISOString();
       changed++;
       changedInvs.push(inv);
-
     }
   }
   if (changed > 0) {
     saveItem("sgf_invoices", invoices);
-
+    // Dispatch event so App.tsx can push fixed invoices to Firebase (cloud-first)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("sgf:sageDatesFixed", { detail: { count: changed, invoices: changedInvs } }));
+    }
   }
   return { changed, invoices: changedInvs };
 }

@@ -70,7 +70,7 @@ function getCurrentSalesReps(): SalesRep[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((r: any): SalesRep => {
+        const mapped = parsed.map((r: any): SalesRep => {
           if (typeof r === "string") return { name: r, isActive: true };
           return {
             name: r?.name || String(r || ""),
@@ -81,6 +81,16 @@ function getCurrentSalesReps(): SalesRep[] {
             isActive: r?.isActive !== false,
           };
         }).filter((r: SalesRep) => r.name);
+        // Deduplicate by name (case-insensitive), keep most recently-updated entry
+        const repMap = new Map<string, SalesRep>();
+        for (const r of mapped) {
+          const key = r.name.toLowerCase().trim();
+          const existing = repMap.get(key);
+          if (!existing) {
+            repMap.set(key, r);
+          }
+        }
+        return Array.from(repMap.values());
       }
     }
   } catch { /* ignore */ }
@@ -976,14 +986,47 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   }
   customers = Array.from(custMap.values());
 
+  // Deduplicate sales reps: group by normalized name, keep first occurrence
+  const beforeReps = (() => {
+    try {
+      const raw = getStorageItem("sgf_salesReps");
+      return raw ? JSON.parse(raw).length : 0;
+    } catch { return 0; }
+  })();
+  try {
+    const raw = getStorageItem("sgf_salesReps");
+    if (raw) {
+      const reps = JSON.parse(raw);
+      if (Array.isArray(reps) && reps.length > 0) {
+        const repMap = new Map<string, any>();
+        for (const r of reps) {
+          const name = (typeof r === "string" ? r : r?.name || "").toString().trim().toLowerCase();
+          if (!name) continue;
+          if (!repMap.has(name)) repMap.set(name, r);
+        }
+        const dedupedReps = Array.from(repMap.values());
+        if (dedupedReps.length < reps.length) {
+          setStorageItem("sgf_salesReps", JSON.stringify(dedupedReps));
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  const afterReps = (() => {
+    try {
+      const raw = getStorageItem("sgf_salesReps");
+      return raw ? JSON.parse(raw).length : 0;
+    } catch { return 0; }
+  })();
+
   const result = {
     ordersRemoved: beforeOrders - orders.length,
     invoicesRemoved: beforeInvoices - invoices.length,
     customersRemoved: beforeCustomers - customers.length,
+    salesRepsRemoved: beforeReps - afterReps,
   };
 
-  if (result.ordersRemoved > 0 || result.invoicesRemoved > 0 || result.customersRemoved > 0) {
-    logSystemEvent("WARN", "deduplicateAll", `Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers`, { ordersRemoved: result.ordersRemoved, invoicesRemoved: result.invoicesRemoved, customersRemoved: result.customersRemoved, ordersRemaining: orders.length, invoicesRemaining: invoices.length, customersRemaining: customers.length });
+  if (result.ordersRemoved > 0 || result.invoicesRemoved > 0 || result.customersRemoved > 0 || result.salesRepsRemoved > 0) {
+    logSystemEvent("WARN", "deduplicateAll", `Removed ${result.ordersRemoved} duplicate orders, ${result.invoicesRemoved} duplicate invoices, ${result.customersRemoved} duplicate customers, ${result.salesRepsRemoved} duplicate salesReps`, { ordersRemoved: result.ordersRemoved, invoicesRemoved: result.invoicesRemoved, customersRemoved: result.customersRemoved, salesRepsRemoved: result.salesRepsRemoved, ordersRemaining: orders.length, invoicesRemaining: invoices.length, customersRemaining: customers.length });
     if (result.ordersRemoved > 0) logAudit("DELETE", "order", 0, `deduplicateAll removed ${result.ordersRemoved} duplicate orders. Remaining: ${orders.length}`);
     if (result.invoicesRemoved > 0) logAudit("DELETE", "invoice", 0, `deduplicateAll removed ${result.invoicesRemoved} duplicate invoices. Remaining: ${invoices.length}`);
     if (result.customersRemoved > 0) logAudit("DELETE", "customer", 0, `deduplicateAll removed ${result.customersRemoved} duplicate customers. Remaining: ${customers.length}`);
@@ -4538,7 +4581,8 @@ const dataService = {
     /** Sales breakdown per rep: today, this week, this month */
     getSalesBreakdown: () => {
       const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10);
+      // Use local date (not UTC) for today — fixes timezone issues for SAST (UTC+2)
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
       // Week: Monday to Sunday
       const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ... 6=Sat

@@ -948,11 +948,12 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   const beforeInvoices = invoices.length;
   const beforeCustomers = customers.length;
 
-  // Deduplicate orders: group by orderNumber, keep most recent
+  // Deduplicate orders: group by normalized orderNumber, keep most recent
   const orderMap = new Map<string, any>();
   for (const o of orders) {
     if (!o) continue; // null-guard
-    const key = o.orderNumber || o.id;
+    const key = String(o.orderNumber || o.id || "").trim().toLowerCase();
+    if (!key || key === "undefined" || key === "null") continue;
     const existing = orderMap.get(key);
     if (!existing || isMoreRecent(o, existing)) {
       orderMap.set(key, o);
@@ -960,11 +961,12 @@ function deduplicateAll(): { ordersRemoved: number; invoicesRemoved: number; cus
   }
   orders = Array.from(orderMap.values());
 
-  // Deduplicate invoices: group by invoiceNumber (for SGF), keep most recent
+  // Deduplicate invoices: group by normalized invoiceNumber, keep most recent
   const invMap = new Map<string, any>();
   for (const inv of invoices) {
     if (!inv) continue; // null-guard
-    const key = inv.invoiceNumber || inv.id;
+    const key = String(inv.invoiceNumber || inv.id || "").trim().toLowerCase();
+    if (!key || key === "undefined" || key === "null") continue;
     const existing = invMap.get(key);
     if (!existing || isMoreRecent(inv, existing)) {
       invMap.set(key, inv);
@@ -1477,6 +1479,10 @@ function _doReloadFromStorage(keys?: string[]): void {
       if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
     } catch { /* keep current */ }
   }
+
+  // After every reload from storage (especially Firebase sync), run deduplication
+  // to ensure sync events from other devices never reintroduce duplicates.
+  deduplicateAll();
 }
 
 /** Fix duplicate SGF invoice numbers. Renames duplicates to next available number.
@@ -2312,6 +2318,38 @@ function getDedupedCustomers(): any[] {
   return Array.from(map.values());
 }
 
+/** Return invoices deduplicated by normalized invoiceNumber, keep most recent.
+ *  Mirrors the logic in deduplicateAll() for read-time safety. */
+function getDedupedInvoices(): any[] {
+  const map = new Map<string, any>();
+  for (const inv of invoices) {
+    if (!inv) continue;
+    const key = String(inv.invoiceNumber || inv.id || "").trim().toLowerCase();
+    if (!key || key === "undefined" || key === "null") continue;
+    const existing = map.get(key);
+    if (!existing || isMoreRecent(inv, existing)) {
+      map.set(key, inv);
+    }
+  }
+  return Array.from(map.values());
+}
+
+/** Return orders deduplicated by normalized orderNumber, keep most recent.
+ *  Mirrors the logic in deduplicateAll() for read-time safety. */
+function getDedupedOrders(): any[] {
+  const map = new Map<string, any>();
+  for (const o of orders) {
+    if (!o) continue;
+    const key = String(o.orderNumber || o.id || "").trim().toLowerCase();
+    if (!key || key === "undefined" || key === "null") continue;
+    const existing = map.get(key);
+    if (!existing || isMoreRecent(o, existing)) {
+      map.set(key, o);
+    }
+  }
+  return Array.from(map.values());
+}
+
 const dataService = {
   auth: {
     me: () => {
@@ -2755,7 +2793,7 @@ const dataService = {
   },
 
   order: {
-    list: () => orders
+    list: () => getDedupedOrders()
       .map((o) => {
         const customer = customers.find((c) => c.id == o.customerId);
         return { ...o, customer: customer || null };
@@ -3283,7 +3321,7 @@ const dataService = {
   },
 
   invoice: {
-    list: () => invoices
+    list: () => getDedupedInvoices()
       .map((inv) => {
         const customer = customers.find((c) => c.id == inv.customerId);
         return {

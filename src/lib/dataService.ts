@@ -467,6 +467,12 @@ export function fixSageInvoiceDates(): { changed: number; invoices: any[] } {
   return { changed, invoices: changedInvs };
 }
 
+/** Return a shallow copy of the full in-memory invoices array.
+ *  Useful for bulk-push to Firebase after fixing corrupted data. */
+export function getAllInvoices(): any[] {
+  return [...invoices];
+}
+
 /**
  * Fix orders that have a matching invoice but lost their invoiceNumber.
  * This happens when:

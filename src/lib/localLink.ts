@@ -300,8 +300,17 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "order.convertQuote": {
-        result = dataService.order.convertQuote(input);
+      case "order.updateStatus": {
+        result = dataService.order.updateStatus(input);
+        if (result) {
+          await pushOrder(result.order);
+          reloadFromStorage(["sgf_orders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
+        }
+        break;
+      }
+      case "order.convertQuoteToOrder": {
+        result = dataService.order.convertQuoteToOrder(input);
         if (result) {
           await pushOrder(result);
           reloadFromStorage(["sgf_orders"]);
@@ -583,6 +592,9 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       case "specialPrice.getByCustomer":
         result = dataService.specialPrice.getByCustomer(input);
+        break;
+      case "specialPrice.listByCustomer":
+        result = dataService.specialPrice.listByCustomer(input);
         break;
       case "specialPrice.create": {
         result = dataService.specialPrice.create(input);

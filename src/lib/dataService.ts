@@ -4922,7 +4922,7 @@ const dataService = {
   collections: {
     getOverdueInvoices: () => {
       const now = new Date();
-      return invoices
+      return getDedupedInvoices()
         .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
         .map((inv) => {
           const customer = customers.find((c) => c.id == inv.customerId);
@@ -4980,7 +4980,7 @@ const dataService = {
       return { totalOutstanding, totalOverdueInvoices: overdueInvoices.length, onHold: accountHolds.filter((h) => h.status === "active").length, pendingPromises: collectionPromises.filter((p) => p.status === "pending").length, totalCollectedToday: 0 };
     },
     getCustomerPaymentHistory: (customerId: number) => {
-      return invoices
+      return getDedupedInvoices()
         .filter((inv) => inv.customerId == customerId)
         .map((inv) => ({
           ...inv,

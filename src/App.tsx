@@ -132,6 +132,10 @@ export default function App() {
             case "invoices":
               utils.invoice.list.invalidate();
               utils.invoice.getStats.invalidate();
+              utils.collections.getOverdueInvoices.invalidate();
+              utils.collections.getDailyReport.invalidate();
+              utils.collections.getStats.invalidate();
+              utils.collections.getFollowUpsDue.invalidate();
               break;
             case "orders":
               utils.order.list.invalidate();

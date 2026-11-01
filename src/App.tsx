@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pushInvoice } from "@/lib/firebaseSync";
 
-import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
+import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies, fixSageInvoiceDates } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -112,19 +112,23 @@ export default function App() {
   }, [isAuthenticated, isCloudReady]);
 
   // Listen for Sage date fixes and push corrected invoices to Firebase
+  // Fix corrupted Sage invoice dates AFTER React mounts so we can push to Firebase.
+  // The fix in dataService.ts runs during module init (before React) so the event
+  // fires before any listener is attached. We re-run it here once on mount.
   useEffect(() => {
-    const handler = async (e: any) => {
-      const fixedInvs = e.detail?.invoices || [];
-      for (const inv of fixedInvs) {
-        await pushInvoice(inv);
-      }
-      if (fixedInvs.length > 0) {
+    const fixAndPush = async () => {
+      const { changed, invoices: fixedInvs } = fixSageInvoiceDates();
+      if (changed > 0 && isFirebaseReady()) {
+        for (const inv of fixedInvs) {
+          await pushInvoice(inv);
+        }
         utils.invoice.list.invalidate();
         utils.invoice.getStats.invalidate();
       }
     };
-    window.addEventListener("sgf:sageDatesFixed", handler);
-    return () => window.removeEventListener("sgf:sageDatesFixed", handler);
+    // Delay slightly to ensure Firebase is initialized
+    const timer = setTimeout(fixAndPush, 2000);
+    return () => clearTimeout(timer);
   }, [utils]);
 
   // CRITICAL FIX: Use tRPC utils.invalidate() instead of queryClient.invalidateQueries().

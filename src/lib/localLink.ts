@@ -361,6 +361,9 @@ export async function localLinkHandler(path: string, input: any) {
       case "order.findByNumber":
         result = dataService.order.findByNumber(input);
         break;
+      case "order.diagnoseMissing":
+        result = dataService.diagnoseMissingOrders(input);
+        break;
 
       // ================================================================
       //  INVOICES

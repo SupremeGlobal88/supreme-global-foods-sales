@@ -481,6 +481,75 @@ export function getAllOrders(): any[] {
   return [...orders];
 }
 
+/** Deep diagnostic search for missing orders.
+ *  Searches orders, invoices, audit log, and follow-ups by:
+ *    - exact orderNumber
+ *    - partial orderNumber (prefix/suffix)
+ *    - date range
+ *    - invoice linked to orderNumber
+ *  Returns comprehensive findings for data recovery. */
+export function diagnoseMissingOrders(orderNumbers: string[]): {
+  orderNumbers: string[];
+  findings: Array<{
+    orderNumber: string;
+    inOrders: boolean;
+    inInvoices: boolean;
+    inAuditLog: boolean;
+    inFollowUps: boolean;
+    similarOrders: any[];
+    similarInvoices: any[];
+    auditEntries: any[];
+  }>;
+} {
+  load(); // ensure freshest data
+  const findings = orderNumbers.map((num) => {
+    const norm = String(num).trim().toLowerCase();
+    const prefix = norm.split("-")[0];
+    const datePart = norm.split("-")[1];
+
+    // Exact match in orders
+    const exactOrder = orders.find((o) => String(o.orderNumber || "").toLowerCase() === norm);
+
+    // Exact match in invoices (by orderNumber field)
+    const exactInvoice = invoices.find((i) => String(i.orderNumber || "").toLowerCase() === norm);
+
+    // Partial matches: same prefix + date part
+    const similarOrders = orders.filter((o) => {
+      const on = String(o.orderNumber || "").toLowerCase();
+      return on.includes(datePart) || (on.startsWith(prefix) && on.includes(datePart));
+    });
+
+    const similarInvoices = invoices.filter((i) => {
+      const invNum = String(i.invoiceNumber || "").toLowerCase();
+      const ordNum = String(i.orderNumber || "").toLowerCase();
+      return ordNum.includes(datePart) || invNum.includes(datePart);
+    });
+
+    // Audit log search
+    const auditEntries = auditLog.filter((entry) => {
+      const detail = String(entry.details || "").toLowerCase();
+      const entityId = String(entry.entityId || "");
+      return detail.includes(norm) || detail.includes(datePart);
+    });
+
+    // Follow-up search
+    const inFollowUps = followUps.some((f) => String(f.orderNumber || "").toLowerCase() === norm);
+
+    return {
+      orderNumber: num,
+      inOrders: !!exactOrder,
+      inInvoices: !!exactInvoice,
+      inAuditLog: auditEntries.length > 0,
+      inFollowUps,
+      similarOrders,
+      similarInvoices,
+      auditEntries,
+    };
+  });
+
+  return { orderNumbers, findings };
+}
+
 /** Repair orders whose status was reverted by stale Firebase data.
  *  Two corruption patterns are detected:
  *    1. Order status is "picking" or "pending" but its invoice is "sent"

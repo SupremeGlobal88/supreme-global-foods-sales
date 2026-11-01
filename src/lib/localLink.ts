@@ -1068,6 +1068,9 @@ export async function localLinkHandler(path: string, input: any) {
       case "salesRep.getStats":
         result = dataService.salesRep.getStats();
         break;
+      case "salesRep.getSalesBreakdown":
+        result = dataService.salesRep.getSalesBreakdown();
+        break;
       case "salesRep.getRepCustomers":
         result = dataService.salesRep.getRepCustomers(input);
         break;

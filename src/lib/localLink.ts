@@ -416,12 +416,83 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "invoice.applyCreditNote": {
-        result = dataService.invoice.applyCreditNote(input);
+      case "invoice.getReceipts":
+        result = dataService.invoice.getReceipts();
+        break;
+      case "invoice.editPayment": {
+        result = dataService.invoice.editPayment(input);
         if (result) {
           await pushInvoice(result);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.deletePayment": {
+        result = dataService.invoice.deletePayment(input);
+        if (result) {
+          await pushInvoice(result);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.createCreditNote": {
+        result = dataService.invoice.createCreditNote(input);
+        if (result) {
+          await pushCreditNote(result.creditNote);
+          if (result.updatedInvoice) await pushInvoice(result.updatedInvoice);
+          reloadFromStorage(["sgf_creditNotes", "sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.voidCreditNote": {
+        result = dataService.invoice.voidCreditNote(input);
+        if (result) {
+          await pushCreditNote(result);
+          reloadFromStorage(["sgf_creditNotes", "sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.allocateCredit": {
+        result = dataService.invoice.allocateCredit(input);
+        if (result && result.success && result.invoice) {
+          await pushInvoice(result.invoice);
+          reloadFromStorage(["sgf_invoices", "sgf_creditNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.applyOverpaymentCredit": {
+        result = dataService.invoice.applyOverpaymentCredit(input);
+        if (result && result.success) {
+          if (result.fromInvoice) await pushInvoice(result.fromInvoice);
+          if (result.toInvoice) await pushInvoice(result.toInvoice);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 2 } }));
+        }
+        break;
+      }
+      case "invoice.refundCreditNote": {
+        result = dataService.invoice.refundCreditNote(input);
+        if (result && result.success) {
+          await pushCreditNote(result.creditNote);
+          reloadFromStorage(["sgf_creditNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.createOrderFromInvoice": {
+        result = dataService.invoice.createFromInvoice(input);
+        if (result && !result.error) {
+          await pushOrder(result);
+          // The invoice was also updated inside createFromInvoice — find and push it
+          const linkedInv = dataService.invoice.getById(input);
+          if (linkedInv) await pushInvoice(linkedInv);
+          reloadFromStorage(["sgf_orders", "sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
         }
         break;
       }

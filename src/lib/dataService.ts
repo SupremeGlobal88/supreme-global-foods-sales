@@ -357,6 +357,10 @@ function load() {
   const pll = getStorageItem("sgf_packingListLines");
   if (pll) { const d = JSON.parse(pll); if (Array.isArray(d)) packingListLines = d; }
   else packingListLines = [];
+
+  // DEDUPLICATE: Remove duplicate orders, invoices, and customers.
+  // This is safe and fast (O(n) using Maps) — prevents duplicates from Firebase sync.
+  deduplicateAll();
 }
 
 /** Fix customers with missing/invalid codes. Also converts remaining CUST codes to numeric.

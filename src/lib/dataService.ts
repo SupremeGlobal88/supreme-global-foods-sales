@@ -840,9 +840,10 @@ export function matchBankPayments(rows: BankStatementRow[]): PaymentMatchResult[
 
 /** Process approved payment allocations using existing recordPayment logic.
  *  Each allocation pushes to Firebase via the standard mutation path. */
-export function allocateBankPayments(allocations: any[]): { processed: number; errors: string[] } {
+export function allocateBankPayments(allocations: any[]): { success: boolean; processed: number; errors: string[]; updatedInvoices: any[] } {
   const errors: string[] = [];
   let processed = 0;
+  const updatedInvoices: any[] = [];
   for (const alloc of allocations) {
     try {
       const { invoiceId, amount, paidDate, customerName, invoiceNumber } = alloc;
@@ -850,7 +851,7 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
       if (idx < 0) { errors.push(`Invoice ${invoiceNumber} not found`); continue; }
       const inv = invoices[idx];
       // Auto-activate draft invoices
-      if (inv.status === "draft") { inv.status = "sent"; inv.updatedAt = new Date().toISOString(); }
+      if (inv.status === "draft") { inv.status = "sent"; }
       const currentPaid = Number(inv.amountPaid || 0);
       const newPaid = currentPaid + amount;
       const total = Number(inv.total || inv.totalAmount || 0);
@@ -871,13 +872,20 @@ export function allocateBankPayments(allocations: any[]): { processed: number; e
         notes: `Bank statement import — ${customerName}`,
         createdAt: new Date().toISOString(),
       });
+      // CRITICAL: update timestamp so deduplication keeps THIS copy and Firebase sync treats it as newer
+      inv.updatedAt = new Date().toISOString();
+      updatedInvoices.push(inv);
       processed++;
     } catch (e: any) {
       errors.push(`Failed to process ${alloc.invoiceNumber}: ${e.message}`);
     }
   }
-  if (processed > 0) saveItem("sgf_invoices", invoices);
-  return { processed, errors };
+  if (processed > 0) {
+    saveItem("sgf_invoices", invoices);
+    saveItem("sgf_receipts", receipts);
+    saveItem("sgf_collectionNotes", collectionNotes);
+  }
+  return { success: processed > 0, processed, errors, updatedInvoices };
 }
 
 /** Auto-link Sage invoices to customers on every app startup.

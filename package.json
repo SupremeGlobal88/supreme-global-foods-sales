@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "unset NODE_OPTIONS && node combine-chunks.js && vite build",
+    "build": "node build-with-logging.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "check": "tsc -b",

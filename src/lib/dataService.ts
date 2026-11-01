@@ -3398,6 +3398,19 @@ const dataService = {
       }
       return null;
     },
+    cancelInvoiceFromOrder: (orderId: number) => {
+      const idx = invoices.findIndex((inv) => inv.orderId == orderId);
+      if (idx < 0) return null;
+      const inv = invoices[idx];
+      if (inv.status === "cancelled") return null;
+      inv.status = "cancelled";
+      inv.balanceDue = 0;
+      inv.cancelledAt = new Date().toISOString();
+      inv.cancellationReason = "Order cancelled";
+      inv.updatedAt = new Date().toISOString();
+      saveItem("sgf_invoices", invoices);
+      return inv;
+    },
     delete: (id: number) => {
       const idx = invoices.findIndex((i) => i.id == id);
       if (idx < 0) return null;

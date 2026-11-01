@@ -295,6 +295,13 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.order.update({ id: cancelId, data: { status: "cancelled", cancellationReason: reason, updatedAt: new Date().toISOString() } });
         if (result) {
           await pushOrder(result);
+          // Also cancel the linked invoice
+          const cancelledInvoice = dataService.invoice.cancelInvoiceFromOrder(cancelId);
+          if (cancelledInvoice) {
+            await pushInvoice(cancelledInvoice);
+            reloadFromStorage(["sgf_invoices"]);
+            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+          }
           reloadFromStorage(["sgf_orders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
         }
@@ -304,6 +311,12 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.order.updateStatus(input);
         if (result) {
           await pushOrder(result.order);
+          // If the order was cancelled, also push the cancelled invoice to Firebase
+          if (result.cancelledInvoice) {
+            await pushInvoice(result.cancelledInvoice);
+            reloadFromStorage(["sgf_invoices"]);
+            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+          }
           reloadFromStorage(["sgf_orders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
         }

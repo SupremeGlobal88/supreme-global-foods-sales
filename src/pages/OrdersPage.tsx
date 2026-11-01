@@ -1725,14 +1725,23 @@ export default function OrdersPage() {
                   const creditLimit = Number(customer.creditLimit || 0);
                   if (creditLimit > 0 && formData.paymentTerms !== "cod") {
                     const outstanding = (invoices || [])
-                      .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && inv.status !== "paid")
-                      .reduce((sum: number, inv: any) => sum + Number(inv.total || 0), 0);
+                      .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+                      .reduce((sum: number, inv: any) => sum + (inv.balanceDue || 0), 0);
                     if (outstanding >= creditLimit) blockingReasons.push(`Credit limit exceeded (R${outstanding.toFixed(2)} / R${creditLimit.toFixed(2)})`);
                   }
                   if (formData.paymentTerms === "cod") {
+                    const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
                     const unpaidCOD = (invoices || [])
-                      .filter((inv: any) => inv.customerId == customer.id && inv.status !== "cancelled" && inv.status !== "paid" && inv.paymentTerms === "cod");
-                    if (unpaidCOD.length > 0) blockingReasons.push(`${unpaidCOD.length} unpaid COD invoice(s)`);
+                      .filter((inv: any) => {
+                        if (inv.customerId != customer.id) return false;
+                        if (inv.status === "cancelled") return false;
+                        if ((inv.balanceDue || 0) <= 0.01) return false;
+                        return new Date(inv.invoiceDate || inv.createdAt) < twoDaysAgo;
+                      });
+                    if (unpaidCOD.length > 0) {
+                      const totalUnpaid = unpaidCOD.reduce((s: number, inv: any) => s + (inv.balanceDue || 0), 0);
+                      blockingReasons.push(`COD unpaid >2 days: ${unpaidCOD.length} invoice(s), R${totalUnpaid.toFixed(2)}`);
+                    }
                   }
                 }
                 if (belowItems.length === 0 && blockingReasons.length === 0) return null;

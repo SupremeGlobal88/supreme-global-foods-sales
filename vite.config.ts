@@ -20,6 +20,14 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "react-router"],
+          charts: ["recharts"],
+        },
+      },
+    },
   },
   esbuild: {
     logOverride: { "this-is-undefined-in-esm": "silent" },

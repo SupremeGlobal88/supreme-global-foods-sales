@@ -300,21 +300,21 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "order.updateStatus":
+      case "order.updateStatus": {
+        result = dataService.order.updateStatus(input);
+        if (result) {
+          await pushOrder(result.order);
+          reloadFromStorage(["sgf_orders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
+        }
+        break;
+      }
       case "order.generateMissingInvoices": {
         result = dataService.order.generateMissingInvoices();
         if (result && result.success) {
           for (const inv of result.invoices || []) await pushInvoice(inv);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.invoices?.length || 0 } }));
-        }
-        break;
-      } {
-        result = dataService.order.updateStatus(input);
-        if (result) {
-          await pushOrder(result.order);
-          reloadFromStorage(["sgf_orders"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
         }
         break;
       }
@@ -456,7 +456,15 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "invoice.voidCreditNote":
+      case "invoice.voidCreditNote": {
+        result = dataService.invoice.voidCreditNote(input);
+        if (result) {
+          await pushCreditNote(result);
+          reloadFromStorage(["sgf_creditNotes", "sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
+        }
+        break;
+      }
       case "invoice.allocateBankPayments": {
         result = dataService.invoice.allocateBankPayments(input);
         if (result && result.success) {
@@ -511,14 +519,6 @@ export async function localLinkHandler(path: string, input: any) {
           for (const inv of result.updated || []) await pushInvoice(inv);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.updated?.length || 0 } }));
-        }
-        break;
-      } {
-        result = dataService.invoice.voidCreditNote(input);
-        if (result) {
-          await pushCreditNote(result);
-          reloadFromStorage(["sgf_creditNotes", "sgf_invoices"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
         }
         break;
       }
@@ -645,10 +645,10 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "appointment.update":
       case "appointment.getStats":
         result = dataService.appointment.getStats();
-        break; {
+        break;
+      case "appointment.update": {
         const { id: aid, data: adata } = input;
         result = dataService.appointment.update({ id: aid, data: adata });
         if (result) {
@@ -701,13 +701,22 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "checkIn.update":
       case "checkIn.checkout": {
         result = dataService.checkIn.checkout(input);
         if (result) {
           await pushCheckin(result);
           reloadFromStorage(["sgf_checkins"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkins", count: 1 } }));
+        }
+        break;
+      }
+      case "checkIn.update": {
+        const { id: cid, data: cdata } = input;
+        result = dataService.checkIn.update({ id: cid, data: cdata });
+        if (result) {
+          await pushCheckin(result);
+          reloadFromStorage(["sgf_checkins"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } }));
         }
         break;
       }
@@ -728,16 +737,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       case "checkIn.setAARate":
         result = dataService.checkIn.setAARate(input);
-        break; {
-        const { id: cid, data: cdata } = input;
-        result = dataService.checkIn.update({ id: cid, data: cdata });
-        if (result) {
-          await pushCheckin(result);
-          reloadFromStorage(["sgf_checkins"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 1 } }));
-        }
         break;
-      }
       case "checkIn.delete": {
         result = dataService.checkIn.delete(input);
         if (result?.success) {
@@ -761,6 +761,8 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.specialPrice.getByCustomer(input);
         break;
       case "specialPrice.listByCustomer":
+        result = dataService.specialPrice.listByCustomer(input);
+        break;
       case "sampleReport.getAll":
         result = dataService.sampleReport.getAll();
         break;
@@ -776,8 +778,6 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-        result = dataService.specialPrice.listByCustomer(input);
-        break;
       case "specialPrice.create": {
         result = dataService.specialPrice.create(input);
         if (result) {
@@ -831,13 +831,13 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "followUp.update":
       case "followUp.getStats":
         result = dataService.followUp.getStats();
         break;
       case "followUp.listAll":
         result = dataService.followUp.listAll();
-        break; {
+        break;
+      case "followUp.update": {
         const { id: fuid, data: fudata } = input;
         result = dataService.followUp.update({ id: fuid, data: fudata });
         if (result) {
@@ -956,13 +956,22 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "collectionPromise.update":
       case "collections.addNote": {
         result = dataService.collections.addNote(input);
         if (result) {
           await pushCollectionNote(result);
           reloadFromStorage(["sgf_collectionNotes"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionNotes", count: 1 } }));
+        }
+        break;
+      }
+      case "collectionPromise.update": {
+        const { id: cpid, data: cpdata } = input;
+        result = dataService.collectionPromise.update({ id: cpid, data: cpdata });
+        if (result) {
+          await pushCollectionPromise(result);
+          reloadFromStorage(["sgf_collectionPromises"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 1 } }));
         }
         break;
       }
@@ -1005,15 +1014,6 @@ export async function localLinkHandler(path: string, input: any) {
           reloadFromStorage(["sgf_accountHolds"]);
         }
         break;
-      } {
-        const { id: cpid, data: cpdata } = input;
-        result = dataService.collectionPromise.update({ id: cpid, data: cpdata });
-        if (result) {
-          await pushCollectionPromise(result);
-          reloadFromStorage(["sgf_collectionPromises"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 1 } }));
-        }
-        break;
       }
       case "collectionPromise.delete": {
         result = dataService.collectionPromise.delete(input);
@@ -1028,7 +1028,6 @@ export async function localLinkHandler(path: string, input: any) {
       // ================================================================
       //  AUDIT LOG
       // ================================================================
-      case "auditLog.list":
       case "audit.getCheckInReport":
         result = dataService.audit.getCheckInReport(input);
         break;
@@ -1041,6 +1040,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "audit.getStats":
         result = dataService.audit.getStats();
         break;
+      case "auditLog.list":
         result = dataService.auditLog.list();
         break;
       case "auditLog.getRecent":
@@ -1149,7 +1149,6 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "purchaseOrder.update":
       case "purchaseOrder.updateStatus": {
         result = dataService.purchaseOrder.updateStatus(input);
         if (result) {
@@ -1158,7 +1157,8 @@ export async function localLinkHandler(path: string, input: any) {
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
         }
         break;
-      } {
+      }
+      case "purchaseOrder.update": {
         const { id: poid, data: podata } = input;
         result = dataService.purchaseOrder.update({ id: poid, data: podata });
         if (result) {
@@ -1240,7 +1240,6 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "coc.update":
       case "coc.bulkGenerateForPO": {
         result = dataService.coc.bulkGenerateForPO(input);
         if (result && result.success) {
@@ -1250,21 +1249,22 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "coc.generateForInvoice": {
-        result = dataService.coc.generateForInvoice(input);
-        if (result) {
-          await pushCOC(result);
-          reloadFromStorage(["sgf_cocs"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: 1 } }));
-        }
-        break;
-      } {
+      case "coc.update": {
         const { id: cocid, data: cocdata } = input;
         result = dataService.coc.update({ id: cocid, data: cocdata });
         if (result) {
           await pushCOC(result);
           reloadFromStorage(["sgf_certificatesOfCompliance"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } }));
+        }
+        break;
+      }
+      case "coc.generateForInvoice": {
+        result = dataService.coc.generateForInvoice(input);
+        if (result) {
+          await pushCOC(result);
+          reloadFromStorage(["sgf_cocs"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: 1 } }));
         }
         break;
       }
@@ -1334,7 +1334,6 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "salesRep.update":
       case "salesRep.toggleActive": {
         result = dataService.salesRep.toggleActive(input);
         if (result) {
@@ -1343,7 +1342,8 @@ export async function localLinkHandler(path: string, input: any) {
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
         }
         break;
-      } {
+      }
+      case "salesRep.update": {
         const { id: srid, data: srdata } = input;
         result = dataService.salesRep.update({ id: srid, data: srdata });
         if (result) {

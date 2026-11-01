@@ -31,6 +31,7 @@ async function combineChunks(prefix, outputFile) {
   }
 }
 
+// Combine all chunk files into their respective output files
 await combineChunks('dataService', 'dataService.ts');
 await combineChunks('localLink', 'localLink.ts');
 await combineChunks('firebaseSync', 'firebaseSync.ts');

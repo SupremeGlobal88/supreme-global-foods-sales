@@ -98,7 +98,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "user.delete": {
         result = dataService.user.delete(input);
         if (result?.success) {
-          await pushUserDelete(input);
+          await pushUserDelete(input.id);
           reloadFromStorage(["sgf_users"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 0 } }));
         }
@@ -106,8 +106,9 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "user.toggleActive": {
         result = dataService.user.toggleActive(input);
-        if (result) {
-          await pushUser(result);
+        if (result?.success) {
+          const updatedUser = dataService.user.getById(input.id);
+          if (updatedUser) await pushUser(updatedUser);
           reloadFromStorage(["sgf_users"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } }));
         }
@@ -115,8 +116,9 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "user.resetPin": {
         result = dataService.user.resetPin(input);
-        if (result) {
-          await pushUser(result);
+        if (result?.success) {
+          const updatedUser = dataService.user.getById(input.id);
+          if (updatedUser) await pushUser(updatedUser);
           reloadFromStorage(["sgf_users"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "users", count: 1 } }));
         }

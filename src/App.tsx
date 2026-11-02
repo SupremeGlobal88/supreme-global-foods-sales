@@ -234,6 +234,7 @@ export default function App() {
               utils.followUpAction.list.invalidate();
               break;
             case "users":
+              reloadFromStorage(["sgf_users"]);
               utils.user.list.invalidate();
               break;
             case "salesReps":

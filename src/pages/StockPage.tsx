@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
@@ -263,21 +263,13 @@ export default function StockPage() {
 
           // Get quantity from SOH column
           const qtyVal = row[colIdx.soh];
-          let quantity = 0;
-          if (qtyVal !== "" && qtyVal !== undefined && qtyVal !== null) {
-            // Strip currency symbols, commas, and whitespace
-            const cleaned = String(qtyVal).replace(/[Rr$\s,]/g, "").trim();
-            const parsed = parseInt(cleaned, 10);
-            quantity = Number.isFinite(parsed) ? parsed : 0;
-          }
+          const quantity = qtyVal !== "" && qtyVal !== undefined ? parseInt(String(qtyVal)) || 0 : 0;
 
           // Get prices (may be empty for some rows like THREADS)
           // Return undefined when column missing or cell empty so bulkCreate keeps existing prices
           const getPrice = (idx: number) => {
-            if (idx < 0 || row[idx] === "" || row[idx] === undefined || row[idx] === null) return undefined;
-            // Strip currency symbols, commas, and whitespace before parsing
-            const cleaned = String(row[idx]).replace(/[Rr$\s,]/g, "").trim();
-            const v = parseFloat(cleaned);
+            if (idx < 0 || row[idx] === "" || row[idx] === undefined) return undefined;
+            const v = parseFloat(String(row[idx]));
             return Number.isFinite(v) && v > 0 ? v : undefined;
           };
 
@@ -304,21 +296,6 @@ export default function StockPage() {
         }
 
         if (items.length > 0) {
-          // Safety check: warn if every single quantity is 0
-          const allZero = items.every((it: any) => (it.quantity || 0) === 0);
-          if (allZero) {
-            const proceed = window.confirm(
-              `WARNING: All ${items.length} products have 0 quantity.\n\n` +
-              `This will set EVERY product's stock on hand to 0.\n\n` +
-              `Are you sure you want to continue?\n\n` +
-              `Click Cancel to abort and check your file.`
-            );
-            if (!proceed) {
-              setUploadStatus("Upload cancelled — all quantities were 0.");
-              return;
-            }
-          }
-
           setUploadStatus(`Parsed ${items.length} products. Uploading...`);
           bulkUpload.mutate(items, {
             onSuccess: (res: any) => {
@@ -412,10 +389,10 @@ export default function StockPage() {
                     {item.strands} &middot; {item.origin}
                   </td>
                   <td className="p-3 text-white font-display font-semibold">{item.quantity}</td>
-                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{typeof item.corporatePrice === "number" && Number.isFinite(item.corporatePrice) ? `R ${item.corporatePrice.toFixed(2)}` : "—"}</td>
-                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{typeof item.bulkPrice === "number" && Number.isFinite(item.bulkPrice) ? `R ${item.bulkPrice.toFixed(2)}` : "—"}</td>
-                  <td className="p-3 text-right text-sm font-display" style={{ color: "#D4A843" }}>{typeof item.wholesalePrice === "number" && Number.isFinite(item.wholesalePrice) ? `R ${item.wholesalePrice.toFixed(2)}` : "—"}</td>
-                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">{typeof item.retailPrice === "number" && Number.isFinite(item.retailPrice) ? `R ${item.retailPrice.toFixed(2)}` : "—"}</td>
+                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.corporatePrice).toFixed(2)}</td>
+                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.bulkPrice).toFixed(2)}</td>
+                  <td className="p-3 text-right text-sm font-display" style={{ color: "#D4A843" }}>R {Number(item.wholesalePrice).toFixed(2)}</td>
+                  <td className="p-3 text-right text-sm text-[#E8E8E9] font-display">R {Number(item.retailPrice).toFixed(2)}</td>
                   <td className="p-3">
                     <span className="status-badge" style={{
                       backgroundColor: item.status === "in_stock" ? "rgba(74, 222, 128, 0.12)" : item.status === "low_stock" ? "rgba(245, 158, 11, 0.12)" : "rgba(239, 68, 68, 0.12)",

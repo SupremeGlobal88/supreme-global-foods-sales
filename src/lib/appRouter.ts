@@ -28,7 +28,9 @@ export const appRouter = t.router({
     create: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.stock.create(input)),
     update: t.procedure.input((val: unknown) => val as { id: number; data: any }).mutation(({ input }) => dataService.stock.update(input)),
     delete: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.stock.delete(input)),
-    bulkUpload: t.procedure.input((val: unknown) => val as any[]).mutation(({ input }) => dataService.stock.bulkCreate(input)),
+    bulkUpload: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.stock.bulkCreate(input)),
+    getOrphans: t.procedure.input((val: unknown) => val as any).query(({ input }) => dataService.stock.getOrphans(input)),
+    deleteOrphans: t.procedure.input((val: unknown) => val as any).mutation(({ input }) => dataService.stock.deleteOrphans(input)),
   }),
   customer: t.router({
     list: t.procedure.query(() => dataService.customer.list()),

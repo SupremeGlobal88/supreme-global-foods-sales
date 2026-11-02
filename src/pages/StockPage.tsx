@@ -317,6 +317,7 @@ export default function StockPage() {
               const orphans = res?.orphans || [];
               if (orphans.length > 0) {
                 setOrphanList(orphans);
+                setOrphanDialogOpen(true);
                 setUploadStatus(`${updated} updated, ${created} created. ${orphans.length} old products not in the Excel file.`);
               } else {
                 setUploadStatus(`${updated} updated, ${created} created. No old products found.`);

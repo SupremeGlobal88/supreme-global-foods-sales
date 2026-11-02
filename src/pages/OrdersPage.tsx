@@ -878,7 +878,13 @@ export default function OrdersPage() {
     const invoiceNumber = matchedInvoice?.invoiceNumber || "N/A";
     const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
     const now = new Date();
-    const printedAt = now.toLocaleString("en-ZA", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const fmtDate = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}`; } catch { return "N/A"; }
+    };
+    const fmtDateTime = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; } catch { return "N/A"; }
+    };
+    const printedAt = fmtDateTime(now);
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
@@ -919,7 +925,7 @@ export default function OrdersPage() {
   <div class="info-section">
     <div class="info-block"><div class="label">Invoice Number</div><div class="value inv-num">${invoiceNumber}</div></div>
     <div class="info-block"><div class="label">Order Number</div><div class="value">${order.orderNumber}</div></div>
-    <div class="info-block"><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
+    <div class="info-block"><div class="label">Date</div><div class="value">${fmtDate(order.createdAt)}</div></div>
     <div class="info-block"><div class="label">Sales Rep</div><div class="value" style="color:${cfg.documentColor};font-weight:700;">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer</div><div class="value">${customer?.name || "N/A"}</div></div>
     <div class="info-block"><div class="label">Customer Code</div><div class="value">${customer?.customerCode || "N/A"}</div></div>
@@ -959,7 +965,11 @@ export default function OrdersPage() {
     const cfg = getCompanyConfig((order.company || "sgf") as any);
     const customer = getCustomer(order);
     const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
-    const validUntil = new Date(order.createdAt);
+    const fmtDate = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}`; } catch { return "N/A"; }
+    };
+    const orderDate = new Date(order.createdAt || Date.now());
+    const validUntil = new Date(orderDate);
     validUntil.setDate(validUntil.getDate() + 30);
     const w = window.open("", "_blank");
     if (!w) return;
@@ -1006,8 +1016,8 @@ export default function OrdersPage() {
   <div style="text-align:center;margin-bottom:10px;"><span class="badge">QUOTE</span></div>
   <div class="info-section">
     <div><div class="label">Quote Number</div><div class="value" style="color:${cfg.documentColor};font-size:14px;">${order.orderNumber}</div></div>
-    <div><div class="label">Date</div><div class="value">${new Date(order.createdAt).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
-    <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${validUntil.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div></div>
+    <div><div class="label">Date</div><div class="value">${fmtDate(orderDate)}</div></div>
+    <div><div class="label">Valid Until</div><div class="value" style="color:#6366F1;">${fmtDate(validUntil)}</div></div>
     <div><div class="label">Prepared By</div><div class="value">${customer?.salesRepName || order.salesRepName || "N/A"}</div></div>
     <div class="full-width" style="margin-top:4px;border-top:1px solid #e0e0e0;padding-top:8px;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">

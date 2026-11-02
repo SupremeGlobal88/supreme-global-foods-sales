@@ -350,9 +350,16 @@ export default function InvoicesPage() {
     const invCompany: CompanyKey = inv.invoiceNumber?.startsWith("RC") ? "recircle" : (inv.company || "sgf");
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
-    const invDate = new Date(inv.invoiceDate || inv.createdAt);
+    const fmtDate = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}`; } catch { return "N/A"; }
+    };
+    const fmtDateTime = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; } catch { return "N/A"; }
+    };
+    const invDateRaw = inv.invoiceDate || inv.createdAt;
+    const invDate = new Date(invDateRaw || Date.now());
     const retDate = new Date(invDate); retDate.setDate(retDate.getDate() + 7);
-    const printedAt = new Date().toLocaleString("en-ZA", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const printedAt = fmtDateTime(new Date());
     // CUSTOMER PRINT: sample orders show R 0.00 (no charge to customer)
     // INTERNAL VIEW: still shows real values for admin tracking
     const isSampleInvoice = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
@@ -391,9 +398,9 @@ export default function InvoicesPage() {
                 <tr><td style="color:#888; padding:2px 0;">Invoice Number</td><td style="font-weight:800; font-size:14px; color:${cfg.documentColor}; padding:2px 0; padding-left:12px;">${inv.invoiceNumber}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Delivery Note</td><td style="padding:2px 0; padding-left:12px;">${inv.deliveryNoteNumber || `DN-${inv.poNumber || inv.orderNumber || ""}`}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Order Number</td><td style="padding:2px 0; padding-left:12px;">${inv.poNumber || inv.orderNumber || ""}</td></tr>
-                <tr><td style="color:#888; padding:2px 0;">Invoice Date</td><td style="padding:2px 0; padding-left:12px;">${invDate.toLocaleDateString("en-ZA")}</td></tr>
+                <tr><td style="color:#888; padding:2px 0;">Invoice Date</td><td style="padding:2px 0; padding-left:12px;">${fmtDate(invDate)}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Payment Terms</td><td style="padding:2px 0; padding-left:12px;">${(inv.paymentTerms || "cod").replace("_", " ").toUpperCase()}</td></tr>
-                <tr><td style="color:#888; padding:2px 0;">Return By</td><td style="padding:2px 0; padding-left:12px;">${retDate.toLocaleDateString("en-ZA")}</td></tr>
+                <tr><td style="color:#888; padding:2px 0;">Return By</td><td style="padding:2px 0; padding-left:12px;">${fmtDate(retDate)}</td></tr>
                 <tr><td style="color:#888; padding:2px 0;">Printed</td><td style="padding:2px 0; padding-left:12px; font-size:10px; color:#666;">${printedAt}</td></tr>
               </table>
             </td>
@@ -427,7 +434,7 @@ export default function InvoicesPage() {
           </div>
         </div>
         <div style="margin-top:14px; padding:8px 12px; background:#FFF5F5; border:1.5px solid #EF4444; border-radius:3px; color:#EF4444; font-size:10px; font-weight:800; text-align:center; letter-spacing:0.3px;">
-          PLEASE NOTE: NO EXCHANGES OR RETURNS AFTER 7 DAYS FROM INVOICE DATE. RETURNS ACCEPTED UNTIL: ${retDate.toLocaleDateString("en-ZA")}
+          PLEASE NOTE: NO EXCHANGES OR RETURNS AFTER 7 DAYS FROM INVOICE DATE. RETURNS ACCEPTED UNTIL: ${fmtDate(retDate)}
         </div>
         ${isOffice ? `
         <div style="margin-top:14px; padding:10px; border:1.5px dashed #aaa; border-radius:4px;">
@@ -549,6 +556,9 @@ export default function InvoicesPage() {
   function printReceipt(r: any) {
     const cfg = getCompanyConfig(r.invoiceNumber?.startsWith("RC") ? "recircle" : "sgf");
     const logoUrl = `${window.location.origin}${cfg.logoUrl}`;
+    const fmtDate = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}`; } catch { return "N/A"; }
+    };
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html><head><title>Receipt ${r.receiptNumber}</title>
@@ -583,7 +593,7 @@ export default function InvoicesPage() {
 
         <table class="info-table">
           <tr><td class="label">Receipt Number</td><td class="value" style="font-size:14px; color:#D4A843;">${r.receiptNumber}</td></tr>
-          <tr><td class="label">Date</td><td class="value">${new Date(r.paymentDate || r.createdAt).toLocaleDateString("en-ZA")}</td></tr>
+          <tr><td class="label">Date</td><td class="value">${fmtDate(r.paymentDate || r.createdAt)}</td></tr>
           <tr><td class="label">Received From</td><td class="value">${r.customerName || "N/A"}</td></tr>
           <tr><td class="label">Invoice Reference</td><td class="value">${r.invoiceNumber || "N/A"}</td></tr>
           <tr><td class="label">Order Reference</td><td class="value">${r.orderNumber || "N/A"}</td></tr>
@@ -663,7 +673,7 @@ export default function InvoicesPage() {
           <div style="text-align:right;">
             <h1 style="font-size:22px; color:#C62828; margin:0; letter-spacing:2px;">CREDIT NOTE</h1>
             <p style="font-size:16px; font-weight:800; margin:4px 0; color:#C62828;">${cn.creditNoteNumber}</p>
-            <p style="font-size:10px; color:#666; margin:0;">Date: ${new Date(cn.createdAt).toLocaleDateString("en-ZA")}</p>
+            <p style="font-size:10px; color:#666; margin:0;">Date: ${fmtDate(cn.createdAt)}</p>
           </div>
         </div>
 
@@ -679,7 +689,7 @@ export default function InvoicesPage() {
             <p style="font-size:10px; color:#888; margin:0 0 4px;">ORIGINAL INVOICE</p>
             <p style="font-weight:800; margin:0; color:#D4A843;">${inv.invoiceNumber || "N/A"}</p>
             ${isSample ? `<p style="margin:0; font-size:10px; color:#C62828;">SAMPLE ORDER — Stock Return Only</p>` : ""}
-            <p style="margin:0; font-size:10px; color:#666;">Date: ${inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString("en-ZA") : "N/A"}</p>
+            <p style="margin:0; font-size:10px; color:#666;">Date: ${fmtDate(inv.invoiceDate)}</p>
           </div>
         </div>
 
@@ -763,6 +773,9 @@ export default function InvoicesPage() {
     }
     const cfg = getCompanyConfig(invCompany);
     const logoUrl = `${window.location.origin}${cfg.logoUrl || "/sgf-logo.png"}`;
+    const fmtDate = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}`; } catch { return "N/A"; }
+    };
 
     // Build invoice list — same matching as the invoice list search
     const custCode = cust.customerCode;
@@ -809,8 +822,8 @@ export default function InvoicesPage() {
       else aging.days90plus += bal;
     }
 
-    const fromStr = stmtFrom ? new Date(stmtFrom).toLocaleDateString("en-ZA") : "All time";
-    const toStr = stmtTo ? new Date(stmtTo).toLocaleDateString("en-ZA") : new Date().toLocaleDateString("en-ZA");
+    const fromStr = stmtFrom ? fmtDate(stmtFrom) : "All time";
+    const toStr = stmtTo ? fmtDate(stmtTo) : fmtDate(new Date());
 
     const w = window.open("", "_blank");
     if (!w) return;
@@ -840,7 +853,7 @@ export default function InvoicesPage() {
         <div class="header">
           <img src="${logoUrl}" onerror="this.style.display='none'" />
           <h1>Statement of Account</h1>
-          <div style="font-size:10px; color:#666;">Period: ${fromStr} &nbsp;to&nbsp; ${toStr} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-ZA")}</div>
+          <div style="font-size:10px; color:#666;">Period: ${fromStr} &nbsp;to&nbsp; ${toStr} &nbsp;|&nbsp; Generated: ${fmtDate(new Date())}</div>
         </div>
         <div class="info-grid">
           <div class="info-block">
@@ -873,7 +886,7 @@ export default function InvoicesPage() {
             ${lines.length === 0 ? `<tr><td colspan="7" style="text-align:center; color:#999; padding:16px;">No invoices for the selected period.</td></tr>` : ""}
             ${lines.map((line: any) => `
               <tr>
-                <td>${new Date(line.date).toLocaleDateString("en-ZA")}</td>
+                <td>${fmtDate(line.date)}</td>
                 <td><strong>${line.invoiceNumber}</strong></td>
                 <td>${line.orderNumber || ""}</td>
                 <td>${line.description || "Invoice"} <span style="color:#888;">(${(line.paymentTerms || "cod").replace("_"," ")})</span></td>

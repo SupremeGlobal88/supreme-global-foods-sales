@@ -620,6 +620,15 @@ export async function removeOneStockItem(id: number): Promise<void> {
   try { await remove(ref(db, `products/${safeFbKey(id)}`)); } catch { /* ignore */ }
 }
 
+export async function pushProducts(products: any[]): Promise<void> {
+  if (!isFirebaseReady()) return;
+  const obj: Record<string, any> = {};
+  for (const p of products) {
+    if (p && p.id != null) obj[safeFbKey(p.id)] = { ...p, _syncedAt: Date.now() };
+  }
+  try { await set(ref(db, "products"), obj); } catch { /* ignore */ }
+}
+
 export async function pushUser(user: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("user", user); return; }
   try {

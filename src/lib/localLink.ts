@@ -14,6 +14,7 @@ import {
   pushInvoice,
   pushCustomer,
   pushStock,
+  pushProducts,
   pushCOC,
   removeCOC,
   pushCreditNote,
@@ -181,9 +182,7 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.stock.bulkCreate(input);
         if (result) {
           const items = dataService.stock.list();
-          for (const item of items) {
-            try { await pushStock(item); } catch { /* ignore */ }
-          }
+          await pushProducts(items);
           reloadFromStorage(["sgf_products"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "products", count: items.length } }));
         }

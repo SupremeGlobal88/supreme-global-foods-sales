@@ -2,9 +2,9 @@ import { Routes, Route, Navigate, useLocation } from "react-router";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { initFirebase, initAutoSync, registerDataServiceRefresh, isFirebaseReady, pushInvoices, pushOrders } from "@/lib/firebaseSync";
+import { initFirebase, initAutoSync, registerDataServiceRefresh } from "@/lib/firebaseSync";
 
-import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies, fixSageInvoiceDates, getAllInvoices, repairRevertedOrderStatuses, getAllOrders } from "@/lib/dataService";
+import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
 import { trpc } from "@/providers/trpc";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -110,72 +110,6 @@ export default function App() {
       reloadFromStorage();
     }
   }, [isAuthenticated, isCloudReady]);
-
-  // Fix corrupted Sage invoice dates and push to Firebase atomically.
-  // We listen for EVERY firebase sync event because the subscription overwrites
-  // localStorage with cloud data — if the cloud still has corrupted dates,
-  // we fix them immediately and push the corrected array back.
-  useEffect(() => {
-    const handler = async (e: any) => {
-      if (e.detail?.type !== "invoices") return;
-      const { changed } = fixSageInvoiceDates();
-      if (changed > 0 && isFirebaseReady()) {
-        const allInvoices = getAllInvoices();
-        await pushInvoices(allInvoices);
-        utils.invoice.list.invalidate();
-        utils.invoice.getStats.invalidate();
-      }
-    };
-    window.addEventListener("firebaseDataReceived", handler);
-    return () => window.removeEventListener("firebaseDataReceived", handler);
-  }, [utils]);
-
-  // Safety net: also run once shortly after mount in case the first sync
-  // event hasn't fired yet (e.g. slow network).
-  useEffect(() => {
-    const fixAndPush = async () => {
-      const { changed } = fixSageInvoiceDates();
-      if (changed > 0 && isFirebaseReady()) {
-        const allInvoices = getAllInvoices();
-        await pushInvoices(allInvoices);
-        utils.invoice.list.invalidate();
-        utils.invoice.getStats.invalidate();
-      }
-    };
-    const timer = setTimeout(fixAndPush, 2000);
-    return () => clearTimeout(timer);
-  }, [utils]);
-
-  // Repair order statuses reverted by stale Firebase data.
-  // Runs on every orders sync event AND once shortly after mount.
-  useEffect(() => {
-    const handler = async (e: any) => {
-      if (e.detail?.type !== "orders") return;
-      const { changed } = repairRevertedOrderStatuses();
-      if (changed > 0 && isFirebaseReady()) {
-        const allOrders = getAllOrders();
-        await pushOrders(allOrders);
-        utils.order.list.invalidate();
-        utils.order.getStats.invalidate();
-      }
-    };
-    window.addEventListener("firebaseDataReceived", handler);
-    return () => window.removeEventListener("firebaseDataReceived", handler);
-  }, [utils]);
-
-  useEffect(() => {
-    const fixAndPush = async () => {
-      const { changed } = repairRevertedOrderStatuses();
-      if (changed > 0 && isFirebaseReady()) {
-        const allOrders = getAllOrders();
-        await pushOrders(allOrders);
-        utils.order.list.invalidate();
-        utils.order.getStats.invalidate();
-      }
-    };
-    const timer = setTimeout(fixAndPush, 3000);
-    return () => clearTimeout(timer);
-  }, [utils]);
 
   // CRITICAL FIX: Use tRPC utils.invalidate() instead of queryClient.invalidateQueries().
   // tRPC React Query wraps query keys internally — manual queryClient.invalidateQueries

@@ -424,6 +424,32 @@ function createSubscription<T>(
     if (!snap.exists()) return;
     const val = snap.val();
     const list: T[] = Object.values(val);
+
+    // SAFETY: prevent stale/partial Firebase data from wiping good local data.
+    // If localStorage has significantly more items than Firebase sent, log a
+    // warning and skip the overwrite so the user doesn't lose records.
+    try {
+      const existingRaw = getStorageItem(storageKey);
+      if (existingRaw) {
+        const existing = JSON.parse(existingRaw);
+        if (Array.isArray(existing) && existing.length > 0) {
+          // If Firebase sends less than 20% of what we have locally, something
+          // is wrong (stale node, partial sync, or corruption). Skip overwrite.
+          if (list.length < existing.length * 0.2 && existing.length >= 5) {
+            console.warn(
+              `[Firebase Sync] ${path}: received ${list.length} items but localStorage has ${existing.length}. ` +
+              `Skipping overwrite to prevent data loss.`
+            );
+            // Still notify so the app can decide what to do, but don't erase storage
+            handler(list);
+            return;
+          }
+        }
+      }
+    } catch {
+      // If safety check fails, proceed normally
+    }
+
     setStorageItem(storageKey, JSON.stringify(list));
     handler(list);
   });

@@ -52,19 +52,6 @@ export default function StockPage() {
   const { data: categories } = trpc.stock.getCategories.useQuery();
   const { data: stats } = trpc.stock.getStats.useQuery();
 
-  // DIAGNOSTIC: log raw products state to debug missing/zeroed stock
-  useEffect(() => {
-    try {
-      const list = dataService.stock.list();
-      console.log("[STOCK DIAGNOSTIC] products count:", list.length);
-      console.log("[STOCK DIAGNOSTIC] valid products:", list.filter((p: any) => p && typeof p === "object").length);
-      console.log("[STOCK DIAGNOSTIC] first 3 products:", list.slice(0, 3));
-      console.log("[STOCK DIAGNOSTIC] stats:", dataService.stock.getStats());
-    } catch (e) {
-      console.error("[STOCK DIAGNOSTIC] Error:", e);
-    }
-  }, []);
-
   const createStock = trpc.stock.create.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
   });
@@ -315,10 +302,6 @@ export default function StockPage() {
             description: "",
           });
         }
-
-        // DEBUG: log parsed items to console for diagnostics
-        console.log("[STOCK UPLOAD] Parsed items:", items.slice(0, 5));
-        console.log("[STOCK UPLOAD] Quantity sample:", items.slice(0, 5).map((it: any) => ({ name: it.productName, qty: it.quantity })));
 
         if (items.length > 0) {
           // Safety check: warn if every single quantity is 0

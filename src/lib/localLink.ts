@@ -528,11 +528,21 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "invoice.generateForPO": {
-        result = dataService.invoice.generateForPO(input);
-        if (result && !result.error) {
-          await pushInvoice(result);
-          reloadFromStorage(["sgf_invoices"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        // Call the REAL invoice generator (not activateInvoiceFromPO which only changes draft status)
+        result = dataService.generateInvoiceForPO(input);
+        if (result) {
+          // result is either an invoice object (new) or invoiceNumber string (existing updated)
+          let invoiceObj = result;
+          if (typeof result === "string") {
+            // Find the existing invoice by invoiceNumber
+            const allInvoices = dataService.invoice.list();
+            invoiceObj = allInvoices.find((i: any) => i.invoiceNumber === result);
+          }
+          if (invoiceObj && invoiceObj.id) {
+            await pushInvoice(invoiceObj);
+            reloadFromStorage(["sgf_invoices"]);
+            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+          }
         }
         break;
       }

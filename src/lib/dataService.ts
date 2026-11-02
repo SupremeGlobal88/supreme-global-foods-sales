@@ -2544,9 +2544,15 @@ const dataService = {
       logAudit("DELETE", "stock", id, `Stock item deleted: ${prod?.productName || prod?.productCode || "Unnamed"}`);
       return { success: true };
     },
-    bulkCreate: (items: any[]) => {
+    bulkCreate: (input: any[] | { items: any[]; uploadBatch?: string }) => {
+      const items = Array.isArray(input) ? input : input.items;
+      const uploadBatch = Array.isArray(input) ? undefined : input.uploadBatch;
       const created = [];
       const updated = [];
+      const incomingNames = new Set(
+        items.map((inc: any) => (inc.productName || "").toLowerCase().trim())
+      );
+
       for (let i = 0; i < items.length; i++) {
         const incoming = items[i];
         // Check if product already exists by productName (case-insensitive)
@@ -2578,6 +2584,8 @@ const dataService = {
             ...(incoming.category !== undefined && { category: incoming.category }),
             ...(incoming.productName !== undefined && { productName: incoming.productName }),
             updatedAt: new Date().toISOString(),
+            // Tag with upload batch so we can identify orphans later
+            ...(uploadBatch && { _uploadBatch: uploadBatch }),
             // Recalculate status based on new quantity
             status: (incoming.quantity || existing.quantity) === 0
               ? "out_of_stock"
@@ -2588,7 +2596,7 @@ const dataService = {
           updated.push(products[existingIdx]);
         } else {
           // New product - create with new id
-          const newItem = {
+          const newItem: any = {
             ...incoming,
             id: Date.now() + i,
             createdAt: new Date().toISOString(),
@@ -2599,13 +2607,53 @@ const dataService = {
                 ? "low_stock"
                 : "in_stock",
           };
+          if (uploadBatch) newItem._uploadBatch = uploadBatch;
           products.push(newItem);
           created.push(newItem);
         }
       }
+
+      // Identify orphans: products that were in a PREVIOUS upload but are NOT in this Excel.
+      // Manually-added products have NO _uploadBatch — they are never orphans.
+      const orphans = products.filter(
+        (p) =>
+          p._uploadBatch &&
+          p._uploadBatch !== uploadBatch &&
+          !incomingNames.has((p.productName || "").toLowerCase().trim())
+      );
+
       saveItem("sgf_products", products);
       logAudit("BULK_UPLOAD", "stock", 0, `Bulk stock upload: ${created.length} created, ${updated.length} updated`);
-      return { created: created.length, updated: updated.length };
+      return { created: created.length, updated: updated.length, orphans };
+    },
+
+    getOrphans: ({ uploadBatch, names }: { uploadBatch?: string; names?: string[] }) => {
+      const nameSet = names
+        ? new Set(names.map((n) => (n || "").toLowerCase().trim()))
+        : new Set();
+      const orphans = products.filter(
+        (p) =>
+          p._uploadBatch &&
+          p._uploadBatch !== uploadBatch &&
+          !nameSet.has((p.productName || "").toLowerCase().trim())
+      );
+      return { orphans, count: orphans.length };
+    },
+
+    deleteOrphans: ({ ids }: { ids: number[] }) => {
+      let removed = 0;
+      for (const id of ids) {
+        const idx = products.findIndex((p) => p.id === id);
+        if (idx >= 0) {
+          products.splice(idx, 1);
+          removed++;
+        }
+      }
+      if (removed > 0) {
+        saveItem("sgf_products", products);
+        logAudit("DELETE_ORPHANS", "stock", 0, `Deleted ${removed} orphaned products`);
+      }
+      return { success: true, removed };
     },
 
     /** Daily Invoiced Stock Report — shows what stock was invoiced on a given date */

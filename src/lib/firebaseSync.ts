@@ -65,6 +65,11 @@ let db: any = null;
 let config: any = null;
 let listeners: Array<() => void> = [];
 
+/** Upload guard: when >0, onValue should NOT overwrite localStorage.
+ *  Prevents partial Firebase snapshots during bulk upload from reverting localStorage.
+ *  Deletions are NOT uploads — this is 0 during delete, so onValue saves normally. */
+let uploadInProgress = 0;
+
 /** Session-level guard: pullFromCloud should only run once per session.
  *  Real-time subscriptions handle ongoing sync after initial pull. */
 let pullFromCloudDone = false;
@@ -424,21 +429,14 @@ function createSubscription<T>(
     if (!snap.exists()) return;
     const val = snap.val();
     const list: T[] = Object.values(val);
-    // PROTECTION: don't overwrite localStorage with FEWER products than we already have.
-    // During bulk upload, onValue fires after each individual write with a partial snapshot.
-    // This prevents reverting localStorage to a partial list while upload is in progress.
-    if (storageKey === "sgf_products") {
-      try {
-        const existingRaw = getStorageItem(storageKey);
-        if (existingRaw) {
-          const existing = JSON.parse(existingRaw);
-          if (Array.isArray(existing) && existing.length > list.length) {
-            // Keep existing localStorage data, but still notify handler so UI refreshes
-            handler(list);
-            return;
-          }
-        }
-      } catch { /* ignore, fall through to normal save */ }
+    // PROTECTION: during bulk upload, onValue fires after each individual write with a
+    // partial snapshot. Don't overwrite localStorage until the upload finishes.
+    // uploadInProgress is 0 during normal operation AND during deletions —
+    // so deletions propagate correctly to localStorage.
+    if (storageKey === "sgf_products" && uploadInProgress > 0) {
+      // Still notify handler so UI refreshes, but don't save partial data to localStorage
+      handler(list);
+      return;
     }
     setStorageItem(storageKey, JSON.stringify(list));
     handler(list);
@@ -638,12 +636,31 @@ export async function removeOneStockItem(id: number): Promise<void> {
 
 export async function pushProducts(products: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
-  for (const p of products) {
-    if (p && p.id != null) {
+  uploadInProgress++;
+  try {
+    for (const p of products) {
+      if (p && p.id != null) {
+        try {
+          await set(ref(db, `products/${safeFbKey(p.id)}`), { ...p, _syncedAt: Date.now() });
+        } catch (err) {
+          console.error("[Firebase] pushProducts failed for id", p.id, err);
+        }
+      }
+    }
+  } finally {
+    uploadInProgress--;
+  }
+}
+
+/** Delete multiple products from Firebase in one batch. */
+export async function deleteProducts(ids: any[]): Promise<void> {
+  if (!isFirebaseReady()) return;
+  for (const id of ids) {
+    if (id != null) {
       try {
-        await set(ref(db, `products/${safeFbKey(p.id)}`), { ...p, _syncedAt: Date.now() });
+        await remove(ref(db, `products/${safeFbKey(id)}`));
       } catch (err) {
-        console.error("[Firebase] pushProducts failed for id", p.id, err);
+        console.error("[Firebase] deleteProducts failed for id", id, err);
       }
     }
   }

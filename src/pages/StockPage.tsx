@@ -40,6 +40,8 @@ export default function StockPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadStatus, setUploadStatus] = useState<string>("");
+  const [orphanDialogOpen, setOrphanDialogOpen] = useState(false);
+  const [orphanList, setOrphanList] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     productCode: "", productName: "", category: "", strands: "", size: "", grade: "", color: "", species: "", origin: "",
@@ -62,7 +64,10 @@ export default function StockPage() {
     onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
   });
   const bulkUpload = trpc.stock.bulkUpload.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowUpload(false); },
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); },
+  });
+  const deleteOrphans = trpc.stock.deleteOrphans.useMutation({
+    onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setOrphanDialogOpen(false); setOrphanList([]); setShowUpload(false); },
   });
 
   function resetForm() {
@@ -304,18 +309,19 @@ export default function StockPage() {
 
         if (items.length > 0) {
           setUploadStatus(`Parsed ${items.length} products. Uploading...`);
-          bulkUpload.mutate(items, {
+          const uploadBatch = new Date().toISOString();
+          bulkUpload.mutate({ items, uploadBatch }, {
             onSuccess: (res: any) => {
               const created = res?.created || 0;
               const updated = res?.updated || 0;
-              if (created > 0 && updated > 0) {
-                setUploadStatus(`${updated} products updated, ${created} new products added!`);
-              } else if (updated > 0) {
-                setUploadStatus(`${updated} products updated!`);
+              const orphans = res?.orphans || [];
+              if (orphans.length > 0) {
+                setOrphanList(orphans);
+                setUploadStatus(`${updated} updated, ${created} created. ${orphans.length} old products not in the Excel file.`);
               } else {
-                setUploadStatus(`${created} new products added!`);
+                setUploadStatus(`${updated} updated, ${created} created. No old products found.`);
+                setTimeout(() => { setUploadStatus(""); setShowUpload(false); }, 3000);
               }
-              setTimeout(() => { setUploadStatus(""); setShowUpload(false); }, 3000);
             },
             onError: (err: any) => {
               setUploadStatus(`Upload failed: ${err.message || "Unknown error"}`);
@@ -452,6 +458,45 @@ export default function StockPage() {
                 {uploadStatus}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Orphan Cleanup Dialog */}
+      {orphanDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="card-surface p-8 max-w-lg w-full mx-4" style={{ borderRadius: 16 }}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display font-semibold text-white text-xl">Old Products Found</h2>
+              <button onClick={() => setOrphanDialogOpen(false)} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+            </div>
+            <p className="text-[#E8E8E9] font-body text-sm mb-4">
+              {orphanList.length} products from a previous upload are no longer in this Excel file. These may be old or discontinued items.
+            </p>
+            <p className="text-[#8A8B8C] font-body text-xs mb-4">
+              Manually-added products are never deleted by this process. Only products from previous Excel uploads that are missing from the current file will be removed.
+            </p>
+            <div className="max-h-48 overflow-y-auto mb-6 space-y-1">
+              {orphanList.map((o) => (
+                <div key={o.id} className="text-xs text-[#8A8B8C] font-body py-1 px-2 rounded" style={{ backgroundColor: "rgba(239,68,68,0.08)" }}>
+                  {o.productName} (QTY: {o.quantity || 0})
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  const ids = orphanList.map((o: any) => o.id).filter((id: any) => id != null);
+                  deleteOrphans.mutate({ ids });
+                }}
+                className="btn-primary flex-1"
+              >
+                Delete {orphanList.length} Old Products
+              </button>
+              <button onClick={() => setOrphanDialogOpen(false)} className="btn-secondary flex-1">
+                Keep Them
+              </button>
+            </div>
           </div>
         </div>
       )}

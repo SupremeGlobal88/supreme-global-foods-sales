@@ -15,6 +15,7 @@ import {
   pushCustomer,
   pushStock,
   pushProducts,
+  deleteProducts,
   pushCOC,
   removeCOC,
   pushCreditNote,
@@ -179,12 +180,26 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "stock.bulkUpload": {
+        // Support both array (legacy) and { items, uploadBatch } (new) formats
         result = dataService.stock.bulkCreate(input);
         if (result) {
           const items = dataService.stock.list();
           await pushProducts(items);
           reloadFromStorage(["sgf_products"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "products", count: items.length } }));
+        }
+        break;
+      }
+      case "stock.getOrphans": {
+        result = dataService.stock.getOrphans(input);
+        break;
+      }
+      case "stock.deleteOrphans": {
+        result = dataService.stock.deleteOrphans(input);
+        if (result?.success) {
+          await deleteProducts(input.ids);
+          reloadFromStorage(["sgf_products"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "products", count: 0 } }));
         }
         break;
       }

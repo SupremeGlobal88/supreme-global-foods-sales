@@ -2602,9 +2602,10 @@ const dataService = {
             ...(incoming.productName !== undefined && { productName: incoming.productName }),
             updatedAt: new Date().toISOString(),
             // Recalculate status based on new quantity
-            status: (incoming.quantity || existing.quantity) === 0
+            // Use ?? (nullish coalescing) so quantity 0 is treated as 0, not as falsy
+            status: (incoming.quantity ?? existing.quantity) === 0
               ? "out_of_stock"
-              : (incoming.quantity || existing.quantity) < 20
+              : (incoming.quantity ?? existing.quantity) < 20
                 ? "low_stock"
                 : "in_stock",
           };
@@ -2616,9 +2617,9 @@ const dataService = {
             id: Date.now() + i,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            status: (incoming.quantity || 0) === 0
+            status: (incoming.quantity ?? 0) === 0
               ? "out_of_stock"
-              : (incoming.quantity || 0) < 20
+              : (incoming.quantity ?? 0) < 20
                 ? "low_stock"
                 : "in_stock",
           };

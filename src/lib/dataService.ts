@@ -2315,13 +2315,15 @@ export function repairCancelledInvoiceBalances(): { changed: number; invoices: a
 function searchItems(items: any[], query: string) {
   if (!query || query.trim() === "") return items;
   const q = query.toLowerCase().trim();
-  return items.filter((item) =>
-    item.name?.toLowerCase().includes(q) ||
-    item.productCode?.toLowerCase().includes(q) ||
-    item.category?.toLowerCase().includes(q) ||
-    item.customerCode?.toLowerCase().includes(q) ||
-    item.city?.toLowerCase().includes(q)
-  );
+  return items.filter((item) => {
+    if (!item || typeof item !== "object") return false;
+    const name = String(item.name || "").toLowerCase();
+    const code = String(item.productCode || "").toLowerCase();
+    const cat = String(item.category || "").toLowerCase();
+    const custCode = String(item.customerCode || "").toLowerCase();
+    const city = String(item.city || "").toLowerCase();
+    return name.includes(q) || code.includes(q) || cat.includes(q) || custCode.includes(q) || city.includes(q);
+  });
 }
 
 export { SALES_REPS, getCommittedStock, getAvailableStock };
@@ -2511,13 +2513,13 @@ const dataService = {
   stock: {
     list: () => products,
     search: ({ query }: { query: string }) => searchItems(products, query),
-    getById: (id: number) => products.find((p) => p.id == id) || null,
-    getCategories: () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
+    getById: (id: number) => products.find((p) => p && p.id == id) || null,
+    getCategories: () => [...new Set(products.filter((p) => p && typeof p === "object").map((p) => p.category).filter(Boolean))].sort(),
     getStats: () => ({
-      totalProducts: products.length,
-      totalRetailValue: products.reduce((sum, p) => sum + Number(p.retailPrice || 0) * (p.quantity || 0), 0),
-      lowStock: products.filter((p) => p.status === "low_stock").length,
-      outOfStock: products.filter((p) => p.status === "out_of_stock").length,
+      totalProducts: products.filter((p) => p && typeof p === "object").length,
+      totalRetailValue: products.filter((p) => p && typeof p === "object").reduce((sum, p) => sum + Number(p.retailPrice || 0) * (p.quantity || 0), 0),
+      lowStock: products.filter((p) => p && typeof p === "object" && p.status === "low_stock").length,
+      outOfStock: products.filter((p) => p && typeof p === "object" && p.status === "out_of_stock").length,
     }),
     create: (data: any) => {
       const newItem = { ...data, id: Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
@@ -2527,7 +2529,7 @@ const dataService = {
       return newItem;
     },
     update: ({ id, data }: { id: number; data: any }) => {
-      const idx = products.findIndex((p) => p.id == id);
+      const idx = products.findIndex((p) => p && p.id == id);
       if (idx >= 0) { 
         const oldProd = products[idx];
         products[idx] = { ...products[idx], ...data, updatedAt: new Date().toISOString() }; 
@@ -2538,8 +2540,8 @@ const dataService = {
       return null;
     },
     delete: (id: number) => {
-      const prod = products.find((p) => p.id == id);
-      products = products.filter((p) => p.id != id);
+      const prod = products.find((p) => p && p.id == id);
+      products = products.filter((p) => p && p.id != id);
       saveItem("sgf_products", products);
       logAudit("DELETE", "stock", id, `Stock item deleted: ${prod?.productName || prod?.productCode || "Unnamed"}`);
       return { success: true };

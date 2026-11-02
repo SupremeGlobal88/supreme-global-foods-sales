@@ -424,6 +424,22 @@ function createSubscription<T>(
     if (!snap.exists()) return;
     const val = snap.val();
     const list: T[] = Object.values(val);
+    // PROTECTION: don't overwrite localStorage with FEWER products than we already have.
+    // During bulk upload, onValue fires after each individual write with a partial snapshot.
+    // This prevents reverting localStorage to a partial list while upload is in progress.
+    if (storageKey === "sgf_products") {
+      try {
+        const existingRaw = getStorageItem(storageKey);
+        if (existingRaw) {
+          const existing = JSON.parse(existingRaw);
+          if (Array.isArray(existing) && existing.length > list.length) {
+            // Keep existing localStorage data, but still notify handler so UI refreshes
+            handler(list);
+            return;
+          }
+        }
+      } catch { /* ignore, fall through to normal save */ }
+    }
     setStorageItem(storageKey, JSON.stringify(list));
     handler(list);
   });

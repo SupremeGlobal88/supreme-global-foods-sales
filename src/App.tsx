@@ -153,6 +153,8 @@ export default function App() {
               utils.checkIn.list.invalidate();
               break;
             case "stock":
+            case "products":
+              reloadFromStorage(["sgf_products"]);
               utils.stock.list.invalidate();
               utils.stock.search.invalidate();
               utils.stock.getStats.invalidate();

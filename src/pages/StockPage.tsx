@@ -235,10 +235,10 @@ export default function StockPage() {
           color: findCol("color"),
           species: findCol("species"),
           soh: findCol("soh", "qty", "quantity", "stock"),
-          corpPrice: findCol("corporate price", "corporate"),
-          bulkPrice: findCol("bulk price", "bulk"),
-          wholesalePrice: findCol("wholesale price", "wholesale"),
-          retailPrice: findCol("retail price", "retail"),
+          corpPrice: findCol("corporate price", "corporate", "cp"),
+          bulkPrice: findCol("bulk price", "bulk", "bp"),
+          wholesalePrice: findCol("wholesale price", "wholesale", "wp"),
+          retailPrice: findCol("retail price", "retail", "rp"),
         };
 
         if (colIdx.product < 0) {

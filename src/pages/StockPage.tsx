@@ -52,6 +52,19 @@ export default function StockPage() {
   const { data: categories } = trpc.stock.getCategories.useQuery();
   const { data: stats } = trpc.stock.getStats.useQuery();
 
+  // DIAGNOSTIC: log raw products state to debug missing/zeroed stock
+  useEffect(() => {
+    try {
+      const list = dataService.stock.list();
+      console.log("[STOCK DIAGNOSTIC] products count:", list.length);
+      console.log("[STOCK DIAGNOSTIC] valid products:", list.filter((p: any) => p && typeof p === "object").length);
+      console.log("[STOCK DIAGNOSTIC] first 3 products:", list.slice(0, 3));
+      console.log("[STOCK DIAGNOSTIC] stats:", dataService.stock.getStats());
+    } catch (e) {
+      console.error("[STOCK DIAGNOSTIC] Error:", e);
+    }
+  }, []);
+
   const createStock = trpc.stock.create.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.stock.search.invalidate(); await utils.stock.getStats.invalidate(); setShowForm(false); resetForm(); },
   });

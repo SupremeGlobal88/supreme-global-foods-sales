@@ -14,7 +14,6 @@ import {
   pushInvoice,
   pushCustomer,
   pushStock,
-  pushProducts,
   pushCOC,
   removeCOC,
   pushCreditNote,
@@ -180,9 +179,11 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "stock.bulkUpload": {
         result = dataService.stock.bulkCreate(input);
-        if (result) {
+        if (result?.success) {
           const items = dataService.stock.list();
-          await pushProducts(items);
+          for (const item of items) {
+            try { await pushStock(item); } catch { /* ignore */ }
+          }
           reloadFromStorage(["sgf_products"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "products", count: items.length } }));
         }
@@ -237,7 +238,7 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "customer.bulkUpload": {
         result = dataService.customer.bulkUpload(input);
-        if (result) {
+        if (result?.success) {
           const customers = dataService.customer.list();
           for (const cust of customers) {
             try { await pushCustomer(cust); } catch { /* ignore */ }

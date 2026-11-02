@@ -620,24 +620,6 @@ export async function removeOneStockItem(id: number): Promise<void> {
   try { await remove(ref(db, `products/${safeFbKey(id)}`)); } catch { /* ignore */ }
 }
 
-/**
- * Push entire products array to Firebase atomically.
- * Use this for bulk uploads to avoid race conditions with the real-time subscription.
- */
-export async function pushProducts(products: any[]): Promise<{ success: boolean; error?: string }> {
-  if (!isFirebaseReady()) return { success: false, error: "Firebase not ready" };
-  try {
-    const obj: Record<string, any> = {};
-    for (const p of products) {
-      if (p && p.id != null) obj[safeFbKey(p.id)] = { ...p, _syncedAt: Date.now() };
-    }
-    await set(ref(db, "products"), obj);
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message || "Unknown" };
-  }
-}
-
 export async function pushUser(user: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("user", user); return; }
   try {

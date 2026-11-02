@@ -262,14 +262,21 @@ export default function StockPage() {
           if (!productName) { skipped++; continue; }
 
           // Get quantity from SOH column
+          // Strip currency symbols (R, $), commas, and whitespace before parsing
           const qtyVal = row[colIdx.soh];
-          const quantity = qtyVal !== "" && qtyVal !== undefined ? parseInt(String(qtyVal)) || 0 : 0;
+          let quantity = 0;
+          if (qtyVal !== "" && qtyVal !== undefined && qtyVal !== null) {
+            const cleaned = String(qtyVal).replace(/[Rr$\s,]/g, "").trim();
+            const parsed = parseInt(cleaned, 10);
+            quantity = Number.isFinite(parsed) ? parsed : 0;
+          }
 
           // Get prices (may be empty for some rows like THREADS)
           // Return undefined when column missing or cell empty so bulkCreate keeps existing prices
           const getPrice = (idx: number) => {
-            if (idx < 0 || row[idx] === "" || row[idx] === undefined) return undefined;
-            const v = parseFloat(String(row[idx]));
+            if (idx < 0 || row[idx] === "" || row[idx] === undefined || row[idx] === null) return undefined;
+            const cleaned = String(row[idx]).replace(/[Rr$\s,]/g, "").trim();
+            const v = parseFloat(cleaned);
             return Number.isFinite(v) && v > 0 ? v : undefined;
           };
 

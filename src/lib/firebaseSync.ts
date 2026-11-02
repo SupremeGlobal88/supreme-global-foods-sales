@@ -622,11 +622,15 @@ export async function removeOneStockItem(id: number): Promise<void> {
 
 export async function pushProducts(products: any[]): Promise<void> {
   if (!isFirebaseReady()) return;
-  const obj: Record<string, any> = {};
   for (const p of products) {
-    if (p && p.id != null) obj[safeFbKey(p.id)] = { ...p, _syncedAt: Date.now() };
+    if (p && p.id != null) {
+      try {
+        await set(ref(db, `products/${safeFbKey(p.id)}`), { ...p, _syncedAt: Date.now() });
+      } catch (err) {
+        console.error("[Firebase] pushProducts failed for id", p.id, err);
+      }
+    }
   }
-  try { await set(ref(db, "products"), obj); } catch { /* ignore */ }
 }
 
 export async function pushUser(user: any): Promise<void> {

@@ -296,7 +296,7 @@ export default function InvoicesPage() {
     if (q) {
       list = list.filter((i: any) =>
         (i.invoiceNumber || "").toLowerCase().includes(q) ||
-        (i.customer?.name || "").toLowerCase().includes(q) ||
+        (i.customer?.name || i.customerName || "").toLowerCase().includes(q) ||
         (i.customer?.customerCode || "").toLowerCase().includes(q) ||
         (i.orderNumber || "").toLowerCase().includes(q)
       );

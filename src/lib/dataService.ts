@@ -3511,9 +3511,14 @@ const dataService = {
     list: () => getDedupedInvoices()
       .map((inv) => {
         const customer = customers.find((c) => c.id == inv.customerId);
+        // FALLBACK: if no customer found in loaded customer list, preserve
+        // the invoice's own customer/customerName so PO-generated invoices
+        // (which may reference a customerId not in the loaded customers array)
+        // still show correctly in the UI.
+        const fallbackCustomer = customer || inv.customer || { name: inv.customerName || "" };
         return {
           ...inv,
-          customer: customer || null,
+          customer: fallbackCustomer,
           subtotal: inv.subtotal ?? inv.totalAmount ?? 0,
           vatAmount: inv.vatAmount ?? (inv.totalAmount ?? 0) * 0.15 / 1.15,
           total: inv.total ?? inv.totalAmount ?? 0,
@@ -3529,7 +3534,8 @@ const dataService = {
       const inv = invoices.find((i) => i.id == id);
       if (!inv) return null;
       const customer = customers.find((c) => c.id == inv.customerId);
-      return { ...inv, customer: customer || null };
+      const fallbackCustomer = customer || inv.customer || { name: inv.customerName || "" };
+      return { ...inv, customer: fallbackCustomer };
     },
     create: (data: any) => {
       const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(invoices.length + 1).padStart(4, "0")}`;

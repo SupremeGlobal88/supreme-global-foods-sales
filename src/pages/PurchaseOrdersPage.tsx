@@ -2,9 +2,12 @@ import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { reloadFromStorage } from "@/lib/dataService";
 import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
+import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import {
   Search, Plus, Trash2, X, FileText, Building2, Calendar, Package,
   CheckCircle2, Clock, AlertCircle, ChevronRight, Filter, Link2, Globe,
+  Lock, Shield,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -128,6 +131,14 @@ export default function PurchaseOrdersPage() {
   const { data: purchaseOrders } = trpc.purchaseOrder.list.useQuery();
   const { data: corporateCustomers } = trpc.corporateCustomer.list.useQuery();
   const { data: stockItems } = trpc.stock.search.useQuery({ query: " " });
+  const { data: invoices } = trpc.invoice.list.useQuery();
+
+  const { user } = useAuth();
+  const { isSuperAdmin } = useRole();
+
+  // Super Admin PIN override state for COD/credit-limit blocks
+  const [adminOverride, setAdminOverride] = useState(false);
+  const [adminPin, setAdminPin] = useState("");
 
   const createPO = trpc.purchaseOrder.create.useMutation({
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); setShowForm(false); resetForm(); },
@@ -156,6 +167,8 @@ export default function PurchaseOrdersPage() {
       orderDate: new Date().toISOString().slice(0, 10), dueDate: "", memoDate: "",
       lineItems: [], shippingInstructions: "", notes: "",
     });
+    setAdminOverride(false);
+    setAdminPin("");
   }
 
   function addLineItem() {
@@ -193,19 +206,124 @@ export default function PurchaseOrdersPage() {
     setFormData(prev => ({ ...prev, lineItems: prev.lineItems.filter((_, i) => i !== index) }));
   }
 
+  function canCreatePO(): { valid: boolean; error?: string } {
+    if (!formData.poNumber.trim() || !formData.corporateCustomerId || formData.lineItems.length === 0) {
+      return { valid: false, error: "Please fill in all required fields and add at least one line item." };
+    }
+    const customer = (corporateCustomers || []).find((c: any) => c.id == formData.corporateCustomerId);
+    if (!customer) return { valid: false, error: "Corporate customer not found." };
+
+    // 1. Customer deactivated
+    if (customer.isActive === false && !(isSuperAdmin && adminOverride)) {
+      return { valid: false, error: "Corporate customer account is INACTIVE. Only Super Admin can place orders for inactive customers." };
+    }
+
+    // 2. Credit limit exceeded (non-COD only)
+    const creditLimit = Number(customer.creditLimit || 0);
+    const paymentTerms = customer.paymentTerms || "30_days";
+    if (creditLimit > 0 && paymentTerms !== "cod") {
+      const poIds = (purchaseOrders || [])
+        .filter((po: any) => po.corporateCustomerId == customer.id)
+        .map((po: any) => po.id);
+      const outstanding = (invoices || [])
+        .filter((inv: any) => inv.purchaseOrderId != null && poIds.includes(inv.purchaseOrderId) && inv.status !== "cancelled" && (inv.balanceDue || 0) > 0.01)
+        .reduce((sum: number, inv: any) => sum + (inv.balanceDue || 0), 0);
+      if (outstanding >= creditLimit && !(isSuperAdmin && adminOverride)) {
+        return { valid: false, error: `Credit limit exceeded. Limit: R ${creditLimit.toFixed(2)}, Outstanding: R ${outstanding.toFixed(2)}. Only Super Admin can override.` };
+      }
+    }
+
+    // 3. COD: unpaid invoices older than 2 days
+    if (paymentTerms === "cod") {
+      const twoDaysAgo = new Date(Date.now() - 2 * 86400000);
+      const poIds = (purchaseOrders || [])
+        .filter((po: any) => po.corporateCustomerId == customer.id)
+        .map((po: any) => po.id);
+      const unpaidCOD = (invoices || [])
+        .filter((inv: any) => {
+          if (inv.purchaseOrderId == null || !poIds.includes(inv.purchaseOrderId)) return false;
+          if (inv.status === "cancelled") return false;
+          if ((inv.balanceDue || 0) <= 0.01) return false;
+          return new Date(inv.invoiceDate || inv.createdAt) < twoDaysAgo;
+        });
+      if (unpaidCOD.length > 0 && !(isSuperAdmin && adminOverride)) {
+        const totalUnpaid = unpaidCOD.reduce((s: number, inv: any) => s + (inv.balanceDue || 0), 0);
+        return { valid: false, error: `COD account has unpaid invoices older than 2 days (R ${totalUnpaid.toFixed(2)}). Settle in full before placing new orders. Only Super Admin can override.` };
+      }
+    }
+
+    // 4. PIN validation when override is checked
+    if (adminOverride) {
+      if (!adminPin || adminPin.trim().length === 0) {
+        return { valid: false, error: "Please enter your admin PIN to approve this PO." };
+      }
+      let effectivePin = "";
+      try {
+        const rawUsers = localStorage.getItem("sgf_users");
+        if (rawUsers) {
+          const allUsers = JSON.parse(rawUsers);
+          const dbUser = allUsers.find((u: any) =>
+            String(u.id) === String(user?.id) ||
+            (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
+          );
+          if (dbUser?.pin != null) effectivePin = String(dbUser.pin);
+        }
+      } catch { /* ignore */ }
+      if (!effectivePin) {
+        try {
+          const demoStr = localStorage.getItem("demo_user");
+          if (demoStr) {
+            const demo = JSON.parse(demoStr);
+            if (String(demo?.id) === String(user?.id) && demo.pin != null) {
+              effectivePin = String(demo.pin);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      if (!effectivePin) {
+        const DEFAULT_USERS = [
+          { id: 1, name: "Collin", pin: "2580" },
+          { id: 2, name: "Adeli", pin: "1111" },
+          { id: 3, name: "Inhouse", pin: "2222" },
+          { id: 4, name: "Michael", pin: "3333" },
+          { id: 5, name: "Nkosana", pin: "4444" },
+          { id: 6, name: "Tebogo Bila", pin: "6666" },
+          { id: 7, name: "Aggie", pin: "1018" },
+          { id: 8, name: "Ronald", pin: "2581" },
+          { id: 9, name: "Jolene", pin: "7777" },
+          { id: 10, name: "David", pin: "8888" },
+        ];
+        const defaultUser = DEFAULT_USERS.find((u) =>
+          String(u.id) === String(user?.id) ||
+          (u.name && user?.name && u.name.toLowerCase() === user.name.toLowerCase())
+        );
+        if (defaultUser) effectivePin = defaultUser.pin;
+      }
+      if (String(adminPin).trim() !== String(effectivePin).trim()) {
+        return { valid: false, error: "Incorrect admin PIN. Please enter your correct PIN to approve this PO." };
+      }
+    }
+
+    return { valid: true };
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!formData.poNumber.trim() || !formData.corporateCustomerId || formData.lineItems.length === 0) return;
-    // Use loose equality (==) — Firebase may convert number IDs to strings
+    const check = canCreatePO();
+    if (!check.valid) { alert(check.error); return; }
     const customer = (corporateCustomers || []).find((c: any) => c.id == formData.corporateCustomerId);
     const totalExclVat = formData.lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
     const vatAmount = totalExclVat * 0.15;
-    createPO.mutate({
+    const payload: any = {
       ...formData,
       corporateCustomerName: customer?.name || "",
       totalExclVat, vatAmount, totalInclVat: totalExclVat + vatAmount,
       status: "received",
-    });
+    };
+    if (isSuperAdmin && adminOverride) {
+      payload.superAdminOverride = true;
+    }
+    createPO.mutate(payload);
   }
 
   function getCustomerName(customerId: number) {
@@ -443,8 +561,41 @@ export default function PurchaseOrdersPage() {
 
               <div><label className="label-text">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="input-field w-full" rows={2} /></div>
 
+              {/* Super Admin PIN Override */}
+              {isSuperAdmin && (
+                <div className="p-3 rounded-lg space-y-2" style={{ backgroundColor: "rgba(212,168,67,0.06)", border: "1px solid rgba(212,168,67,0.15)" }}>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adminOverride}
+                      onChange={(e) => { setAdminOverride(e.target.checked); if (!e.target.checked) setAdminPin(""); }}
+                      className="w-4 h-4 rounded border-[#444] bg-[#0A0A0B] text-[#D4A843] focus:ring-[#D4A843]"
+                    />
+                    <span className="text-sm text-[#D4A843] flex items-center gap-1">
+                      <Shield className="w-3.5 h-3.5" />
+                      Super Admin Override — approve blocked customer
+                    </span>
+                  </label>
+                  {adminOverride && (
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-3.5 h-3.5 text-[#8A8B8C]" />
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={adminPin}
+                        onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ""))}
+                        placeholder="Enter your PIN"
+                        className="input-field w-32 text-sm"
+                      />
+                      <span className="text-xs text-[#8A8B8C]">Enter your admin PIN to override inactive / COD overdue / credit limit blocks.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-3 border-t border-[#222324]">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+                <button type="button" onClick={() => { setShowForm(false); setAdminOverride(false); setAdminPin(""); }} className="btn-secondary">Cancel</button>
                 <button type="submit" className="btn-gold" disabled={formData.lineItems.length === 0 || !formData.poNumber.trim() || !formData.corporateCustomerId}>Create PO</button>
               </div>
             </form>

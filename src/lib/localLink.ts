@@ -179,7 +179,7 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "stock.bulkUpload": {
         result = dataService.stock.bulkCreate(input);
-        if (result?.success) {
+        if (result) {
           const items = dataService.stock.list();
           for (const item of items) {
             try { await pushStock(item); } catch { /* ignore */ }

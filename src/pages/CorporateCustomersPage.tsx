@@ -100,6 +100,7 @@ export default function CorporateCustomersPage() {
       creditLimit: c.creditLimit != null ? String(c.creditLimit) : "",
       salesRepName: c.salesRepName || "",
     });
+    setLinkedCustomerId(c.linkedCustomerId || null);
     setEditingId(c.id);
     setShowForm(true);
   }
@@ -110,6 +111,7 @@ export default function CorporateCustomersPage() {
     const payload: any = {
       ...formData,
       creditLimit: formData.creditLimit === "" ? 0 : Number(formData.creditLimit),
+      linkedCustomerId: linkedCustomerId || null,
     };
     if (editingId) {
       updateCustomer.mutate({ id: editingId, data: payload });
@@ -310,14 +312,13 @@ export default function CorporateCustomersPage() {
               <button onClick={() => setShowForm(false)} className="p-1 rounded hover:bg-[#222324]"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
-              {/* Link existing customer (only when adding new) */}
-              {!editingId && (
-                <div className="col-span-2 p-3 rounded-lg border border-[#333334]" style={{ backgroundColor: "rgba(212, 168, 67, 0.06)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Users className="w-4 h-4" style={{ color: "#D4A843" }} />
-                    <span className="text-sm font-medium text-white">Link Existing Customer</span>
-                    <span className="text-xs text-[#8A8B8C]">— Auto-fill from customer database</span>
-                  </div>
+              {/* Link existing customer (create or edit) */}
+              <div className="col-span-2 p-3 rounded-lg border border-[#333334]" style={{ backgroundColor: "rgba(212, 168, 67, 0.06)" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-4 h-4" style={{ color: "#D4A843" }} />
+                  <span className="text-sm font-medium text-white">Link Existing Customer</span>
+                  <span className="text-xs text-[#8A8B8C]">— Auto-fill from customer database</span>
+                </div>
                   <div className="flex gap-2">
                     <select
                       value={linkedCustomerId ?? ""}
@@ -355,7 +356,6 @@ export default function CorporateCustomersPage() {
                     </div>
                   )}
                 </div>
-              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><label className="label-text">Company Name *</label><input required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input-field w-full" /></div>
                 <div>

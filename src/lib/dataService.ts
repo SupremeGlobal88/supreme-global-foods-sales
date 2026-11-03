@@ -5124,6 +5124,9 @@ const dataService = {
         .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
         .map((inv) => {
           const customer = customers.find((c) => c.id == inv.customerId);
+          // FALLBACK: if customer not found in loaded array, preserve the invoice's
+          // own customer object (or customerName) so Sage/PO invoices display correctly.
+          const effectiveCustomer = customer || inv.customer || { name: inv.customerName || "" };
           // Use invoiceDate (actual invoice date) not createdAt (import date)
           const invoiceDate = new Date(inv.invoiceDate || inv.createdAt);
           // Calculate due date from payment terms
@@ -5146,14 +5149,14 @@ const dataService = {
           const accountHold = accountHolds.find((h) => h.customerId == inv.customerId && h.status === "active") || null;
           return {
             ...inv,
-            customer: customer || null,
+            customer: effectiveCustomer,
             daysOverdue,
             bucket,
             balanceDue: typeof inv.balanceDue === "number" ? inv.balanceDue : (Number(inv.total || inv.totalAmount || 0) - Number(inv.amountPaid || 0)),
             collectionNotes: notes,
             latestPromise,
             accountHold,
-            salesRepName: customer?.salesRepName || "",
+            salesRepName: effectiveCustomer?.salesRepName || inv.customer?.salesRepName || "",
           };
         })
         .filter((inv) => inv.balanceDue > 0)

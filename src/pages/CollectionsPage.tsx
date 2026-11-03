@@ -96,11 +96,13 @@ export default function CollectionsPage() {
   const { data: salesReps } = trpc.customer.getSalesReps.useQuery();
   const { data: customerHistory } = trpc.collections.getCustomerPaymentHistory.useQuery(historyCustomerId, { enabled: historyCustomerId > 0 });
 
-  // Helper: resolve customer name from customerId (fixes N/A for Sage invoices with stripped embedded customer)
-  const getCustomerName = (customerId: any) => {
-    if (!customerId) return "N/A";
+  // Helper: resolve customer name from customerId (fixes N/A for Sage/PO invoices
+  // where customerId doesn't match loaded customers array). Falls back to the
+  // invoice's own customer/customerName.
+  const getCustomerName = (customerId: any, fallbackName?: string) => {
+    if (!customerId) return fallbackName || "N/A";
     const c = (customers || []).find((c: any) => c.id == customerId);
-    return c?.name || "N/A";
+    return c?.name || fallbackName || "N/A";
   };
 
   // Mutations
@@ -148,7 +150,7 @@ export default function CollectionsPage() {
     const templates = getReminderTemplates();
     const template = templates[bucket] || templates.days_1_2;
     return template.body
-      .replace(/{customerName}/g, getCustomerName(invoice.customerId) || "Valued Customer")
+      .replace(/{customerName}/g, getCustomerName(invoice.customerId, invoice.customer?.name || invoice.customerName) || "Valued Customer")
       .replace(/{invoiceNumber}/g, invoice.invoiceNumber)
       .replace(/{amount}/g, Number(invoice.total).toFixed(2))
       .replace(/{balanceDue}/g, Number(invoice.balanceDue).toFixed(2))
@@ -320,7 +322,7 @@ export default function CollectionsPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="p-3 text-sm text-[#E8E8E9] font-body">{getCustomerName(inv.customerId)}</td>
+                            <td className="p-3 text-sm text-[#E8E8E9] font-body">{getCustomerName(inv.customerId, inv.customer?.name || inv.customerName)}</td>
                             <td className="p-3 text-sm text-[#4ADE80] font-body">{inv.salesRepName || inv.customer?.salesRepName || "-"}</td>
                             <td className="p-3 text-right font-display text-white">R {inv.balanceDue.toFixed(2)}</td>
                             <td className="p-3 text-center">
@@ -403,7 +405,7 @@ export default function CollectionsPage() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="text-white font-body font-medium">{getCustomerName(fu.customerId) || "Unknown"}</h4>
+                            <h4 className="text-white font-body font-medium">{getCustomerName(fu.customerId, fu.customer?.name) || "Unknown"}</h4>
                             {isOverdue && (
                               <span className="status-badge text-xs" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
                                 <AlertTriangle className="w-3 h-3 inline mr-1" />{fu.daysSinceFollowUp} days overdue
@@ -548,7 +550,7 @@ export default function CollectionsPage() {
         <ActionModal
           action={showActionModal}
           invoice={selectedInvoice}
-          customerName={getCustomerName(selectedInvoice.customerId)}
+          customerName={getCustomerName(selectedInvoice.customerId, selectedInvoice.customer?.name || selectedInvoice.customerName)}
           onClose={() => setShowActionModal(null)}
           onSubmit={(data: any) => {
             if (showActionModal === "call" || showActionModal === "note" || showActionModal === "whatsapp") {

@@ -434,7 +434,7 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "invoice.update": {
         const { id: iid, data: idata } = input;
-        result = dataService.invoice.update({ id: iid, data: idata });
+        result = dataService.invoice.updateInvoice({ id: iid, data: idata });
         if (result) {
           await pushInvoice(result);
           reloadFromStorage(["sgf_invoices"]);

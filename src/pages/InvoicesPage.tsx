@@ -179,6 +179,18 @@ export default function InvoicesPage() {
     },
     onError: (err: any) => { alert("Remove overpayment failed: " + (err.message || "Unknown error")); },
   });
+  const voidCreditNoteAllocation = trpc.invoice.voidCreditNoteAllocation.useMutation({
+    onSuccess: async (data: any) => {
+      if (!data || !data.success) {
+        alert("Remove credit allocation failed: " + (data?.error || "Unknown error"));
+        return;
+      }
+      reloadFromStorage();
+      await utils.invoice.list.invalidate();
+      await utils.creditNote.list.invalidate();
+    },
+    onError: (err: any) => { alert("Remove credit allocation failed: " + (err.message || "Unknown error")); },
+  });
   const refundCreditNote = trpc.invoice.refundCreditNote.useMutation({
     onSuccess: async (data: any) => {
       if (!data || !data.success) {
@@ -1413,6 +1425,45 @@ export default function InvoicesPage() {
                               </div>
                             ) : null;
                           })()}
+
+                          {/* Credit Allocations — credit notes applied TO this invoice */}
+                          {inv.creditAllocations && inv.creditAllocations.length > 0 && (
+                            <div className="mb-4">
+                              <div className="label-text mb-2 flex items-center gap-2">
+                                <RotateCcw className="w-3.5 h-3.5" /> Credit Allocations
+                              </div>
+                              <div className="space-y-1">
+                                {inv.creditAllocations.map((ca: any, caIdx: number) => {
+                                  const cn = (allCreditNotes || []).find((c: any) => c.id == ca.creditNoteId);
+                                  const cnRef = cn?.creditNoteNumber || `CN-${ca.creditNoteId}`;
+                                  return (
+                                    <div key={caIdx} className="flex items-center justify-between p-2.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                                      <div className="flex items-center gap-3 flex-wrap">
+                                        <RotateCcw className="w-3.5 h-3.5 text-[#F59E0B] shrink-0" />
+                                        <span className="text-[#F59E0B] font-semibold">R {Number(ca.amount || 0).toFixed(2)}</span>
+                                        <span className="text-[#8A8B8C]">from {cnRef}</span>
+                                        <span className="text-[#8A8B8C]">{new Date(ca.allocatedAt).toLocaleDateString("en-ZA")}</span>
+                                      </div>
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => {
+                                            if (confirm(`Remove credit allocation of R ${Number(ca.amount || 0).toFixed(2)} from ${cnRef}?\n\nThis will restore the balance on the invoice and the credit note.`)) {
+                                              voidCreditNoteAllocation.mutate({ creditNoteId: ca.creditNoteId, invoiceId: inv.id });
+                                            }
+                                          }}
+                                          className="p-1.5 rounded hover:bg-[#222324]"
+                                          title="Remove Credit Allocation"
+                                          disabled={voidCreditNoteAllocation.isPending}
+                                        >
+                                          <Trash2 className="w-3 h-3 text-[#EF4444]" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Receipts for this invoice */}
                           {invReceipts.length > 0 && (

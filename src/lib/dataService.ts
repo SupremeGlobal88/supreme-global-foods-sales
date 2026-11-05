@@ -1323,6 +1323,7 @@ function repairCreditAllocations(): number {
     // Reconstruct expected creditAllocations from credit note data
     const expectedCredits: any[] = [];
     for (const cn of creditNotes) {
+      if (cn.voided) continue; // skip voided credit notes
       for (const alloc of (cn.allocations || [])) {
         if (alloc.invoiceId == inv.id) {
           expectedCredits.push({

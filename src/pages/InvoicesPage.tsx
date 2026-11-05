@@ -7,7 +7,7 @@ import { getCompanyConfig, type CompanyKey } from "@/lib/companyConfig";
 import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
-  Database, Zap, ShoppingCart, Globe, FileCheck, Banknote,
+  Database, Zap, ShoppingCart, Globe, FileCheck, Banknote, ArrowLeftRight,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -1284,6 +1284,15 @@ export default function InvoicesPage() {
                                   </div>
                                 ) : null;
                               })()}
+                              {(() => {
+                                const opAllocs = (inv.overpaymentAllocations || []).reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+                                return opAllocs > 0 && !isSample ? (
+                                  <div className="flex justify-between">
+                                    <span className="text-[#8A8B8C]">Overpayment Credits Applied:</span>
+                                    <span className="text-[#3B82F6]">R {opAllocs.toFixed(2)}</span>
+                                  </div>
+                                ) : null;
+                              })()}
                               {displayBal > 0 && (
                                 <div className="flex justify-between pt-1" style={{ borderTop: "1px solid #EF4444" }}>
                                   <span className="text-[#EF4444] font-bold">Balance Due:</span><span className="text-[#EF4444] font-bold">R {displayBal.toFixed(2)}</span>
@@ -1322,6 +1331,31 @@ export default function InvoicesPage() {
                                     )}
                                   </div>
                                 ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Overpayment Credits received by this invoice */}
+                          {inv.overpaymentAllocations && inv.overpaymentAllocations.length > 0 && (
+                            <div className="mb-4">
+                              <div className="label-text mb-2 flex items-center gap-2">
+                                <ArrowLeftRight className="w-3.5 h-3.5" /> Overpayment Credits
+                              </div>
+                              <div className="space-y-1">
+                                {inv.overpaymentAllocations.map((oa: any, oaIdx: number) => {
+                                  const fromInv = (invoices || []).find((i: any) => i.id == oa.fromInvoiceId);
+                                  const fromRef = fromInv?.invoiceNumber || `INV-${oa.fromInvoiceId}`;
+                                  return (
+                                    <div key={oaIdx} className="flex items-center justify-between p-2.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+                                      <div className="flex items-center gap-3 flex-wrap">
+                                        <ArrowLeftRight className="w-3.5 h-3.5 text-[#3B82F6] shrink-0" />
+                                        <span className="text-[#3B82F6] font-semibold">R {Number(oa.amount || 0).toFixed(2)}</span>
+                                        <span className="text-[#8A8B8C]">from {fromRef}</span>
+                                        <span className="text-[#8A8B8C]">{new Date(oa.allocatedAt).toLocaleDateString("en-ZA")}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}

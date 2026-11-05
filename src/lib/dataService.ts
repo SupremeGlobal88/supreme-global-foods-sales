@@ -1348,9 +1348,10 @@ function repairCreditAllocations(): number {
 
     // ALWAYS recalculate the correct balance from current data
     const totalAlloc = expectedCredits.reduce((sum: number, ca: any) => sum + (ca.amount || 0), 0);
+    const totalOverpaymentAlloc = (inv.overpaymentAllocations || []).reduce((sum: number, oa: any) => sum + (oa.amount || 0), 0);
     const invTotal = typeof inv.total === "number" ? inv.total : (inv.totalAmount || 0);
     const amountPaid = typeof inv.amountPaid === "number" ? inv.amountPaid : 0;
-    let correctBalance = invTotal - amountPaid - totalAlloc;
+    let correctBalance = invTotal - amountPaid - totalAlloc - totalOverpaymentAlloc;
     correctBalance = Math.round(correctBalance * 100) / 100;
 
     // Check if invoice needs fixing:

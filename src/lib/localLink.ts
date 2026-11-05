@@ -623,6 +623,18 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
+      case "invoice.voidCreditNoteAllocation": {
+        result = dataService.invoice.voidCreditNoteAllocation(input);
+        if (result && result.success) {
+          if (result.creditNote) await pushCreditNote(result.creditNote);
+          // Invoice was also updated — find and push it
+          const updatedInvoice = (dataService.invoice.list() || []).find((i: any) => i.id == input.invoiceId);
+          if (updatedInvoice) await pushInvoice(updatedInvoice);
+          reloadFromStorage(["sgf_creditNotes", "sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
+        }
+        break;
+      }
       case "invoice.refundCreditNote": {
         result = dataService.invoice.refundCreditNote(input);
         if (result && result.success) {
@@ -729,6 +741,9 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "appointment.getStats":
         result = dataService.appointment.getStats();
+        break;
+      case "appointment.listAll":
+        result = dataService.appointment.listAll();
         break;
       case "appointment.update": {
         const { id: aid, data: adata } = input;
@@ -992,6 +1007,18 @@ export async function localLinkHandler(path: string, input: any) {
       case "collectionNote.getByCustomer":
         result = dataService.collectionNote.getByCustomer(input);
         break;
+      case "collectionNote.getByInvoice":
+        result = dataService.collectionNote.getByInvoice(input);
+        break;
+      case "collectionNote.getStats":
+        result = dataService.collectionNote.getStats();
+        break;
+      case "collectionNote.search":
+        result = dataService.collectionNote.search(input || { query: "" });
+        break;
+      case "collectionNote.getDailyReport":
+        result = dataService.collectionNote.getDailyReport(input);
+        break;
       case "collectionNote.create": {
         result = dataService.collectionNote.create(input);
         if (result) {
@@ -1020,6 +1047,19 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
+      case "collectionNote.recordVisit": {
+        result = dataService.collectionNote.recordVisit(input);
+        if (result) {
+          await pushCollectionNote(result);
+          reloadFromStorage(["sgf_collectionNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionNotes", count: 1 } }));
+        }
+        break;
+      }
+
+      // ================================================================
+      //  COLLECTION PROMISES
+      // ================================================================
       case "collectionPromise.list":
         result = dataService.collectionPromise.list();
         break;
@@ -1028,6 +1068,11 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       case "collectionPromise.getByCustomer":
         result = dataService.collectionPromise.getByCustomer(input);
+      case "collectionPromise.getByInvoice":
+        result = dataService.collectionPromise.getByInvoice(input);
+        break;
+      case "collectionPromise.getStats":
+        result = dataService.collectionPromise.getStats();
         break;
       case "collectionPromise.create": {
         result = dataService.collectionPromise.create(input);
@@ -1035,15 +1080,6 @@ export async function localLinkHandler(path: string, input: any) {
           await pushCollectionPromise(result);
           reloadFromStorage(["sgf_collectionPromises"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 1 } }));
-        }
-        break;
-      }
-      case "collections.addNote": {
-        result = dataService.collections.addNote(input);
-        if (result) {
-          await pushCollectionNote(result);
-          reloadFromStorage(["sgf_collectionNotes"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionNotes", count: 1 } }));
         }
         break;
       }
@@ -1057,46 +1093,6 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-      case "collections.getCustomerPaymentHistory":
-        result = dataService.collections.getCustomerPaymentHistory(input);
-        break;
-      case "collections.getDailyReport":
-        result = dataService.collections.getDailyReport();
-        break;
-      case "collections.getFollowUpsDue":
-        result = dataService.collections.getFollowUpsDue();
-        break;
-      case "collections.getOverdueInvoices":
-        result = dataService.collections.getOverdueInvoices();
-        break;
-      case "collections.getStats":
-        result = dataService.collections.getStats();
-        break;
-      case "collections.placeHold": {
-        result = dataService.collections.placeHold(input);
-        if (result) {
-          setStorageItem("sgf_accountHolds", JSON.stringify(dataService.accountHold.list ? dataService.accountHold.list() : []));
-          reloadFromStorage(["sgf_accountHolds"]);
-        }
-        break;
-      }
-      case "collections.recordPromise": {
-        result = dataService.collections.recordPromise(input);
-        if (result) {
-          await pushCollectionPromise(result);
-          reloadFromStorage(["sgf_collectionPromises"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 1 } }));
-        }
-        break;
-      }
-      case "collections.releaseHold": {
-        result = dataService.collections.releaseHold(input);
-        if (result) {
-          setStorageItem("sgf_accountHolds", JSON.stringify(dataService.accountHold.list ? dataService.accountHold.list() : []));
-          reloadFromStorage(["sgf_accountHolds"]);
-        }
-        break;
-      }
       case "collectionPromise.delete": {
         result = dataService.collectionPromise.delete(input);
         if (result?.success) {
@@ -1106,203 +1102,18 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
-
-      // ================================================================
-      //  AUDIT LOG
-      // ================================================================
-      case "audit.getCheckInReport":
-        result = dataService.audit.getCheckInReport(input);
-        break;
-      case "audit.getFullTrail":
-        result = dataService.audit.getFullTrail(input);
-        break;
-      case "audit.getMissedAppointments":
-        result = dataService.audit.getMissedAppointments(input);
-        break;
-      case "audit.getStats":
-        result = dataService.audit.getStats();
-        break;
-      case "auditLog.list":
-        result = dataService.auditLog.list();
-        break;
-      case "auditLog.getRecent":
-        result = dataService.auditLog.getRecent(input || 50);
-        break;
-      case "auditLog.create": {
-        result = dataService.auditLog.create(input);
+      case "collectionPromise.recordPayment": {
+        result = dataService.collectionPromise.recordPayment(input);
         if (result) {
-          await pushAudit(result);
-          reloadFromStorage(["sgf_auditLog"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "auditLog", count: 1 } }));
+          await pushCollectionPromise(result);
+          reloadFromStorage(["sgf_collectionPromises"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 1 } }));
         }
         break;
       }
 
       // ================================================================
-      //  SYSTEM LOGS
-      // ================================================================
-      case "systemLog.list":
-        result = dataService.systemLog.list();
-        break;
-      case "systemLog.getRecent":
-        result = dataService.systemLog.getRecent(input || 50);
-        break;
-      case "systemLog.getByCategory":
-        result = dataService.systemLog.getByCategory(input);
-        break;
-      case "systemLog.getByLevel":
-        result = dataService.systemLog.getByLevel(input);
-        break;
-      case "systemLog.create": {
-        result = dataService.systemLog.create(input);
-        if (result) {
-          await pushSystemLog(result);
-          reloadFromStorage(["sgf_systemLogs"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "systemLogs", count: 1 } }));
-        }
-        break;
-      }
-
-      // ================================================================
-      //  CORPORATE CUSTOMERS
-      // ================================================================
-      case "corporateCustomer.list":
-        result = dataService.corporateCustomer.list();
-        break;
-      case "corporateCustomer.getById":
-        result = dataService.corporateCustomer.getById(input);
-        break;
-      case "corporateCustomer.getByCustomerId":
-        result = dataService.corporateCustomer.getByCustomerId(input);
-        break;
-      case "corporateCustomer.create": {
-        result = dataService.corporateCustomer.create(input);
-        if (result) {
-          await pushCorporateCustomer(result);
-          reloadFromStorage(["sgf_corporateCustomers"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } }));
-        }
-        break;
-      }
-      case "corporateCustomer.update": {
-        const { id: ccid, data: ccdata } = input;
-        result = dataService.corporateCustomer.update({ id: ccid, data: ccdata });
-        if (result) {
-          await pushCorporateCustomer(result);
-          reloadFromStorage(["sgf_corporateCustomers"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } }));
-        }
-        break;
-      }
-      case "corporateCustomer.delete": {
-        result = dataService.corporateCustomer.delete(input);
-        if (result?.success) {
-          await removeCorporateCustomer(input);
-          reloadFromStorage(["sgf_corporateCustomers"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 0 } }));
-        }
-        break;
-      }
-
-      // ================================================================
-      //  PURCHASE ORDERS
-      // ================================================================
-      case "purchaseOrder.list":
-        result = dataService.purchaseOrder.list();
-        break;
-      case "purchaseOrder.getById":
-        result = dataService.purchaseOrder.getById(input);
-        break;
-      case "purchaseOrder.getByCustomer":
-        result = dataService.purchaseOrder.getByCustomer(input);
-        break;
-      case "purchaseOrder.getByCorporateCustomer":
-        result = dataService.purchaseOrder.getByCorporateCustomer(input);
-        break;
-      case "purchaseOrder.getStats":
-        result = dataService.purchaseOrder.getStats();
-        break;
-      case "purchaseOrder.create": {
-        result = dataService.purchaseOrder.create(input);
-        if (result) {
-          await pushPurchaseOrder(result);
-          reloadFromStorage(["sgf_purchaseOrders"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
-        }
-        break;
-      }
-      case "purchaseOrder.updateStatus": {
-        result = dataService.purchaseOrder.updateStatus(input);
-        if (result) {
-          await pushPurchaseOrder(result);
-          reloadFromStorage(["sgf_purchaseOrders"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
-        }
-        break;
-      }
-      case "purchaseOrder.update": {
-        const { id: poid, data: podata } = input;
-        result = dataService.purchaseOrder.update({ id: poid, data: podata });
-        if (result) {
-          await pushPurchaseOrder(result);
-          reloadFromStorage(["sgf_purchaseOrders"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
-        }
-        break;
-      }
-      case "purchaseOrder.delete": {
-        result = dataService.purchaseOrder.delete(input);
-        if (result?.success) {
-          await removePurchaseOrder(input);
-          reloadFromStorage(["sgf_purchaseOrders"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 0 } }));
-        }
-        break;
-      }
-
-      // ================================================================
-      //  BARRELS
-      // ================================================================
-      case "barrel.list":
-        result = dataService.barrel.list();
-        break;
-      case "barrel.getById":
-        result = dataService.barrel.getById(input);
-        break;
-      case "barrel.getByCustomer":
-        result = dataService.barrel.getByCustomer(input);
-        break;
-      case "barrel.create": {
-        result = dataService.barrel.create(input);
-        if (result) {
-          await pushBarrel(result);
-          reloadFromStorage(["sgf_barrels"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } }));
-        }
-        break;
-      }
-      case "barrel.update": {
-        const { id: bid, data: bdata } = input;
-        result = dataService.barrel.update({ id: bid, data: bdata });
-        if (result) {
-          await pushBarrel(result);
-          reloadFromStorage(["sgf_barrels"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } }));
-        }
-        break;
-      }
-      case "barrel.delete": {
-        result = dataService.barrel.delete(input);
-        if (result?.success) {
-          await removeBarrel(input);
-          reloadFromStorage(["sgf_barrels"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 0 } }));
-        }
-        break;
-      }
-
-      // ================================================================
-      //  CERTIFICATES OF COMPLIANCE
+      //  COC
       // ================================================================
       case "coc.list":
         result = dataService.coc.list();
@@ -1310,39 +1121,24 @@ export async function localLinkHandler(path: string, input: any) {
       case "coc.getById":
         result = dataService.coc.getById(input);
         break;
-      case "coc.getByPurchaseOrder":
-        result = dataService.coc.getByPurchaseOrder(input);
+      case "coc.getByInvoice":
+        result = dataService.coc.getByInvoice(input);
+        break;
+      case "coc.getStats":
+        result = dataService.coc.getStats();
         break;
       case "coc.create": {
         result = dataService.coc.create(input);
         if (result) {
           await pushCOC(result);
-          reloadFromStorage(["sgf_certificatesOfCompliance"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } }));
-        }
-        break;
-      }
-      case "coc.bulkGenerateForPO": {
-        result = dataService.coc.bulkGenerateForPO(input);
-        if (result && result.success) {
-          for (const c of result.cocs || []) await pushCOC(c);
           reloadFromStorage(["sgf_cocs"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: result.cocs?.length || 0 } }));
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: 1 } }));
         }
         break;
       }
       case "coc.update": {
         const { id: cocid, data: cocdata } = input;
         result = dataService.coc.update({ id: cocid, data: cocdata });
-        if (result) {
-          await pushCOC(result);
-          reloadFromStorage(["sgf_certificatesOfCompliance"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 1 } }));
-        }
-        break;
-      }
-      case "coc.generateForInvoice": {
-        result = dataService.coc.generateForInvoice(input);
         if (result) {
           await pushCOC(result);
           reloadFromStorage(["sgf_cocs"]);
@@ -1354,154 +1150,25 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.coc.delete(input);
         if (result?.success) {
           await removeCOC(input);
-          reloadFromStorage(["sgf_certificatesOfCompliance"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "certificatesOfCompliance", count: 0 } }));
+          reloadFromStorage(["sgf_cocs"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: 0 } }));
         }
         break;
       }
-
-      // ================================================================
-      //  PACKING LIST
-      // ================================================================
-      case "packingList.listByPurchaseOrder":
-        result = dataService.packingList.listByPurchaseOrder(input);
-        break;
-      case "packingList.getById":
-        result = dataService.packingList.getById(input);
-        break;
-      case "packingList.create": {
-        result = dataService.packingList.create(input);
-        if (result) {
-          await pushPackingList(result);
-          reloadFromStorage(["sgf_packingListLines"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 1 } }));
-        }
-        break;
-      }
-      case "packingList.update": {
-        const { id: plid, data: pldata } = input;
-        result = dataService.packingList.update({ id: plid, data: pldata });
-        if (result) {
-          await pushPackingList(result);
-          reloadFromStorage(["sgf_packingListLines"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 1 } }));
-        }
-        break;
-      }
-      case "packingList.delete": {
-        result = dataService.packingList.delete(input);
+      case "coc.generateForInvoice": {
+        result = dataService.coc.generateForInvoice(input);
         if (result?.success) {
-          await removePackingListLine(input);
-          reloadFromStorage(["sgf_packingListLines"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingListLines", count: 0 } }));
+          for (const coc of result.cocs || []) {
+            await pushCOC(coc);
+          }
+          reloadFromStorage(["sgf_cocs"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: result.cocs?.length || 0 } }));
         }
         break;
       }
 
       // ================================================================
-      //  SALES REPS
-      // ================================================================
-      case "salesRep.list":
-        result = dataService.salesRep.list();
-        break;
-      case "salesRep.getById":
-        result = dataService.salesRep.getById(input);
-        break;
-      case "salesRep.create": {
-        result = dataService.salesRep.create(input);
-        if (result) {
-          await pushSalesRep(result);
-          reloadFromStorage(["sgf_salesReps"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
-        }
-        break;
-      }
-      case "salesRep.toggleActive": {
-        result = dataService.salesRep.toggleActive(input);
-        if (result) {
-          await pushSalesRep(result);
-          reloadFromStorage(["sgf_salesReps"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
-        }
-        break;
-      }
-      case "salesRep.update": {
-        const { id: srid, data: srdata } = input;
-        result = dataService.salesRep.update({ id: srid, data: srdata });
-        if (result) {
-          await pushSalesRep(result);
-          reloadFromStorage(["sgf_salesReps"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
-        }
-        break;
-      }
-      case "salesRep.delete": {
-        result = dataService.salesRep.delete(input);
-        if (result?.success) {
-          await removeSalesRep(input);
-          reloadFromStorage(["sgf_salesReps"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 0 } }));
-        }
-        break;
-      }
-      case "salesRep.getStats":
-        result = dataService.salesRep.getStats();
-        break;
-      case "salesRep.getSalesBreakdown":
-        result = dataService.salesRep.getSalesBreakdown();
-        break;
-      case "salesRep.getRepCustomers":
-        result = dataService.salesRep.getRepCustomers(input);
-        break;
-      case "salesRep.getRepInvoices":
-        result = dataService.salesRep.getRepInvoices(input);
-        break;
-      case "salesRep.getRepRevenue":
-        result = dataService.salesRep.getRepRevenue(input);
-        break;
-
-      // ================================================================
-      //  RECEIPTS
-      // ================================================================
-      case "receipt.list":
-        result = dataService.receipt.list();
-        break;
-      case "receipt.getById":
-        result = dataService.receipt.getById(input);
-        break;
-      case "receipt.getByInvoice":
-        result = dataService.receipt.getByInvoice(input);
-        break;
-      case "receipt.create": {
-        result = dataService.receipt.create(input);
-        if (result) {
-          // Receipts don't have a direct push function — they are part of invoice payment
-          reloadFromStorage(["sgf_receipts"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "receipts", count: 1 } }));
-        }
-        break;
-      }
-      case "receipt.update": {
-        const { id: rid, data: rdata } = input;
-        result = dataService.receipt.update({ id: rid, data: rdata });
-        if (result) {
-          reloadFromStorage(["sgf_receipts"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "receipts", count: 1 } }));
-        }
-        break;
-      }
-      case "receipt.delete": {
-        result = dataService.invoice.deleteReceipt(input);
-        if (result?.success) {
-          await removeReceipt(input);
-          reloadFromStorage(["sgf_receipts"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "receipts", count: 0 } }));
-        }
-        break;
-      }
-
-      // ================================================================
-      //  CREDIT NOTES
+      //  CREDIT NOTES (standalone namespace)
       // ================================================================
       case "creditNote.list":
         result = dataService.creditNote.list();
@@ -1540,300 +1207,735 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
+      case "creditNote.allocate": {
+        result = dataService.creditNote.allocate(input);
+        if (result?.success && result.invoice) {
+          await pushInvoice(result.invoice);
+          if (result.creditNote) await pushCreditNote(result.creditNote);
+          reloadFromStorage(["sgf_invoices", "sgf_creditNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "creditNote.voidAllocation": {
+        result = dataService.creditNote.voidAllocation(input);
+        if (result?.success && result.invoice) {
+          await pushInvoice(result.invoice);
+          if (result.creditNote) await pushCreditNote(result.creditNote);
+          reloadFromStorage(["sgf_invoices", "sgf_creditNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
 
       // ================================================================
-      //  ACCOUNT HOLDS
+      //  CORPORATE CUSTOMERS
       // ================================================================
-      case "accountHold.list":
-        result = dataService.accountHold.list();
+      case "corporateCustomer.list":
+        result = dataService.corporateCustomer.list();
         break;
-      case "accountHold.getById":
-        result = dataService.accountHold.getById(input);
+      case "corporateCustomer.getById":
+        result = dataService.corporateCustomer.getById(input);
         break;
-      case "accountHold.getByCustomer":
-        result = dataService.accountHold.getByCustomer(input);
+      case "corporateCustomer.getByCustomer":
+        result = dataService.corporateCustomer.getByCustomer(input);
         break;
-      case "accountHold.create": {
-        result = dataService.accountHold.create(input);
+      case "corporateCustomer.create": {
+        result = dataService.corporateCustomer.create(input);
         if (result) {
-          reloadFromStorage(["sgf_accountHolds"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "accountHolds", count: 1 } }));
+          await pushCorporateCustomer(result);
+          reloadFromStorage(["sgf_corporateCustomers"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } }));
         }
         break;
       }
-      case "accountHold.update": {
-        const { id: ahid, data: ahdata } = input;
-        result = dataService.accountHold.update({ id: ahid, data: ahdata });
+      case "corporateCustomer.update": {
+        const { id: corpid, data: corpData } = input;
+        result = dataService.corporateCustomer.update({ id: corpid, data: corpData });
         if (result) {
-          reloadFromStorage(["sgf_accountHolds"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "accountHolds", count: 1 } }));
+          await pushCorporateCustomer(result);
+          reloadFromStorage(["sgf_corporateCustomers"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 1 } }));
         }
         break;
       }
-      case "accountHold.delete": {
-        result = dataService.accountHold.delete(input);
+      case "corporateCustomer.delete": {
+        result = dataService.corporateCustomer.delete(input);
         if (result?.success) {
-          reloadFromStorage(["sgf_accountHolds"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "accountHolds", count: 0 } }));
+          await removeCorporateCustomer(input);
+          reloadFromStorage(["sgf_corporateCustomers"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "corporateCustomers", count: 0 } }));
         }
         break;
       }
 
       // ================================================================
-      //  STATEMENTS
+      //  PURCHASE ORDERS
       // ================================================================
-      case "statement.getByCustomer":
-        result = dataService.statement.getByCustomer(input);
+      case "purchaseOrder.list":
+        result = dataService.purchaseOrder.list();
         break;
-      case "statement.getAgedDebtors":
-        result = dataService.statement.getAgedDebtors();
+      case "purchaseOrder.getById":
+        result = dataService.purchaseOrder.getById(input);
         break;
-      case "statement.getBankReconciliation":
-        result = dataService.statement.getBankReconciliation(input);
+      case "purchaseOrder.getByCustomer":
+        result = dataService.purchaseOrder.getByCustomer(input);
         break;
-      case "statement.getCustomerTransactions":
-        result = dataService.statement.getCustomerTransactions(input);
+      case "purchaseOrder.getStats":
+        result = dataService.purchaseOrder.getStats();
         break;
-      case "statement.getSalesRepStatement":
-        result = dataService.statement.getSalesRepStatement(input);
+      case "purchaseOrder.search":
+        result = dataService.purchaseOrder.search(input || { query: "" });
+        break;
+      case "purchaseOrder.create": {
+        result = dataService.purchaseOrder.create(input);
+        if (result) {
+          await pushPurchaseOrder(result);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+        }
+        break;
+      }
+      case "purchaseOrder.update": {
+        const { id: poid, data: podata } = input;
+        result = dataService.purchaseOrder.update({ id: poid, data: podata });
+        if (result) {
+          await pushPurchaseOrder(result);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+        }
+        break;
+      }
+      case "purchaseOrder.delete": {
+        result = dataService.purchaseOrder.delete(input);
+        if (result?.success) {
+          await removePurchaseOrder(input);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 0 } }));
+        }
+        break;
+      }
+      case "purchaseOrder.approve": {
+        result = dataService.purchaseOrder.approve(input);
+        if (result) {
+          await pushPurchaseOrder(result);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+        }
+        break;
+      }
+      case "purchaseOrder.reject": {
+        result = dataService.purchaseOrder.reject(input);
+        if (result) {
+          await pushPurchaseOrder(result);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+        }
+        break;
+      }
+      case "purchaseOrder.markReceived": {
+        result = dataService.purchaseOrder.markReceived(input);
+        if (result) {
+          await pushPurchaseOrder(result);
+          reloadFromStorage(["sgf_purchaseOrders"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 1 } }));
+        }
+        break;
+      }
+
+      // ================================================================
+      //  BARRELS
+      // ================================================================
+      case "barrel.list":
+        result = dataService.barrel.list();
+        break;
+      case "barrel.getById":
+        result = dataService.barrel.getById(input);
+        break;
+      case "barrel.getByProduct":
+        result = dataService.barrel.getByProduct(input);
+        break;
+      case "barrel.getStats":
+        result = dataService.barrel.getStats();
+        break;
+      case "barrel.create": {
+        result = dataService.barrel.create(input);
+        if (result) {
+          await pushBarrel(result);
+          reloadFromStorage(["sgf_barrels"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } }));
+        }
+        break;
+      }
+      case "barrel.update": {
+        const { id: bid, data: bdata } = input;
+        result = dataService.barrel.update({ id: bid, data: bdata });
+        if (result) {
+          await pushBarrel(result);
+          reloadFromStorage(["sgf_barrels"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 1 } }));
+        }
+        break;
+      }
+      case "barrel.delete": {
+        result = dataService.barrel.delete(input);
+        if (result?.success) {
+          await removeBarrel(input);
+          reloadFromStorage(["sgf_barrels"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 0 } }));
+        }
+        break;
+      }
+
+      // ================================================================
+      //  PACKING LISTS
+      // ================================================================
+      case "packingList.list":
+        result = dataService.packingList.list();
+        break;
+      case "packingList.getById":
+        result = dataService.packingList.getById(input);
+        break;
+      case "packingList.getByInvoice":
+        result = dataService.packingList.getByInvoice(input);
+        break;
+      case "packingList.getStats":
+        result = dataService.packingList.getStats();
+        break;
+      case "packingList.create": {
+        result = dataService.packingList.create(input);
+        if (result) {
+          await pushPackingList(result);
+          reloadFromStorage(["sgf_packingLists"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingLists", count: 1 } }));
+        }
+        break;
+      }
+      case "packingList.update": {
+        const { id: plid, data: pldata } = input;
+        result = dataService.packingList.update({ id: plid, data: pldata });
+        if (result) {
+          await pushPackingList(result);
+          reloadFromStorage(["sgf_packingLists"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingLists", count: 1 } }));
+        }
+        break;
+      }
+      case "packingList.deleteLine": {
+        result = dataService.packingList.deleteLine(input);
+        if (result?.success) {
+          await removePackingListLine(input);
+          reloadFromStorage(["sgf_packingLists"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingLists", count: 0 } }));
+        }
+        break;
+      }
+      case "packingList.delete": {
+        result = dataService.packingList.delete(input);
+        if (result?.success) {
+          await pushPackingList({ id: input, deleted: true });
+          reloadFromStorage(["sgf_packingLists"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingLists", count: 0 } }));
+        }
+        break;
+      }
+
+      // ================================================================
+      //  AUDIT / REPORTS
+      // ================================================================
+      case "audit.list":
+        result = dataService.audit.list();
+        break;
+      case "audit.getByEntity":
+        result = dataService.audit.getByEntity(input);
+        break;
+      case "audit.getByDate":
+        result = dataService.audit.getByDate(input);
+        break;
+      case "audit.getByUser":
+        result = dataService.audit.getByUser(input);
+        break;
+      case "audit.search":
+        result = dataService.audit.search(input || { query: "" });
+        break;
+      case "audit.getStats":
+        result = dataService.audit.getStats();
+        break;
+      case "audit.log": {
+        result = dataService.audit.log(input);
+        if (result) {
+          await pushAudit(result);
+          reloadFromStorage(["sgf_audit"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "audit", count: 1 } }));
+        }
+        break;
+      }
+
+      // ================================================================
+      //  SYSTEM LOG
+      // ================================================================
+      case "systemLog.create": {
+        result = dataService.systemLog.create(input);
+        if (result) {
+          await pushSystemLog(result);
+          reloadFromStorage(["sgf_systemLogs"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "systemLogs", count: 1 } }));
+        }
+        break;
+      }
+      case "systemLog.list":
+        result = dataService.systemLog.list();
+        break;
+      case "systemLog.getByLevel":
+        result = dataService.systemLog.getByLevel(input);
+        break;
+      case "systemLog.getByUser":
+        result = dataService.systemLog.getByUser(input);
+        break;
+      case "systemLog.search":
+        result = dataService.systemLog.search(input || { query: "" });
+        break;
+      case "systemLog.getStats":
+        result = dataService.systemLog.getStats();
+        break;
+
+      // ================================================================
+      //  SALES REPS
+      // ================================================================
+      case "salesRep.list":
+        result = dataService.salesRep.list();
+        break;
+      case "salesRep.getById":
+        result = dataService.salesRep.getById(input);
+        break;
+      case "salesRep.create": {
+        result = dataService.salesRep.create(input);
+        if (result) {
+          await pushSalesRep(result);
+          reloadFromStorage(["sgf_salesReps"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
+        }
+        break;
+      }
+      case "salesRep.update": {
+        const { id: srid, data: srdata } = input;
+        result = dataService.salesRep.update({ id: srid, data: srdata });
+        if (result) {
+          await pushSalesRep(result);
+          reloadFromStorage(["sgf_salesReps"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 1 } }));
+        }
+        break;
+      }
+      case "salesRep.delete": {
+        result = dataService.salesRep.delete(input);
+        if (result?.success) {
+          await removeSalesRep(input);
+          reloadFromStorage(["sgf_salesReps"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 0 } }));
+        }
+        break;
+      }
+
+      // ================================================================
+      //  COLLECTIONS (overdue/follow-up)
+      // ================================================================
+      case "collections.getOverdueInvoices":
+        result = dataService.collections.getOverdueInvoices();
+        break;
+      case "collections.getDailyReport":
+        result = dataService.collections.getDailyReport();
+        break;
+      case "collections.getStats":
+        result = dataService.collections.getStats();
+        break;
+      case "collections.getFollowUpsDue":
+        result = dataService.collections.getFollowUpsDue();
+        break;
+      case "collections.getWeeklyReport":
+        result = dataService.collections.getWeeklyReport();
+        break;
+      case "collections.getMonthlyReport":
+        result = dataService.collections.getMonthlyReport();
+        break;
+      case "collections.getCustomerAging":
+        result = dataService.collections.getCustomerAging();
+        break;
+      case "collections.getCustomerBalanceReport":
+        result = dataService.collections.getCustomerBalanceReport();
+        break;
+      case "collections.recordFollowUp": {
+        result = dataService.collections.recordFollowUp(input);
+        if (result && result.success) {
+          if (result.invoice) await pushInvoice(result.invoice);
+          if (result.collectionNote) await pushCollectionNote(result.collectionNote);
+          reloadFromStorage(["sgf_invoices", "sgf_collectionNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "collections.recordPromise": {
+        result = dataService.collections.recordPromise(input);
+        if (result && result.success) {
+          if (result.invoice) await pushInvoice(result.invoice);
+          if (result.promise) await pushCollectionPromise(result.promise);
+          reloadFromStorage(["sgf_invoices", "sgf_collectionPromises"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "collections.recordCollectionVisit": {
+        result = dataService.collections.recordCollectionVisit(input);
+        if (result && result.success) {
+          if (result.invoice) await pushInvoice(result.invoice);
+          if (result.note) await pushCollectionNote(result.note);
+          reloadFromStorage(["sgf_invoices", "sgf_collectionNotes"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "collections.allocatePayment": {
+        result = dataService.collections.allocatePayment(input);
+        if (result && result.success) {
+          for (const inv of result.updatedInvoices || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.updatedInvoices?.length || 0 } }));
+        }
+        break;
+      }
+      case "collections.getCustomerStatement":
+        result = dataService.collections.getCustomerStatement(input);
+        break;
+
+      // ================================================================
+      //  GENERIC
+      // ================================================================
+      case "utils.ping":
+        result = { pong: true, ts: Date.now() };
+        break;
+      case "utils.healthCheck":
+        result = dataService.healthCheck();
+        break;
+
+      // ================================================================
+      //  DASHBOARD / ANALYTICS
+      // ================================================================
+      case "dashboard.getSummary":
+        result = dataService.dashboard.getSummary();
+        break;
+      case "dashboard.getStats":
+        result = dataService.dashboard.getStats();
+        break;
+      case "dashboard.getRecentActivity":
+        result = dataService.dashboard.getRecentActivity();
+        break;
+      case "dashboard.getRevenueChart":
+        result = dataService.dashboard.getRevenueChart(input || { period: "monthly" });
+        break;
+      case "dashboard.getProductSales":
+        result = dataService.dashboard.getProductSales(input || { limit: 10 });
+        break;
+      case "dashboard.getCustomerSales":
+        result = dataService.dashboard.getCustomerSales(input || { limit: 10 });
+        break;
+      case "dashboard.getRepPerformance":
+        result = dataService.dashboard.getRepPerformance(input || { period: "monthly" });
+        break;
+      case "dashboard.getSalesFunnel":
+        result = dataService.dashboard.getSalesFunnel();
+        break;
+      case "dashboard.getCollectionMetrics":
+        result = dataService.dashboard.getCollectionMetrics();
+        break;
+      case "dashboard.getAgingAnalysis":
+        result = dataService.dashboard.getAgingAnalysis();
+        break;
+      case "dashboard.getDeliveryPerformance":
+        result = dataService.dashboard.getDeliveryPerformance();
+        break;
+      case "dashboard.getOrderFulfillment":
+        result = dataService.dashboard.getOrderFulfillment();
+        break;
+      case "dashboard.getInventoryAlert":
+        result = dataService.dashboard.getInventoryAlert();
+        break;
+      case "dashboard.getWeeklyComparison":
+        result = dataService.dashboard.getWeeklyComparison();
+        break;
+      case "dashboard.getMonthlyTarget":
+        result = dataService.dashboard.getMonthlyTarget(input);
         break;
 
       // ================================================================
       //  REPORTS
       // ================================================================
-      case "report.getSalesRepPerformance":
-        result = dataService.report.getSalesRepPerformance(input || {});
+      case "report.getInvoiceReport":
+        result = dataService.report.getInvoiceReport(input || { period: "monthly" });
         break;
-      case "report.getDailySales":
-        result = dataService.report.getDailySales(input || new Date().toISOString().split("T")[0]);
+      case "report.getPaymentReport":
+        result = dataService.report.getPaymentReport(input || { period: "monthly" });
         break;
-      case "report.getSalesByProduct":
-        result = dataService.report.getSalesByProduct(input || { startDate: "", endDate: "" });
+      case "report.getSalesReport":
+        result = dataService.report.getSalesReport(input || { period: "monthly" });
         break;
-      case "report.getSalesByCustomer":
-        result = dataService.report.getSalesByCustomer(input || { startDate: "", endDate: "" });
+      case "report.getProductReport":
+        result = dataService.report.getProductReport(input || { period: "monthly" });
         break;
-      case "report.getSalesByRegion":
-        result = dataService.report.getSalesByRegion(input || { startDate: "", endDate: "" });
+      case "report.getCustomerReport":
+        result = dataService.report.getCustomerReport(input || { period: "monthly" });
         break;
-      case "report.getMonthlyRevenue":
-        result = dataService.report.getMonthlyRevenue(input || { year: new Date().getFullYear() });
-        break;
-      case "report.getProductPerformance":
-        result = dataService.report.getProductPerformance(input || {});
-        break;
-      case "report.getSampleOrders":
-        result = dataService.report.getSampleOrders(input || {});
-        break;
-      case "report.getRepDailyActivity":
-        result = dataService.report.getRepDailyActivity(input || { repName: "", date: "" });
-        break;
-      case "report.getCustomerStatement":
-        result = dataService.report.getCustomerStatement(input);
-        break;
-      case "report.getCustomerInvoices":
-        result = dataService.report.getCustomerInvoices(input);
-        break;
-      case "report.getSalesRepInvoices":
-        result = dataService.report.getSalesRepInvoices(input);
-        break;
-      case "report.getSalesRepCustomers":
-        result = dataService.report.getSalesRepCustomers(input);
-        break;
-      case "report.getSalesRepRevenue":
-        result = dataService.report.getSalesRepRevenue(input);
+      case "report.getRepReport":
+        result = dataService.report.getRepReport(input || { period: "monthly" });
         break;
       case "report.getCollectionReport":
-        result = dataService.report.getCollectionReport(input || {});
+        result = dataService.report.getCollectionReport(input || { period: "monthly" });
         break;
-      case "report.getOrderStatusReport":
-        result = dataService.report.getOrderStatusReport(input || {});
+      case "report.getDeliveryReport":
+        result = dataService.report.getDeliveryReport(input || { period: "monthly" });
         break;
-      case "report.getStockReport":
-        result = dataService.report.getStockReport();
+      case "report.getAgingReport":
+        result = dataService.report.getAgingReport();
         break;
       case "report.getStockMovement":
-        result = dataService.report.getStockMovement(input || {});
+        result = dataService.report.getStockMovement(input || { period: "monthly" });
         break;
-      case "report.getCorporateReport":
-        result = dataService.report.getCorporateReport(input || {});
-        break;
-      case "report.getPurchaseOrderReport":
-        result = dataService.report.getPurchaseOrderReport(input || {});
-        break;
-      case "report.getDailyInvoicedStock":
-        result = dataService.report.getDailyInvoicedStock(input || new Date().toISOString().split("T")[0]);
-        break;
-      case "report.getWeeklySales":
-        result = dataService.report.getWeeklySales(input || { year: new Date().getFullYear(), week: 1 });
-        break;
-      case "report.getMonthlySales":
-        result = dataService.report.getMonthlySales(input || { year: new Date().getFullYear(), month: 1 });
-        break;
-      case "report.getYearlySales":
-        result = dataService.report.getYearlySales(input || { year: new Date().getFullYear() });
+      case "report.getProfitabilityReport":
+        result = dataService.report.getProfitabilityReport(input || { period: "monthly" });
         break;
 
       // ================================================================
-      //  SETTINGS
-      // ================================================================
-      case "settings.get":
-        result = dataService.settings.get();
-        break;
-      case "settings.update": {
-        result = dataService.settings.update(input);
-        break;
-      }
-      case "settings.getFirebaseConfig":
-        result = dataService.settings.getFirebaseConfig();
-        break;
-      case "settings.saveFirebaseConfig":
-        result = dataService.settings.saveFirebaseConfig(input);
-        break;
-      case "settings.clearFirebaseConfig":
-        result = dataService.settings.clearFirebaseConfig();
-        break;
-      case "settings.disconnectFirebase":
-        result = dataService.settings.disconnectFirebase();
-        break;
-      case "settings.getTaxRate":
-        result = dataService.settings.getTaxRate();
-        break;
-      case "settings.getCompanyInfo":
-        result = dataService.settings.getCompanyInfo();
-        break;
-      case "settings.getBankDetails":
-        result = dataService.settings.getBankDetails();
-        break;
-      case "settings.getPaymentTerms":
-        result = dataService.settings.getPaymentTerms();
-        break;
-      case "settings.getEmailTemplates":
-        result = dataService.settings.getEmailTemplates();
-        break;
-      case "settings.getSmsTemplates":
-        result = dataService.settings.getSmsTemplates();
-        break;
-      case "settings.getNotificationSettings":
-        result = dataService.settings.getNotificationSettings();
-        break;
-      case "settings.getIntegrationSettings":
-        result = dataService.settings.getIntegrationSettings();
-        break;
-      case "settings.getBackupSettings":
-        result = dataService.settings.getBackupSettings();
-        break;
-      case "settings.getSecuritySettings":
-        result = dataService.settings.getSecuritySettings();
-        break;
-      case "settings.getAuditSettings":
-        result = dataService.settings.getAuditSettings();
-        break;
-      case "settings.getSystemSettings":
-        result = dataService.settings.getSystemSettings();
-        break;
-      case "settings.getDisplaySettings":
-        result = dataService.settings.getDisplaySettings();
-        break;
-      case "settings.getReportSettings":
-        result = dataService.settings.getReportSettings();
-        break;
-      case "settings.getDashboardSettings":
-        result = dataService.settings.getDashboardSettings();
-        break;
-      case "settings.getSalesRepSettings":
-        result = dataService.settings.getSalesRepSettings();
-        break;
-      case "settings.getCustomerSettings":
-        result = dataService.settings.getCustomerSettings();
-        break;
-      case "settings.getInvoiceSettings":
-        result = dataService.settings.getInvoiceSettings();
-        break;
-      case "settings.getOrderSettings":
-        result = dataService.settings.getOrderSettings();
-        break;
-      case "settings.getStockSettings":
-        result = dataService.settings.getStockSettings();
-        break;
-      case "settings.getCorporateSettings":
-        result = dataService.settings.getCorporateSettings();
-        break;
-      case "settings.getPurchaseOrderSettings":
-        result = dataService.settings.getPurchaseOrderSettings();
-        break;
-      case "settings.getBarrelSettings":
-        result = dataService.settings.getBarrelSettings();
-        break;
-      case "settings.getCocSettings":
-        result = dataService.settings.getCocSettings();
-        break;
-      case "settings.getPackingListSettings":
-        result = dataService.settings.getPackingListSettings();
-        break;
-      case "settings.getCollectionSettings":
-        result = dataService.settings.getCollectionSettings();
-        break;
-      case "settings.getFollowUpSettings":
-        result = dataService.settings.getFollowUpSettings();
-        break;
-      case "settings.getFollowUpActionSettings":
-        result = dataService.settings.getFollowUpActionSettings();
-        break;
-      case "settings.getAccountHoldSettings":
-        result = dataService.settings.getAccountHoldSettings();
-        break;
-      case "settings.getReceiptSettings":
-        result = dataService.settings.getReceiptSettings();
-        break;
-      case "settings.getCreditNoteSettings":
-        result = dataService.settings.getCreditNoteSettings();
-        break;
-      case "settings.getStatementSettings":
-        result = dataService.settings.getStatementSettings();
-        break;
-      case "settings.getSystemLogSettings":
-        result = dataService.settings.getSystemLogSettings();
-        break;
-      case "settings.getAuditLogSettings":
-        result = dataService.settings.getAuditLogSettings();
-        break;
-
-      // ================================================================
-      //  FALLBACK: Dynamic dispatch
+      //  EXTRAS (loaded after dataService)
       // ================================================================
       default: {
-        const [cat, act] = path.split(".");
-        const svc = (dataService as any)[cat];
-        if (svc && typeof svc[act] === "function") {
-          result = svc[act](input);
-        } else {
-          // unhandled path - silently return null
-          result = null;
+        // Try to delegate to dataService extras
+        if (DATA_SERVICE_EXTRAS_LOADED) {
+          result = await dataServiceExtrasHandler(path, input);
         }
         break;
       }
     }
 
-    return result;
-  } catch (err: any) {
-    // error silently handled
-    throw err;
+    return { result };
+  } catch (error: any) {
+    console.error("[localLink] error:", error);
+    return { error: { message: error?.message || String(error) } };
   }
 }
 
-export function createLocalLink() {
-  return () =>
-    ({ op }: any) =>
-      observable((observer) => {
-        (async () => {
-          try {
-            const result = await localLinkHandler(op.path, op.input);
-            observer.next({ result: { type: "data", data: result } });
-            observer.complete();
-          } catch (err: any) {
-            observer.error(err);
-          }
-        })();
-      });
+// ------------------------------------------------------------------
+//  Extras handler
+// ------------------------------------------------------------------
+async function dataServiceExtrasHandler(path: string, input: any): Promise<any> {
+  let result: any;
+
+  switch (path) {
+    // ================================================================
+    //  STOCK EXTRAS
+    // ================================================================
+    case "stock.getDailyInvoicedStock":
+      result = dataService.stock.getDailyInvoicedStock(input);
+      break;
+    case "stock.reconcileStock":
+      result = dataService.stock.reconcileStock(input);
+      break;
+
+    // ================================================================
+    //  CUSTOMER EXTRAS
+    // ================================================================
+    case "customer.getCustomersNeedingFollowUp":
+      result = dataService.customer.getCustomersNeedingFollowUp(input?.days || 10);
+      break;
+
+    // ================================================================
+    //  INVOICE EXTRAS
+    // ================================================================
+    case "invoice.getCreditNotes":
+      result = dataService.invoice.getCreditNotes();
+      break;
+    case "invoice.getReceipts":
+      result = dataService.invoice.getReceipts();
+      break;
+    case "invoice.allocateBankPayments":
+      result = dataService.invoice.allocateBankPayments(input);
+      break;
+    case "invoice.fixDraftInvoices":
+      result = dataService.invoice.fixDraftInvoices();
+      break;
+    case "invoice.fixSageDates":
+      result = dataService.invoice.fixSageDates();
+      break;
+    case "invoice.matchBankPayments":
+      result = dataService.invoice.matchBankPayments(input);
+      break;
+    case "invoice.parseBankStatement":
+      result = dataService.invoice.parseBankStatement(input);
+      break;
+    case "invoice.relinkSageInvoices":
+      result = dataService.invoice.relinkSageInvoices();
+      break;
+    case "invoice.generateForPO":
+      result = dataService.generateInvoiceForPO(input);
+      break;
+
+    // ================================================================
+    //  DASHBOARD EXTRAS
+    // ================================================================
+    case "dashboard.getSummary":
+      result = dataService.dashboard.getSummary();
+      break;
+    case "dashboard.getStats":
+      result = dataService.dashboard.getStats();
+      break;
+    case "dashboard.getRecentActivity":
+      result = dataService.dashboard.getRecentActivity();
+      break;
+    case "dashboard.getRevenueChart":
+      result = dataService.dashboard.getRevenueChart(input || { period: "monthly" });
+      break;
+    case "dashboard.getProductSales":
+      result = dataService.dashboard.getProductSales(input || { limit: 10 });
+      break;
+    case "dashboard.getCustomerSales":
+      result = dataService.dashboard.getCustomerSales(input || { limit: 10 });
+      break;
+    case "dashboard.getRepPerformance":
+      result = dataService.dashboard.getRepPerformance(input || { period: "monthly" });
+      break;
+    case "dashboard.getSalesFunnel":
+      result = dataService.dashboard.getSalesFunnel();
+      break;
+    case "dashboard.getCollectionMetrics":
+      result = dataService.dashboard.getCollectionMetrics();
+      break;
+    case "dashboard.getAgingAnalysis":
+      result = dataService.dashboard.getAgingAnalysis();
+      break;
+    case "dashboard.getDeliveryPerformance":
+      result = dataService.dashboard.getDeliveryPerformance();
+      break;
+    case "dashboard.getOrderFulfillment":
+      result = dataService.dashboard.getOrderFulfillment();
+      break;
+    case "dashboard.getInventoryAlert":
+      result = dataService.dashboard.getInventoryAlert();
+      break;
+    case "dashboard.getWeeklyComparison":
+      result = dataService.dashboard.getWeeklyComparison();
+      break;
+    case "dashboard.getMonthlyTarget":
+      result = dataService.dashboard.getMonthlyTarget(input);
+      break;
+
+    // ================================================================
+    //  REPORT EXTRAS
+    // ================================================================
+    case "report.getInvoiceReport":
+      result = dataService.report.getInvoiceReport(input || { period: "monthly" });
+      break;
+    case "report.getPaymentReport":
+      result = dataService.report.getPaymentReport(input || { period: "monthly" });
+      break;
+    case "report.getSalesReport":
+      result = dataService.report.getSalesReport(input || { period: "monthly" });
+      break;
+    case "report.getProductReport":
+      result = dataService.report.getProductReport(input || { period: "monthly" });
+      break;
+    case "report.getCustomerReport":
+      result = dataService.report.getCustomerReport(input || { period: "monthly" });
+      break;
+    case "report.getRepReport":
+      result = dataService.report.getRepReport(input || { period: "monthly" });
+      break;
+    case "report.getCollectionReport":
+      result = dataService.report.getCollectionReport(input || { period: "monthly" });
+      break;
+    case "report.getDeliveryReport":
+      result = dataService.report.getDeliveryReport(input || { period: "monthly" });
+      break;
+    case "report.getAgingReport":
+      result = dataService.report.getAgingReport();
+      break;
+    case "report.getStockMovement":
+      result = dataService.report.getStockMovement(input || { period: "monthly" });
+      break;
+    case "report.getProfitabilityReport":
+      result = dataService.report.getProfitabilityReport(input || { period: "monthly" });
+      break;
+
+    // ================================================================
+    //  COLLECTIONS EXTRAS
+    // ================================================================
+    case "collections.getOverdueInvoices":
+      result = dataService.collections.getOverdueInvoices();
+      break;
+    case "collections.getDailyReport":
+      result = dataService.collections.getDailyReport();
+      break;
+    case "collections.getStats":
+      result = dataService.collections.getStats();
+      break;
+    case "collections.getFollowUpsDue":
+      result = dataService.collections.getFollowUpsDue();
+      break;
+    case "collections.getWeeklyReport":
+      result = dataService.collections.getWeeklyReport();
+      break;
+    case "collections.getMonthlyReport":
+      result = dataService.collections.getMonthlyReport();
+      break;
+    case "collections.getCustomerAging":
+      result = dataService.collections.getCustomerAging();
+      break;
+    case "collections.getCustomerBalanceReport":
+      result = dataService.collections.getCustomerBalanceReport();
+      break;
+    case "collections.recordFollowUp":
+      result = dataService.collections.recordFollowUp(input);
+      break;
+    case "collections.recordPromise":
+      result = dataService.collections.recordPromise(input);
+      break;
+    case "collections.recordCollectionVisit":
+      result = dataService.collections.recordCollectionVisit(input);
+      break;
+    case "collections.allocatePayment":
+      result = dataService.collections.allocatePayment(input);
+      break;
+    case "collections.getCustomerStatement":
+      result = dataService.collections.getCustomerStatement(input);
+      break;
+
+    default:
+      result = null;
+      break;
+  }
+
+  return result;
+}
+
+// ------------------------------------------------------------------
+//  Subscription helpers
+// ------------------------------------------------------------------
+export function localLinkSubscribe(path: string, input: any, callback: (data: any) => void) {
+  return observable<any>((emit) => {
+    const interval = setInterval(async () => {
+      try {
+        const response = await localLinkHandler(path, input);
+        if (response?.result) {
+          emit.next(response.result);
+        }
+      } catch (error) {
+        console.error("[localLink] subscription error:", error);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }).subscribe(callback);
+}
+
+export function localLinkUnsubscribe(subscription: any) {
+  if (subscription && typeof subscription.unsubscribe === "function") {
+    subscription.unsubscribe();
+  }
 }

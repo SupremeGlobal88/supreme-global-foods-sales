@@ -426,7 +426,11 @@ function createSubscription<T>(
   if (!db) return () => {};
   const r = ref(db, path);
   const unsub = onValue(r, (snap: any) => {
-    if (!snap.exists()) return;
+    if (!snap.exists()) {
+      setStorageItem(storageKey, "[]");
+      handler([]);
+      return;
+    }
     const val = snap.val();
     const list: T[] = Object.values(val);
     // PROTECTION: during bulk upload, onValue fires after each individual write with a

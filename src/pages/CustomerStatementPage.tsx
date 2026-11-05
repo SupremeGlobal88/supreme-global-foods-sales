@@ -172,7 +172,9 @@ export default function CustomerStatementPage() {
       const invTotal = Number(inv.total || 0);
       const debit = isSampleOrder ? 0 : (invTotal > 0 ? invTotal : 0);
       const creditFromNegative = invTotal < 0 ? Math.abs(invTotal) : 0;
-      const invRef = inv.invoiceNumber || inv.orderNumber || "-";
+      const invRef = inv.invoiceNumber && inv.orderNumber
+        ? `${inv.invoiceNumber} | ${inv.orderNumber}`
+        : (inv.invoiceNumber || inv.orderNumber || "-");
 
       // Invoice row
       group.push({

@@ -505,6 +505,21 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.invoice.voidCreditNote(input);
         if (result) {
           await pushCreditNote(result);
+          // Push all affected invoices so restored balances & removed allocations stick
+          const affectedIds = new Set<number>();
+          if (result.invoiceId) affectedIds.add(result.invoiceId);
+          if (result.allocations) {
+            for (const alloc of result.allocations) {
+              if (alloc.invoiceId) affectedIds.add(alloc.invoiceId);
+            }
+          }
+          if (affectedIds.size > 0) {
+            const rawInvoices = JSON.parse(getStorageItem("sgf_invoices", "[]"));
+            for (const invId of affectedIds) {
+              const inv = rawInvoices.find((i: any) => i.id == invId);
+              if (inv) await pushInvoice(inv);
+            }
+          }
           reloadFromStorage(["sgf_creditNotes", "sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 1 } }));
         }

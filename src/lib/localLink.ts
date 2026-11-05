@@ -596,6 +596,7 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.invoice.allocateCredit(input);
         if (result && result.success && result.invoice) {
           await pushInvoice(result.invoice);
+          if (result.creditNote) await pushCreditNote(result.creditNote);
           reloadFromStorage(["sgf_invoices", "sgf_creditNotes"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
         }

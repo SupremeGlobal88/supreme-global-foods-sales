@@ -24,6 +24,7 @@ const allNavItems = [
   { path: "/follow-ups", label: "Follow-ups", icon: Bell },
   { path: "/sample-reports", label: "Samples", icon: FlaskConical },
   { path: "/sales-report", label: "Sales Report", icon: FileSpreadsheet },
+  { path: "/customer-balances", label: "Cust Balances", icon: Users },
   { path: "/corporate-customers", label: "Corp Customers", icon: Building2 },
   { path: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
   { path: "/settings", label: "Settings", icon: Settings },

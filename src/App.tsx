@@ -28,6 +28,7 @@ import BankImportPage from "./pages/BankImportPage";
 import CustomerStatementPage from "./pages/CustomerStatementPage";
 import SalesRepReportsPage from "./pages/SalesRepReportsPage";
 import SalesReportPage from "./pages/SalesReportPage";
+import CustomerBalanceReportPage from "./pages/CustomerBalanceReportPage";
 import CorporateCustomersPage from "./pages/CorporateCustomersPage";
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
 import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
@@ -243,6 +244,7 @@ export default function App() {
         <Route path="customer-statement" element={<RoleGuard><CustomerStatementPage /></RoleGuard>} />
         <Route path="sample-reports" element={<SampleReportsPage />} />
         <Route path="sales-report" element={<SalesReportPage />} />
+        <Route path="customer-balances" element={<CustomerBalanceReportPage />} />
         <Route path="sales-rep-reports" element={<RoleGuard><SalesRepReportsPage /></RoleGuard>} />
         <Route path="corporate-customers" element={<RoleGuard><CorporateCustomersPage /></RoleGuard>} />
         <Route path="purchase-orders" element={<RoleGuard><PurchaseOrdersPage /></RoleGuard>} />

@@ -234,6 +234,7 @@ export default function CustomerStatementPage() {
           if (allocAmt <= 0) continue;
           // Find the credit note details for the reference
           const cn = custCreditNotes.find((c: any) => c.id == ca.creditNoteId);
+          if (!cn || cn.voided) continue;
           const cnRef = cn?.creditNoteNumber || `CN-${ca.creditNoteId}`;
           group.push({
             date: ca.allocatedAt || inv.invoiceDate || inv.createdAt,
@@ -321,7 +322,7 @@ export default function CustomerStatementPage() {
 
     // Add UNALLOCATED credit notes at the end only (sorted by date)
     const creditNoteRows = custCreditNotes
-      .filter((cn: any) => (cn.remainingAmount || 0) > 0.01)
+      .filter((cn: any) => !cn.voided && (cn.remainingAmount || 0) > 0.01)
       .map((cn: any) => ({
         date: cn.createdAt,
         ref: cn.creditNoteNumber || "CN",

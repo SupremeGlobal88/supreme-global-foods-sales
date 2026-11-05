@@ -444,7 +444,7 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "invoice.delete": {
         result = dataService.invoice.delete(input);
-        if (result?.success) {
+        if (result) {
           await removeInvoice(input);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 0 } }));

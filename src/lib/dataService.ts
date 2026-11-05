@@ -5162,7 +5162,7 @@ const dataService = {
     getOverdueInvoices: () => {
       const now = new Date();
       return getDedupedInvoices()
-        .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
+        .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled" && inv.status !== "draft")
         .map((inv) => {
           const customer = customers.find((c) => c.id == inv.customerId);
           // FALLBACK: if customer not found in loaded array, preserve the invoice's

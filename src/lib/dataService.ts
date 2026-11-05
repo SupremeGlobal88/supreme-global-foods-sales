@@ -4548,6 +4548,46 @@ const dataService = {
       logAudit("UPDATE", "invoice", toInvoiceId, `Applied R${allocAmount.toFixed(2)} overpayment credit from invoice ${fromInv.invoiceNumber} to invoice ${toInv.invoiceNumber}`);
       return { success: true, fromInvoice: invoices[fromIdx], toInvoice: invoices[toIdx], amount: allocAmount };
     },
+    /** Remove an overpayment allocation from a target invoice and restore balances */
+    removeOverpaymentAllocation: ({ invoiceId, fromInvoiceId }: { invoiceId: number; fromInvoiceId: number }) => {
+      const toIdx = invoices.findIndex((i) => i.id == invoiceId);
+      const fromIdx = invoices.findIndex((i) => i.id == fromInvoiceId);
+      if (toIdx < 0) return { success: false, error: "Target invoice not found" };
+      if (fromIdx < 0) return { success: false, error: "Source invoice not found" };
+
+      const toInv = invoices[toIdx];
+      const fromInv = invoices[fromIdx];
+
+      // Find the allocation to remove
+      const alloc = (toInv.overpaymentAllocations || []).find((a: any) => a.fromInvoiceId == fromInvoiceId);
+      if (!alloc) return { success: false, error: "Overpayment allocation not found" };
+      const amount = alloc.amount || 0;
+
+      // Remove allocation from target invoice and restore its balance
+      const toBalance = typeof toInv.balanceDue === "number" ? toInv.balanceDue : (toInv.total || 0) - (toInv.amountPaid || 0);
+      const newToBalance = toBalance + amount;
+      invoices[toIdx] = {
+        ...toInv,
+        balanceDue: newToBalance,
+        overpaymentAllocations: (toInv.overpaymentAllocations || []).filter((a: any) => a.fromInvoiceId != fromInvoiceId),
+        status: newToBalance <= 0.01 ? "paid" : (toInv.amountPaid > 0.01 ? "partially_paid" : "sent"),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Restore source invoice balance (make it more negative = more overpayment credit)
+      const fromBalance = typeof fromInv.balanceDue === "number" ? fromInv.balanceDue : (fromInv.total || 0) - (fromInv.amountPaid || 0);
+      const newFromBalance = fromBalance - amount;
+      invoices[fromIdx] = {
+        ...fromInv,
+        balanceDue: newFromBalance,
+        status: newFromBalance <= 0.01 ? "paid" : (newFromBalance > 0.01 ? (fromInv.amountPaid > 0.01 ? "partially_paid" : "sent") : fromInv.status),
+        updatedAt: new Date().toISOString(),
+      };
+
+      saveItem("sgf_invoices", invoices);
+      logAudit("UPDATE", "invoice", invoiceId, `Removed overpayment allocation of R${amount.toFixed(2)} from ${fromInv.invoiceNumber} to ${toInv.invoiceNumber}`);
+      return { success: true, toInvoice: invoices[toIdx], fromInvoice: invoices[fromIdx], amount };
+    },
     getStats: () => {
       const totalValue = Math.round(invoices.reduce((sum, i) => sum + Number(i.total || i.totalAmount || 0), 0) * 100) / 100;
       const totalPaid = Math.round(invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0) * 100) / 100;

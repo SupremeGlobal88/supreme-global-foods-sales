@@ -612,6 +612,16 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
+      case "invoice.removeOverpaymentAllocation": {
+        result = dataService.invoice.removeOverpaymentAllocation(input);
+        if (result && result.success) {
+          if (result.fromInvoice) await pushInvoice(result.fromInvoice);
+          if (result.toInvoice) await pushInvoice(result.toInvoice);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 2 } }));
+        }
+        break;
+      }
       case "invoice.refundCreditNote": {
         result = dataService.invoice.refundCreditNote(input);
         if (result && result.success) {

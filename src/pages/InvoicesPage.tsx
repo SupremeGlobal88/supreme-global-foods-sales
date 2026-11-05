@@ -168,6 +168,17 @@ export default function InvoicesPage() {
     },
     onError: (err: any) => { alert("Overpayment credit failed: " + (err.message || "Unknown error")); },
   });
+  const removeOverpaymentAllocation = trpc.invoice.removeOverpaymentAllocation.useMutation({
+    onSuccess: async (data: any) => {
+      if (!data || !data.success) {
+        alert("Remove overpayment failed: " + (data?.error || "Unknown error"));
+        return;
+      }
+      reloadFromStorage();
+      await utils.invoice.list.invalidate();
+    },
+    onError: (err: any) => { alert("Remove overpayment failed: " + (err.message || "Unknown error")); },
+  });
   const refundCreditNote = trpc.invoice.refundCreditNote.useMutation({
     onSuccess: async (data: any) => {
       if (!data || !data.success) {
@@ -1353,6 +1364,20 @@ export default function InvoicesPage() {
                                         <span className="text-[#8A8B8C]">from {fromRef}</span>
                                         <span className="text-[#8A8B8C]">{new Date(oa.allocatedAt).toLocaleDateString("en-ZA")}</span>
                                       </div>
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => {
+                                            if (confirm(`Remove overpayment credit of R ${Number(oa.amount || 0).toFixed(2)} from ${fromRef}?\\n\\nThis will restore the balance on both invoices.`)) {
+                                              removeOverpaymentAllocation.mutate({ invoiceId: inv.id, fromInvoiceId: oa.fromInvoiceId });
+                                            }
+                                          }}
+                                          className="p-1.5 rounded hover:bg-[#222324]"
+                                          title="Remove Overpayment Credit"
+                                          disabled={removeOverpaymentAllocation.isPending}
+                                        >
+                                          <Trash2 className="w-3 h-3 text-[#EF4444]" />
+                                        </button>
+                                      )}
                                     </div>
                                   );
                                 })}

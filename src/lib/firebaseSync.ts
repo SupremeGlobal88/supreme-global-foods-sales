@@ -311,14 +311,32 @@ export async function pushOrders(orders: any[]): Promise<{ success: boolean; err
   }
 }
 
+/**
+ * Remove an item from Firebase by searching for it by its `id` field and
+ * deleting using the actual Firebase key. This handles both:
+ *   - items stored with numeric array indices (from bulk import)
+ *   - items stored with id-based keys (from individual push)
+ */
+async function removeByIdField(path: string, id: number): Promise<void> {
+  const snap = await get(ref(db, path));
+  if (!snap.exists()) return;
+  const val = snap.val();
+  for (const [key, item] of Object.entries(val)) {
+    if (item && (item as any).id == id) {
+      await set(ref(db, `${path}/${key}`), null);
+      return;
+    }
+  }
+}
+
 export async function removeOrder(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `orders/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+  try { await removeByIdField("orders", id); } catch { /* ignore */ }
 }
 
 export async function removeInvoice(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await set(ref(db, `invoices/${safeFbKey(id)}`), null); } catch { /* ignore */ }
+  try { await removeByIdField("invoices", id); } catch { /* ignore */ }
 }
 
 export async function pushFollowUpAction(action: any): Promise<void> {
@@ -782,7 +800,7 @@ export async function pushCreditNote(cn: any): Promise<void> {
 
 export async function removeCreditNote(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
-  try { await remove(ref(db, `creditNotes/${safeFbKey(id)}`)); } catch { /* ignore */ }
+  try { await removeByIdField("creditNotes", id); } catch { /* ignore */ }
 }
 
 export async function pushAppointmentDelete(id: number): Promise<void> {

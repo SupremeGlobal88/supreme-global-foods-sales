@@ -1312,6 +1312,7 @@ load();
  *  Returns the number of invoices that were fixed. */
 function repairCreditAllocations(): number {
   let fixed = 0;
+  const fixedIds: number[] = [];
   if (!invoices || invoices.length === 0) return 0;
   for (let i = 0; i < invoices.length; i++) {
     const inv = invoices[i];
@@ -1391,10 +1392,19 @@ function repairCreditAllocations(): number {
         updatedAt: new Date().toISOString(),
       };
       fixed++;
+      fixedIds.push(inv.id);
     }
   }
   if (fixed > 0) {
     saveItem("sgf_invoices", invoices);
+    // Notify firebaseSync to push repaired invoices back to Firebase
+    // so the source of truth stays clean and phantom credits don't return
+    if (typeof window !== "undefined") {
+      const fixedInvoices = fixedIds.map((id) => invoices.find((inv: any) => inv.id == id)).filter(Boolean);
+      window.dispatchEvent(new CustomEvent("sgf:invoicesRepaired", {
+        detail: { count: fixed, invoices: fixedInvoices }
+      }));
+    }
   }
   return fixed;
 }

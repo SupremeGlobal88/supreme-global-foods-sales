@@ -321,7 +321,17 @@ async function removeByIdField(path: string, id: number): Promise<void> {
   const snap = await get(ref(db, path));
   if (!snap.exists()) return;
   const val = snap.val();
-  for (const [key, item] of Object.entries(val)) {
+  const entries = Object.entries(val);
+  const isNumericKey = (k: string) => /^\d+$/.test(k);
+  // First pass: prefer numeric keys (originals) over non-numeric (duplicates)
+  for (const [key, item] of entries) {
+    if (isNumericKey(key) && item && (item as any).id == id) {
+      await set(ref(db, `${path}/${key}`), null);
+      return;
+    }
+  }
+  // Second pass: any matching key
+  for (const [key, item] of entries) {
     if (item && (item as any).id == id) {
       await set(ref(db, `${path}/${key}`), null);
       return;
@@ -346,16 +356,26 @@ export async function removeReceipt(id: number): Promise<void> {
 
 /**
  * Write an item to Firebase by searching for it by its `id` field and
- * updating at the existing key. If not found, creates at path/safeFbKey(id).
- * This prevents duplicate entries when items were originally bulk-imported
- * with numeric array indices.
+ * updating at the existing key. Prefers numeric keys (original bulk-import
+ * entries) over non-numeric keys (duplicate entries from old pushInvoice).
+ * If not found, creates at path/safeFbKey(id).
  */
 async function setByIdField(path: string, item: any): Promise<void> {
   if (!item || !item.id) return;
   const snap = await get(ref(db, path));
   if (snap.exists()) {
     const val = snap.val();
-    for (const [key, entry] of Object.entries(val)) {
+    const entries = Object.entries(val);
+    const isNumericKey = (k: string) => /^\d+$/.test(k);
+    // First pass: prefer numeric keys (originals) over non-numeric (duplicates)
+    for (const [key, entry] of entries) {
+      if (isNumericKey(key) && entry && (entry as any).id == item.id) {
+        await set(ref(db, `${path}/${key}`), item);
+        return;
+      }
+    }
+    // Second pass: any matching key
+    for (const [key, entry] of entries) {
       if (entry && (entry as any).id == item.id) {
         await set(ref(db, `${path}/${key}`), item);
         return;
@@ -847,6 +867,23 @@ export function registerDataServiceRefresh(refreshFn: () => void): void {
   window.addEventListener("firebaseDataReceived", (e: any) => {
     const type = e.detail?.type;
     if (type) refreshFn();
+  });
+}
+
+// Listen for invoice repairs and push fixed invoices back to Firebase
+// so phantom credits don't keep returning from the cloud
+if (typeof window !== "undefined") {
+  window.addEventListener("sgf:invoicesRepaired", async (e: any) => {
+    const fixedInvoices = e.detail?.invoices || [];
+    if (fixedInvoices.length === 0) return;
+    console.log(`[firebaseSync] Pushing ${fixedInvoices.length} repaired invoice(s) to Firebase`);
+    for (const inv of fixedInvoices) {
+      try {
+        await pushInvoice(inv);
+      } catch (err) {
+        console.error("[firebaseSync] Failed to push repaired invoice", inv.id, err);
+      }
+    }
   });
 }
 

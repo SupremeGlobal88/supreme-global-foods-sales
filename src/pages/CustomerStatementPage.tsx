@@ -158,6 +158,8 @@ export default function CustomerStatementPage() {
       const notesLC = (inv.notes || "").toLowerCase();
       const orderNumLC = (inv.orderNumber || "").toLowerCase();
       const invNumLC = (inv.invoiceNumber || "").toLowerCase();
+      const hasCreditAllocations = (inv.creditAllocations || []).length > 0;
+      const hasOverpaymentAllocations = (inv.overpaymentAllocations || []).length > 0;
       const isSampleOrder =
         notesLC.includes("sample order") ||
         notesLC.includes("no charge") ||
@@ -165,8 +167,11 @@ export default function CustomerStatementPage() {
         orderNumLC.startsWith("smp-") ||
         orderNumLC.includes("sample") ||
         invNumLC.includes("sample") ||
-        (inv.balanceDue === 0 && inv.amountPaid === 0 && (inv.total || 0) > 0);
-      const debit = isSampleOrder ? 0 : Number(inv.total || 0);
+        (inv.balanceDue === 0 && inv.amountPaid === 0 && !hasCreditAllocations && !hasOverpaymentAllocations && (inv.total || 0) > 0);
+      // Negative-total invoices (credit note invoices) show as credit, not debit
+      const invTotal = Number(inv.total || 0);
+      const debit = isSampleOrder ? 0 : (invTotal > 0 ? invTotal : 0);
+      const creditFromNegative = invTotal < 0 ? Math.abs(invTotal) : 0;
       const invRef = inv.invoiceNumber || inv.orderNumber || "-";
 
       // Invoice row
@@ -176,7 +181,7 @@ export default function CustomerStatementPage() {
         desc: inv.source === "sage" ? "Sage Historical Invoice" : (inv.notes || `Invoice`),
         terms: inv.paymentTerms || "cod",
         debit,
-        credit: 0,
+        credit: creditFromNegative,
         source: inv.source || "app",
         type: "invoice",
         sortDate: new Date(inv.invoiceDate || inv.createdAt).getTime(),
@@ -239,6 +244,30 @@ export default function CustomerStatementPage() {
             source: "app",
             type: "credit_allocation",
             sortDate: new Date(ca.allocatedAt || inv.invoiceDate || inv.createdAt).getTime(),
+          });
+        }
+      }
+
+      // Overpayment credit allocation rows attached to this invoice
+      const overpaymentAllocations = inv.overpaymentAllocations || [];
+      if (overpaymentAllocations.length > 0) {
+        for (const oa of overpaymentAllocations) {
+          const allocAmt = Number(oa.amount || 0);
+          if (allocAmt <= 0) continue;
+          // Find source invoice for the reference
+          const fromInv = (invoices || []).find((i: any) => i.id == oa.fromInvoiceId);
+          const fromRef = fromInv?.invoiceNumber || `INV-${oa.fromInvoiceId}`;
+          group.push({
+            date: oa.allocatedAt || inv.invoiceDate || inv.createdAt,
+            ref: `↳ ${invRef}`,
+            parentRef: invRef,
+            desc: `Overpayment Credit from ${fromRef} applied to ${invRef}`,
+            terms: "",
+            debit: 0,
+            credit: allocAmt,
+            source: "app",
+            type: "credit_allocation",
+            sortDate: new Date(oa.allocatedAt || inv.invoiceDate || inv.createdAt).getTime(),
           });
         }
       }

@@ -1371,7 +1371,18 @@ function repairCreditAllocations(): number {
     // PHANTOM: original array has items that validExisting filtered out (deleted credit notes)
     const phantomAllocations = existingCredits.length !== validExisting.length;
 
-    if (allocationsMismatch || balanceMismatch || phantomAllocations) {
+    // Deduplicate overpayment allocations — keep most recent per source invoice
+    const seenOp = new Map();
+    for (const oa of (inv.overpaymentAllocations || [])) {
+      const existing = seenOp.get(oa.fromInvoiceId);
+      if (!existing || new Date(oa.allocatedAt) > new Date(existing.allocatedAt)) {
+        seenOp.set(oa.fromInvoiceId, oa);
+      }
+    }
+    const dedupedOverpaymentAllocs = Array.from(seenOp.values());
+    const overpaymentMismatch = (inv.overpaymentAllocations || []).length !== dedupedOverpaymentAllocs.length;
+
+    if (allocationsMismatch || balanceMismatch || phantomAllocations || overpaymentMismatch) {
       // Also clean up creditedLines — remove entries for deleted/voided credit notes
       const validCreditedLines = (inv.creditedLines || []).filter((cl: any) => {
         const cn = creditNotes.find((c) => c.id == cl.creditNoteId);
@@ -1383,6 +1394,7 @@ function repairCreditAllocations(): number {
         balanceDue: correctBalance,
         creditAllocations: expectedCredits,
         creditedLines: validCreditedLines,
+        overpaymentAllocations: dedupedOverpaymentAllocs,
         status: correctBalance <= 0.01
           ? "paid"
           : amountPaid > 0.01
@@ -4515,11 +4527,13 @@ const dataService = {
 
       // Reduce balance on target invoice
       const newToBalance = Math.max(0, toBalance - allocAmount);
+      // Replace existing allocation from same source invoice (prevent duplicates)
+      const existingAllocs = (toInv.overpaymentAllocations || []).filter((a: any) => a.fromInvoiceId != fromInvoiceId);
       invoices[toIdx] = {
         ...toInv,
         balanceDue: newToBalance,
         status: newToBalance <= 0.01 ? "paid" : (toInv.amountPaid > 0.01 ? "partially_paid" : "sent"),
-        overpaymentAllocations: [...(toInv.overpaymentAllocations || []), { fromInvoiceId, amount: allocAmount, allocatedAt: new Date().toISOString() }],
+        overpaymentAllocations: [...existingAllocs, { fromInvoiceId, amount: allocAmount, allocatedAt: new Date().toISOString() }],
         updatedAt: new Date().toISOString(),
       };
 

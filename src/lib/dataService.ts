@@ -331,6 +331,9 @@ function load() {
     const crn = safeLoadArray("sgf_creditNotes");
     creditNotes = crn || [];
 
+    // AUTO-REPAIR: Clean up phantom credit allocations and recalculate balances
+    repairCreditAllocations();
+
     // USERS: always load and merge with defaults
     const u = safeLoadArray("sgf_users");
     if (u) users = u;
@@ -1568,6 +1571,10 @@ function _doReloadFromStorage(keys?: string[]): void {
       const crn = getStorageItem("sgf_creditNotes");
       if (crn) { const d = JSON.parse(crn); if (Array.isArray(d)) creditNotes = d; }
     } catch { /* keep current */ }
+  }
+  // AUTO-REPAIR: Clean up phantom credit allocations after every cloud sync
+  if (reloadAll || keys?.includes("sgf_invoices") || keys?.includes("sgf_creditNotes")) {
+    repairCreditAllocations();
   }
   if (reloadAll || keys?.includes("sgf_users")) {
     try {

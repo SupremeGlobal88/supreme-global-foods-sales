@@ -15,6 +15,7 @@ export default function InvoicesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super_admin";
   const banking = getBankingDetails();
   const utils = trpc.useUtils();
 
@@ -1154,6 +1155,16 @@ export default function InvoicesPage() {
                               onClick={() => { if (confirm(`Delete draft invoice ${inv.invoiceNumber}? This invoice was auto-generated for a quote and should not exist.`)) deleteInvoice.mutate(inv.id); }}
                               className="p-1.5 rounded hover:bg-[#222324]"
                               title="Delete Draft Invoice"
+                              style={{ color: "#EF4444" }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => { if (confirm(`SUPER ADMIN ONLY\n\nDelete invoice ${inv.invoiceNumber} permanently?\n\nThis action cannot be undone and will remove the invoice from the system entirely.`)) deleteInvoice.mutate(inv.id); }}
+                              className="p-1.5 rounded hover:bg-[#222324]"
+                              title="Super Admin: Delete Invoice"
                               style={{ color: "#EF4444" }}
                             >
                               <Trash2 className="w-3.5 h-3.5" />

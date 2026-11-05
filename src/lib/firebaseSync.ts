@@ -281,7 +281,7 @@ export async function pushInvoice(invoice: any): Promise<{ success: boolean; err
   if (!isFirebaseReady()) { addToPendingQueue("invoice", invoice); return { success: false, error: "Firebase not ready — queued for sync" }; }
   if (!invoice || !invoice.id) return { success: false, error: "Invalid invoice (no id)" };
   try {
-    await set(ref(db, `invoices/${safeFbKey(invoice.id)}`), cleanForFirebase(invoice));
+    await setByIdField("invoices", cleanForFirebase(invoice));
     return { success: true };
   } catch (e: any) {
 
@@ -337,6 +337,32 @@ export async function removeOrder(id: number): Promise<void> {
 export async function removeInvoice(id: number): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await removeByIdField("invoices", id); } catch { /* ignore */ }
+}
+
+export async function removeReceipt(id: number): Promise<void> {
+  if (!isFirebaseReady()) return;
+  try { await removeByIdField("receipts", id); } catch { /* ignore */ }
+}
+
+/**
+ * Write an item to Firebase by searching for it by its `id` field and
+ * updating at the existing key. If not found, creates at path/safeFbKey(id).
+ * This prevents duplicate entries when items were originally bulk-imported
+ * with numeric array indices.
+ */
+async function setByIdField(path: string, item: any): Promise<void> {
+  if (!item || !item.id) return;
+  const snap = await get(ref(db, path));
+  if (snap.exists()) {
+    const val = snap.val();
+    for (const [key, entry] of Object.entries(val)) {
+      if (entry && (entry as any).id == item.id) {
+        await set(ref(db, `${path}/${key}`), item);
+        return;
+      }
+    }
+  }
+  await set(ref(db, `${path}/${safeFbKey(item.id)}`), item);
 }
 
 export async function pushFollowUpAction(action: any): Promise<void> {
@@ -787,14 +813,14 @@ export async function removePackingListLine(id: number): Promise<void> {
 export async function pushOneReceipt(receipt: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `receipts/${safeFbKey(receipt.id)}`), { ...receipt, _syncedAt: Date.now() });
+    await setByIdField("receipts", { ...receipt, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
 export async function pushCreditNote(cn: any): Promise<void> {
   if (!isFirebaseReady()) return;
   try {
-    await set(ref(db, `creditNotes/${safeFbKey(cn.id)}`), { ...cn, _syncedAt: Date.now() });
+    await setByIdField("creditNotes", { ...cn, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 

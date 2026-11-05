@@ -78,6 +78,7 @@ export const appRouter = t.router({
     getReceiptsByInvoice: t.procedure.input((val: unknown) => val as { invoiceId: number }).query(({ input }) => dataService.invoice.getReceiptsByInvoice(input)),
     getReceiptsByCustomer: t.procedure.input((val: unknown) => val as { customerId: number }).query(({ input }) => dataService.invoice.getReceiptsByCustomer(input)),
     getReceiptById: t.procedure.input((val: unknown) => val as number).query(({ input }) => dataService.invoice.getReceiptById(input)),
+    deleteReceipt: t.procedure.input((val: unknown) => val as number).mutation(({ input }) => dataService.invoice.deleteReceipt(input)),
     bulkHistoricalImport: t.procedure.input((val: unknown) => val as any[]).mutation(({ input }) => dataService.invoice.bulkHistoricalImport(input)),
     relinkSageInvoices: t.procedure.mutation(() => dataService.invoice.relinkSageInvoices()),
     getCreditNotes: t.procedure.query(() => dataService.invoice.getCreditNotes()),

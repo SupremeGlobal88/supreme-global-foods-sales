@@ -3748,6 +3748,15 @@ const dataService = {
     getReceiptsByInvoice: (invoiceId: number) => receipts.filter((r) => r.invoiceId == invoiceId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getReceiptsByCustomer: (customerId: number) => receipts.filter((r) => r.customerId == customerId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     getReceiptById: (id: number) => receipts.find((r) => r.id == id) || null,
+    deleteReceipt: (id: number) => {
+      const idx = receipts.findIndex((r) => r.id == id);
+      if (idx < 0) return { success: false };
+      const deleted = receipts[idx];
+      receipts.splice(idx, 1);
+      saveItem("sgf_receipts", receipts);
+      logAudit("DELETE", "receipt", id, `Deleted receipt ${deleted.receiptNumber}`);
+      return { success: true, receipt: deleted };
+    },
 
     // Credit note methods
     getCreditNotes: () => creditNotes.filter((cn) => !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),

@@ -37,6 +37,7 @@ import {
   removeOneStockItem,
   removeOrder,
   removeInvoice,
+  removeReceipt,
   pushAppointmentDelete,
   pushCheckinDelete,
   removeSpecialPrice,
@@ -478,6 +479,15 @@ export async function localLinkHandler(path: string, input: any) {
           await pushInvoice(result);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+        }
+        break;
+      }
+      case "invoice.deleteReceipt": {
+        result = dataService.invoice.deleteReceipt(input);
+        if (result?.success) {
+          await removeReceipt(input);
+          reloadFromStorage(["sgf_receipts"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "receipts", count: 0 } }));
         }
         break;
       }
@@ -1454,8 +1464,9 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "receipt.delete": {
-        result = dataService.receipt.delete(input);
+        result = dataService.invoice.deleteReceipt(input);
         if (result?.success) {
+          await removeReceipt(input);
           reloadFromStorage(["sgf_receipts"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "receipts", count: 0 } }));
         }

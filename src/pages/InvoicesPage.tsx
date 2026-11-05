@@ -122,6 +122,10 @@ export default function InvoicesPage() {
     onSuccess: async () => { reloadFromStorage(); await utils.invoice.list.invalidate(); await utils.collections.getOverdueInvoices.invalidate(); await utils.collections.getDailyReport.invalidate(); await utils.collections.getStats.invalidate(); },
     onError: (err: any) => { alert("Delete payment failed: " + (err.message || "Unknown error")); },
   });
+  const deleteReceipt = trpc.invoice.deleteReceipt.useMutation({
+    onSuccess: async () => { reloadFromStorage(); await utils.invoice.getReceipts.invalidate(); await utils.invoice.list.invalidate(); },
+    onError: (err: any) => { alert("Delete receipt failed: " + (err.message || "Unknown error")); },
+  });
   const createCreditNote = trpc.invoice.createCreditNote.useMutation({
     onSuccess: async () => {
       // Force reload from localStorage to ensure the UI sees the latest
@@ -1330,15 +1334,25 @@ export default function InvoicesPage() {
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {invReceipts.map((r: any) => (
-                                  <button
-                                    key={r.id}
-                                    onClick={() => setShowReceipt(r)}
-                                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all hover:brightness-110"
-                                    style={{ backgroundColor: "rgba(212,168,67,0.12)", border: "1px solid rgba(212,168,67,0.3)", color: "#D4A843" }}
-                                  >
-                                    <Receipt className="w-3.5 h-3.5" />
-                                    {r.receiptNumber} &mdash; R {Number(r.amount || 0).toFixed(2)} &mdash; {new Date(r.createdAt).toLocaleDateString("en-ZA")}
-                                  </button>
+                                  <div key={r.id} className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => setShowReceipt(r)}
+                                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all hover:brightness-110"
+                                      style={{ backgroundColor: "rgba(212,168,67,0.12)", border: "1px solid rgba(212,168,67,0.3)", color: "#D4A843" }}
+                                    >
+                                      <Receipt className="w-3.5 h-3.5" />
+                                      {r.receiptNumber} &mdash; R {Number(r.amount || 0).toFixed(2)} &mdash; {new Date(r.createdAt).toLocaleDateString("en-ZA")}
+                                    </button>
+                                    {isSuperAdmin && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); if (confirm(`SUPER ADMIN ONLY\n\nDelete receipt ${r.receiptNumber} permanently?\n\nThis action cannot be undone.`)) deleteReceipt.mutate(r.id); }}
+                                        className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 transition-colors"
+                                        title="Delete receipt"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
                                 ))}
                               </div>
                             </div>

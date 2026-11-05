@@ -4623,6 +4623,36 @@ const dataService = {
     generateForPO: activateInvoiceFromPO,
   },
 
+  creditNote: {
+    list: () => creditNotes.filter((cn) => !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    getById: (id: number) => creditNotes.find((cn) => cn.id == id),
+    getByInvoice: (invoiceId: number) => creditNotes.filter((cn) => cn.invoiceId == invoiceId && !cn.voided).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    create: (data: any) => {
+      const result = dataService.invoice.createCreditNote(data);
+      return result;
+    },
+    update: ({ id, data }: { id: number; data: any }) => {
+      const idx = creditNotes.findIndex((cn) => cn.id == id);
+      if (idx >= 0) {
+        creditNotes[idx] = { ...creditNotes[idx], ...data, updatedAt: new Date().toISOString() };
+        saveItem("sgf_creditNotes", creditNotes);
+        return creditNotes[idx];
+      }
+      return null;
+    },
+    delete: (id: number) => {
+      const idx = creditNotes.findIndex((cn) => cn.id == id);
+      if (idx >= 0) {
+        const deleted = creditNotes[idx];
+        creditNotes.splice(idx, 1);
+        saveItem("sgf_creditNotes", creditNotes);
+        logAudit("DELETE", "creditNote", id, `Deleted credit note ${deleted.creditNoteNumber || id}`);
+        return { success: true, creditNote: deleted };
+      }
+      return { success: false, error: "Credit note not found" };
+    },
+  },
+
   appointment: {
     list: () => appointments.map((a) => ({
       ...a,

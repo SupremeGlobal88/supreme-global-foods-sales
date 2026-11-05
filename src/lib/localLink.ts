@@ -19,6 +19,7 @@ import {
   pushCOC,
   removeCOC,
   pushCreditNote,
+  removeCreditNote,
   pushUser,
   pushUserDelete,
   pushSalesRep,
@@ -1533,7 +1534,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "creditNote.delete": {
         result = dataService.creditNote.delete(input);
         if (result?.success) {
-          await pushCreditNote({ id: input, deleted: true });
+          await removeCreditNote(input);
           reloadFromStorage(["sgf_creditNotes"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 0 } }));
         }

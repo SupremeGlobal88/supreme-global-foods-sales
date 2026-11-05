@@ -355,6 +355,21 @@ export default function CustomerStatementPage() {
     for (const inv of custInvoices) {
       const bal = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0);
       if (bal <= 0) continue; // Paid or credit — skip aging
+      // Skip sample orders in aging
+      const notesLC = (inv.notes || "").toLowerCase();
+      const orderNumLC = (inv.orderNumber || "").toLowerCase();
+      const invNumLC = (inv.invoiceNumber || "").toLowerCase();
+      const hasCreditAllocations = (inv.creditAllocations || []).length > 0;
+      const hasOverpaymentAllocations = (inv.overpaymentAllocations || []).length > 0;
+      const isSampleOrder =
+        notesLC.includes("sample order") ||
+        notesLC.includes("no charge") ||
+        notesLC.includes("sample") ||
+        orderNumLC.startsWith("smp-") ||
+        orderNumLC.includes("sample") ||
+        invNumLC.includes("sample") ||
+        (inv.balanceDue === 0 && inv.amountPaid === 0 && !hasCreditAllocations && !hasOverpaymentAllocations && (inv.total || 0) > 0);
+      if (isSampleOrder) continue;
       const dd = Math.floor((now.getTime() - new Date(inv.invoiceDate || inv.createdAt).getTime()) / 86400000);
       if (dd <= 30) a.current += bal;
       else if (dd <= 60) a.days30 += bal;
@@ -678,7 +693,24 @@ export default function CustomerStatementPage() {
                 <div className="p-4" style={{ backgroundColor: "#0A0A0B" }}>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#8A8B8C]">Total Invoices:</span>
-                    <span className="text-white font-semibold">{custInvoices.length}</span>
+                    <span className="text-white font-semibold">{
+                      custInvoices.filter((inv: any) => {
+                        const notesLC = (inv.notes || "").toLowerCase();
+                        const orderNumLC = (inv.orderNumber || "").toLowerCase();
+                        const invNumLC = (inv.invoiceNumber || "").toLowerCase();
+                        const hasCreditAllocations = (inv.creditAllocations || []).length > 0;
+                        const hasOverpaymentAllocations = (inv.overpaymentAllocations || []).length > 0;
+                        return !(
+                          notesLC.includes("sample order") ||
+                          notesLC.includes("no charge") ||
+                          notesLC.includes("sample") ||
+                          orderNumLC.startsWith("smp-") ||
+                          orderNumLC.includes("sample") ||
+                          invNumLC.includes("sample") ||
+                          (inv.balanceDue === 0 && inv.amountPaid === 0 && !hasCreditAllocations && !hasOverpaymentAllocations && (inv.total || 0) > 0)
+                        );
+                      }).length
+                    }</span>
                   </div>
                   <div className="flex justify-between text-sm mt-2 pt-2" style={{ borderTop: "1px solid #222324" }}>
                     <span className="text-white font-semibold">Balance Due:</span>

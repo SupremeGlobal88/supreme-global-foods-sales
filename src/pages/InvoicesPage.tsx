@@ -1360,6 +1360,35 @@ export default function InvoicesPage() {
                             </div>
                           )}
 
+                          {/* Outgoing Overpayment Credits — when THIS invoice's overpayment was allocated TO other invoices */}
+                          {(() => {
+                            const outgoingOPs = (invoices || [])
+                              .flatMap((otherInv: any) =>
+                                (otherInv.overpaymentAllocations || [])
+                                  .filter((oa: any) => oa.fromInvoiceId == inv.id)
+                                  .map((oa: any) => ({ ...oa, toInvoiceNumber: otherInv.invoiceNumber, toInvoiceId: otherInv.id }))
+                              );
+                            return outgoingOPs.length > 0 ? (
+                              <div className="mb-4">
+                                <div className="label-text mb-2 flex items-center gap-2">
+                                  <ArrowLeftRight className="w-3.5 h-3.5" /> Overpayment Credits Applied to Other Invoices
+                                </div>
+                                <div className="space-y-1">
+                                  {outgoingOPs.map((oa: any, oaIdx: number) => (
+                                    <div key={oaIdx} className="flex items-center justify-between p-2.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+                                      <div className="flex items-center gap-3 flex-wrap">
+                                        <ArrowLeftRight className="w-3.5 h-3.5 text-[#3B82F6] shrink-0" />
+                                        <span className="text-[#3B82F6] font-semibold">R {Number(oa.amount || 0).toFixed(2)}</span>
+                                        <span className="text-[#8A8B8C]">to {oa.toInvoiceNumber || `INV-${oa.toInvoiceId}`}</span>
+                                        <span className="text-[#8A8B8C]">{new Date(oa.allocatedAt).toLocaleDateString("en-ZA")}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null;
+                          })()}
+
                           {/* Receipts for this invoice */}
                           {invReceipts.length > 0 && (
                             <div className="mb-4">

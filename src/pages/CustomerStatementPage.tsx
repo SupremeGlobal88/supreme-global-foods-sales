@@ -168,6 +168,8 @@ export default function CustomerStatementPage() {
         orderNumLC.includes("sample") ||
         invNumLC.includes("sample") ||
         (inv.balanceDue === 0 && inv.amountPaid === 0 && !hasCreditAllocations && !hasOverpaymentAllocations && (inv.total || 0) > 0);
+      // Skip sample orders entirely on the statement
+      if (isSampleOrder) continue;
       // Negative-total invoices (credit note invoices) show as credit, not debit
       const invTotal = Number(inv.total || 0);
       const debit = isSampleOrder ? 0 : (invTotal > 0 ? invTotal : 0);
@@ -232,8 +234,8 @@ export default function CustomerStatementPage() {
         for (const ca of creditAllocations) {
           const allocAmt = Number(ca.amount || 0);
           if (allocAmt <= 0) continue;
-          // Find the credit note details for the reference
-          const cn = custCreditNotes.find((c: any) => c.id == ca.creditNoteId);
+          // Find the credit note details for the reference (use allCreditNotes, not date-filtered custCreditNotes)
+          const cn = allCreditNotes.find((c: any) => c.id == ca.creditNoteId);
           if (!cn || cn.voided) continue;
           const cnRef = cn?.creditNoteNumber || `CN-${ca.creditNoteId}`;
           group.push({

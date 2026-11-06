@@ -2330,6 +2330,8 @@ export function fixDraftInvoicesForDeliveredOrders(): { changed: number; invoice
 export function repairCancelledInvoiceBalances(): { changed: number; invoices: any[] } {
   let changed = 0;
   const changedInvs: any[] = [];
+
+  // Fix 1: Invoices marked as cancelled but still have a non-zero balance
   for (const inv of invoices) {
     const isCancelled = String(inv.status || "").toLowerCase().trim() === "cancelled";
     const balanceDue = typeof inv.balanceDue === "number" ? inv.balanceDue : (inv.total || 0) - (inv.amountPaid || 0);
@@ -2342,9 +2344,24 @@ export function repairCancelledInvoiceBalances(): { changed: number; invoices: a
       changedInvs.push(inv);
     }
   }
+
+  // Fix 2: Invoices linked to cancelled orders but still marked as sent/partially_paid
+  const cancelledOrderIds = new Set(orders.filter((o) => o.status === "cancelled").map((o) => o.id));
+  for (const inv of invoices) {
+    if (inv.status === "cancelled") continue;
+    if (inv.orderId && cancelledOrderIds.has(inv.orderId)) {
+      inv.status = "cancelled";
+      inv.balanceDue = 0;
+      inv.cancelledAt = inv.cancelledAt || new Date().toISOString();
+      inv.cancellationReason = inv.cancellationReason || "Order cancelled";
+      inv.updatedAt = new Date().toISOString();
+      changed++;
+      changedInvs.push(inv);
+    }
+  }
+
   if (changed > 0) {
     saveItem("sgf_invoices", invoices);
-
   }
   return { changed, invoices: changedInvs };
 }
@@ -4620,6 +4637,7 @@ const dataService = {
     allocateBankPayments,
     fixDraftInvoices: fixDraftInvoicesForDeliveredOrders,
     fixSageDates: fixSageInvoiceDates,
+    repairCancelled: repairCancelledInvoiceBalances,
     generateForPO: activateInvoiceFromPO,
   },
 

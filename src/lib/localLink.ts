@@ -553,6 +553,15 @@ export async function localLinkHandler(path: string, input: any) {
         }
         break;
       }
+      case "invoice.repairCancelled": {
+        result = dataService.invoice.repairCancelled();
+        if (result && result.changed > 0) {
+          for (const inv of result.invoices || []) await pushInvoice(inv);
+          reloadFromStorage(["sgf_invoices"]);
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: result.changed } }));
+        }
+        break;
+      }
       case "invoice.generateForPO": {
         // Call the REAL invoice generator (not activateInvoiceFromPO which only changes draft status)
         result = dataService.generateInvoiceForPO(input);

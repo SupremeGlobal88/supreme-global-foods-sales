@@ -33,6 +33,11 @@ export default function CustomerBalanceReportPage() {
       const status = inv.status;
       if (status === "paid" || status === "cancelled" || status === "void" || status === "draft") continue;
 
+      // Exclude sample invoices — customers don't pay for samples
+      const notes = (inv.notes || "").toLowerCase();
+      const invNum = (inv.invoiceNumber || "").toLowerCase();
+      if (inv.orderType === "sample" || notes.includes("sample") || invNum.includes("sample") || invNum.startsWith("sgf-smp-")) continue;
+
       const balance = typeof inv.balanceDue === "number" ? inv.balanceDue : 0;
       if (balance <= 0.01) continue;
 

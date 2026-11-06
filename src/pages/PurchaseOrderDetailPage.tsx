@@ -96,10 +96,11 @@ export default function PurchaseOrderDetailPage() {
     onSuccess: async () => { reloadFromStorage(); await utils.purchaseOrder.list.invalidate(); },
   });
   const generateInvForPO = trpc.invoice.generateForPO.useMutation({
-    onSuccess: async (invNum) => {
-      if (invNum) {
+    onSuccess: async (inv) => {
+      if (inv) {
         reloadFromStorage();
         await utils.invoice.list.invalidate();
+        const invNum = typeof inv === "string" ? inv : (inv.invoiceNumber || "generated");
         alert(`Invoice ${invNum} generated successfully!`);
       }
     },

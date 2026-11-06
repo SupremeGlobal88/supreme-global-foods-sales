@@ -1335,10 +1335,10 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "coc.bulkGenerateForPO": {
         result = dataService.coc.bulkGenerateForPO(input);
-        if (result && result.success) {
-          for (const c of result.cocs || []) await pushCOC(c);
+        if (result && Array.isArray(result)) {
+          for (const c of result) await pushCOC(c);
           reloadFromStorage(["sgf_cocs"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: result.cocs?.length || 0 } }));
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: result.length } }));
         }
         break;
       }

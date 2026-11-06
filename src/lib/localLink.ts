@@ -1354,10 +1354,10 @@ export async function localLinkHandler(path: string, input: any) {
       }
       case "coc.generateForInvoice": {
         result = dataService.coc.generateForInvoice(input);
-        if (result) {
-          await pushCOC(result);
+        if (result && Array.isArray(result)) {
+          for (const coc of result) await pushCOC(coc);
           reloadFromStorage(["sgf_cocs"]);
-          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: 1 } }));
+          window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "cocs", count: result.length } }));
         }
         break;
       }

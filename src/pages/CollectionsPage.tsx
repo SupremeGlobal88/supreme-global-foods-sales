@@ -9,7 +9,7 @@ import {
   Ban, FileText, Calendar, CheckCircle, Clock, User,
   DollarSign, TrendingUp, ShieldAlert, ClipboardList,
   Printer, X, ChevronDown, ChevronUp, Send, Lock, LockOpen,
-  Users, Filter, ExternalLink,
+  Users, Filter, ExternalLink, Download,
 } from "lucide-react";
 
 const BUCKET_CONFIG: Record<string, { label: string; color: string; bg: string; desc: string }> = {
@@ -79,7 +79,7 @@ export default function CollectionsPage() {
   useEffect(() => {
     const handler = (e: any) => {
       const type = e.detail?.type;
-      if (type === "invoices" || type === "creditNotes" || type === "customers") {
+      if (type === "invoices" || type === "customers" || type === "collections") {
         invalidateCollections();
       }
     };
@@ -160,6 +160,121 @@ export default function CollectionsPage() {
       .replace(/{bankingDetails}/g, bankingStr);
   }
 
+  async function exportToExcel() {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const todayStr = new Date().toLocaleDateString("en-ZA");
+    const fileDate = new Date().toISOString().split("T")[0];
+
+    // -- Sheet 1: Pipeline (filtered invoices) --
+    const pipelineRows = [
+      ["Invoice #", "Customer", "Sales Rep", "Balance Due", "Total", "Paid", "Days Over", "Bucket", "Due Date", "Invoice Date", "On Hold", "Latest Promise", "Source"],
+    ];
+    for (const inv of filteredInvoices) {
+      const holdStatus = inv.accountHold ? "YES" : "NO";
+      const promiseDate = inv.latestPromise ? new Date(inv.latestPromise.promiseDate).toLocaleDateString("en-ZA") : "";
+      pipelineRows.push([
+        inv.invoiceNumber || "",
+        inv.customer?.name || inv.customerName || "",
+        inv.salesRepName || "",
+        inv.balanceDue || 0,
+        inv.total || inv.totalAmount || 0,
+        inv.amountPaid || 0,
+        inv.daysOverdue || 0,
+        BUCKET_CONFIG[inv.bucket]?.label || inv.bucket || "",
+        inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("en-ZA") : "",
+        inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString("en-ZA") : "",
+        holdStatus,
+        promiseDate,
+        inv.source || "app",
+      ]);
+    }
+    // Totals row
+    const totalBalance = filteredInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
+    pipelineRows.push([]);
+    pipelineRows.push(["TOTAL", "", "", totalBalance, "", "", "", "", "", "", "", "", ""]);
+
+    const wsPipeline = XLSX.utils.aoa_to_sheet(pipelineRows);
+    wsPipeline["!cols"] = [
+      { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 14 },
+      { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 16 },
+      { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsPipeline, "Pipeline");
+
+    // -- Sheet 2: Daily Summary --
+    const summaryRows = [
+      ["Supreme Global Foods -- Collections Daily Summary"],
+      [],
+      ["Report Date:", todayStr],
+      ["Total Outstanding:", `R ${(stats?.totalOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+      ["Total Overdue Invoices:", stats?.totalOverdueInvoices || 0],
+      ["On Hold:", stats?.onHold || 0],
+      ["Pending Promises:", stats?.pendingPromises || 0],
+      ["Collected Today:", dailyReport?.summary?.todayActivities || 0],
+      [],
+      ["Bucket", "Count", "Total Balance (R)", "Description"],
+    ];
+    for (const [key, cfg] of Object.entries(BUCKET_CONFIG)) {
+      const items = (dailyReport?.byBucket as any)?.[key] || [];
+      summaryRows.push([
+        cfg.label,
+        items.length,
+        items.reduce((s: number, i: any) => s + (i.balanceDue || 0), 0),
+        cfg.desc,
+      ]);
+    }
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary["!cols"] = [{ wch: 18 }, { wch: 10 }, { wch: 18 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Daily Summary");
+
+    // -- Sheet 3: Today's Activities --
+    const activityRows = [["Time", "Type", "Invoice", "Customer", "Notes / Reason"]];
+    for (const act of (dailyReport?.todayActivities || [])) {
+      activityRows.push([
+        act.createdAt ? new Date(act.createdAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" }) : "",
+        act.type || "",
+        act.invoiceNumber || "",
+        act.customerName || "",
+        act.notes || act.reason || "",
+      ]);
+    }
+    const wsActivity = XLSX.utils.aoa_to_sheet(activityRows);
+    wsActivity["!cols"] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 28 }, { wch: 50 }];
+    XLSX.utils.book_append_sheet(wb, wsActivity, "Today's Activities");
+
+    // -- Sheet 4: Follow-ups Due --
+    const followUpRows = [["Customer", "Outstanding Balance", "Days Since Follow-up", "Bucket", "Invoices"]];
+    for (const fu of (followUpsDue || [])) {
+      const invList = (fu.invoices || []).map((i: any) => `${i.invoiceNumber} (R ${(i.balanceDue || 0).toFixed(2)})`).join("; ");
+      followUpRows.push([
+        fu.customer?.name || "",
+        fu.outstandingBalance || 0,
+        fu.daysSinceFollowUp != null ? fu.daysSinceFollowUp : "Never",
+        BUCKET_CONFIG[fu.bucket]?.label || fu.bucket || "",
+        invList,
+      ]);
+    }
+    const wsFollowUp = XLSX.utils.aoa_to_sheet(followUpRows);
+    wsFollowUp["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 50 }];
+    XLSX.utils.book_append_sheet(wb, wsFollowUp, "Follow-ups Due");
+
+    // -- Sheet 5: Stats --
+    const statsRows = [
+      ["Metric", "Value"],
+      ["Total Outstanding", `R ${(stats?.totalOutstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+      ["Total Overdue Invoices", stats?.totalOverdueInvoices || 0],
+      ["On Hold", stats?.onHold || 0],
+      ["Pending Promises", stats?.pendingPromises || 0],
+      ["Collected Today", dailyReport?.summary?.todayActivities || 0],
+    ];
+    const wsStats = XLSX.utils.aoa_to_sheet(statsRows);
+    wsStats["!cols"] = [{ wch: 30 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsStats, "Stats");
+
+    XLSX.writeFile(wb, `Collections_Report_${fileDate}.xlsx`);
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -168,6 +283,13 @@ export default function CollectionsPage() {
           <h1 className="font-display font-semibold text-white" style={{ fontSize: "clamp(1.8rem, 3vw, 2.5rem)", letterSpacing: "-0.03em" }}>Collections</h1>
           <p className="text-[#8A8B8C] font-body text-sm mt-1">Automated payment collection &amp; overdue tracking</p>
         </div>
+        <button
+          onClick={exportToExcel}
+          className="btn-secondary flex items-center gap-2 text-sm"
+          title="Export collections data to Excel"
+        >
+          <Download className="w-4 h-4" /> Export to Excel
+        </button>
       </div>
 
       {/* Stats Cards */}
@@ -331,7 +453,7 @@ export default function CollectionsPage() {
                             <td className="p-3">
                               <span className="status-badge text-xs" style={{ backgroundColor: cfg.bg, color: cfg.color }}>{cfg.label}</span>
                             </td>
-                            <td className="p-3 text-xs font-body">
+                            <td className="p-3 text-sm font-body">
                               {inv.latestPromise ? (
                                 <span className="text-[#6366F1]">{new Date(inv.latestPromise.promiseDate).toLocaleDateString("en-ZA")}</span>
                               ) : (
@@ -345,33 +467,33 @@ export default function CollectionsPage() {
                               <button onClick={() => setExpandedInvoice(expandedInvoice === inv.id ? null : inv.id)} className="p-1 hover:text-[#D4A843] transition-colors cursor-pointer" title="Actions"><ChevronDown className={`w-4 h-4 text-[#8A8B8C] transition-transform ${expandedInvoice === inv.id ? "rotate-180" : ""}`} /></button>
                             </td>
                           </tr>
-                          {/* Expanded Actions */}
                           {expandedInvoice === inv.id && (
-                            <tr><td colSpan={9} className="p-4" style={{ backgroundColor: "#0A0A0B" }}>
-                              <div className="flex flex-wrap gap-2">
-                                <button onClick={() => openAction("call", inv)} className="btn-secondary text-xs"><Phone className="w-3 h-3" /> Log Call</button>
-                                <button onClick={() => openAction("email", inv)} className="btn-secondary text-xs"><Mail className="w-3 h-3" /> Send Reminder</button>
-                                <button onClick={() => openAction("sms", inv)} className="btn-secondary text-xs"><MessageSquare className="w-3 h-3" /> SMS</button>
-                                <button onClick={() => openAction("whatsapp", inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(74,222,128,0.3)" }}><MessageSquare className="w-3 h-3" style={{ color: "#4ADE80" }} /> WhatsApp</button>
-                                <button onClick={() => openAction("promise", inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(99,102,241,0.3)" }}><HandCoins className="w-3 h-3" /> Promise to Pay</button>
-                                {!inv.accountHold && <button onClick={() => openAction("hold", inv)} className="btn-secondary text-xs hover:text-[#EF4444]" style={{ borderColor: "rgba(239,68,68,0.2)" }}><Lock className="w-3 h-3" /> Place Hold</button>}
-                                {inv.accountHold && <button onClick={() => { releaseHold.mutate({ holdId: inv.accountHold.id }); }} className="btn-secondary text-xs hover:text-[#4ADE80]" style={{ borderColor: "rgba(74,222,128,0.2)" }}><LockOpen className="w-3 h-3" /> Release Hold</button>}
-                                <button onClick={() => openAction("note", inv)} className="btn-secondary text-xs"><ClipboardList className="w-3 h-3" /> Add Note</button>
-                              </div>
-                              {/* Collection Notes */}
-                              {(inv.collectionNotes || []).length > 0 && (
-                                <div className="mt-3 space-y-1">
-                                  <div className="text-xs text-[#8A8B8C] font-body font-semibold mb-1">Recent Activity:</div>
-                                  {(inv.collectionNotes || []).slice(0, 3).map((note: any) => (
-                                    <div key={note.id} className="text-xs text-[#8A8B8C] font-body flex items-center gap-2">
-                                      <span className="text-[#D4A843]">{new Date(note.createdAt).toLocaleDateString("en-ZA")}</span>
-                                      <span className="capitalize" style={{ color: note.type === "hold" ? "#EF4444" : note.type === "promise" ? "#6366F1" : "#8A8B8C" }}>[{note.type}]</span>
-                                      {note.notes}
-                                    </div>
-                                  ))}
+                            <tr>
+                              <td colSpan={9} className="p-4" style={{ backgroundColor: "#0A0A0B" }}>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  <button onClick={() => openAction("call", inv)} className="btn-primary text-xs"><Phone className="w-3 h-3" /> Log Call</button>
+                                  <button onClick={() => openAction("email", inv)} className="btn-secondary text-xs"><Mail className="w-3 h-3" /> Email</button>
+                                  <button onClick={() => openAction("sms", inv)} className="btn-secondary text-xs"><MessageSquare className="w-3 h-3" /> SMS</button>
+                                  <button onClick={() => openAction("whatsapp", inv)} className="btn-secondary text-xs" style={{ borderColor: "rgba(37,211,102,0.2)", color: "#25D366" }}><ExternalLink className="w-3 h-3" /> WhatsApp</button>
+                                  <button onClick={() => openAction("promise", inv)} className="btn-secondary text-xs"><HandCoins className="w-3 h-3" /> Promise</button>
+                                  <button onClick={() => openAction("note", inv)} className="btn-secondary text-xs"><ClipboardList className="w-3 h-3" /> Note</button>
+                                  {!inv.accountHold && <button onClick={() => openAction("hold", inv)} className="btn-secondary text-xs hover:text-[#EF4444]" style={{ borderColor: "rgba(239,68,68,0.2)" }}><Lock className="w-3 h-3" /> Place Hold</button>}
+                                  {inv.accountHold && <button onClick={() => { releaseHold.mutate({ holdId: inv.accountHold.id }); }} className="btn-secondary text-xs hover:text-[#4ADE80]" style={{ borderColor: "rgba(74,222,128,0.2)" }}><LockOpen className="w-3 h-3" /> Release Hold</button>}
                                 </div>
-                              )}
-                            </td></tr>
+                                {(inv.collectionNotes || []).length > 0 && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs text-[#8A8B8C] font-body">Recent notes:</p>
+                                    {(inv.collectionNotes || []).slice(0, 3).map((note: any) => (
+                                      <div key={note.id} className="text-xs font-body p-2 rounded" style={{ backgroundColor: "#131415" }}>
+                                        <span className="text-[#D4A843] capitalize">{note.type || "note"}</span>
+                                        <span className="text-[#8A8B8C] ml-2">{new Date(note.createdAt).toLocaleDateString("en-ZA")}</span>
+                                        <p className="text-white mt-1">{note.notes || note.reason || "-"}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
                           )}
                         </>
                       );
@@ -384,70 +506,54 @@ export default function CollectionsPage() {
         </div>
       )}
 
-      {/* FOLLOW-UPS DUE */}
+      {/* FOLLOW-UPS VIEW */}
       {activeTab === "followups" && (
         <div className="space-y-4">
           <div className="card-surface p-6">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-display font-semibold text-white">Follow-ups Due</h3>
-                <p className="text-xs text-[#8A8B8C] font-body">Customers needing follow-up after 3-day action cycle</p>
+              <h3 className="font-display font-semibold text-white">Follow-ups Due</h3>
+              <div className="card-surface p-3">
+                <span className="stat-number" style={{ color: "#EF4444" }}>{followUpsDue?.length || 0}</span>
+                <p className="text-xs text-[#8A8B8C] font-body">customers need follow-up</p>
               </div>
-              <span className="stat-number" style={{ color: "#EF4444" }}>{followUpsDue?.length || 0}</span>
             </div>
-
             {followUpsDue && followUpsDue.length > 0 ? (
               <div className="space-y-3">
-                {(followUpsDue || []).map((fu: any, idx: number) => {
-                  const isOverdue = fu.daysSinceFollowUp && fu.daysSinceFollowUp > 0;
-                  return (
-                    <div key={idx} className="p-4 rounded-lg" style={{ backgroundColor: "#0A0A0B", borderLeft: isOverdue ? "3px solid #EF4444" : "3px solid #F59E0B" }}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="text-white font-body font-medium">{getCustomerName(fu.customerId, fu.customer?.name) || "Unknown"}</h4>
-                            {isOverdue && (
-                              <span className="status-badge text-xs" style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "#EF4444" }}>
-                                <AlertTriangle className="w-3 h-3 inline mr-1" />{fu.daysSinceFollowUp} days overdue
-                              </span>
-                            )}
-                            {!isOverdue && (
-                              <span className="status-badge text-xs" style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>
-                                <Clock className="w-3 h-3 inline mr-1" />Due today
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-[#8A8B8C] font-body">
-                            Outstanding: <span className="text-white">R {fu.outstandingBalance?.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}</span>
-                            {" "}&middot;{" "}
-                            Last action: {fu.latestNote ? `${fu.latestNote.type} on ${new Date(fu.latestNote.createdAt).toLocaleDateString("en-ZA")}` : "None"}
-                            {" "}&middot;{" "}
-                            Follow-up date: {fu.latestNote?.followUpDate || "—"}
-                          </p>
-                          {fu.latestNote?.notes && (
-                            <p className="text-xs text-[#8A8B8C] font-body mt-1 italic">"{fu.latestNote.notes.slice(0, 120)}{fu.latestNote.notes.length > 120 ? "..." : ""}"</p>
-                          )}
-                          {/* Invoice list */}
-                          {fu.invoices && fu.invoices.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {fu.invoices.map((inv: any, i: number) => (
-                                <span key={i} className="status-badge text-xs" style={{ backgroundColor: "rgba(212,168,67,0.1)", color: "#D4A843" }}>
-                                  {inv.invoiceNumber} (R {inv.balanceDue?.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"})
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                {(followUpsDue || []).map((fu: any, idx: number) => (
+                  <div key={idx} className="p-4 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-[#D4A843]" />
+                          <span className="font-body text-sm text-white">{fu.customer?.name || "Unknown"}</span>
+                          <span className="text-xs text-[#8A8B8C]">(R {(fu.outstandingBalance || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
                         </div>
-                        <button
-                          onClick={() => openAction("call", fu.invoices?.[0])}
-                          className="btn-primary text-xs shrink-0"
-                        >
-                          <Phone className="w-3 h-3" /> Follow Up
-                        </button>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="w-3 h-3 text-[#8A8B8C]" />
+                          <span className="text-xs text-[#8A8B8C]">
+                            {fu.daysSinceFollowUp != null ? `${fu.daysSinceFollowUp} days since last follow-up` : "No follow-up recorded"}
+                          </span>
+                        </div>
+                        {/* Invoice list */}
+                        {fu.invoices && fu.invoices.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {fu.invoices.map((inv: any, i: number) => (
+                              <span key={i} className="status-badge text-xs" style={{ backgroundColor: "rgba(212,168,67,0.1)", color: "#D4A843" }}>
+                                {inv.invoiceNumber} (R {inv.balanceDue?.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"})
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      <button
+                        onClick={() => openAction("call", fu.invoices?.[0])}
+                        className="btn-primary text-xs shrink-0"
+                      >
+                        <Phone className="w-3 h-3" /> Follow Up
+                      </button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="text-center py-8">
@@ -518,22 +624,27 @@ export default function CollectionsPage() {
             <label className="label-text block mb-1.5">Search Customer</label>
             <CustomerSearchDropdown customers={customers || []} value={historyCustomerId} onChange={setHistoryCustomerId} placeholder="Search customer to view payment history..." />
           </div>
-          {customerHistory && historyCustomerId > 0 && (
+          {customerHistory && customerHistory.length > 0 && (
             <div className="space-y-3">
-              {(customerHistory || []).map((inv: any) => (
+              {customerHistory.map((inv: any) => (
                 <div key={inv.id} className="p-4 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-mono-data text-xs text-[#D4A843]">{inv.invoiceNumber}</span>
-                      <span className="ml-3 text-sm text-white font-body">R {Number(inv.total).toFixed(2)}</span>
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono-data text-xs text-[#D4A843]">{inv.invoiceNumber}</span>
                     <span className="status-badge text-xs" style={{ backgroundColor: inv.status === "paid" ? "rgba(74,222,128,0.12)" : "rgba(245,158,11,0.12)", color: inv.status === "paid" ? "#4ADE80" : "#F59E0B" }}>{inv.status}</span>
                   </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div><span className="text-[#8A8B8C]">Total:</span> <span className="text-white">R {Number(inv.total || inv.totalAmount || 0).toFixed(2)}</span></div>
+                    <div><span className="text-[#8A8B8C]">Paid:</span> <span className="text-white">R {Number(inv.amountPaid || 0).toFixed(2)}</span></div>
+                    <div><span className="text-[#8A8B8C]">Balance:</span> <span className="text-white">R {Number(inv.balanceDue || 0).toFixed(2)}</span></div>
+                  </div>
                   {(inv.notes || []).length > 0 && (
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs text-[#8A8B8C]">Collection notes:</p>
                       {inv.notes.slice(0, 3).map((n: any) => (
-                        <div key={n.id} className="text-xs text-[#8A8B8C] font-body">
-                          <span className="text-[#D4A843]">{new Date(n.createdAt).toLocaleDateString("en-ZA")}</span> <span className="capitalize">[{n.type}]</span> {n.notes}
+                        <div key={n.id} className="text-xs p-2 rounded" style={{ backgroundColor: "#131415" }}>
+                          <span className="text-[#D4A843] capitalize">{n.type || "note"}</span>
+                          <span className="text-[#8A8B8C] ml-2">{new Date(n.createdAt).toLocaleDateString("en-ZA")}</span>
+                          <p className="text-white mt-0.5">{n.notes || n.reason || "-"}</p>
                         </div>
                       ))}
                     </div>
@@ -542,121 +653,135 @@ export default function CollectionsPage() {
               ))}
             </div>
           )}
+          {historyCustomerId > 0 && (!customerHistory || customerHistory.length === 0) && (
+            <div className="text-center py-8">
+              <FileText className="w-12 h-12 mx-auto mb-3 text-[#8A8B8C] opacity-40" />
+              <p className="text-[#8A8B8C] font-body text-sm">No invoices found for this customer</p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ACTION MODALS */}
+      {/* Action Modal */}
       {showActionModal && selectedInvoice && (
         <ActionModal
           action={showActionModal}
           invoice={selectedInvoice}
-          customerName={getCustomerName(selectedInvoice.customerId, selectedInvoice.customer?.name || selectedInvoice.customerName)}
           onClose={() => setShowActionModal(null)}
           onSubmit={(data: any) => {
-            if (showActionModal === "call" || showActionModal === "note" || showActionModal === "whatsapp") {
-              addNote.mutate({ invoiceId: selectedInvoice.id, customerId: selectedInvoice.customerId, ...data });
-            } else if (showActionModal === "email" || showActionModal === "sms") {
-              addNote.mutate({ invoiceId: selectedInvoice.id, customerId: selectedInvoice.customerId, type: showActionModal, contactMethod: showActionModal, ...data });
-            } else if (showActionModal === "promise") {
-              recordPromise.mutate({ invoiceId: selectedInvoice.id, customerId: selectedInvoice.customerId, ...data });
+            const invId = selectedInvoice.id;
+            const custId = selectedInvoice.customerId;
+            if (showActionModal === "promise") {
+              recordPromise.mutate({ invoiceId: invId, customerId: custId, ...data });
             } else if (showActionModal === "hold") {
-              placeHold.mutate({ customerId: selectedInvoice.customerId, ...data });
+              placeHold.mutate({ invoiceId: invId, customerId: custId, ...data });
+            } else {
+              addNote.mutate({ invoiceId: invId, customerId: custId, ...data });
             }
             setShowActionModal(null);
           }}
-          reminderText={showActionModal === "email" || showActionModal === "sms" || showActionModal === "whatsapp" ? generateReminderText(selectedInvoice, selectedInvoice.bucket) : ""}
         />
       )}
     </div>
   );
 }
 
-function printDailyReport(report: any) {
-  if (!report) return;
-  const pw = window.open("", "_blank");
-  if (!pw) return;
-  const buckets = report.byBucket || {};
-  const bucketCards = Object.entries(buckets).map(([bucket, items]: [string, any]) => {
-    const cfg = BUCKET_CONFIG[bucket] || BUCKET_CONFIG.days_1_2;
-    return '<div class="stat"><div class="stat-num" style="color:' + cfg.color + '">' + items.length + '</div><div class="stat-label">' + cfg.label + '</div></div>';
-  }).join("");
-  const rows = Object.entries(buckets).flatMap(([_, items]: [string, any]) => {
-    return items.map((inv: any) => '<tr><td>' + inv.invoiceNumber + '</td><td>' + (inv.customerName || inv.customer?.name || "") + '</td><td>R ' + inv.balanceDue.toFixed(2) + '</td><td>' + inv.daysOverdue + '</td><td>' + (BUCKET_CONFIG[inv.bucket]?.label || "") + '</td></tr>');
-  }).join("");
-  pw.document.write('<html><head><title>Daily Collections Report</title><style>body{font-family:Arial,sans-serif;padding:40px;max-width:900px;margin:0 auto;color:#333}.header{text-align:center;border-bottom:3px solid #D4A843;padding-bottom:20px;margin-bottom:30px}.stat{display:inline-block;padding:15px 25px;margin:10px;background:#f9f9f9;border-radius:8px;text-align:center}.stat-num{font-size:24px;font-weight:bold;color:#D4A843}.stat-label{font-size:12px;color:#666;text-transform:uppercase}table{width:100%;border-collapse:collapse;margin:20px 0}th{background:#f5f5f5;padding:10px;text-align:left;font-size:11px;text-transform:uppercase}td{padding:10px;border-bottom:1px solid #eee;font-size:13px}</style></head><body><div class="header"><h1 style="font-size:28px;color:#D4A843;margin:0">Supreme Global Foods</h1><p>Daily Collections Report - ' + report.today + '</p></div><div style="text-align:center">' + bucketCards + '</div><table><thead><tr><th>Invoice</th><th>Customer</th><th>Balance</th><th>Days Over</th><th>Bucket</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>');
-  pw.document.close();
-  pw.print();
-}
-
-function ActionModal({ action, invoice, customerName, onClose, onSubmit, reminderText }: { action: string; invoice: any; customerName: string; onClose: () => void; onSubmit: (data: any) => void; reminderText: string }) {
-  const [notes, setNotes] = useState(action === "email" || action === "sms" || action === "whatsapp" ? reminderText : "");
+function ActionModal({ action, invoice, onClose, onSubmit }: { action: string; invoice: any; onClose: () => void; onSubmit: (data: any) => void }) {
+  const [notes, setNotes] = useState("");
+  const [promiseDate, setPromiseDate] = useState("");
+  const [promisedAmount, setPromisedAmount] = useState("");
+  const [holdReason, setHoldReason] = useState("");
   const [contactPerson, setContactPerson] = useState("");
-  const [promisedAmount, setPromisedAmount] = useState(Number(invoice.balanceDue) || 0);
-  const [promiseDate, setPromiseDate] = useState(new Date().toISOString().slice(0, 10));
-  const [holdReason, setHoldReason] = useState("Non-payment after multiple reminders");
   const [followUpDate, setFollowUpDate] = useState("");
-  const [whatsappPhone, setWhatsappPhone] = useState(invoice.customer?.phone || "");
 
-  const titles: Record<string, string> = {
-    call: "Log Phone Call",
-    email: "Send Email Reminder",
-    sms: "Send SMS Reminder",
-    whatsapp: "Send WhatsApp Reminder",
-    promise: "Record Promise to Pay",
-    hold: "Place Account on Hold",
-    note: "Add Collection Note",
-  };
+  const isPaymentRelated = action === "promise" || action === "hold";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
-      <div className="card-surface p-6 max-w-lg w-full mx-4" style={{ borderRadius: 16 }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display font-semibold text-white">{titles[action] || "Action"}</h3>
-          <button onClick={onClose} className="cursor-pointer"><X className="w-5 h-5 text-[#8A8B8C]" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+      <div className="card-glass p-6 w-full max-w-lg space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display font-semibold text-white">
+            {action === "call" && "Log Collection Call"}
+            {action === "email" && "Send Payment Reminder Email"}
+            {action === "sms" && "Send Payment Reminder SMS"}
+            {action === "whatsapp" && "Send WhatsApp Reminder"}
+            {action === "promise" && "Record Payment Promise"}
+            {action === "hold" && "Place Account Hold"}
+            {action === "note" && "Add Collection Note"}
+          </h3>
+          <button onClick={onClose} className="p-1 hover:text-[#EF4444] transition-colors"><X className="w-5 h-5" /></button>
         </div>
-        <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: "#0A0A0B" }}>
-          <div className="text-xs text-[#8A8B8C]">Invoice: <span className="text-[#D4A843]">{invoice.invoiceNumber}</span></div>
-          <div className="text-xs text-[#8A8B8C]">Customer: <span className="text-white">{customerName}</span></div>
-          <div className="text-xs text-[#8A8B8C]">Balance: <span className="text-[#F59E0B]">R {invoice.balanceDue?.toFixed(2)}</span></div>
-          <div className="text-xs text-[#8A8B8C]">Days Overdue: <span className="text-[#EF4444]">+{invoice.daysOverdue}</span></div>
+
+        <div className="text-xs text-[#8A8B8C] font-body">
+          Invoice: <span className="text-[#D4A843] font-mono-data">{invoice.invoiceNumber}</span>
+          <span className="mx-2">|</span>
+          Customer: <span className="text-white">{invoice.customer?.name || invoice.customerName || "Unknown"}</span>
+          <span className="mx-2">|</span>
+          Balance: <span className="text-white">R {invoice.balanceDue?.toFixed(2) || "0.00"}</span>
         </div>
 
         {action === "promise" && (
           <div className="space-y-3">
-            <div><label className="label-text block mb-1.5">Promised Amount (R)</label><input type="number" step="0.01" value={promisedAmount} onChange={(e) => setPromisedAmount(parseFloat(e.target.value))} className="input-field" /></div>
-            <div><label className="label-text block mb-1.5">Promise Date *</label><DatePicker value={promiseDate} onChange={setPromiseDate} required /></div>
+            <div>
+              <label className="label-text block mb-1">Promise Date</label>
+              <DatePicker value={promiseDate} onChange={setPromiseDate} />
+            </div>
+            <div>
+              <label className="label-text block mb-1">Promised Amount (R)</label>
+              <input type="number" value={promisedAmount} onChange={(e) => setPromisedAmount(e.target.value)} className="input-field w-full" placeholder="e.g. 5000" />
+            </div>
           </div>
         )}
 
         {action === "hold" && (
+          <div>
+            <label className="label-text block mb-1">Hold Reason</label>
+            <textarea value={holdReason} onChange={(e) => setHoldReason(e.target.value)} className="input-field w-full" rows={3} placeholder="Reason for placing account on hold..." />
+          </div>
+        )}
+
+        {(action === "call" || action === "note") && (
           <div className="space-y-3">
-            <div className="p-3 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
-              <div className="text-sm text-[#EF4444] font-body flex items-center gap-2"><ShieldAlert className="w-4 h-4" /> This will block all future orders for this customer.</div>
+            <div>
+              <label className="label-text block mb-1">Contact Person</label>
+              <input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} className="input-field w-full" placeholder="Name of person spoken to" />
             </div>
-            <div><label className="label-text block mb-1.5">Hold Reason</label><input type="text" value={holdReason} onChange={(e) => setHoldReason(e.target.value)} className="input-field" /></div>
+            <div>
+              <label className="label-text block mb-1">Next Follow-up Date</label>
+              <DatePicker value={followUpDate} onChange={setFollowUpDate} />
+            </div>
           </div>
         )}
 
-        {(action === "call" || action === "email" || action === "sms" || action === "whatsapp" || action === "note") && (
-          <div className="space-y-3">
-            {action === "call" && <div><label className="label-text block mb-1.5">Contact Person</label><input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} className="input-field" placeholder="Who did you speak to?" /></div>}
-            {action === "whatsapp" && (
-              <div>
-                <label className="label-text block mb-1.5">Customer Phone</label>
-                <input type="text" value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} className="input-field" placeholder="e.g. 0833911655 or +27833911655" />
-                <p className="text-xs text-[#8A8B8C] mt-1">Enter number with country code (e.g. +27833911655) or local format (0833911655)</p>
-              </div>
-            )}
-            <div><label className="label-text block mb-1.5">{action === "email" || action === "sms" || action === "whatsapp" ? "Message" : "Notes"}</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field" rows={action === "email" || action === "sms" || action === "whatsapp" ? 8 : 4} /></div>
-            {action === "call" && <div><label className="label-text block mb-1.5">Follow-up Date (optional)</label><DatePicker value={followUpDate} onChange={setFollowUpDate} /></div>}
+        <div>
+          <label className="label-text block mb-1">
+            {action === "email" || action === "sms" || action === "whatsapp" ? "Message" : "Notes"}
+          </label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="input-field w-full"
+            rows={action === "email" || action === "sms" || action === "whatsapp" ? 8 : 4}
+            placeholder={
+              action === "email" || action === "sms" || action === "whatsapp"
+                ? "Message will be pre-filled from template. Edit here if needed..."
+                : "Enter notes about this interaction..."
+            }
+          />
+        </div>
+
+        {action === "call" && (
+          <div className="text-xs text-[#8A8B8C] font-body">
+            <p>Recommended script:</p>
+            <p className="mt-1 text-white/80 whitespace-pre-wrap">{getReminderTemplates()["days_3_5"]?.body.replace(/{customerName}/g, invoice.customer?.name || invoice.customerName || "Valued Customer").replace(/{invoiceNumber}/g, invoice.invoiceNumber).replace(/{amount}/g, Number(invoice.total).toFixed(2)).replace(/{balanceDue}/g, Number(invoice.balanceDue).toFixed(2)).replace(/{daysOverdue}/g, String(invoice.daysOverdue)).replace(/{dueDate}/g, invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-ZA") : "N/A").replace(/{bankingDetails}/g, `${getBankingDetails().bankName} | Acc: ${getBankingDetails().accountNumber} | Branch: ${getBankingDetails().branchCode}`) || ""}</p>
           </div>
         )}
 
-        <div className="flex gap-3 mt-4">
+        <div className="flex gap-2 pt-2">
           {action === "whatsapp" && (
             <button onClick={() => {
-              const clean = whatsappPhone.replace(/\s/g, "").replace(/^0/, "+27").replace(/^27/, "+27");
-              if (!clean || clean.length < 10) { alert("Please enter a valid phone number"); return; }
+              const notes = generateReminderText(invoice, invoice.bucket);
+              const clean = (invoice.customer?.phone || "").replace(/\s/g, "");
               const url = `https://wa.me/${clean.replace(/^\+/, "")}?text=${encodeURIComponent(notes)}`;
               window.open(url, "_blank");
               const data: any = { notes, type: "whatsapp", contactMethod: "whatsapp" };

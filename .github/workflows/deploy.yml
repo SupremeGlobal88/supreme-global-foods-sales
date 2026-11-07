@@ -54,11 +54,14 @@ jobs:
           name: build-log
           path: build.log
 
-      - name: List dist files
+      - name: List dist files and build log
         if: always()
         run: |
-          echo "Dist folder contents:"
-          ls -la dist/ || echo "No dist folder"
+          echo "=== BUILD LOG ==="
+          cat build.log 2>/dev/null || echo "No build log"
+          echo ""
+          echo "=== DIST FOLDER ==="
+          ls -la dist/ 2>/dev/null || echo "No dist folder"
 
       - name: Deploy to Cloudflare Pages
         if: success()

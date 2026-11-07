@@ -5259,7 +5259,10 @@ const dataService = {
       return getDedupedInvoices()
         .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled" && inv.status !== "draft")
         .map((inv) => {
-          const customer = customers.find((c) => c.id == inv.customerId);
+          // Match invoice-page resolution: corporateCustomers first, then customers,
+          // then fall back to the embedded customer object on the invoice.
+          const customer = corporateCustomers.find((c) => c.id == inv.customerId)
+            || customers.find((c) => c.id == inv.customerId);
           // FALLBACK: if customer not found in loaded array, preserve the invoice's
           // own customer object (or customerName) so Sage/PO invoices display correctly.
           const effectiveCustomer = customer || inv.customer || { name: inv.customerName || "" };
@@ -5292,7 +5295,7 @@ const dataService = {
             collectionNotes: notes,
             latestPromise,
             accountHold,
-            salesRepName: effectiveCustomer?.salesRepName || inv.customer?.salesRepName || "",
+            salesRepName: inv.salesRepName || effectiveCustomer?.salesRepName || inv.customer?.salesRepName || "",
           };
         })
         .filter((inv) => inv.balanceDue > 0)

@@ -8,6 +8,7 @@ import {
   Search, Printer, DollarSign, CheckCircle, FileText, X, ChevronDown, ChevronUp,
   Pencil, Trash2, Calendar, User, Mail, AlertCircle, Send, Receipt, RotateCcw,
   Database, Zap, ShoppingCart, Globe, FileCheck, Banknote, ArrowLeftRight,
+  Download,
 } from "lucide-react";
 
 /* ─── InvoicePage ─── */
@@ -351,6 +352,68 @@ export default function InvoicesPage() {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
   }, [invoices, search, statusFilter, sourceFilter, companyFilter, sortBy]);
+
+  /* Export to Excel */
+  async function exportToExcel() {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const fileDate = new Date().toISOString().split("T")[0];
+
+    const rows = [
+      ["Invoice #", "Customer", "Customer Code", "Order #", "Status", "Source", "Company", "Invoice Date", "Total (R)", "Paid (R)", "Balance Due (R)", "VAT Rate", "Payment Terms", "Notes", "VAT Number"],
+    ];
+    for (const inv of filtered) {
+      rows.push([
+        inv.invoiceNumber || "",
+        inv.customer?.name || inv.customerName || "",
+        inv.customer?.customerCode || "",
+        inv.orderNumber || "",
+        inv.status || "",
+        inv.source || "system",
+        inv.company || "sgf",
+        inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString("en-ZA") : "",
+        inv.total || 0,
+        inv.amountPaid || 0,
+        inv.balanceDue || 0,
+        inv.vatRate !== undefined ? inv.vatRate : 0.15,
+        inv.paymentTerms || "",
+        inv.notes || "",
+        inv.vatNumber || "",
+      ]);
+    }
+    // Totals row
+    const totalAmt = filtered.reduce((s: number, i: any) => s + (i.total || 0), 0);
+    const totalPaid = filtered.reduce((s: number, i: any) => s + (i.amountPaid || 0), 0);
+    const totalBal = filtered.reduce((s: number, i: any) => s + (i.balanceDue || 0), 0);
+    rows.push([]);
+    rows.push(["TOTAL", "", "", "", "", "", "", "", totalAmt, totalPaid, totalBal, "", "", "", ""]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [
+      { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+      { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 40 }, { wch: 16 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, "Invoices");
+
+    // Stats sheet
+    const statsRows = [
+      ["Metric", "Value"],
+      ["Total Invoices", filtered.length],
+      ["Total Amount", totalAmt],
+      ["Total Paid", totalPaid],
+      ["Total Balance Due", totalBal],
+      ["Status Filter", statusFilter],
+      ["Source Filter", sourceFilter],
+      ["Company Filter", companyFilter],
+      ["Exported On", new Date().toLocaleDateString("en-ZA")],
+    ];
+    const wsStats = XLSX.utils.aoa_to_sheet(statsRows);
+    wsStats["!cols"] = [{ wch: 22 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsStats, "Stats");
+
+    XLSX.writeFile(wb, `Invoices_${fileDate}.xlsx`);
+  }
 
   /* Status badge */
   const badge = (s: string) => {
@@ -1010,9 +1073,14 @@ export default function InvoicesPage() {
             Outstanding: R {(stats?.outstanding || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} &middot; {stats?.total || 0} invoices
           </p>
         </div>
-        <button onClick={() => { setShowStmt(true); setStmtCust(0); setStmtFrom("2020-01-01"); setStmtTo(new Date().toISOString().slice(0, 10)); }} className="btn-secondary text-xs">
-          <FileText className="w-3.5 h-3.5" /> Print Statement
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportToExcel} className="btn-secondary text-xs flex items-center gap-1.5" title="Export filtered invoices to Excel">
+            <Download className="w-3.5 h-3.5" /> Export to Excel
+          </button>
+          <button onClick={() => { setShowStmt(true); setStmtCust(0); setStmtFrom("2020-01-01"); setStmtTo(new Date().toISOString().slice(0, 10)); }} className="btn-secondary text-xs">
+            <FileText className="w-3.5 h-3.5" /> Print Statement
+          </button>
+        </div>
       </div>
 
       {/* ═══════ STATS CARDS (clickable filters) ═══════ */}

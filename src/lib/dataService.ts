@@ -5295,7 +5295,7 @@ const dataService = {
             collectionNotes: notes,
             latestPromise,
             accountHold,
-            salesRepName: inv.salesRepName || effectiveCustomer?.salesRepName || inv.customer?.salesRepName || "",
+            salesRepName: effectiveCustomer?.salesRepName || inv.customer?.salesRepName || "",
           };
         })
         .filter((inv) => inv.balanceDue > 0)

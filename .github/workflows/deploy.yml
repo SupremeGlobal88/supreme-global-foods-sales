@@ -43,25 +43,13 @@ jobs:
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee build.log
+        run: npm run build
 
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-
-      - name: List dist files and build log
+      - name: List dist files
         if: always()
         run: |
-          echo "=== BUILD LOG ==="
-          cat build.log 2>/dev/null || echo "No build log"
-          echo ""
-          echo "=== DIST FOLDER ==="
-          ls -la dist/ 2>/dev/null || echo "No dist folder"
+          echo "Dist folder contents:"
+          ls -la dist/ || echo "No dist folder"
 
       - name: Deploy to Cloudflare Pages
         if: success()

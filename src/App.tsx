@@ -1,103 +1,121 @@
-import { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink } from "@trpc/client";
-import superjson from "superjson";
-import { trpc } from "@/lib/trpc";
-import Layout from "@/components/Layout";
+import { Routes, Route, Navigate, useLocation } from "react-router";
+import { useEffect, useState, useRef } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
+import { initFirebase, initAutoSync, registerDataServiceRefresh } from "@/lib/firebaseSync";
+
 import { reloadFromStorage, repairInvoiceCompanies, repairPurchaseOrderCompanies } from "@/lib/dataService";
-import { initAutoSync, isFirebaseReady } from "@/lib/firebaseSync";
-import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider, useAuth } from "@/lib/AuthContext";
-import LoginPage from "@/pages/LoginPage";
-import Dashboard from "@/pages/Dashboard";
-import InvoicesPage from "@/pages/InvoicesPage";
-import InvoiceDetailPage from "@/pages/InvoiceDetailPage";
-import CreditNotePage from "@/pages/CreditNotePage";
-import OrdersPage from "@/pages/OrdersPage";
-import OrderDetailPage from "@/pages/OrderDetailPage";
-import ProductsPage from "@/pages/ProductsPage";
-import StockPage from "@/pages/StockPage";
-import CustomersPage from "@/pages/CustomersPage";
-import CustomerDetailPage from "@/pages/CustomerDetailPage";
-import CustomerBalanceReportPage from "@/pages/CustomerBalanceReportPage";
-import CollectionsPage from "@/pages/CollectionsPage";
-import ReportsPage from "@/pages/ReportsPage";
-import SalesRepReportPage from "@/pages/SalesRepReportPage";
-import SettingsPage from "@/pages/SettingsPage";
-import UsersPage from "@/pages/UsersPage";
-import CheckInPage from "@/pages/CheckInPage";
-import AppointmentsPage from "@/pages/AppointmentsPage";
-import FollowUpsPage from "@/pages/FollowUpsPage";
-import BarrelManagementPage from "@/pages/BarrelManagementPage";
-import ProductionPage from "@/pages/ProductionPage";
-import CalendarPage from "@/pages/CalendarPage";
-import DocumentTemplatesPage from "@/pages/DocumentTemplatesPage";
-import HistoricalImportPage from "@/pages/HistoricalImportPage";
-import SalesRepManagementPage from "@/pages/SalesRepManagementPage";
-import DeliveryMapPage from "@/pages/DeliveryMapPage";
-import RoutePlanningPage from "@/pages/RoutePlanningPage";
-import ExpenseTrackerPage from "@/pages/ExpenseTrackerPage";
-import CorporateCustomersPage from "@/pages/CorporateCustomersPage";
-import PurchaseOrdersPage from "@/pages/PurchaseOrdersPage";
-import PurchaseOrderDetailPage from "@/pages/PurchaseOrderDetailPage";
-import PackingListPage from "@/pages/PackingListPage";
-import AuditLogPage from "@/pages/AuditLogPage";
-import ProductEditorPage from "@/pages/ProductEditorPage";
-import PriceBookPage from "@/pages/PriceBookPage";
-import { registerDataServiceRefresh } from "@/lib/dataService";
-import SyncDiagnosticsPage from "@/pages/SyncDiagnosticsPage";
+import { trpc } from "@/providers/trpc";
+import Login from "./pages/Login";
+import NotFound from "./pages/NotFound";
+import Layout from "./components/Layout";
+import Dashboard from "./pages/Dashboard";
+import StockPage from "./pages/StockPage";
+import CustomersPage from "./pages/CustomersPage";
+import OrdersPage from "./pages/OrdersPage";
+import InvoicesPage from "./pages/InvoicesPage";
+import StatementPage from "./pages/StatementPage";
+import AppointmentsPage from "./pages/AppointmentsPage";
+import SalesRepsPage from "./pages/SalesRepsPage";
+import SettingsPage from "./pages/SettingsPage";
+import FollowUpsPage from "./pages/FollowUpsPage";
+import CollectionsPage from "./pages/CollectionsPage";
+import SampleReportsPage from "./pages/SampleReportsPage";
+import UsersPage from "./pages/UsersPage";
+import HistoricalImportPage from "./pages/HistoricalImportPage";
+import SalesRepInvoicesPage from "./pages/SalesRepInvoicesPage";
+import BankImportPage from "./pages/BankImportPage";
+import CustomerStatementPage from "./pages/CustomerStatementPage";
+import SalesRepReportsPage from "./pages/SalesRepReportsPage";
+import SalesReportPage from "./pages/SalesReportPage";
+import CustomerBalanceReportPage from "./pages/CustomerBalanceReportPage";
+import CorporateCustomersPage from "./pages/CorporateCustomersPage";
+import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
+import PurchaseOrderDetailPage from "./pages/PurchaseOrderDetailPage";
+import PackingListPage from "./pages/PackingListPage";
+import AuditReportPage from "./pages/AuditReportPage";
+import SystemLogsPage from "./pages/SystemLogsPage";
+import CustomerDetailPage from "./pages/CustomerDetailPage";
+import { ShieldAlert, Cloud } from "lucide-react";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30000,
-      retry: 1,
-    },
-  },
-});
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>
+        <div className="shimmer w-12 h-12 rounded-full" />
+      </div>
+    );
+  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
 
-const trpcClient = trpc.createClient({
-  transformer: superjson,
-  links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      async headers() {
-        const token = localStorage.getItem("sgf_auth_token");
-        return token ? { Authorization: `Bearer ${token}` } : {};
-      },
-    }),
-  ],
-});
+function RoleGuard({ children }: { children: React.ReactNode }) {
+  const { canAccess } = useRole();
+  const location = useLocation();
+  if (!canAccess(location.pathname)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldAlert className="w-16 h-16 mb-4" style={{ color: "#EF4444", opacity: 0.4 }} />
+        <h2 className="font-display font-semibold text-white text-xl mb-2">Access Denied</h2>
+        <p className="text-[#8A8B8C] font-body text-sm">You don&apos;t have permission to view this page.</p>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
 
-function CloudSyncInit() {
+function checkUrlForFirebaseConfig() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fb64 = params.get("fb");
+    if (fb64) {
+      const decoded = atob(fb64);
+      const config = JSON.parse(decoded);
+      if (config.apiKey && config.databaseURL) {
+        initFirebase(config);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("fb");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+export default function App() {
   const [isCloudReady, setIsCloudReady] = useState(false);
+  const { isAuthenticated } = useAuth();
   const utils = trpc.useUtils();
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      await initAutoSync();
-      if (!mounted) return;
-      setIsCloudReady(true);
-      registerDataServiceRefresh(reloadFromStorage);
+    checkUrlForFirebaseConfig();
+    registerDataServiceRefresh(reloadFromStorage);
+    initFirebase();
+    const unsub = initAutoSync();
 
-      if (!isFirebaseReady()) {
-        console.warn("Firebase not initialized — working in offline mode");
-      }
+    // Load local data FIRST so the app renders immediately with cached data
+    reloadFromStorage();
+    repairInvoiceCompanies();
+    repairPurchaseOrderCompanies();
 
-      // Run company repairs once on startup
-      setTimeout(() => {
-        repairInvoiceCompanies();
-        repairPurchaseOrderCompanies();
-      }, 2000);
+    // Mark cloud as ready immediately — real-time subscriptions handle ongoing sync
+    setIsCloudReady(true);
 
-      reloadFromStorage();
-    })();
-    return () => { mounted = false; };
+    return () => { unsub(); };
   }, []);
 
-  // Debounced invalidate on firebaseDataReceived
+  // POST-LOGIN SYNC
+  useEffect(() => {
+    if (isAuthenticated && isCloudReady) {
+      reloadFromStorage();
+    }
+  }, [isAuthenticated, isCloudReady]);
+
+  // CRITICAL FIX: Use tRPC utils.invalidate() instead of queryClient.invalidateQueries().
+  // tRPC React Query wraps query keys internally — manual queryClient.invalidateQueries
+  // with flat keys like ["order","list"] does NOT match tRPC's internal key format.
+  // utils.invalidate() knows the exact keys and always works.
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingTypes = new Set<string>();
@@ -195,89 +213,55 @@ function CloudSyncInit() {
 
   if (!isCloudReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{ borderColor: "#38BDF8" }} />
-          <p className="text-white/60 text-sm">Loading…</p>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>
+        <Cloud className="w-16 h-16 mb-4 animate-pulse" style={{ color: "#D4A843" }} />
+        <p className="text-white font-display text-lg">Loading from cloud...</p>
+        <p className="text-[#8A8B8C] text-sm mt-2">Please wait while we fetch the latest data</p>
       </div>
     );
   }
-  return null;
-}
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0C0D0E" }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{ borderColor: "#38BDF8" }} />
-          <p className="text-white/60 text-sm">Authenticating…</p>
-        </div>
-      </div>
-    );
-  }
-  if (!user) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
-function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route element={<Layout />}>
-        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
-        <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
-        <Route path="/credit-notes" element={<ProtectedRoute><CreditNotePage /></ProtectedRoute>} />
-        <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
-        <Route path="/orders/:id" element={<ProtectedRoute><OrderDetailPage /></ProtectedRoute>} />
-        <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
-        <Route path="/stock" element={<ProtectedRoute><StockPage /></ProtectedRoute>} />
-        <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
-        <Route path="/customers/:id" element={<ProtectedRoute><CustomerDetailPage /></ProtectedRoute>} />
-        <Route path="/customer-balance-report" element={<ProtectedRoute><CustomerBalanceReportPage /></ProtectedRoute>} />
-        <Route path="/collections" element={<ProtectedRoute><CollectionsPage /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
-        <Route path="/sales-rep-report" element={<ProtectedRoute><SalesRepReportPage /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-        <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
-        <Route path="/check-in" element={<ProtectedRoute><CheckInPage /></ProtectedRoute>} />
-        <Route path="/appointments" element={<ProtectedRoute><AppointmentsPage /></ProtectedRoute>} />
-        <Route path="/follow-ups" element={<ProtectedRoute><FollowUpsPage /></ProtectedRoute>} />
-        <Route path="/barrels" element={<ProtectedRoute><BarrelManagementPage /></ProtectedRoute>} />
-        <Route path="/production" element={<ProtectedRoute><ProductionPage /></ProtectedRoute>} />
-        <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
-        <Route path="/documents" element={<ProtectedRoute><DocumentTemplatesPage /></ProtectedRoute>} />
-        <Route path="/historical-import" element={<ProtectedRoute><HistoricalImportPage /></ProtectedRoute>} />
-        <Route path="/sales-reps" element={<ProtectedRoute><SalesRepManagementPage /></ProtectedRoute>} />
-        <Route path="/delivery-map" element={<ProtectedRoute><DeliveryMapPage /></ProtectedRoute>} />
-        <Route path="/route-planning" element={<ProtectedRoute><RoutePlanningPage /></ProtectedRoute>} />
-        <Route path="/expenses" element={<ProtectedRoute><ExpenseTrackerPage /></ProtectedRoute>} />
-        <Route path="/corporate-customers" element={<ProtectedRoute><CorporateCustomersPage /></ProtectedRoute>} />
-        <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrdersPage /></ProtectedRoute>} />
-        <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderDetailPage /></ProtectedRoute>} />
-        <Route path="/packing-list/:poId" element={<ProtectedRoute><PackingListPage /></ProtectedRoute>} />
-        <Route path="/audit-log" element={<ProtectedRoute><AuditLogPage /></ProtectedRoute>} />
-        <Route path="/product-editor" element={<ProtectedRoute><ProductEditorPage /></ProtectedRoute>} />
-        <Route path="/price-book" element={<ProtectedRoute><PriceBookPage /></ProtectedRoute>} />
-        <Route path="/sync-diagnostics" element={<ProtectedRoute><SyncDiagnosticsPage /></ProtectedRoute>} />
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="stock" element={<StockPage />} />
+        <Route path="customers" element={<CustomersPage />} />
+        <Route path="customer/:id" element={<CustomerDetailPage />} />
+        <Route path="orders" element={<OrdersPage />} />
+        <Route path="invoices" element={<RoleGuard><InvoicesPage /></RoleGuard>} />
+        <Route path="statement/:customerId" element={<RoleGuard><StatementPage /></RoleGuard>} />
+        <Route path="appointments" element={<AppointmentsPage />} />
+        <Route path="sales-reps" element={<RoleGuard><SalesRepsPage /></RoleGuard>} />
+        <Route path="follow-ups" element={<FollowUpsPage />} />
+        <Route path="collections" element={<RoleGuard><CollectionsPage /></RoleGuard>} />
+        <Route path="my-invoices" element={<RoleGuard><SalesRepInvoicesPage /></RoleGuard>} />
+        <Route path="bank-import" element={<RoleGuard><BankImportPage /></RoleGuard>} />
+        <Route path="customer-statement" element={<RoleGuard><CustomerStatementPage /></RoleGuard>} />
+        <Route path="sample-reports" element={<SampleReportsPage />} />
+        <Route path="sales-report" element={<SalesReportPage />} />
+        <Route path="customer-balances" element={<CustomerBalanceReportPage />} />
+        <Route path="sales-rep-reports" element={<RoleGuard><SalesRepReportsPage /></RoleGuard>} />
+        <Route path="corporate-customers" element={<RoleGuard><CorporateCustomersPage /></RoleGuard>} />
+        <Route path="purchase-orders" element={<RoleGuard><PurchaseOrdersPage /></RoleGuard>} />
+        <Route path="purchase-order/:id" element={<RoleGuard><PurchaseOrderDetailPage /></RoleGuard>} />
+        <Route path="packing-list/:id" element={<RoleGuard><PackingListPage /></RoleGuard>} />
+        <Route path="audit" element={<RoleGuard><AuditReportPage /></RoleGuard>} />
+        <Route path="system-logs" element={<RoleGuard><SystemLogsPage /></RoleGuard>} />
+        <Route path="users" element={<RoleGuard><UsersPage /></RoleGuard>} />
+        <Route path="settings" element={<RoleGuard><SettingsPage /></RoleGuard>} />
+        <Route path="historical-import" element={<RoleGuard><HistoricalImportPage /></RoleGuard>} />
       </Route>
+      <Route path="*" element={<NotFound />} />
     </Routes>
-  );
-}
-
-export default function App() {
-  return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <CloudSyncInit />
-          <AppRoutes />
-          <Toaster />
-        </AuthProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
   );
 }

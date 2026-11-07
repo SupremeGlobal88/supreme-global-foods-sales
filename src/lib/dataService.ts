@@ -5257,7 +5257,10 @@ const dataService = {
     getOverdueInvoices: () => {
       const now = new Date();
       return getDedupedInvoices()
-        .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled" && inv.status !== "draft")
+        .filter((inv) => {
+          const isSample = inv.orderType === "sample" || (inv.notes || "").includes("Sample");
+          return !isSample && inv.status !== "paid" && inv.status !== "cancelled" && inv.status !== "draft";
+        })
         .map((inv) => {
           // Match invoice-page resolution: corporateCustomers first, then customers,
           // then fall back to the embedded customer object on the invoice.

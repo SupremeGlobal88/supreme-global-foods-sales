@@ -373,6 +373,8 @@ export default function OrdersPage() {
       reloadFromStorage(); // Force re-read from localStorage into memory
       await utils.order.list.invalidate();
       await utils.order.getStats.invalidate();
+      await utils.invoice.list.invalidate();
+      await utils.invoice.getStats.invalidate();
       await utils.salesRep.getStats.invalidate();
       await utils.salesRep.getSalesBreakdown.invalidate();
       await utils.stock.search.invalidate();

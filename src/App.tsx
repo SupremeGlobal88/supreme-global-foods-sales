@@ -131,6 +131,7 @@ export default function App() {
         for (const t of pendingTypes) {
           switch (t) {
             case "invoices":
+              reloadFromStorage(["sgf_invoices"]);
               utils.invoice.list.invalidate();
               utils.invoice.getStats.invalidate();
               utils.collections.getOverdueInvoices.invalidate();

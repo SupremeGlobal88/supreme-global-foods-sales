@@ -294,6 +294,15 @@ export async function localLinkHandler(path: string, input: any) {
         result = dataService.order.update({ id: oid, data: odata });
         if (result) {
           await pushOrder(result);
+          // If order was cancelled via edit, also push the cancelled invoice
+          if (odata?.status === "cancelled") {
+            const cancelledInvoice = dataService.invoice.cancelInvoiceFromOrder(oid);
+            if (cancelledInvoice) {
+              await pushInvoice(cancelledInvoice);
+              reloadFromStorage(["sgf_invoices"]);
+              window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+            }
+          }
           reloadFromStorage(["sgf_orders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 1 } }));
         }
@@ -302,6 +311,13 @@ export async function localLinkHandler(path: string, input: any) {
       case "order.delete": {
         result = dataService.order.update({ id: input, data: { status: "cancelled", updatedAt: new Date().toISOString() } });
         if (result) {
+          // Also cancel and push the linked invoice before removing the order
+          const cancelledInvoice = dataService.invoice.cancelInvoiceFromOrder(input);
+          if (cancelledInvoice) {
+            await pushInvoice(cancelledInvoice);
+            reloadFromStorage(["sgf_invoices"]);
+            window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 1 } }));
+          }
           await removeOrder(input);
           reloadFromStorage(["sgf_orders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "orders", count: 0 } }));

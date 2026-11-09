@@ -1359,7 +1359,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "coc.bulkGenerateForPO": {
-        result = dataService.coc.bulkGenerateForPO(input);
+        result = dataService.coc.bulkGenerateForPO(input.poId, input.cocDataList, input.deleteOrphanIds);
         if (result && Array.isArray(result)) {
           for (const c of result) await pushCOC(c);
           reloadFromStorage(["sgf_certificatesOfCompliance"]);

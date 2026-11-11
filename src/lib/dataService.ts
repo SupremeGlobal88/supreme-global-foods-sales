@@ -4610,13 +4610,20 @@ const dataService = {
     getStats: () => {
       const totalValue = Math.round(invoices.reduce((sum, i) => sum + Number(i.total || i.totalAmount || 0), 0) * 100) / 100;
       const totalPaid = Math.round(invoices.reduce((sum, i) => sum + Number(i.amountPaid || 0), 0) * 100) / 100;
-      const outstanding = Math.round(invoices
-        .filter((i) => i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
-        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0) * 100) / 100;
+      const deduped = getDedupedInvoices();
+      const outstanding = Math.round(deduped
+        .filter((i) => {
+          const isSample = i.orderType === "sample" || (i.notes || "").includes("Sample");
+          return !isSample && i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled";
+        })
+        .reduce((sum, i) => sum + (typeof i.balanceDue === "number" ? i.balanceDue : (Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0))), 0) * 100) / 100;
       const sageCount = invoices.filter((i) => i.source === "sage").length;
-      const sageOutstanding = Math.round(invoices
-        .filter((i) => i.source === "sage" && i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled")
-        .reduce((sum, i) => sum + (Number(i.balanceDue) || Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0)), 0) * 100) / 100;
+      const sageOutstanding = Math.round(deduped
+        .filter((i) => {
+          const isSample = i.orderType === "sample" || (i.notes || "").includes("Sample");
+          return i.source === "sage" && !isSample && i.status !== "draft" && i.status !== "paid" && i.status !== "cancelled";
+        })
+        .reduce((sum, i) => sum + (typeof i.balanceDue === "number" ? i.balanceDue : (Number(i.total || i.totalAmount || 0) - Number(i.amountPaid || 0))), 0) * 100) / 100;
       return {
         total: invoices.length,
         draft: invoices.filter((i) => i.status === "draft").length,

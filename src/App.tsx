@@ -162,6 +162,7 @@ export default function App() {
               utils.stock.getStats.invalidate();
               break;
             case "creditNotes":
+              reloadFromStorage(["sgf_creditNotes"]);
               utils.invoice.getCreditNotes.invalidate();
               utils.invoice.list.invalidate();
               break;

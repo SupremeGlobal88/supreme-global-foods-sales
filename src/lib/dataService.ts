@@ -3868,6 +3868,7 @@ const dataService = {
         lineItems,
         reason: data.reason || "",
         company: data.company || "",
+        voided: false,
         createdAt: new Date().toISOString(),
       };
       // Prevent duplicate: check if an unvoided credit note already exists for this invoice with same amount
@@ -4114,6 +4115,7 @@ const dataService = {
 
         cn.voided = true;
         cn.voidedAt = new Date().toISOString();
+        cn.updatedAt = new Date().toISOString();
 
         if (cn.invoiceId) {
           // Use loose equality (==) because Firebase may convert number IDs to strings

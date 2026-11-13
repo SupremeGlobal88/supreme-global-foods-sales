@@ -747,6 +747,9 @@ export default function InvoicesPage() {
       ? (customerLogo.startsWith("http") ? customerLogo : `${window.location.origin}${customerLogo.startsWith("/") ? customerLogo : `/${customerLogo}`}`)
       : "";
     const isSample = inv?.orderType === "sample" || (inv?.notes || "").includes("Sample");
+    const fmtDate = (d: any) => {
+      try { const x = d instanceof Date ? d : new Date(d); if (isNaN(x.getTime())) return "N/A"; const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return `${x.getDate()} ${m[x.getMonth()]} ${x.getFullYear()}`; } catch { return "N/A"; }
+    };
 
     const page = `
       <div style="padding:30px 40px; max-width:210mm; margin:0 auto; font-family:Arial,sans-serif; color:#000; font-size:12px;">

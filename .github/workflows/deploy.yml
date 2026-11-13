@@ -71,7 +71,7 @@ jobs:
           while [ $attempt -le $max_retries ]; do
             echo ""
             echo "=== Deploy attempt $attempt of $max_retries ==="
-            npx wrangler pages deploy dist --project-name=supreme-global-foods-sales --branch=main --commit-dirty=true 2>&1 | tee deploy.log
+            npx wrangler@2 pages deploy dist --project-name=supreme-global-foods-sales --branch=main --commit-dirty=true 2>&1 | tee deploy.log
             exit_code=${PIPESTATUS[0]}
 
             if [ $exit_code -eq 0 ]; then

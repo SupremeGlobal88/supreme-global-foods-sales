@@ -1754,7 +1754,7 @@ export default function OrdersPage() {
 
               {/* Admin Override — below-corporate pricing or customer blocking */}
               {(() => {
-                if (formData.orderType === "sample" || formData.orderType === "quote" || !isSuperAdmin) return null;
+                if (formData.orderType === "quote" || !isSuperAdmin) return null;
                 const validItems = formData.items.filter((i) => Number(i.stockItemId) > 0 && Number(i.quantity) > 0);
                 const belowItems: string[] = [];
                 for (const item of validItems) {

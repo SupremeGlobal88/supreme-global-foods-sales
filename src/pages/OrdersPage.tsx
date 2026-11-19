@@ -639,7 +639,7 @@ export default function OrdersPage() {
           o.orderType === "sample" && 
           o.items?.some((it: any) => Number(it.stockItemId) === stockId)
         );
-        if (existing) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}.` }; }
+        if (existing && !sampleOverrideRef.current) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Customer already sampled ${s?.productName || "this product"}. Only Super Admin can override.` }; }
         if (Number(item.quantity) > 1 && !sampleOverrideRef.current) return { valid: false, error: "Sample orders: 1 unit per product max. Only Super Admin can override." };
       } else { if (requestedQty > avail) { const s = (stockItems || []).find((x) => Number(x.id) === stockId); return { valid: false, error: `Insufficient stock for ${s?.productName || "product"}. Available: ${avail} kg, Requested: ${requestedQty} kg (${item.quantity} ${item.unitLabel || "units"})` }; } }
     }
@@ -1563,6 +1563,24 @@ export default function OrdersPage() {
                     1 unit per product max. Customer not charged. Follow-up in 4 days.
                   </div>
                 )}
+                {/* Super Admin override for NEW sample orders */}
+                {formData.orderType === "sample" && isSuperAdmin && !editingOrder && (
+                  <label className="mt-2 flex items-center gap-2 cursor-pointer select-none p-2 rounded-lg" style={{ backgroundColor: "rgba(212, 168, 67, 0.08)", border: "1px solid rgba(212, 168, 67, 0.2)" }}>
+                    <input
+                      type="checkbox"
+                      checked={sampleOverrideRef.current}
+                      onChange={(e) => {
+                        sampleOverrideRef.current = e.target.checked;
+                        // force re-render so validation and banners update
+                        setFormData({ ...formData });
+                      }}
+                      className="w-4 h-4 rounded accent-[#D4A843]"
+                    />
+                    <span className="text-xs font-medium" style={{ color: "#D4A843" }}>
+                      Super Admin Override — allow duplicate samples &amp; quantities above 1
+                    </span>
+                  </label>
+                )}
                 {formData.orderType === "quote" && (
                   <div className="mt-2 p-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(99, 102, 241, 0.05)", color: "#6366F1" }}>
                     Quotes don't deduct stock. Convert to an order when the customer accepts.
@@ -1653,7 +1671,7 @@ export default function OrdersPage() {
                             </select>
                           )}
                           {(() => {
-                            const allowEdit = !(formData.orderType === "sample" && editingOrder && !sampleOverrideRef.current);
+                            const allowEdit = !(formData.orderType === "sample" && !sampleOverrideRef.current);
                             if (!allowEdit) {
                               return <div className="w-20 p-2 rounded-lg text-center text-sm font-display" style={{ backgroundColor: "rgba(212, 168, 67, 0.12)", color: "#D4A843" }}>{item.quantity}</div>;
                             }

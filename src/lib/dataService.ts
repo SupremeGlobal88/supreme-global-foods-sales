@@ -2988,7 +2988,7 @@ const dataService = {
         }
       }
       saveItem("sgf_customers", customers);
-      return { created, updated, total: customers.length };
+      return { success: true, created, updated, total: customers.length };
     },
     // Find customers who haven't placed an order in the last X days (default 10)
     getCustomersNeedingFollowUp: (days: number = 10) => {

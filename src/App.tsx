@@ -144,6 +144,7 @@ export default function App() {
               utils.order.getStats.invalidate();
               break;
             case "customers":
+              reloadFromStorage(["sgf_customers"]);
               utils.customer.search.invalidate();
               utils.customer.list.invalidate();
               utils.customer.getStats.invalidate();

@@ -334,27 +334,30 @@ export default function CustomersPage() {
         return -1;
       };
 
-      // Map columns from the Excel file
+      // Map columns from the Excel file — supports both old and new column naming
       const colIdx = {
-        name: findCol("client name"),
-        ref: findCol("ref"),
-        level: findCol("level"),
-        payment: findCol("payment"),
+        name: findCol("client name", "name"),
+        ref: findCol("ref", "customer code"),
+        businessName: findCol("business name"),
+        level: findCol("level", "price tier"),
+        payment: findCol("payment", "payment terms"),
         itemSpices: findCol("item spices"),
         industry: findCol("industry"),
         group: findCol("group"),
-        area: findCol("area"),
-        salesRep: findCol("sale rep"),
+        area: findCol("area", "province"),
+        salesRep: findCol("sale rep", "sales rep"),
         contactPerson: findCol("contact person"),
-        contactNumber: findCol("contact number"),
+        contactNumber: findCol("contact number", "phone"),
         email: findCol("email"),
-        deliveryAddress: findCol("delivery address"),
+        deliveryAddress: findCol("delivery address", "address"),
+        city: findCol("city"),
+        vatNumber: findCol("vat number"),
         contactPerson2: findCol("contact person 2"),
         contactNo2: findCol("contact no 2"),
       };
 
       if (colIdx.name < 0) {
-        setImportStatus(`Error: Could not find "Client name" column. Headers: ${headers.join(", ")}`);
+        setImportStatus(`Error: Could not find "Name" column. Headers: ${headers.join(", ")}`);
         return;
       }
 
@@ -366,31 +369,51 @@ export default function CustomersPage() {
         const name = String(row[colIdx.name] || "").trim();
         if (!name) continue;
 
-        const getStr = (idx: number) => idx >= 0 ? String(row[idx] || "").trim() : "";
+        // Return undefined for empty cells so bulkUpload preserves existing data
+        const getVal = (idx: number) => {
+          if (idx < 0) return undefined;
+          const val = row[idx];
+          if (val === "" || val == null) return undefined;
+          return String(val).trim();
+        };
 
-        // Build notes from items and any extra info
+        const code = getVal(colIdx.ref);
+        const bizName = getVal(colIdx.businessName);
+        const cPerson = getVal(colIdx.contactPerson);
+        const phone = getVal(colIdx.contactNumber);
+        const email = getVal(colIdx.email);
+        const addr = getVal(colIdx.deliveryAddress);
+        const city = getVal(colIdx.city);
+        const province = getVal(colIdx.area);
+        const salesRep = getVal(colIdx.salesRep);
+        const vat = getVal(colIdx.vatNumber);
+
+        // Payment terms and price tier: only update if cell has a value
+        const paymentRaw = getVal(colIdx.payment);
+        const tierRaw = getVal(colIdx.level);
+
+        // Build notes from items and any extra info (legacy columns)
         const notesParts: string[] = [];
         if (colIdx.itemSpices >= 0 && row[colIdx.itemSpices]) notesParts.push(String(row[colIdx.itemSpices]));
         if (colIdx.industry >= 0 && row[colIdx.industry]) notesParts.push(`Industry: ${row[colIdx.industry]}`);
         if (colIdx.group >= 0 && row[colIdx.group]) notesParts.push(`Group: ${row[colIdx.group]}`);
 
-        customers.push({
-          name,
-          customerCode: getStr(colIdx.ref),
-          businessName: name,
-          contactPerson: getStr(colIdx.contactPerson),
-          phone: getStr(colIdx.contactNumber),
-          email: getStr(colIdx.email),
-          physicalAddress: getStr(colIdx.deliveryAddress),
-          city: "",
-          province: getStr(colIdx.area),
-          postalCode: "",
-          paymentTerms: colIdx.payment >= 0 ? mapPaymentTerms(getStr(colIdx.payment)) : "cod",
-          priceTier: colIdx.level >= 0 ? mapPriceTier(getStr(colIdx.level)) : "wholesale",
-          salesRepName: getStr(colIdx.salesRep),
-          vatNumber: "",
-          notes: notesParts.join(" | "),
-        });
+        const customer: any = { name };
+        if (code) customer.customerCode = code;
+        if (bizName !== undefined) customer.businessName = bizName;
+        if (cPerson !== undefined) customer.contactPerson = cPerson;
+        if (phone !== undefined) customer.phone = phone;
+        if (email !== undefined) customer.email = email;
+        if (addr !== undefined) customer.physicalAddress = addr;
+        if (city !== undefined) customer.city = city;
+        if (province !== undefined) customer.province = province;
+        if (paymentRaw !== undefined) customer.paymentTerms = mapPaymentTerms(paymentRaw);
+        if (tierRaw !== undefined) customer.priceTier = mapPriceTier(tierRaw);
+        if (salesRep !== undefined) customer.salesRepName = salesRep;
+        if (vat !== undefined) customer.vatNumber = vat;
+        if (notesParts.length > 0) customer.notes = notesParts.join(" | ");
+
+        customers.push(customer);
       }
 
       if (customers.length > 0) {

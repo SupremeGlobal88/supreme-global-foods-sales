@@ -2918,17 +2918,19 @@ const dataService = {
       };
     },
     getSalesReps: () => {
-      // Merge sales reps from two sources:
+      // Merge sales reps from three sources:
       // 1. Active users with sales_rep role (from Firebase-synced users)
       // 2. Legacy SALES_REPS array (for backward compatibility)
-      // This ensures all reps appear regardless of how they were added.
+      // 3. Customer salesRepName fields (so newly assigned reps show in filters)
       const fromUsers = users
         .filter((u: any) => u.role === "sales_rep" && u.isActive !== false)
         .map((u: any) => u.name);
-      // Extract names from SalesRep objects for dropdown compatibility
       const fromLegacy = getCurrentSalesReps().map((r) => r.name);
+      const fromCustomers = customers
+        .map((c: any) => c.salesRepName)
+        .filter((name: any) => !!name);
       // Deduplicate and sort
-      const allReps = Array.from(new Set([...fromUsers, ...fromLegacy]))
+      const allReps = Array.from(new Set([...fromUsers, ...fromLegacy, ...fromCustomers]))
         .sort((a: string, b: string) => a.localeCompare(b));
       return allReps;
     },

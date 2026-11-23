@@ -41,11 +41,12 @@ export default function CustomerBalanceReportPage() {
   const customerBalances = useMemo(() => {
     if (!invoices || !customers) return [];
 
-    const customerMap = new Map<number, { id: number; name: string; totalOutstanding: number; invoiceCount: number }>();
+    const customerMap = new Map<string, { id: number; name: string; totalOutstanding: number; invoiceCount: number }>();
 
     for (const cust of customers) {
-      if (cust?.id) {
-        customerMap.set(cust.id, {
+      if (cust?.id != null) {
+        const key = String(cust.id);
+        customerMap.set(key, {
           id: cust.id,
           name: cust.name || "Unnamed Customer",
           totalOutstanding: 0,
@@ -67,14 +68,15 @@ export default function CustomerBalanceReportPage() {
       if (balance <= 0.01) continue;
 
       const custId = inv.customerId;
-      if (!custId) continue;
+      if (custId == null) continue;
+      const key = String(custId);
 
-      const existing = customerMap.get(custId);
+      const existing = customerMap.get(key);
       if (existing) {
         existing.totalOutstanding += balance;
         existing.invoiceCount += 1;
       } else {
-        customerMap.set(custId, {
+        customerMap.set(key, {
           id: custId,
           name: inv.customerName || "Unknown Customer",
           totalOutstanding: balance,
@@ -102,15 +104,15 @@ export default function CustomerBalanceReportPage() {
   /* ─── Sales Rep balance summary ─── */
   const salesRepBalances = useMemo(() => {
     if (!customerBalances.length || !customers) return [];
-    const custMap = new Map<number, any>();
+    const custMap = new Map<string, any>();
     for (const c of customers) {
-      if (c?.id) custMap.set(c.id, c);
+      if (c?.id != null) custMap.set(String(c.id), c);
     }
     const repMap = new Map<string, {
       repName: string; totalOutstanding: number; invoiceCount: number; customerCount: number; customers: typeof customerBalances;
     }>();
     for (const cb of customerBalances) {
-      const cust = custMap.get(cb.id);
+      const cust = custMap.get(String(cb.id));
       const repName = (cust?.salesRepName || "Unassigned").trim();
       const existing = repMap.get(repName);
       if (existing) {
@@ -141,10 +143,10 @@ export default function CustomerBalanceReportPage() {
       if (key) appInvMap.set(key, inv);
     }
 
-    const custMapForRecon = new Map<number, any>();
+    const custMapForRecon = new Map<string, any>();
     if (customers) {
       for (const c of customers) {
-        if (c?.id) custMapForRecon.set(c.id, c);
+        if (c?.id != null) custMapForRecon.set(String(c.id), c);
       }
     }
 
@@ -167,7 +169,7 @@ export default function CustomerBalanceReportPage() {
       const diff = Math.abs(ding.outstanding - appBalance);
 
       // Check sales rep mismatch
-      const appCust = custMapForRecon.get(Number(appInv.customerId));
+      const appCust = custMapForRecon.get(String(appInv.customerId));
       const appSalesRep = (appCust?.salesRepName || "").trim();
       const dingSalesRep = (ding.salesRep || "").trim();
       const repMismatch = dingSalesRep && appSalesRep && dingSalesRep.toLowerCase() !== appSalesRep.toLowerCase();
@@ -395,14 +397,14 @@ export default function CustomerBalanceReportPage() {
 
       // Customer Balances sheet (with Sales Rep)
       const custRows = [["Customer Name", "Sales Rep", "Total Outstanding (R)", "Invoice Count"]];
-      const custMap = new Map<number, any>();
+      const custMap = new Map<string, any>();
       if (customers) {
         for (const c of customers) {
-          if (c?.id) custMap.set(c.id, c);
+          if (c?.id != null) custMap.set(String(c.id), c);
         }
       }
       for (const c of filtered) {
-        const cust = custMap.get(c.id);
+        const cust = custMap.get(String(c.id));
         custRows.push([c.name, cust?.salesRepName || "", c.totalOutstanding, c.invoiceCount]);
       }
       custRows.push([]);

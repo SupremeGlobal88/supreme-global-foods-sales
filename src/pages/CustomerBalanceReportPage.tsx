@@ -20,6 +20,7 @@ type DingRow = {
 type ReconResult =
   | { type: "matched"; ding: DingRow; app: any; diff: number }
   | { type: "balance_mismatch"; ding: DingRow; app: any; appBalance: number; diff: number }
+  | { type: "sales_rep_mismatch"; ding: DingRow; app: any; appSalesRep: string; diff: number }
   | { type: "missing_in_app"; ding: DingRow }
   | { type: "missing_in_ding"; app: any; appBalance: number };
 
@@ -33,6 +34,7 @@ export default function CustomerBalanceReportPage() {
   const [dingData, setDingData] = useState<DingRow[]>([]);
   const [dingFileName, setDingFileName] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [selectedRep, setSelectedRep] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ─── Existing customer balance logic ─── */
@@ -104,7 +106,9 @@ export default function CustomerBalanceReportPage() {
     for (const c of customers) {
       if (c?.id) custMap.set(c.id, c);
     }
-    const repMap = new Map<string, { repName: string; totalOutstanding: number; invoiceCount: number; customerCount: number }>();
+    const repMap = new Map<string, {
+      repName: string; totalOutstanding: number; invoiceCount: number; customerCount: number; customers: typeof customerBalances;
+    }>();
     for (const cb of customerBalances) {
       const cust = custMap.get(cb.id);
       const repName = (cust?.salesRepName || "Unassigned").trim();
@@ -113,12 +117,14 @@ export default function CustomerBalanceReportPage() {
         existing.totalOutstanding += cb.totalOutstanding;
         existing.invoiceCount += cb.invoiceCount;
         existing.customerCount += 1;
+        existing.customers.push(cb);
       } else {
         repMap.set(repName, {
           repName,
           totalOutstanding: cb.totalOutstanding,
           invoiceCount: cb.invoiceCount,
           customerCount: 1,
+          customers: [cb],
         });
       }
     }
@@ -152,10 +158,19 @@ export default function CustomerBalanceReportPage() {
         : (Number(appInv.total || appInv.totalAmount || 0) - Number(appInv.amountPaid || 0));
 
       const diff = Math.abs(ding.outstanding - appBalance);
-      if (diff < 0.01) {
+
+      // Check sales rep mismatch
+      const appCust = custMap.get(Number(appInv.customerId));
+      const appSalesRep = (appCust?.salesRepName || "").trim();
+      const dingSalesRep = (ding.salesRep || "").trim();
+      const repMismatch = dingSalesRep && appSalesRep && dingSalesRep.toLowerCase() !== appSalesRep.toLowerCase();
+
+      if (diff < 0.01 && !repMismatch) {
         results.push({ type: "matched", ding, app: appInv, diff });
-      } else {
+      } else if (diff >= 0.01) {
         results.push({ type: "balance_mismatch", ding, app: appInv, appBalance, diff });
+      } else if (repMismatch) {
+        results.push({ type: "sales_rep_mismatch", ding, app: appInv, appSalesRep, diff: 0 });
       }
     }
 
@@ -180,20 +195,21 @@ export default function CustomerBalanceReportPage() {
     }
 
     return results.sort((a, b) => {
-      const order = { missing_in_app: 0, balance_mismatch: 1, missing_in_ding: 2, matched: 3 };
-      return (order[a.type] ?? 4) - (order[b.type] ?? 4);
+      const order = { missing_in_app: 0, balance_mismatch: 1, sales_rep_mismatch: 2, missing_in_ding: 3, matched: 4 };
+      return (order[a.type] ?? 5) - (order[b.type] ?? 5);
     });
   }, [dingData, invoices]);
 
   const reconSummary = useMemo(() => {
     const matched = reconResults.filter((r) => r.type === "matched").length;
     const balanceMismatch = reconResults.filter((r) => r.type === "balance_mismatch").length;
+    const salesRepMismatch = reconResults.filter((r) => r.type === "sales_rep_mismatch").length;
     const missingInApp = reconResults.filter((r) => r.type === "missing_in_app").length;
     const missingInDing = reconResults.filter((r) => r.type === "missing_in_ding").length;
     const totalVariance = reconResults
       .filter((r) => r.type === "balance_mismatch")
       .reduce((sum, r) => sum + (r as any).diff, 0);
-    return { matched, balanceMismatch, missingInApp, missingInDing, totalVariance };
+    return { matched, balanceMismatch, salesRepMismatch, missingInApp, missingInDing, totalVariance };
   }, [reconResults]);
 
   /* ─── Import Ding report ─── */
@@ -286,7 +302,7 @@ export default function CustomerBalanceReportPage() {
       const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();
       const rows: any[][] = [
-        ["Status", "Invoice #", "Customer (Ding)", "Customer (App)", "Ding Outstanding", "App Balance Due", "Difference", "Sales Rep"],
+        ["Status", "Invoice #", "Customer (Ding)", "Customer (App)", "Ding Outstanding", "App Balance Due", "Difference", "Sales Rep (Ding)", "Sales Rep (App)"],
       ];
 
       for (const r of mismatches) {
@@ -300,6 +316,7 @@ export default function CustomerBalanceReportPage() {
             "—",
             r.ding.outstanding,
             r.ding.salesRep,
+            "—",
           ]);
         } else if (r.type === "balance_mismatch") {
           rows.push([
@@ -311,6 +328,19 @@ export default function CustomerBalanceReportPage() {
             r.appBalance,
             r.diff,
             r.ding.salesRep,
+            "",
+          ]);
+        } else if (r.type === "sales_rep_mismatch") {
+          rows.push([
+            "Sales Rep Mismatch",
+            r.ding.invoiceNo,
+            r.ding.customerName,
+            r.app.customerName || r.app.customer?.name || "",
+            r.ding.outstanding,
+            r.ding.outstanding,
+            0,
+            r.ding.salesRep,
+            r.appSalesRep,
           ]);
         } else if (r.type === "missing_in_ding") {
           rows.push([
@@ -322,12 +352,13 @@ export default function CustomerBalanceReportPage() {
             r.appBalance,
             r.appBalance,
             "",
+            "",
           ]);
         }
       }
 
       const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }];
+      ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, ws, "Mismatches");
       XLSX.writeFile(wb, `Ding_Reconciliation_Mismatches_${new Date().toISOString().split("T")[0]}.xlsx`);
     } finally {
@@ -477,8 +508,13 @@ export default function CustomerBalanceReportPage() {
               {salesRepBalances.map((rep) => (
                 <div
                   key={rep.repName}
-                  className="p-3 rounded-lg border transition-colors hover:bg-[rgba(212,168,83,0.04)]"
-                  style={{ backgroundColor: "#0A0A0B", borderColor: "rgba(255,255,255,0.06)" }}
+                  className="p-3 rounded-lg border transition-colors hover:bg-[rgba(212,168,83,0.06)] cursor-pointer"
+                  style={{
+                    backgroundColor: selectedRep === rep.repName ? "rgba(212,168,83,0.08)" : "#0A0A0B",
+                    borderColor: selectedRep === rep.repName ? "rgba(212,168,83,0.4)" : "rgba(255,255,255,0.06)",
+                  }}
+                  onClick={() => setSelectedRep(selectedRep === rep.repName ? null : rep.repName)}
+                  title="Click to view customers"
                 >
                   <p className="text-xs text-[#8A8B8C] truncate" title={rep.repName}>{rep.repName}</p>
                   <p className="text-lg font-bold text-[#D4A853]">
@@ -491,6 +527,36 @@ export default function CustomerBalanceReportPage() {
                 </div>
               ))}
             </div>
+
+            {/* Selected rep detail */}
+            {selectedRep && (
+              <div className="mt-3 rounded-lg border overflow-hidden" style={{ backgroundColor: "#0A0A0B", borderColor: "rgba(212,168,83,0.15)" }}>
+                <div className="flex items-center justify-between px-3 py-2" style={{ backgroundColor: "rgba(212,168,83,0.06)" }}>
+                  <h3 className="text-xs font-semibold text-[#D4A853]">{selectedRep} — Customer Detail</h3>
+                  <button onClick={() => setSelectedRep(null)} className="text-[10px] text-[#8A8B8C] hover:text-white">Close</button>
+                </div>
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr style={{ backgroundColor: "rgba(212,168,83,0.04)" }}>
+                      <th className="text-left px-3 py-1.5 font-medium text-[#D4A853]">Customer</th>
+                      <th className="text-right px-3 py-1.5 font-medium text-[#D4A853]">Invoices</th>
+                      <th className="text-right px-3 py-1.5 font-medium text-[#D4A853]">Outstanding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesRepBalances.find((r) => r.repName === selectedRep)?.customers.map((c: any) => (
+                      <tr key={c.id} className="border-t" style={{ borderColor: "rgba(255,255,255,0.03)" }}>
+                        <td className="px-3 py-1.5 text-white">{c.name}</td>
+                        <td className="px-3 py-1.5 text-right text-[#8A8B8C]">{c.invoiceCount}</td>
+                        <td className="px-3 py-1.5 text-right font-medium text-[#D4A853]">
+                          R {c.totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -532,7 +598,7 @@ export default function CustomerBalanceReportPage() {
               </div>
 
               {/* Reconciliation summary cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div className="p-3 rounded-lg text-center" style={{ backgroundColor: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
                   <CheckCircle className="w-4 h-4 text-[#4ADE80] mx-auto mb-1" />
                   <p className="text-lg font-bold text-[#4ADE80]">{reconSummary.matched}</p>
@@ -542,6 +608,11 @@ export default function CustomerBalanceReportPage() {
                   <AlertTriangle className="w-4 h-4 text-[#F59E0B] mx-auto mb-1" />
                   <p className="text-lg font-bold text-[#F59E0B]">{reconSummary.balanceMismatch}</p>
                   <p className="text-[10px] text-[#8A8B8C]">Balance Mismatch</p>
+                </div>
+                <div className="p-3 rounded-lg text-center" style={{ backgroundColor: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)" }}>
+                  <UserCircle className="w-4 h-4 text-[#A855F7] mx-auto mb-1" />
+                  <p className="text-lg font-bold text-[#A855F7]">{reconSummary.salesRepMismatch}</p>
+                  <p className="text-[10px] text-[#8A8B8C]">Sales Rep Mismatch</p>
                 </div>
                 <div className="p-3 rounded-lg text-center" style={{ backgroundColor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
                   <XCircle className="w-4 h-4 text-[#EF4444] mx-auto mb-1" />
@@ -562,7 +633,7 @@ export default function CustomerBalanceReportPage() {
               )}
 
               {/* Export mismatches */}
-              {(reconSummary.balanceMismatch + reconSummary.missingInApp + reconSummary.missingInDing) > 0 && (
+              {(reconSummary.balanceMismatch + reconSummary.salesRepMismatch + reconSummary.missingInApp + reconSummary.missingInDing) > 0 && (
                 <div className="text-center">
                   <Button
                     variant="outline"
@@ -624,6 +695,26 @@ export default function CustomerBalanceReportPage() {
                             <td className="px-3 py-2 text-right text-[#F59E0B]">R {r.appBalance.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td className="px-3 py-2 text-right font-bold text-[#EF4444]">R {r.diff.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td className="px-3 py-2 text-[#8A8B8C]">{r.ding.salesRep}</td>
+                          </tr>
+                        );
+                      }
+                      if (r.type === "sales_rep_mismatch") {
+                        return (
+                          <tr key={`srm-${idx}`} className="border-t" style={{ borderColor: "rgba(255,255,255,0.03)", backgroundColor: "rgba(168,85,247,0.03)" }}>
+                            <td className="px-3 py-2">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgba(168,85,247,0.1)", color: "#A855F7" }}>
+                                <UserCircle className="w-3 h-3" /> Rep Mismatch
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-white font-mono">{r.ding.invoiceNo}</td>
+                            <td className="px-3 py-2 text-[#8A8B8C]">{r.ding.customerName}</td>
+                            <td className="px-3 py-2 text-right text-[#A855F7]">R {r.ding.outstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-2 text-right text-[#A855F7]">R {r.ding.outstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-2 text-right font-bold text-[#A855F7]">—</td>
+                            <td className="px-3 py-2 text-[#8A8B8C]">
+                              <span className="block text-[#EF4444]" title="Ding">D: {r.ding.salesRep}</span>
+                              <span className="block text-[#4ADE80]" title="App">A: {r.appSalesRep}</span>
+                            </td>
                           </tr>
                         );
                       }

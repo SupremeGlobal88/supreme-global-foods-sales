@@ -60,15 +60,15 @@ export default function CustomersPage() {
   );
 
   const createCustomer = trpc.customer.create.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); setImportStatus(""); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.list.invalidate(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); setShowForm(false); resetForm(); setImportStatus(""); },
     onError: (err: any) => { setImportStatus(`Error: ${err.message || "Failed to create customer"}`); },
   });
   const updateCustomer = trpc.customer.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setShowForm(false); setEditingId(null); setImportStatus(""); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.list.invalidate(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setShowForm(false); setEditingId(null); setImportStatus(""); },
     onError: (err: any) => { setImportStatus(`Error: ${err.message || "Failed to update customer"}`); },
   });
   const deleteCustomer = trpc.customer.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setSelectedCustomer(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.list.invalidate(); await utils.customer.search.invalidate(); await utils.customer.getStats.invalidate(); await utils.invoice.list.invalidate(); await utils.order.list.invalidate(); setSelectedCustomer(null); },
     onError: (err: any) => { alert("Failed to delete customer: " + (err.message || "Unknown error")); },
   });
   const setSpecialPrice = trpc.specialPrice.set.useMutation({

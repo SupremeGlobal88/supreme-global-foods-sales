@@ -44,13 +44,13 @@ export default function CorporateCustomersPage() {
   const { data: existingCustomers } = trpc.customer.search.useQuery({ query: " " });
   const { data: salesReps } = trpc.salesRep.list.useQuery();
   const createCustomer = trpc.corporateCustomer.create.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.corporateCustomer.list.invalidate(); setShowForm(false); resetForm(); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.list.invalidate(); await utils.corporateCustomer.list.invalidate(); setShowForm(false); resetForm(); },
   });
   const updateCustomer = trpc.corporateCustomer.update.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.corporateCustomer.list.invalidate(); setShowForm(false); setEditingId(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.list.invalidate(); await utils.corporateCustomer.list.invalidate(); setShowForm(false); setEditingId(null); },
   });
   const deleteCustomer = trpc.corporateCustomer.delete.useMutation({
-    onSuccess: async () => { reloadFromStorage(); await utils.corporateCustomer.list.invalidate(); setSelectedCustomer(null); },
+    onSuccess: async () => { reloadFromStorage(); await utils.customer.list.invalidate(); await utils.corporateCustomer.list.invalidate(); setSelectedCustomer(null); },
   });
 
   const filtered = (customers || []).filter((c: any) => {

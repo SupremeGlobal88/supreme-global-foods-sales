@@ -175,7 +175,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "stock.delete": {
         result = dataService.stock.delete(input);
         if (result?.success) {
-          await removeOneStockItem(input);
+          await removeOneStockItem(input.id);
           reloadFromStorage(["sgf_products"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "products", count: 0 } }));
         }
@@ -481,7 +481,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "invoice.delete": {
         result = dataService.invoice.delete(input);
         if (result?.success) {
-          await removeInvoice(input);
+          await removeInvoice(input.id);
           reloadFromStorage(["sgf_invoices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "invoices", count: 0 } }));
         }
@@ -671,7 +671,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "appointment.delete": {
         result = dataService.appointment.delete(input);
         if (result?.success) {
-          await pushAppointmentDelete(input);
+          await pushAppointmentDelete(input.id);
           reloadFromStorage(["sgf_appointments"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 0 } }));
         }
@@ -747,7 +747,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "checkIn.delete": {
         result = dataService.checkIn.delete(input);
         if (result?.success) {
-          await pushCheckinDelete(input);
+          await pushCheckinDelete(input.id);
           reloadFromStorage(["sgf_checkIns"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 0 } }));
         }
@@ -803,7 +803,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "specialPrice.delete": {
         result = dataService.specialPrice.delete(input);
         if (result?.success) {
-          await removeSpecialPrice(input);
+          await removeSpecialPrice(input.id);
           reloadFromStorage(["sgf_specialPrices"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "specialPrices", count: 0 } }));
         }
@@ -1117,7 +1117,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "collectionPromise.delete": {
         result = dataService.collectionPromise.delete(input);
         if (result?.success) {
-          await pushCollectionPromise({ id: input, deleted: true });
+          await pushCollectionPromise({ id: input.id, deleted: true });
           reloadFromStorage(["sgf_collectionPromises"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "collectionPromises", count: 0 } }));
         }
@@ -1194,9 +1194,9 @@ export async function localLinkHandler(path: string, input: any) {
       case "corporateCustomer.delete": {
         result = dataService.corporateCustomer.delete(input);
         if (result?.success) {
-          await removeCorporateCustomer(input);
+          await removeCorporateCustomer(input.id);
           // Also remove the linked normal customer
-          const corporate = dataService.corporateCustomer.getById(input);
+          const corporate = dataService.corporateCustomer.getById(input.id);
           if (corporate?.linkedCustomerId) {
             const linked = dataService.customer.getById(corporate.linkedCustomerId);
             if (linked) {
@@ -1409,7 +1409,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "purchaseOrder.delete": {
         result = dataService.purchaseOrder.delete(input);
         if (result?.success) {
-          await removePurchaseOrder(input);
+          await removePurchaseOrder(input.id);
           reloadFromStorage(["sgf_purchaseOrders"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "purchaseOrders", count: 0 } }));
         }
@@ -1632,7 +1632,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "barrel.delete": {
         result = dataService.barrel.delete(input);
         if (result?.success) {
-          await removeBarrel(input);
+          await removeBarrel(input.id);
           reloadFromStorage(["sgf_barrels"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "barrels", count: 0 } }));
         }
@@ -1725,7 +1725,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "coc.delete": {
         result = dataService.coc.delete(input);
         if (result?.success) {
-          await removeCOC(input);
+          await removeCOC(input.id);
           reloadFromStorage(["sgf_coc"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "coc", count: 0 } }));
         }
@@ -1818,7 +1818,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "packingList.delete": {
         result = dataService.packingList.delete(input);
         if (result?.success) {
-          await removePackingListLine(input);
+          await removePackingListLine(input.id);
           reloadFromStorage(["sgf_packingLists"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "packingLists", count: 0 } }));
         }
@@ -2032,7 +2032,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "receipt.delete": {
         result = dataService.invoice.deleteReceipt(input);
         if (result?.success) {
-          await removeReceipt(input);
+          await removeReceipt(input.id);
           reloadFromStorage(["sgf_receipts"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "receipts", count: 0 } }));
         }
@@ -2073,7 +2073,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "creditNote.delete": {
         result = dataService.creditNote.delete(input);
         if (result?.success) {
-          await removeCreditNote(input);
+          await removeCreditNote(input.id);
           reloadFromStorage(["sgf_creditNotes"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "creditNotes", count: 0 } }));
         }

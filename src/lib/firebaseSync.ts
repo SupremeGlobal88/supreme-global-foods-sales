@@ -560,6 +560,9 @@ export function initAutoSync(): () => void {
     unsubs.push(subscribeToSystemLogs(handleReceived("systemLogs", "sgf_systemLogs")));
   }
 
+  // Flush any pending pushes that were queued before Firebase was ready
+  flushPendingPushes();
+
   return () => { unsubs.forEach((u) => u()); };
 }
 
@@ -674,7 +677,9 @@ export async function pushCustomer(customer: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("customer", customer); return; }
   try {
     await set(ref(db, `customers/${safeFbKey(customer.id)}`), { ...customer, _syncedAt: Date.now() });
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.error("[pushCustomer] failed for id", customer.id, err);
+  }
 }
 
 export async function pushOneCustomer(customer: any): Promise<void> {

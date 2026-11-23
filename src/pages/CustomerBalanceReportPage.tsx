@@ -141,6 +141,13 @@ export default function CustomerBalanceReportPage() {
       if (key) appInvMap.set(key, inv);
     }
 
+    const custMapForRecon = new Map<number, any>();
+    if (customers) {
+      for (const c of customers) {
+        if (c?.id) custMapForRecon.set(c.id, c);
+      }
+    }
+
     const results: ReconResult[] = [];
     const matchedDing = new Set<string>();
 
@@ -160,7 +167,7 @@ export default function CustomerBalanceReportPage() {
       const diff = Math.abs(ding.outstanding - appBalance);
 
       // Check sales rep mismatch
-      const appCust = custMap.get(Number(appInv.customerId));
+      const appCust = custMapForRecon.get(Number(appInv.customerId));
       const appSalesRep = (appCust?.salesRepName || "").trim();
       const dingSalesRep = (ding.salesRep || "").trim();
       const repMismatch = dingSalesRep && appSalesRep && dingSalesRep.toLowerCase() !== appSalesRep.toLowerCase();

@@ -496,64 +496,18 @@ function createSubscription<T>(
       return;
     }
     const val = snap.val();
-    const incoming: T[] = Object.values(val);
+    const list: T[] = Object.values(val);
     // PROTECTION: during bulk upload, onValue fires after each individual write with a
     // partial snapshot. Don't overwrite localStorage until the upload finishes.
     // uploadInProgress is 0 during normal operation AND during deletions —
     // so deletions propagate correctly to localStorage.
     if (storageKey === "sgf_products" && uploadInProgress > 0) {
       // Still notify handler so UI refreshes, but don't save partial data to localStorage
-      handler(incoming);
+      handler(list);
       return;
     }
-
-    // Merge with localStorage: newer updatedAt wins for shared records,
-    // local-only records (no _syncedAt) are preserved, deleted records
-    // (had _syncedAt but now missing from Firebase) are removed.
-    try {
-      const existingRaw = getStorageItem(storageKey, "[]");
-      const existing: T[] = JSON.parse(existingRaw);
-      const mergedMap = new Map<string, T>();
-
-      // Start with incoming (Firebase) data
-      for (const item of incoming) {
-        const id = (item as any).id ?? (item as any).key;
-        if (id != null) mergedMap.set(String(id), item);
-      }
-
-      // Merge local items
-      for (const item of existing) {
-        const id = (item as any).id ?? (item as any).key;
-        if (id == null) continue;
-        const key = String(id);
-        const incomingItem = mergedMap.get(key);
-        if (!incomingItem) {
-          // Item exists locally but not in Firebase
-          const syncedAt = (item as any)._syncedAt;
-          if (syncedAt == null) {
-            // Local-only addition, never pushed: preserve it
-            mergedMap.set(key, item);
-          }
-          // If _syncedAt exists, item was pushed before but is now missing
-          // from Firebase => it was deleted, so don't preserve it.
-        } else {
-          // Shared record: keep the one with newer updatedAt
-          const existingTime = (item as any).updatedAt || (item as any).createdAt || 0;
-          const incomingTime = (incomingItem as any).updatedAt || (incomingItem as any).createdAt || 0;
-          if (String(existingTime) > String(incomingTime)) {
-            mergedMap.set(key, item);
-          }
-        }
-      }
-
-      const merged = Array.from(mergedMap.values());
-      setStorageItem(storageKey, JSON.stringify(merged));
-      handler(merged);
-    } catch {
-      // Fallback: simple overwrite on any error
-      setStorageItem(storageKey, JSON.stringify(incoming));
-      handler(incoming);
-    }
+    setStorageItem(storageKey, JSON.stringify(list));
+    handler(list);
   });
   return unsub;
 }

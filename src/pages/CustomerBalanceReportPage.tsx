@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import { trpc } from "@/providers/trpc";
 import {
   Search, Download, FileSpreadsheet, Users, Upload, AlertCircle,
-  CheckCircle, XCircle, AlertTriangle, Trash2,
+  CheckCircle, XCircle, AlertTriangle, Trash2, UserCircle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,34 @@ export default function CustomerBalanceReportPage() {
     () => filtered.reduce((sum, c) => sum + c.totalOutstanding, 0),
     [filtered]
   );
+
+  /* ─── Sales Rep balance summary ─── */
+  const salesRepBalances = useMemo(() => {
+    if (!customerBalances.length || !customers) return [];
+    const custMap = new Map<number, any>();
+    for (const c of customers) {
+      if (c?.id) custMap.set(c.id, c);
+    }
+    const repMap = new Map<string, { repName: string; totalOutstanding: number; invoiceCount: number; customerCount: number }>();
+    for (const cb of customerBalances) {
+      const cust = custMap.get(cb.id);
+      const repName = (cust?.salesRepName || "Unassigned").trim();
+      const existing = repMap.get(repName);
+      if (existing) {
+        existing.totalOutstanding += cb.totalOutstanding;
+        existing.invoiceCount += cb.invoiceCount;
+        existing.customerCount += 1;
+      } else {
+        repMap.set(repName, {
+          repName,
+          totalOutstanding: cb.totalOutstanding,
+          invoiceCount: cb.invoiceCount,
+          customerCount: 1,
+        });
+      }
+    }
+    return Array.from(repMap.values()).sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+  }, [customerBalances, customers]);
 
   /* ─── Reconciliation logic ─── */
   const reconResults = useMemo<ReconResult[]>(() => {
@@ -327,16 +355,37 @@ export default function CustomerBalanceReportPage() {
       coverWs["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
       XLSX.utils.book_append_sheet(wb, coverWs, "Cover");
 
-      const rows = [["Customer Name", "Total Outstanding (R)", "Invoice Count"]];
-      for (const c of filtered) {
-        rows.push([c.name, c.totalOutstanding, c.invoiceCount]);
+      // Customer Balances sheet (with Sales Rep)
+      const custRows = [["Customer Name", "Sales Rep", "Total Outstanding (R)", "Invoice Count"]];
+      const custMap = new Map<number, any>();
+      if (customers) {
+        for (const c of customers) {
+          if (c?.id) custMap.set(c.id, c);
+        }
       }
-      rows.push([]);
-      rows.push(["GRAND TOTAL", grandTotal, ""]);
+      for (const c of filtered) {
+        const cust = custMap.get(c.id);
+        custRows.push([c.name, cust?.salesRepName || "", c.totalOutstanding, c.invoiceCount]);
+      }
+      custRows.push([]);
+      custRows.push(["GRAND TOTAL", "", grandTotal, ""]);
 
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = [{ wch: 50 }, { wch: 25 }, { wch: 15 }];
+      const ws = XLSX.utils.aoa_to_sheet(custRows);
+      ws["!cols"] = [{ wch: 45 }, { wch: 18 }, { wch: 22 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, ws, "Customer Balances");
+
+      // Sales Rep Balances sheet
+      if (salesRepBalances.length) {
+        const repRows = [["Sales Rep", "Total Outstanding (R)", "Invoices", "Customers"]];
+        for (const r of salesRepBalances) {
+          repRows.push([r.repName, r.totalOutstanding, r.invoiceCount, r.customerCount]);
+        }
+        repRows.push([]);
+        repRows.push(["GRAND TOTAL", grandTotal, filtered.reduce((s, c) => s + c.invoiceCount, 0), filtered.length]);
+        const repWs = XLSX.utils.aoa_to_sheet(repRows);
+        repWs["!cols"] = [{ wch: 20 }, { wch: 22 }, { wch: 12 }, { wch: 12 }];
+        XLSX.utils.book_append_sheet(wb, repWs, "Sales Rep Balances");
+      }
 
       XLSX.writeFile(wb, `Customer_Balance_Report_${new Date().toISOString().split("T")[0]}.xlsx`);
     } finally {
@@ -385,6 +434,65 @@ export default function CustomerBalanceReportPage() {
             </p>
           </div>
         </div>
+
+        {/* ─── Balances by Sales Rep ─── */}
+        {salesRepBalances.length > 0 && (
+          <div className="rounded-xl border p-4 mb-6" style={{ backgroundColor: "#15171A", borderColor: "rgba(212,168,83,0.2)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <UserCircle className="w-4 h-4 text-[#D4A853]" />
+                <h2 className="text-sm font-semibold text-white">Balances by Sales Rep</h2>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-[#D4A853] border-[#D4A853]/30 hover:bg-[#D4A853]/10 text-xs"
+                onClick={async () => {
+                  if (!salesRepBalances.length) return;
+                  setIsExporting(true);
+                  try {
+                    const XLSX = await import("xlsx");
+                    const wb = XLSX.utils.book_new();
+                    const rows: any[][] = [["Sales Rep", "Total Outstanding (R)", "Invoices", "Customers"]];
+                    for (const r of salesRepBalances) {
+                      rows.push([r.repName, r.totalOutstanding, r.invoiceCount, r.customerCount]);
+                    }
+                    rows.push([]);
+                    rows.push(["GRAND TOTAL", grandTotal, filtered.reduce((s, c) => s + c.invoiceCount, 0), filtered.length]);
+                    const ws = XLSX.utils.aoa_to_sheet(rows);
+                    ws["!cols"] = [{ wch: 20 }, { wch: 22 }, { wch: 12 }, { wch: 12 }];
+                    XLSX.utils.book_append_sheet(wb, ws, "Sales Rep Balances");
+                    XLSX.writeFile(wb, `Sales_Rep_Balances_${new Date().toISOString().split("T")[0]}.xlsx`);
+                  } finally {
+                    setIsExporting(false);
+                  }
+                }}
+                disabled={isExporting}
+              >
+                <Download className="w-3 h-3" />
+                {isExporting ? "Exporting..." : "Export"}
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {salesRepBalances.map((rep) => (
+                <div
+                  key={rep.repName}
+                  className="p-3 rounded-lg border transition-colors hover:bg-[rgba(212,168,83,0.04)]"
+                  style={{ backgroundColor: "#0A0A0B", borderColor: "rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs text-[#8A8B8C] truncate" title={rep.repName}>{rep.repName}</p>
+                  <p className="text-lg font-bold text-[#D4A853]">
+                    R {rep.totalOutstanding.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <div className="flex items-center gap-3 mt-1 text-[10px] text-[#8A8B8C]">
+                    <span>{rep.invoiceCount} invoice{rep.invoiceCount !== 1 ? "s" : ""}</span>
+                    <span>{rep.customerCount} customer{rep.customerCount !== 1 ? "s" : ""}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ─── Ding Reconciliation Import ─── */}
         <div className="rounded-xl border p-4 mb-6" style={{ backgroundColor: "#15171A", borderColor: "rgba(212,168,83,0.2)" }}>

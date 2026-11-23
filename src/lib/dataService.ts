@@ -378,6 +378,10 @@ function load() {
   // DEDUPLICATE: Remove duplicate orders, invoices, and customers.
   // This is safe and fast (O(n) using Maps) — prevents duplicates from Firebase sync.
   deduplicateAll();
+
+  // REPAIR: Fix corporate customers created with mismatched IDs (linkedCustomerId != id).
+  // This prevents duplication on the customer page and ensures invoice/order linking.
+  repairCorporateCustomerLinks();
 }
 
 /** Fix customers with missing/invalid codes. Also converts remaining CUST codes to numeric.
@@ -1198,6 +1202,107 @@ function isMoreRecent(a: any, b: any): boolean {
   const aTime = a.updatedAt || a.createdAt || a.id || 0;
   const bTime = b.updatedAt || b.createdAt || b.id || 0;
   return String(aTime) > String(bTime);
+}
+
+/** Repair corporate customers whose id does not match their linkedCustomerId.
+ *  When a corporate customer was created from a normal customer, it used to get a NEW id
+ *  (Date.now()) instead of reusing the normal customer's id. This caused:
+ *  1. Duplicate entries on the normal customer page (original + synced copy)
+ *  2. Invoice/order mismatches because POs referenced the new corporate id while
+ *     old invoices referenced the original customer id.
+ *  This function fixes existing data by unifying the ids.
+ *  Safe to run multiple times — idempotent. */
+function repairCorporateCustomerLinks(): void {
+  let changed = false;
+
+  for (const cc of corporateCustomers) {
+    const linkedId = cc.linkedCustomerId ? Number(cc.linkedCustomerId) : null;
+    if (!linkedId || cc.id == linkedId) continue;
+
+    const oldId = cc.id;
+
+    // 1. Update corporate customer to reuse the linked customer id
+    cc.id = linkedId;
+    cc.updatedAt = new Date().toISOString();
+    changed = true;
+    logAudit("UPDATE", "corporateCustomer", linkedId, `Repaired corporate customer ID: ${oldId} → ${linkedId} (${cc.name})`);
+
+    // 2. Update purchase orders
+    for (const po of purchaseOrders) {
+      if (po.corporateCustomerId == oldId) {
+        po.corporateCustomerId = linkedId;
+        po.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // 3. Update normal orders that may have referenced the old corporate id
+    for (const order of orders) {
+      if (order.customerId == oldId) {
+        order.customerId = linkedId;
+        order.customerName = cc.name || order.customerName;
+        if (order.customer) {
+          order.customer = { ...order.customer, id: linkedId, name: cc.name || order.customer.name };
+        }
+        order.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // 4. Update invoices
+    for (const inv of invoices) {
+      if (inv.customerId == oldId) {
+        inv.customerId = linkedId;
+        inv.customerName = cc.name || inv.customerName;
+        if (inv.customer) {
+          inv.customer = { ...inv.customer, id: linkedId, name: cc.name || inv.customer.name };
+        }
+        inv.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // 5. Merge the synced copy back into the original normal customer
+    const originalIdx = customers.findIndex((c) => c.id == linkedId);
+    const syncedIdx = customers.findIndex((c) => c.id == oldId && c.isCorporate);
+
+    if (originalIdx >= 0) {
+      const orig = customers[originalIdx];
+      customers[originalIdx] = {
+        ...orig,
+        name: cc.name || orig.name,
+        customerCode: cc.code || orig.customerCode || orig.code || "",
+        contactPerson: cc.contactPerson || orig.contactPerson || "",
+        email: cc.email || orig.email || "",
+        phone: cc.phone || orig.phone || "",
+        physicalAddress: cc.deliveryAddress || orig.physicalAddress || "",
+        city: cc.city || orig.city || "",
+        province: cc.province || orig.province || "",
+        postalCode: cc.postalCode || orig.postalCode || "",
+        vatNumber: cc.vatNumber || orig.vatNumber || "",
+        paymentTerms: cc.paymentTerms || orig.paymentTerms || "30_days",
+        priceTier: "corporate",
+        isCorporate: true,
+        company: cc.company || orig.company || "sgf",
+        notes: cc.notes || orig.notes || "",
+        salesRepName: cc.salesRepName || orig.salesRepName || "",
+        isActive: cc.isActive !== undefined ? cc.isActive : orig.isActive,
+        creditLimit: cc.creditLimit !== undefined ? cc.creditLimit : orig.creditLimit,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    // Remove the old synced copy (id=oldId, isCorporate=true)
+    if (syncedIdx >= 0) {
+      customers.splice(syncedIdx, 1);
+    }
+  }
+
+  if (changed) {
+    saveItem("sgf_corporateCustomers", corporateCustomers);
+    saveItem("sgf_purchaseOrders", purchaseOrders);
+    saveItem("sgf_orders", orders);
+    saveItem("sgf_invoices", invoices);
+    saveItem("sgf_customers", customers);
+    logSystemEvent("INFO", "repairCorporateCustomerLinks", "Repaired corporate customer ID mismatches and merged synced copies");
+  }
 }
 
 function saveItem(key: string, value: any) {
@@ -5721,10 +5826,13 @@ const dataService = {
     listByCompany: (company: string) => corporateCustomers.filter((c) => c.company === company || (!c.company && company === "sgf")),
     getById: (id: number) => corporateCustomers.find((c) => c.id == id) || null,
     create: (data: any) => {
+      const linkedId = data.linkedCustomerId ? Number(data.linkedCustomerId) : null;
+      const useId = linkedId || Date.now();
+
       const newItem = {
         ...data,
         company: data.company || "sgf",
-        id: Date.now(),
+        id: useId,
         isActive: data.isActive !== undefined ? data.isActive : true,
         creditLimit: data.creditLimit !== undefined ? Number(data.creditLimit) : 0,
         createdAt: new Date().toISOString(),
@@ -5733,31 +5841,86 @@ const dataService = {
       corporateCustomers.push(newItem);
       saveItem("sgf_corporateCustomers", corporateCustomers);
       logAudit("CREATE", "corporateCustomer", newItem.id, `Corporate customer created: ${newItem.name}`);
-      // Also add to main customers list so invoices and statements resolve correctly
-      const mainCust = {
-        id: newItem.id,
-        name: newItem.name,
-        customerCode: newItem.code || `CORP-${newItem.id.toString().slice(-4)}`,
-        contactPerson: newItem.contactPerson || "",
-        email: newItem.email || "",
-        phone: newItem.phone || "",
-        physicalAddress: newItem.deliveryAddress || "",
-        city: newItem.city || "",
-        province: newItem.province || "",
-        postalCode: newItem.postalCode || "",
-        vatNumber: newItem.vatNumber || "",
-        paymentTerms: newItem.paymentTerms || "30_days",
-        priceTier: "corporate",
-        isCorporate: true,
-        company: newItem.company || "sgf",
-        notes: newItem.notes || "",
-        salesRepName: newItem.salesRepName || "",
-        isActive: newItem.isActive,
-        creditLimit: newItem.creditLimit,
-        createdAt: newItem.createdAt,
-        updatedAt: newItem.updatedAt,
-      };
-      customers.push(mainCust);
+
+      if (linkedId) {
+        // Reuse the existing normal customer id — update it in place instead of creating a duplicate
+        const existingIdx = customers.findIndex((c) => c.id == linkedId);
+        if (existingIdx >= 0) {
+          const orig = customers[existingIdx];
+          customers[existingIdx] = {
+            ...orig,
+            name: newItem.name || orig.name,
+            customerCode: newItem.code || orig.customerCode || orig.code || "",
+            contactPerson: newItem.contactPerson || orig.contactPerson || "",
+            email: newItem.email || orig.email || "",
+            phone: newItem.phone || orig.phone || "",
+            physicalAddress: newItem.deliveryAddress || orig.physicalAddress || "",
+            city: newItem.city || orig.city || "",
+            province: newItem.province || orig.province || "",
+            postalCode: newItem.postalCode || orig.postalCode || "",
+            vatNumber: newItem.vatNumber || orig.vatNumber || "",
+            paymentTerms: newItem.paymentTerms || orig.paymentTerms || "30_days",
+            priceTier: "corporate",
+            isCorporate: true,
+            company: newItem.company || orig.company || "sgf",
+            notes: newItem.notes || orig.notes || "",
+            salesRepName: newItem.salesRepName || orig.salesRepName || "",
+            isActive: newItem.isActive,
+            creditLimit: newItem.creditLimit,
+            updatedAt: newItem.updatedAt,
+          };
+        } else {
+          // Fallback: linked customer not found, create new synced copy
+          customers.push({
+            id: newItem.id,
+            name: newItem.name,
+            customerCode: newItem.code || `CORP-${newItem.id.toString().slice(-4)}`,
+            contactPerson: newItem.contactPerson || "",
+            email: newItem.email || "",
+            phone: newItem.phone || "",
+            physicalAddress: newItem.deliveryAddress || "",
+            city: newItem.city || "",
+            province: newItem.province || "",
+            postalCode: newItem.postalCode || "",
+            vatNumber: newItem.vatNumber || "",
+            paymentTerms: newItem.paymentTerms || "30_days",
+            priceTier: "corporate",
+            isCorporate: true,
+            company: newItem.company || "sgf",
+            notes: newItem.notes || "",
+            salesRepName: newItem.salesRepName || "",
+            isActive: newItem.isActive,
+            creditLimit: newItem.creditLimit,
+            createdAt: newItem.createdAt,
+            updatedAt: newItem.updatedAt,
+          });
+        }
+      } else {
+        // No linked customer — create synced copy as before
+        customers.push({
+          id: newItem.id,
+          name: newItem.name,
+          customerCode: newItem.code || `CORP-${newItem.id.toString().slice(-4)}`,
+          contactPerson: newItem.contactPerson || "",
+          email: newItem.email || "",
+          phone: newItem.phone || "",
+          physicalAddress: newItem.deliveryAddress || "",
+          city: newItem.city || "",
+          province: newItem.province || "",
+          postalCode: newItem.postalCode || "",
+          vatNumber: newItem.vatNumber || "",
+          paymentTerms: newItem.paymentTerms || "30_days",
+          priceTier: "corporate",
+          isCorporate: true,
+          company: newItem.company || "sgf",
+          notes: newItem.notes || "",
+          salesRepName: newItem.salesRepName || "",
+          isActive: newItem.isActive,
+          creditLimit: newItem.creditLimit,
+          createdAt: newItem.createdAt,
+          updatedAt: newItem.updatedAt,
+        });
+      }
       saveItem("sgf_customers", customers);
       return newItem;
     },

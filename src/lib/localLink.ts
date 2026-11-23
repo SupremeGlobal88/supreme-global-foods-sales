@@ -669,7 +669,7 @@ export async function localLinkHandler(path: string, input: any) {
         break;
       }
       case "invoice.createOrderFromInvoice": {
-        result = dataService.invoice.createFromInvoice(input);
+        result = dataService.order.createFromInvoice(input);
         if (result && !result.error) {
           await pushOrder(result);
           // The invoice was also updated inside createFromInvoice — find and push it

@@ -99,6 +99,16 @@ export default function InvoicesPage() {
   const { data: allCreditNotes } = trpc.invoice.getCreditNotes.useQuery();
   const { data: allCOCs, refetch: refetchCOCs } = trpc.coc.list.useQuery();
 
+  /* Helper: resolve live customer name from customerId first, then fall back to stored name.
+     This ensures renamed customers show their current name on invoices. */
+  const getLiveCustomerName = (inv: any) => {
+    if (!inv) return "N/A";
+    const liveById = (corporateCustomers || []).find((c: any) => c.id == inv.customerId) || (customers || []).find((c: any) => c.id == inv.customerId);
+    if (liveById?.name) return liveById.name;
+    const liveByName = (inv.customerName || inv.customer?.name) ? (corporateCustomers || []).find((c: any) => c.name == (inv.customerName || inv.customer?.name)) || (customers || []).find((c: any) => c.name == (inv.customerName || inv.customer?.name)) : null;
+    return liveByName?.name || inv.customerName || inv.customer?.name || "N/A";
+  };
+
   /* Mutations */
   const recordPay = trpc.invoice.recordPayment.useMutation({
     onSuccess: async (data: any) => {
@@ -325,7 +335,7 @@ export default function InvoicesPage() {
     if (q) {
       list = list.filter((i: any) =>
         (i.invoiceNumber || "").toLowerCase().includes(q) ||
-        (i.customer?.name || i.customerName || "").toLowerCase().includes(q) ||
+        getLiveCustomerName(i).toLowerCase().includes(q) ||
         (i.customer?.customerCode || "").toLowerCase().includes(q) ||
         (i.orderNumber || "").toLowerCase().includes(q)
       );
@@ -365,7 +375,7 @@ export default function InvoicesPage() {
     for (const inv of filtered) {
       rows.push([
         inv.invoiceNumber || "",
-        inv.customer?.name || inv.customerName || "",
+        getLiveCustomerName(inv),
         inv.customer?.customerCode || "",
         inv.orderNumber || "",
         inv.status || "",
@@ -1227,7 +1237,7 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{inv.customerName || inv.customer?.name || (corporateCustomers || []).find((c: any) => c.id == inv.customerId)?.name || (customers || []).find((c: any) => c.id == inv.customerId)?.name || "N/A"}</td>
+                      <td className="p-3 text-sm text-[#E8E8E9] font-body">{getLiveCustomerName(inv)}</td>
                       <td className="p-3 text-xs text-[#8A8B8C] font-mono-data">{inv.poNumber || inv.orderNumber || "-"}</td>
                       <td className="p-3 text-xs text-[#8A8B8C]">{new Date(inv.invoiceDate || inv.createdAt).toLocaleDateString("en-ZA")}</td>
                       <td className="p-3 text-right text-sm text-white font-display">R {displayTot.toFixed(2)}</td>

@@ -754,16 +754,31 @@ export async function pushUserDelete(id: number): Promise<void> {
 export async function pushSalesRep(rep: any): Promise<void> {
   if (!isFirebaseReady()) { addToPendingQueue("salesRep", rep); return; }
   try {
-    await set(ref(db, `salesReps/${safeFbKey(rep.id || rep.name)}`), { ...rep, _syncedAt: Date.now() });
+    // Always use stable id as Firebase key; fall back to name only for legacy reps without id
+    const key = rep.id != null ? safeFbKey(rep.id) : safeFbKey(rep.name);
+    await set(ref(db, `salesReps/${key}`), { ...rep, _syncedAt: Date.now() });
   } catch { /* ignore */ }
 }
 
 export async function removeSalesRep(id: number | string, name?: string): Promise<void> {
   if (!isFirebaseReady()) return;
+  // Remove by Firebase key (numeric id)
   try { await remove(ref(db, `salesReps/${safeFbKey(id)}`)); } catch { /* ignore */ }
-  if (name) {
-    try { await remove(ref(db, `salesReps/${safeFbKey(name)}`)); } catch { /* ignore */ }
-  }
+  // Also search all salesReps objects and remove any where .id or .name matches
+  try {
+    const snap = await get(ref(db, "salesReps"));
+    if (snap.exists()) {
+      const val = snap.val();
+      for (const [key, item] of Object.entries(val)) {
+        const it = item as any;
+        const matchId = it?.id != null && String(it.id) === String(id);
+        const matchName = name && it?.name === name;
+        if (matchId || matchName) {
+          await remove(ref(db, `salesReps/${key}`));
+        }
+      }
+    }
+  } catch { /* ignore */ }
 }
 
 export async function pushSpecialPrice(sp: any): Promise<void> {

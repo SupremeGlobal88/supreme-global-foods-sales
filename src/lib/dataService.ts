@@ -7,6 +7,7 @@ import { pushAudit, pushSystemLog } from "./firebaseSync";
 // ═══════════════════════════════════════════════════════════════
 
 type SalesRep = {
+  id?: number;
   name: string;
   email?: string;
   phone?: string;
@@ -36,6 +37,7 @@ function loadSalesRepsFromStorage(): SalesRep[] {
           if (typeof r === "string") return { name: r, isActive: true };
           // Current: stored as object
           return {
+            id: typeof r?.id === "number" ? r.id : undefined,
             name: r?.name || String(r || ""),
             email: r?.email || "",
             phone: r?.phone || "",
@@ -70,9 +72,10 @@ function getCurrentSalesReps(): SalesRep[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const mapped = parsed.map((r: any): SalesRep => {
+        let mapped = parsed.map((r: any): SalesRep => {
           if (typeof r === "string") return { name: r, isActive: true };
           return {
+            id: typeof r?.id === "number" ? r.id : undefined,
             name: r?.name || String(r || ""),
             email: r?.email || "",
             phone: r?.phone || "",
@@ -81,16 +84,30 @@ function getCurrentSalesReps(): SalesRep[] {
             isActive: r?.isActive !== false,
           };
         }).filter((r: SalesRep) => r.name);
-        // Deduplicate by name (case-insensitive), keep most recently-updated entry
+        // Assign stable IDs to legacy reps that don't have one
+        let needsSave = false;
+        let nextId = 1;
+        for (const r of mapped) {
+          if (r.id == null) {
+            r.id = nextId;
+            needsSave = true;
+          }
+          nextId = Math.max(nextId, (r.id || 0) + 1);
+        }
+        // Deduplicate by name (case-insensitive), keep entry with ID if present
         const repMap = new Map<string, SalesRep>();
         for (const r of mapped) {
           const key = r.name.toLowerCase().trim();
           const existing = repMap.get(key);
-          if (!existing) {
+          if (!existing || (r.id && !existing.id)) {
             repMap.set(key, r);
           }
         }
-        return Array.from(repMap.values());
+        const result = Array.from(repMap.values());
+        if (needsSave) {
+          try { setStorageItem("sgf_salesReps", JSON.stringify(result)); } catch { /* ignore */ }
+        }
+        return result;
       }
     }
   } catch { /* ignore */ }
@@ -1728,6 +1745,7 @@ function _doReloadFromStorage(keys?: string[]): void {
           SALES_REPS.push(...d.map((r: any): SalesRep => {
             if (typeof r === "string") return { name: r, isActive: true };
             return {
+              id: typeof r?.id === "number" ? r.id : undefined,
               name: r?.name || String(r || ""),
               email: r?.email || "",
               phone: r?.phone || "",
@@ -5035,7 +5053,7 @@ const dataService = {
       // Always read fresh from localStorage so Firebase-synced reps appear
       const reps = getCurrentSalesReps();
       return reps.map((rep, i) => ({
-        id: i + 1,
+        id: rep.id ?? i + 1,
         name: rep.name,
         email: rep.email || "",
         phone: rep.phone || "",
@@ -5184,7 +5202,11 @@ const dataService = {
       if (!name) return null;
       // Prevent duplicate names (case-insensitive)
       if (reps.some((r) => r.name.toLowerCase() === name.toLowerCase())) return null;
+      // Assign stable ID: max existing id + 1 (or 1 if none)
+      const maxId = reps.reduce((m, r) => Math.max(m, r.id || 0), 0);
+      const newId = maxId + 1;
       const newRep: SalesRep = {
+        id: newId,
         name,
         email: data.email || "",
         phone: data.phone || "",
@@ -5197,12 +5219,12 @@ const dataService = {
       SALES_REPS.length = 0;
       SALES_REPS.push(...reps);
       saveSalesReps();
-      return { id: reps.length, ...newRep };
+      return { id: newId, ...newRep };
     },
     update: ({ id, data }: { id: number; data: any }) => {
       const reps = [...getCurrentSalesReps()]; // COPY
-      const idx = id - 1;
-      if (idx < 0 || idx >= reps.length) return null;
+      const idx = reps.findIndex((r) => r.id === id);
+      if (idx < 0) return null;
       const oldName = reps[idx].name;
       const newName = (data.name || reps[idx].name).trim();
       if (!newName) return null;
@@ -5232,8 +5254,8 @@ const dataService = {
     },
     toggleActive: ({ id }: { id: number }) => {
       const reps = [...getCurrentSalesReps()]; // COPY
-      const idx = id - 1;
-      if (idx < 0 || idx >= reps.length) return null;
+      const idx = reps.findIndex((r) => r.id === id);
+      if (idx < 0) return null;
       reps[idx].isActive = !reps[idx].isActive;
       SALES_REPS.length = 0;
       SALES_REPS.push(...reps);
@@ -5242,8 +5264,8 @@ const dataService = {
     },
     delete: ({ id }: { id: number }) => {
       const reps = [...getCurrentSalesReps()]; // COPY
-      const idx = id - 1;
-      if (idx < 0 || idx >= reps.length) return null;
+      const idx = reps.findIndex((r) => r.id === id);
+      if (idx < 0) return null;
       const deletedName = reps[idx].name;
       reps.splice(idx, 1);
       SALES_REPS.length = 0;

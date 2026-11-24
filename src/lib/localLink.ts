@@ -1503,7 +1503,7 @@ export async function localLinkHandler(path: string, input: any) {
         const id = normalizeId(input);
         result = dataService.salesRep.delete({ id });
         if (result?.success) {
-          await removeSalesRep(id);
+          await removeSalesRep(id, result.deletedName);
           reloadFromStorage(["sgf_salesReps"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "salesReps", count: 0 } }));
         }

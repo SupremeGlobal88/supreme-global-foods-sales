@@ -758,9 +758,12 @@ export async function pushSalesRep(rep: any): Promise<void> {
   } catch { /* ignore */ }
 }
 
-export async function removeSalesRep(id: number | string): Promise<void> {
+export async function removeSalesRep(id: number | string, name?: string): Promise<void> {
   if (!isFirebaseReady()) return;
   try { await remove(ref(db, `salesReps/${safeFbKey(id)}`)); } catch { /* ignore */ }
+  if (name) {
+    try { await remove(ref(db, `salesReps/${safeFbKey(name)}`)); } catch { /* ignore */ }
+  }
 }
 
 export async function pushSpecialPrice(sp: any): Promise<void> {

@@ -790,7 +790,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "appointment.delete": {
         const id = normalizeId(input);
         result = dataService.appointment.delete(id);
-        if (result?.success) {
+        if (result) {
           await pushAppointmentDelete(id);
           reloadFromStorage(["sgf_appointments"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "appointments", count: 0 } }));
@@ -871,7 +871,7 @@ export async function localLinkHandler(path: string, input: any) {
       case "checkIn.delete": {
         const id = normalizeId(input);
         result = dataService.checkIn.delete(id);
-        if (result?.success) {
+        if (result) {
           await pushCheckinDelete(id);
           reloadFromStorage(["sgf_checkins"]);
           window.dispatchEvent(new CustomEvent("firebaseDataReceived", { detail: { type: "checkIns", count: 0 } }));

@@ -6449,6 +6449,8 @@ const dataService = {
         const newBalanceDue = total - amountPaid;
         invoices[existingIdx] = {
           ...existing,
+          poNumber: po.poNumber,
+          orderNumber: poRef,
           subtotal,
           vatAmount,
           vatRate,
